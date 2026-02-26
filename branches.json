@@ -1,0 +1,20 @@
+[
+  {
+    "branch_id": "grimes",
+    "display_name": "Grimes",
+    "stud_sku": "0204studfir08",
+    "notes": "Default branch"
+  },
+  {
+    "branch_id": "coralville",
+    "display_name": "Coralville",
+    "stud_sku": "0204studfir08",
+    "notes": ""
+  },
+  {
+    "branch_id": "fort_dodge",
+    "display_name": "Fort Dodge",
+    "stud_sku": "0204studprem08",
+    "notes": "Premium studs"
+  }
+]

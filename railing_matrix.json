@@ -1,0 +1,162 @@
+{
+  "styles": [
+    "Treated",
+    "Treated_w_DekPro",
+    "Cedar",
+    "Cedar_w_DekPro",
+    "Westbury_Black",
+    "Westbury_White"
+  ],
+  "components": [
+    {
+      "item": 1,
+      "description": "37\" Post",
+      "Treated": "2x4x8",
+      "Treated_w_DekPro": "2x4x8",
+      "Cedar": "2x4x10",
+      "Cedar_w_DekPro": "2x4x10",
+      "Westbury_Black": "deckw2237txblkit",
+      "Westbury_White": "deckw2237glwhkit"
+    },
+    {
+      "item": 2,
+      "description": "47\" Post",
+      "Treated": "2x4x10",
+      "Treated_w_DekPro": "2x4x10",
+      "Cedar": "2x4x12",
+      "Cedar_w_DekPro": "2x4x12",
+      "Westbury_Black": "deckw2247txblkit",
+      "Westbury_White": "deckw2247glwhkit"
+    },
+    {
+      "item": 3,
+      "description": "Wall Mount Bracket",
+      "Treated": "2x4x12",
+      "Treated_w_DekPro": "2x4x12",
+      "Cedar": "2x4x14",
+      "Cedar_w_DekPro": "2x4x14",
+      "Westbury_Black": "deckwesthswallmn",
+      "Westbury_White": "deckwesthswallgw"
+    },
+    {
+      "item": 4,
+      "description": "Stair Crossover Post",
+      "Treated": "2x4x14",
+      "Treated_w_DekPro": "2x4x14",
+      "Cedar": "2x4x16",
+      "Cedar_w_DekPro": "2x4x16",
+      "Westbury_Black": "deckstxpkittxblk",
+      "Westbury_White": "deckstxpkitglswh"
+    },
+    {
+      "item": 5,
+      "description": "C10 5ft Level Rail",
+      "Treated": "2x4x16",
+      "Treated_w_DekPro": "2x4x16",
+      "Cedar": "2x6x10",
+      "Cedar_w_DekPro": "2x6x10",
+      "Westbury_Black": "decktuscc105tblk",
+      "Westbury_White": "decktuscc105glwh"
+    },
+    {
+      "item": 6,
+      "description": "C10 6ft Stair Rail",
+      "Treated": "2x6x8 (#1)",
+      "Treated_w_DekPro": "2x6x8 (#1)",
+      "Cedar": "2x6x12",
+      "Cedar_w_DekPro": "2x6x12",
+      "Westbury_Black": "decktuscc106sblk",
+      "Westbury_White": "decktuscc106sgwh"
+    },
+    {
+      "item": 7,
+      "description": "C10 6ft Level Rail",
+      "Treated": "2x6x10",
+      "Treated_w_DekPro": "2x6x10",
+      "Cedar": "2x6x14",
+      "Cedar_w_DekPro": "2x6x14",
+      "Westbury_Black": "decktuscc106tblk",
+      "Westbury_White": "decktuscc106glwh"
+    },
+    {
+      "item": 8,
+      "description": "C10 7ft Level Rail",
+      "Treated": "2x6x12 (#1)",
+      "Treated_w_DekPro": "2x6x12 (#1)",
+      "Cedar": "2x6x16",
+      "Cedar_w_DekPro": "2x6x16",
+      "Westbury_Black": "decktuscc107tblk",
+      "Westbury_White": "decktuscc107glwh"
+    },
+    {
+      "item": 9,
+      "description": "C10 8ft Stair Rail",
+      "Treated": "2x6x14",
+      "Treated_w_DekPro": "2x6x14",
+      "Cedar": "2x2 Baluster",
+      "Cedar_w_DekPro": "DekPro Flat Bk",
+      "Westbury_Black": "decktuscc108sblk",
+      "Westbury_White": "decktuscc108glwh"
+    },
+    {
+      "item": 10,
+      "description": "C10 8ft Level Rail",
+      "Treated": "2x6x16 (#1)",
+      "Treated_w_DekPro": "2x6x16 (#1)",
+      "Cedar": "4x4x8",
+      "Cedar_w_DekPro": "4x4x8",
+      "Westbury_Black": "decktuscc108tblk",
+      "Westbury_White": "decktuscc108sgwh"
+    },
+    {
+      "item": 11,
+      "description": "ScreenRail LF (No Rail)",
+      "Treated": "2x2 Baluster",
+      "Treated_w_DekPro": "DekPro Flat Bk",
+      "Cedar": null,
+      "Cedar_w_DekPro": "2x6x12 Grippable",
+      "Westbury_Black": null,
+      "Westbury_White": null
+    },
+    {
+      "item": 12,
+      "description": "ScreenRail LF (With Rail)",
+      "Treated": "4x4x8",
+      "Treated_w_DekPro": "4x4x8",
+      "Cedar": "2x6x12 Grippable",
+      "Cedar_w_DekPro": null,
+      "Westbury_Black": null,
+      "Westbury_White": null
+    },
+    {
+      "item": 13,
+      "description": "MISSING - needs assignment",
+      "Treated": null,
+      "Treated_w_DekPro": null,
+      "Cedar": null,
+      "Cedar_w_DekPro": null,
+      "Westbury_Black": null,
+      "Westbury_White": null
+    },
+    {
+      "item": 14,
+      "description": "MISSING - needs assignment",
+      "Treated": null,
+      "Treated_w_DekPro": null,
+      "Cedar": null,
+      "Cedar_w_DekPro": null,
+      "Westbury_Black": null,
+      "Westbury_White": null
+    },
+    {
+      "item": 15,
+      "description": "MISSING - needs assignment",
+      "Treated": null,
+      "Treated_w_DekPro": null,
+      "Cedar": null,
+      "Cedar_w_DekPro": null,
+      "Westbury_Black": null,
+      "Westbury_White": null
+    }
+  ]
+}

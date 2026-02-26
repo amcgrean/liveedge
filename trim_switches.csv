@@ -1,0 +1,28 @@
+type,id,display,switch_key
+case,3,MDF 1x4,AB3
+case,4,"MDF 421 (3-1/4"")",AB4
+case,5,"MDF 432 (1/2x3.5"")",AB5
+case,6,"MDF 473 (2-1/4"")",AB6
+case,7,MDF 1x6,AB7
+case,8,"Clay 2-1/4"" (356J)",AB8
+case,9,"Clay 3-1/4"" (444LJ)",AB9
+case,10,"Pop Miss 3-1/4""",AB10
+case,11,"Pop BIG Miss 3-1/4""",AB11
+case,12,"Map Miss 3-1/4""",AB12
+case,13,"Oak Miss 3-1/4""",AB13
+base,14,MDF 1x6,AB14
+base,15,"MDF 432 (1/2x3.5"")",AB15
+base,16,"MDF 512 (1/2x5.5"")",AB16
+base,17,"MDF 430 (1/2x4.25"")",AB17
+base,18,MDF 1x8 (207M),AB18
+base,19,"Clay 3"" (634LJ)",AB19
+base,20,"Clay 4-1/4"" (620J)",AB20
+base,21,"Clay 5-1/4"" (2813J)",AB21
+base,22,"Pop Miss 4-1/4""",AB22
+base,23,"Pop BIG Miss 5-1/4""",AB23
+base,24,"Map Miss 4-1/4""",AB24
+base,25,"Oak Miss 4-1/4""",AB25
+handrail,4,Poplar,Y4
+handrail,5,Maple,Y5
+handrail,6,Oak,Y6
+handrail,7,Metal,Y7

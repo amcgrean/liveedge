@@ -1,0 +1,80 @@
+group,brand,style,function,finish,sku,description
+Hardware,Dexter,Corona,Dummy,BN,dexcor619dum,J170-Dexter-Corona-619 Dummy Knob
+Hardware,Dexter,Seville,Dummy,BN LH,dexsev619duml,J170-Dexter-Seville-619 Dummy Lever-LH
+Hardware,Dexter,Seville,Dummy,BN RH,dexsev619dumr,J170-Dexter-Seville-619 Dummy Lever-RH
+Hardware,Dexter,Seville,Dummy,ORB LH,dexsev716duml,J170-Dexter-Seville-716 Dummy LH
+Hardware,Dexter,Seville,Dummy,ORB RH,dexsev716dumr,J170-Dexter-Seville-716 Dummy RH
+Hardware,Dexter,Solstice,Dummy,BN,dexsol619dum,J170 Solstice Dummy Lever-619
+Hardware,Dexter,Stratus,Dummy,BN,dexstrat619dum,Dexter Stratus J170 619 Dummy
+Hardware,Dexter,Stratus,Dummy,ORB,dexstrat716dum,Dexter Stratus Dummy 716
+Hardware,Schlage,Accent,Dummy,BN LH,schacc619duml,F170-Schlage-Accent Lever-619-LH Dummy
+Hardware,Schlage,Accent,Dummy,BN RH,schacc619dumr,F170-Schlage-Accent Lever-619-RH Dummy
+Hardware,Schlage,Accent,Dummy,ORB LH,schacc716duml,F170-Schlage-Accent Lever-716-LH Dummy
+Hardware,Schlage,Accent,Dummy,ORB RH,schacc716dumr,F170-Schlage-Accent Lever-716-RH Dummy
+Hardware,Schlage,Latitude,Dummy,Black,schlat622dum,F170 Dummy Latitude 622
+Hardware,Schlage,Latitude,Dummy,BN,schlat619dum,F170 Dummy Latitude 619
+Hardware,Schlage,Plymouth,Dummy,BN,schply619dum,F170-Schlage-Plymouth Knob-619 Dummy
+Hardware,Schlage,Accent,Keyed,BN,schacc619key,F51-Schlage-Accent Lever-619-Keyed
+Hardware,Schlage,Latitude,Keyed,Black,schlat622key,F51 Keyed Latitude 622
+Hardware,Schlage,Latitude,Keyed,BN,schlat619key,F51 Keyed Latitude 619
+Hardware,Schlage,Plymouth,Keyed,BN,schply619key,F51-Schlage-Plymouth Knob-619 Keyed
+Hardware,Schlage,Plymouth,Keyed,Brass,schply605key,F51-Schlage-Plymouth-605 Keyed Knob
+Hardware,Dexter,Corona,Keyed,BN,dexcor619key,J54-Dexter-Corona-619 Keyed Knob
+Hardware,Dexter,Seville,Keyed,BN,dexsev619key,J54-Dexter-Seville-619 Keyed Lever
+Hardware,Dexter,Seville,Keyed,ORB,dexsev716key,J54-Dexter-Seville-716 Keyed
+Hardware,Dexter,Solstice,Keyed,BN,dexsol619key,J54 Solstice Keyed Lever-619
+Hardware,Dexter,Stratus,Keyed,BN,dexstrat619key,Dexter Stratus J51 Keyed 619
+Hardware,Schlage,Accent,Passage,BN,schacc619pass,F10-Schlage-Accent Lever 619-Passage
+Hardware,Schlage,Latitude,Passage,Black,schlat622pass,F10 Passage Latitude 622
+Hardware,Schlage,Latitude,Passage,BN,schlat619pass,F10 Passage Latitude 619
+Hardware,Dexter,Corona,Passage,BN,dexcor619pass,J10-Dexter-Corona-619 Passage Knob
+Hardware,Dexter,Seville,Passage,BN,dexsev619pass,J10-Dexter-Seville-619 Passage Lever
+Hardware,Dexter,Seville,Passage,ORB,dexsev716pass,J10-Dexter-Seville-716 Passage
+Hardware,Dexter,Solstice,Passage,BN,dexsol619pass,J10 Solstice Passage Lever-619
+Hardware,Dexter,Stratus,Passage,BN,dexstrat619pass,Dexter Stratus J10 619 Passage
+Hardware,Dexter,Stratus,Passage,ORB,dexstrat716pass,Dexter J10 Stratus Passage 716 ORB
+Hardware,Schlage,Accent,Privacy,BN,schacc619priv,F40-Schlage-Accent Lever-619-Privacy
+Hardware,Schlage,Latitude,Privacy,Black,schlat622priv,F40 Privacy Latitude 622
+Hardware,Schlage,Latitude,Privacy,BN,schlat619priv,F40 Privacy Latitude 619
+Hardware,Schlage,Plymouth,Privacy,BN,schply619priv,F40-Schlage-Plymouth Knob-619 Privacy
+Hardware,Dexter,Corona,Privacy,BN,dexcor619priv,J40-Dexter-Corona-619 Privacy Knob
+Hardware,Dexter,Seville,Privacy,BN,dexsev619priv,J40-Dexter-Seville-619 Privacy Lever
+Hardware,Dexter,Seville,Privacy,ORB,dexsev716priv,J40-Dexter-Seville-716 Privacy
+Hardware,Dexter,Solstice,Privacy,BN,dexsol619priv,J40 Solstice Privacy Lever-619
+Hardware,Dexter,Stratus,Privacy,BN,dexstrat619priv,Dexter Stratus J40 619 Privacy
+Hardware,Dexter,Stratus,Privacy,ORB,dexstrat716priv,Dexter J40 Stratus Privacy 716 ORB
+Hardware,Dexter,Single Cyl,Deadbolt,BN,dexsngldb619,JD60-Dexter-Single Cylinder Deadbolt-619
+Hardware,Dexter,Single Cyl,Deadbolt,ORB,dexsngldb716,JD60-Dexter-Single Cylinder Deadbolt-716
+Hardware,Schlage,Single Cyl,Deadbolt,Black,schsngldb622,B60N-Schlage-Sgl. Cylinder Deadbolt-622
+Hardware,Schlage,Single Cyl,Deadbolt,BN,schsngldb619,B60N-Schlage-Sgl. Cylinder Deadbolt-619
+Hardware,Schlage,Single Cyl,Deadbolt,Brass,schsngldb605,B60N-Schlage-Sgl. Cylinder Deadbolt-605
+Hardware,Schlage,Single Cyl,Deadbolt,ORB,schsngldb716,B60N-Schlage-Sgl. Cylinder Deadbolt-716
+Hardware,Schlage,Plymouth,Handleset,BN,schply619hndl,F58-Schlage-Plymouth Handleset-619
+Hardware,Schlage,Century,Handleset,Black,schcent622hndl,F58 Century Handleset 622
+Hardware,Schlage,Accent,InsideTrim,BN LH,schacc619triml,F59-Schlage-Accent Inside Trim-619-LH
+Hardware,Schlage,Accent,InsideTrim,BN RH,schacc619trimr,F59-Schlage-Accent Inside Trim-619-RH
+Hardware,Schlage,Accent,InsideTrim,ORB RH,schacc716trimr,F59-Schlage-Accent Inside Trim-716-RH
+Hardware,Schlage,Latitude,InsideTrim,Black,schlat622trim,F59 Inside Trim Latitude 622
+Hardware,Schlage,Latitude,InsideTrim,BN,schlat619trim,F59 Inside Trim Latitude 619
+Hardware,-,-,StopHinged,Black,doorstophdblack,Matte Black HD Hinge Stop 31505-19
+Hardware,-,-,StopHinged,BN,doorstophgsn,Sat Nick Hinged Door Stop MP3150004
+Hardware,-,-,StopHinged,Brass,doorstophgbb,Bright Brass Hinged Door Stop MP31500001
+Hardware,-,-,StopHinged,ORB,doorstophgorb,ORB Hinged Door Stop MP3150003
+Hardware,-,-,StopSpring,Black,doorstopspblack,Matte Black Spring Stop 31511-19
+Hardware,-,-,StopSpring,BN,doorstopspsn,Sat Nick Spring Door Stop MP3151104
+Hardware,-,-,StopSpring,Brass,doorstopspbb,Bright Brass Spring Door Stop MP3151001
+Hardware,-,-,StopSpring,Chrome,doorstopspbc,Bright Chrome Spring Door Stop 31511-26
+Hardware,-,-,StopSpring,ORB,doorstopsporb,ORB Spring Door Stop 31511-10B
+Hardware,-,-,FingerPull,Black,fingerpullmatblk,"2-1/8"" Matte Black Finger Pull"
+Hardware,-,-,FingerPull,BN,fingerpullsn,"2-1/8"" Satin Nickel Finger Pull"
+Hardware,-,-,FingerPull,Brass,fingerpullbr,"2-1/8"" Brass Finger Pull MP3012501"
+Hardware,-,-,FingerPull,ORB,fingerpullorb,"2-1/8"" ORB Pull"
+Hardware,-,-,BifoldKnob,Black,bfknobmatteblack,Bifold Knob Matte Black 30054-19
+Hardware,-,-,BifoldKnob,BN,bfknobsn,Bifold Knob-Satin Nickel
+Hardware,-,-,BifoldKnob,Chrome,bfknob26,Bifold Knob-Polished Chrome-MP3005408
+Hardware,-,-,BifoldKnob,ORB,bfknoborb,Bifold Knob-Vintage Bronze
+Hardware,-,-,PocketLock,BN/Antique,pocketdrprvus10b,Round Privacy Pocket Door Lock-US11P
+Hardware,-,-,PocketLock,ORB/Satin,pocketdrprv619,Round Privacy Pocket Door Lock-US15
+Hardware,-,-,PocketLock,Black,pktdoorpassblack,Pocket Door Lock Black (Passage)
+Hardware,-,-,Bypass,-,bypasshard72,Bypass Door Hardware J01667 John
+Hardware,-,-,BarnDoor,Black,barndrhdwjwblk,"84"" Barn Door Hardware Kit - Black - JW"

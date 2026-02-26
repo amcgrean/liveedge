@@ -1,0 +1,137 @@
+{
+  "size_to_prefix": [
+    {
+      "size": "1.75x7.25",
+      "prefix": "7lvl00",
+      "description": "7-1/4\" LVL",
+      "type": "LVL"
+    },
+    {
+      "size": "1.75x9.5",
+      "prefix": "9lvl00",
+      "description": "9-1/2\" LVL",
+      "type": "LVL"
+    },
+    {
+      "size": "1.75x11.78",
+      "prefix": "11lvl00",
+      "description": "11-7/8\" LVL",
+      "type": "LVL"
+    },
+    {
+      "size": "1.75x14",
+      "prefix": "14lvl00",
+      "description": "14\" LVL",
+      "type": "LVL"
+    },
+    {
+      "size": "1.75x16",
+      "prefix": "16lvl00",
+      "description": "16\" LVL",
+      "type": "LVL"
+    },
+    {
+      "size": "1.75x18",
+      "prefix": "18lvl00",
+      "description": "18\" LVL",
+      "type": "LVL"
+    },
+    {
+      "size": "3.5x9",
+      "prefix": "9ts",
+      "description": "3.5\" x 9\" TimberStrand LSL",
+      "type": "LSL"
+    },
+    {
+      "size": "3.5x11",
+      "prefix": "11ts",
+      "description": "3.5\" x 11\" TimberStrand LSL",
+      "type": "LSL"
+    },
+    {
+      "size": "2x8",
+      "prefix": "0208fir",
+      "description": "2x8 Solid Sawn",
+      "type": "2x"
+    },
+    {
+      "size": "2x10",
+      "prefix": "0210fir",
+      "description": "2x10 Solid Sawn",
+      "type": "2x"
+    },
+    {
+      "size": "2x12",
+      "prefix": "0212fir",
+      "description": "2x12 Solid Sawn",
+      "type": "2x"
+    }
+  ],
+  "code_generation_rule": "item_code = prefix + str(length_ft).zfill(2) e.g. 7lvl00 + 08 = 7lvl0008",
+  "available_lengths_ft": {
+    "LVL": [
+      4,
+      6,
+      8,
+      10,
+      12,
+      14,
+      16,
+      18,
+      20,
+      22,
+      24,
+      26,
+      28,
+      30,
+      32,
+      34,
+      36,
+      38,
+      40,
+      42,
+      44,
+      46,
+      48
+    ],
+    "LSL": [
+      4,
+      6,
+      8,
+      10,
+      12,
+      14,
+      16,
+      18,
+      20,
+      22,
+      24,
+      26,
+      28,
+      30,
+      32,
+      34,
+      36,
+      38,
+      40,
+      42,
+      44,
+      46,
+      48
+    ],
+    "2x": [
+      8,
+      10,
+      12,
+      14,
+      16,
+      18,
+      20
+    ]
+  },
+  "ply_code_offsets": {
+    "note": "Ply selection shifts the item code prefix. 1-ply uses base prefix. 2-ply uses main prefix etc.",
+    "1ply_base": 60020100,
+    "structure": "Codes follow pattern 6002{ply:02d}{size_index:02d}{length:02d}"
+  }
+}

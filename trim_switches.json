@@ -1,0 +1,143 @@
+{
+  "case_types": [
+    {
+      "id": 3,
+      "display": "MDF 1x4",
+      "switch_key": "AB3"
+    },
+    {
+      "id": 4,
+      "display": "MDF 421 (3-1/4\")",
+      "switch_key": "AB4"
+    },
+    {
+      "id": 5,
+      "display": "MDF 432 (1/2x3.5\")",
+      "switch_key": "AB5"
+    },
+    {
+      "id": 6,
+      "display": "MDF 473 (2-1/4\")",
+      "switch_key": "AB6"
+    },
+    {
+      "id": 7,
+      "display": "MDF 1x6",
+      "switch_key": "AB7"
+    },
+    {
+      "id": 8,
+      "display": "Clay 2-1/4\" (356J)",
+      "switch_key": "AB8"
+    },
+    {
+      "id": 9,
+      "display": "Clay 3-1/4\" (444LJ)",
+      "switch_key": "AB9"
+    },
+    {
+      "id": 10,
+      "display": "Pop Miss 3-1/4\"",
+      "switch_key": "AB10"
+    },
+    {
+      "id": 11,
+      "display": "Pop BIG Miss 3-1/4\"",
+      "switch_key": "AB11"
+    },
+    {
+      "id": 12,
+      "display": "Map Miss 3-1/4\"",
+      "switch_key": "AB12"
+    },
+    {
+      "id": 13,
+      "display": "Oak Miss 3-1/4\"",
+      "switch_key": "AB13"
+    }
+  ],
+  "base_types": [
+    {
+      "id": 14,
+      "display": "MDF 1x6",
+      "switch_key": "AB14"
+    },
+    {
+      "id": 15,
+      "display": "MDF 432 (1/2x3.5\")",
+      "switch_key": "AB15"
+    },
+    {
+      "id": 16,
+      "display": "MDF 512 (1/2x5.5\")",
+      "switch_key": "AB16"
+    },
+    {
+      "id": 17,
+      "display": "MDF 430 (1/2x4.25\")",
+      "switch_key": "AB17"
+    },
+    {
+      "id": 18,
+      "display": "MDF 1x8 (207M)",
+      "switch_key": "AB18"
+    },
+    {
+      "id": 19,
+      "display": "Clay 3\" (634LJ)",
+      "switch_key": "AB19"
+    },
+    {
+      "id": 20,
+      "display": "Clay 4-1/4\" (620J)",
+      "switch_key": "AB20"
+    },
+    {
+      "id": 21,
+      "display": "Clay 5-1/4\" (2813J)",
+      "switch_key": "AB21"
+    },
+    {
+      "id": 22,
+      "display": "Pop Miss 4-1/4\"",
+      "switch_key": "AB22"
+    },
+    {
+      "id": 23,
+      "display": "Pop BIG Miss 5-1/4\"",
+      "switch_key": "AB23"
+    },
+    {
+      "id": 24,
+      "display": "Map Miss 4-1/4\"",
+      "switch_key": "AB24"
+    },
+    {
+      "id": 25,
+      "display": "Oak Miss 4-1/4\"",
+      "switch_key": "AB25"
+    }
+  ],
+  "handrail_types": [
+    {
+      "id": 4,
+      "display": "Poplar",
+      "switch_key": "Y4"
+    },
+    {
+      "id": 5,
+      "display": "Maple",
+      "switch_key": "Y5"
+    },
+    {
+      "id": 6,
+      "display": "Oak",
+      "switch_key": "Y6"
+    },
+    {
+      "id": 7,
+      "display": "Metal",
+      "switch_key": "Y7"
+    }
+  ]
+}

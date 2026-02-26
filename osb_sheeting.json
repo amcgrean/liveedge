@@ -1,0 +1,40 @@
+{
+  "roof_sheeting_types": [
+    {
+      "display": "1/2\" OSB",
+      "sku": "osb4850",
+      "switch_index": 3
+    },
+    {
+      "display": "7/16\" OSB",
+      "sku": "osb4843",
+      "switch_index": 4
+    },
+    {
+      "display": "5/8\" OSB",
+      "sku": "osb4858",
+      "switch_index": 5
+    },
+    {
+      "display": "3/4\" OSB",
+      "sku": "osbedge4875sq",
+      "switch_index": 6
+    },
+    {
+      "display": "1/2\" Tolko",
+      "sku": "osbtolko4843",
+      "switch_index": 7
+    },
+    {
+      "display": "7/16\" Tolko",
+      "sku": "osbtolko4850",
+      "switch_index": 8
+    },
+    {
+      "display": "5/8\" Tolko",
+      "sku": "osbtolko4858",
+      "switch_index": 9
+    }
+  ],
+  "sf_per_panel": 32
+}

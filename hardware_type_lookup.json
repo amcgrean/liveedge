@@ -1,0 +1,57 @@
+[
+  {
+    "display_name": "Schlage - Accent (Black)",
+    "finish_code": "AccentBlack",
+    "known_issue": "Extra space in original: 'Schlage  - Accent'"
+  },
+  {
+    "display_name": "Schlage - Latitude (Black)",
+    "finish_code": "LattitudeBlack",
+    "known_issue": "Misspelled 'Lattitude' in original Excel \u2013 normalized here"
+  },
+  {
+    "display_name": "Schlage - Latitude (BN)",
+    "finish_code": "LattitudeBN",
+    "known_issue": "Misspelled 'Lattitude' in original Excel \u2013 normalized here"
+  },
+  {
+    "display_name": "Schlage - Accent (BN)",
+    "finish_code": "AccentBN",
+    "known_issue": null
+  },
+  {
+    "display_name": "Dexter - Corona (BN)",
+    "finish_code": "CoronaBN",
+    "known_issue": null
+  },
+  {
+    "display_name": "Dexter - Seville (BN)",
+    "finish_code": "SevilleBN",
+    "known_issue": null
+  },
+  {
+    "display_name": "Dexter - Seville (ORB)",
+    "finish_code": "SevilleORB",
+    "known_issue": null
+  },
+  {
+    "display_name": "Dexter - Solstice (BN)",
+    "finish_code": "SolsticeBN",
+    "known_issue": null
+  },
+  {
+    "display_name": "Dexter - Stratus (BN)",
+    "finish_code": "StratusBN",
+    "known_issue": "Original Excel shows 'Status (BN)' \u2013 corrected to 'Stratus'"
+  },
+  {
+    "display_name": "Dexter - Stratus (ORB)",
+    "finish_code": "StratusORB",
+    "known_issue": null
+  },
+  {
+    "display_name": "Schlage - Plymouth (BN)",
+    "finish_code": "PlymouthBN",
+    "known_issue": null
+  }
+]

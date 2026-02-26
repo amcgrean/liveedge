@@ -1,0 +1,29 @@
+{
+  "tyvek_overrides": [
+    {
+      "customer_name": "Jerry's Homes Inc.",
+      "tyvek_code": "jerryswrap9x150",
+      "force_height": "9ft"
+    },
+    {
+      "customer_name": "Hubbell Homes, LC - New PO Sys",
+      "tyvek_code": "tyvhwhubb09150",
+      "force_height": "9ft"
+    },
+    {
+      "customer_name": "Greenland Homes Inc.",
+      "tyvek_code_9": "Homegrd9100Gre",
+      "tyvek_code_10": "Homegrd10100Gre",
+      "force_height": "auto"
+    }
+  ],
+  "group_overrides": [
+    {
+      "customer_name": "Oakstone Homes",
+      "override": "fascia_group",
+      "from": "Siding",
+      "to": "Roof Framing",
+      "note": "Oakstone fascia bills to Roof Framing group instead of Siding"
+    }
+  ]
+}

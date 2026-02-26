@@ -1,0 +1,51 @@
+[
+  {
+    "id": 1,
+    "severity": "CRITICAL",
+    "area": "Hardware Lookup",
+    "issue": "Dexter 'Status (BN)' display name maps to StratusBN code",
+    "fix": "Rename display to 'Stratus (BN)' in hardware_type_lookup.json \u2013 already corrected in this file"
+  },
+  {
+    "id": 2,
+    "severity": "CRITICAL",
+    "area": "Hardware Lookup",
+    "issue": "Schlage Accent has double-space: 'Schlage  - Accent'",
+    "fix": "Normalized to single space in hardware_type_lookup.json"
+  },
+  {
+    "id": 3,
+    "severity": "CRITICAL",
+    "area": "Hardware Lookup",
+    "issue": "Latitude consistently misspelled as 'Lattitude' throughout original Excel",
+    "fix": "Corrected to 'Latitude' in all JSON files. NOTE: if importing Excel CSVs, strip/normalize before lookup"
+  },
+  {
+    "id": 4,
+    "severity": "HIGH",
+    "area": "Hardware Matrix",
+    "issue": "CoronaBN, SevilleBN, SolsticeBN, StratusBN have null inside_trim SKU",
+    "fix": "Add NULL guard in web app. Either assign default SKU or hide inside_trim row for these finishes"
+  },
+  {
+    "id": 5,
+    "severity": "HIGH",
+    "area": "Hardware Matrix",
+    "issue": "PlymouthBN passage and privacy both use schply619priv",
+    "fix": "Verify correct passage SKU with branch manager. Current mapping in hardware_matrix.json uses schply619pass as placeholder \u2013 UPDATE BEFORE GO-LIVE"
+  },
+  {
+    "id": 6,
+    "severity": "HIGH",
+    "area": "Railing Matrix",
+    "issue": "Items 13-15 in railing matrix have no product codes assigned",
+    "fix": "Assign SKUs with branch manager before enabling those railing line items"
+  },
+  {
+    "id": 7,
+    "severity": "MEDIUM",
+    "area": "Engineered Lumber",
+    "issue": "Item codes concatenated at formula time in original Excel",
+    "fix": "Use size+length lookup against engineered_lumber.json prefix table instead of concatenation"
+  }
+]

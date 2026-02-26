@@ -1,0 +1,311 @@
+{
+  "Madison": {
+    "description": "1-Panel Madison (Mercer)",
+    "sizes": {
+      "slab.16": {
+        "hc": "slmercerhc1668",
+        "sc": "slmercerhc1668"
+      },
+      "slab.20": {
+        "hc": "slmercerhc2068",
+        "sc": "slmercerhc2068"
+      },
+      "slab.24": {
+        "hc": "slmercerhc2468",
+        "sc": "slmercerhc2468"
+      },
+      "slab.26": {
+        "hc": "slmercerhc2668",
+        "sc": "slmercerhc2668"
+      },
+      "slab.28": {
+        "hc": "slmercerhc2868",
+        "sc": "slmercerhc2868"
+      },
+      "slab.30": {
+        "hc": "slmercerhc3068",
+        "sc": "slmercerhc3068"
+      },
+      "bi.40": {
+        "hc": "bfmercer2067",
+        "sc": "bfmercer2067"
+      },
+      "bi.50": {
+        "hc": "bfmercer2667",
+        "sc": "bfmercer2667"
+      },
+      "bi.30": {
+        "hc": "bfmercer3067",
+        "sc": "bfmercer3067"
+      },
+      "sh.16": {
+        "hc": "ZZGR0000144484",
+        "sc": "ZZGR0000144503"
+      },
+      "sh.20": {
+        "hc": "ZZGR0000144485",
+        "sc": "ZZGR0000144504"
+      },
+      "sh.24": {
+        "hc": "ZZGR0000144486",
+        "sc": "ZZGR0000144505"
+      },
+      "sh.26": {
+        "hc": "ZZGR0000144487",
+        "sc": "ZZGR0000144506"
+      },
+      "sh.28": {
+        "hc": "ZZGR0000144488",
+        "sc": "ZZGR0000144507"
+      },
+      "sh.30": {
+        "hc": "ZZGR0000144489",
+        "sc": "ZZGR0000144508"
+      },
+      "dh.30": {
+        "hc": "ZZGR0000144493",
+        "sc": "ZZGR0000144509"
+      },
+      "dh.40": {
+        "hc": "ZZGR0000144494",
+        "sc": "ZZGR0000144510"
+      },
+      "dh.50": {
+        "hc": "ZZGR0000144495",
+        "sc": "ZZGR0000144511"
+      },
+      "dh.60": {
+        "hc": "ZZGR0000144496",
+        "sc": "ZZGR0000144512"
+      }
+    }
+  },
+  "Cambridge": {
+    "description": "2-Panel Cambridge (King)",
+    "sizes": {
+      "slab.16": {
+        "hc": "slkinghc1668",
+        "sc": "slkinghc1668"
+      },
+      "slab.20": {
+        "hc": "slkinghc2068",
+        "sc": "slkinghc2068"
+      },
+      "slab.24": {
+        "hc": "slkinghc2468",
+        "sc": "slkinghc2468"
+      },
+      "slab.26": {
+        "hc": "slkinghc2668",
+        "sc": "slkinghc2668"
+      },
+      "slab.28": {
+        "hc": "slkinghc2868",
+        "sc": "slkinghc2868"
+      },
+      "slab.30": {
+        "hc": "slkinghc3068",
+        "sc": "slkinghc3068"
+      },
+      "bi.40": {
+        "hc": "bfking2067",
+        "sc": "bfking2067"
+      },
+      "bi.50": {
+        "hc": "bfking2667",
+        "sc": "bfking2667"
+      },
+      "bi.30": {
+        "hc": "bfking3067",
+        "sc": "bfking3067"
+      },
+      "sh.16": {
+        "hc": "ZZGR0000144552",
+        "sc": "ZZGR0000144571"
+      },
+      "sh.20": {
+        "hc": "ZZGR0000144553",
+        "sc": "ZZGR0000144572"
+      },
+      "sh.24": {
+        "hc": "ZZGR0000144554",
+        "sc": "ZZGR0000144573"
+      },
+      "sh.26": {
+        "hc": "ZZGR0000144555",
+        "sc": "ZZGR0000144574"
+      },
+      "sh.28": {
+        "hc": "ZZGR0000144556",
+        "sc": "ZZGR0000144575"
+      },
+      "sh.30": {
+        "hc": "ZZGR0000144557",
+        "sc": "ZZGR0000144576"
+      },
+      "dh.30": {
+        "hc": "ZZGR0000144561",
+        "sc": "ZZGR0000144577"
+      },
+      "dh.40": {
+        "hc": "ZZGR0000144562",
+        "sc": "ZZGR0000144578"
+      },
+      "dh.50": {
+        "hc": "ZZGR0000144563",
+        "sc": "ZZGR0000144579"
+      },
+      "dh.60": {
+        "hc": "ZZGR0000144564",
+        "sc": "ZZGR0000144580"
+      }
+    }
+  },
+  "Continental": {
+    "description": "2-Panel Continental (Rosario)",
+    "sizes": {
+      "slab.16": {
+        "hc": "slroshc1668",
+        "sc": "slroshc1668"
+      },
+      "slab.20": {
+        "hc": "slroshc2068",
+        "sc": "slroshc2068"
+      },
+      "slab.24": {
+        "hc": "slroshc2468",
+        "sc": "slroshc2468"
+      },
+      "slab.26": {
+        "hc": "slroshc2668",
+        "sc": "slroshc2668"
+      },
+      "slab.28": {
+        "hc": "slroshc2868",
+        "sc": "slroshc2868"
+      },
+      "slab.30": {
+        "hc": "slroshc3068",
+        "sc": "slroshc3068"
+      },
+      "bi.40": {
+        "hc": "bfros2067",
+        "sc": "bfros2067"
+      },
+      "bi.50": {
+        "hc": "bfros2667",
+        "sc": "bfros2667"
+      },
+      "bi.30": {
+        "hc": "bfros3067",
+        "sc": "bfros3067"
+      },
+      "sh.16": {
+        "hc": "ZZGR0000144622",
+        "sc": "ZZGR0000144641"
+      },
+      "sh.20": {
+        "hc": "ZZGR0000144623",
+        "sc": "ZZGR0000144642"
+      },
+      "sh.24": {
+        "hc": "ZZGR0000144624",
+        "sc": "ZZGR0000144643"
+      },
+      "sh.26": {
+        "hc": "ZZGR0000144625",
+        "sc": "ZZGR0000144644"
+      },
+      "sh.28": {
+        "hc": "ZZGR0000144626",
+        "sc": "ZZGR0000144645"
+      },
+      "sh.30": {
+        "hc": "ZZGR0000144627",
+        "sc": "ZZGR0000144646"
+      },
+      "dh.30": {
+        "hc": "ZZGR0000144631",
+        "sc": "ZZGR0000144647"
+      },
+      "dh.40": {
+        "hc": "ZZGR0000144632",
+        "sc": "ZZGR0000144648"
+      },
+      "dh.50": {
+        "hc": "ZZGR0000144633",
+        "sc": "ZZGR0000144649"
+      },
+      "dh.60": {
+        "hc": "ZZGR0000144634",
+        "sc": "ZZGR0000144650"
+      }
+    }
+  },
+  "Craftsman": {
+    "description": "3-Panel Craftsman (Yarrow)",
+    "note": "SC codes not present in DB \u2013 HC code used for both",
+    "sizes": {
+      "slab.16": {
+        "hc": "slyarrowhc1668",
+        "sc": "slyarrowhc1668"
+      },
+      "slab.20": {
+        "hc": "slyarrowhc2068",
+        "sc": "slyarrowhc2068"
+      },
+      "slab.24": {
+        "hc": "slyarrowhc2468",
+        "sc": "slyarrowhc2468"
+      },
+      "slab.26": {
+        "hc": "slyarrowhc2668",
+        "sc": "slyarrowhc2668"
+      },
+      "slab.28": {
+        "hc": "slyarrowhc2868",
+        "sc": "slyarrowhc2868"
+      },
+      "slab.30": {
+        "hc": "slyarrowhc3068",
+        "sc": "slyarrowhc3068"
+      },
+      "bi.40": {
+        "hc": "bfyarrow2067",
+        "sc": "bfyarrow2067"
+      },
+      "bi.50": {
+        "hc": "bfyarrow2667",
+        "sc": "bfyarrow2667"
+      },
+      "bi.30": {
+        "hc": "bfyarrow3067",
+        "sc": "bfyarrow3067"
+      },
+      "sh.16": {
+        "hc": "ZZGR0000144692",
+        "sc": "ZZGR0000144711"
+      },
+      "sh.20": {
+        "hc": "ZZGR0000144693",
+        "sc": "ZZGR0000144712"
+      },
+      "sh.24": {
+        "hc": "ZZGR0000144694",
+        "sc": "ZZGR0000144713"
+      },
+      "sh.26": {
+        "hc": "ZZGR0000144695",
+        "sc": "ZZGR0000144714"
+      },
+      "sh.28": {
+        "hc": "ZZGR0000144696",
+        "sc": "ZZGR0000144715"
+      },
+      "sh.30": {
+        "hc": "ZZGR0000144697",
+        "sc": "ZZGR0000144716"
+      }
+    }
+  }
+}

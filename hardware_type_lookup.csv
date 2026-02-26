@@ -1,0 +1,12 @@
+display_name,finish_code,known_issue
+Schlage - Accent (Black),AccentBlack,Extra space in original: 'Schlage  - Accent'
+Schlage - Latitude (Black),LattitudeBlack,Misspelled 'Lattitude' in original Excel – normalized here
+Schlage - Latitude (BN),LattitudeBN,Misspelled 'Lattitude' in original Excel – normalized here
+Schlage - Accent (BN),AccentBN,
+Dexter - Corona (BN),CoronaBN,
+Dexter - Seville (BN),SevilleBN,
+Dexter - Seville (ORB),SevilleORB,
+Dexter - Solstice (BN),SolsticeBN,
+Dexter - Stratus (BN),StratusBN,Original Excel shows 'Status (BN)' – corrected to 'Stratus'
+Dexter - Stratus (ORB),StratusORB,
+Schlage - Plymouth (BN),PlymouthBN,

@@ -1,0 +1,155 @@
+{
+  "framing": {
+    "stud_multiplier_basement": {
+      "value": 0.08611,
+      "unit": "studs_per_lf",
+      "note": "16\" OC spacing"
+    },
+    "stud_multiplier_main": {
+      "value": 0.08611,
+      "unit": "studs_per_lf",
+      "note": "16\" OC - same for 1st and 2nd floor"
+    },
+    "triple_plate_factor": {
+      "value": 0.66,
+      "unit": "factor",
+      "note": "Applied when triple plate = Yes"
+    },
+    "rim_multiplier": {
+      "value": 0.065625,
+      "formula": "(1/16)*1.05",
+      "unit": "panels_per_lf",
+      "note": "16ft panels + 5% waste"
+    },
+    "bsmt_wall_wrap": {
+      "value": 0.07143,
+      "formula": "1*3/14/3",
+      "unit": "pieces_per_lf"
+    },
+    "main_wall_wrap": {
+      "value": 0.02381,
+      "formula": "1/14/3",
+      "unit": "pieces_per_lf"
+    },
+    "roof_ww_bracing": {
+      "value": 0.02381,
+      "formula": "1/3/14",
+      "unit": "pieces_per_lf"
+    },
+    "twenty_percent_waste": {
+      "value": 1.2,
+      "unit": "factor",
+      "note": "Applied to most framing lumber"
+    },
+    "treated_plate_formula": "plate_lf / 14 / 3",
+    "timberstrand_plate_formula": "plate_lf / 16"
+  },
+  "sheathing": {
+    "osb_sf_per_panel": {
+      "value": 32,
+      "unit": "sf_per_sheet",
+      "note": "Standard 4x8"
+    },
+    "nail_multiplier_100sf": {
+      "value": 200,
+      "unit": "nails_per_100sf"
+    },
+    "floor_7d_nail": {
+      "value": 0.020938,
+      "formula": "(1/32)*0.67",
+      "unit": "lbs_per_sf"
+    },
+    "floor_15d_nail": {
+      "value": 0.03125,
+      "formula": "1/32",
+      "unit": "lbs_per_sf"
+    },
+    "floor_joist_nail": {
+      "value": 2.5e-06,
+      "formula": "(1/2000)*5"
+    }
+  },
+  "moisture_barrier": {
+    "sill_seal_roll_lf": {
+      "value": 50,
+      "unit": "lf_per_roll"
+    },
+    "tyvek_9ft": {
+      "value": 0.000741,
+      "formula": "1/150/9",
+      "unit": "rolls_per_sf",
+      "note": "9ft wide 150ft long roll"
+    },
+    "tyvek_10ft": {
+      "value": 0.000667,
+      "formula": "1/150/10",
+      "unit": "rolls_per_sf",
+      "note": "10ft wide 150ft long roll"
+    }
+  },
+  "siding": {
+    "lp": {
+      "6in": {
+        "pieces_per_100sf": 6.5
+      },
+      "8in": {
+        "pieces_per_100sf": 9.0
+      },
+      "12in": {
+        "pieces_per_100sf": 14.5
+      }
+    },
+    "hardie": {
+      "5.25in": {
+        "pieces_per_100sf": 4.0
+      },
+      "6.25in": {
+        "pieces_per_100sf": 5.0
+      },
+      "7.25in": {
+        "pieces_per_100sf": 6.0
+      },
+      "8.25in": {
+        "pieces_per_100sf": 7.0
+      },
+      "12in": {
+        "pieces_per_100sf": 10.75
+      }
+    },
+    "vinyl": {
+      "default": {
+        "pieces_per_100sf": 8.3333
+      }
+    },
+    "cedar_wp4": {
+      "12ft": {
+        "pieces_per_100sf": 5.4,
+        "formula": "0.45*12"
+      },
+      "14ft": {
+        "pieces_per_100sf": 6.3,
+        "formula": "0.45*14"
+      },
+      "16ft": {
+        "pieces_per_100sf": 7.2,
+        "formula": "0.45*16"
+      }
+    },
+    "soffit_lf_per_piece": {
+      "lp": 16,
+      "hardie": 12,
+      "rollex": 12
+    }
+  },
+  "trim": {
+    "window_1x_bf_coverage_lf": 25,
+    "window_bf_coverage_lf": 30,
+    "sh_slab_case_multiplier": 36,
+    "dh_bifold_case_multiplier": 42
+  },
+  "composite_deck_screws": {
+    "factor_1": 5.5,
+    "factor_2": 7.333,
+    "factor_3": 9.167
+  }
+}
