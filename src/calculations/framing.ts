@@ -22,30 +22,80 @@ export function calculateFraming(
         ? multipliers.framing.stud_multiplier_basement.value
         : multipliers.framing.stud_multiplier_main.value;
 
-    const totalLF = section.ext2x4_8ft + section.ext2x4_9ft + section.ext2x4_10ft +
-        section.ext2x6_8ft + section.ext2x6_9ft + section.ext2x6_10ft +
-        section.intWallLF;
+    const garageWallLF = (section as Partial<{ garageWallLF: number }>).garageWallLF || 0;
+    const extByHeight = {
+        '8ft': section.ext2x4_8ft + section.ext2x6_8ft + garageWallLF,
+        '9ft': section.ext2x4_9ft + section.ext2x6_9ft,
+        '10ft': section.ext2x4_10ft + section.ext2x6_10ft
+    };
+    const extLF = extByHeight['8ft'] + extByHeight['9ft'] + extByHeight['10ft'];
+    const totalLF = extLF + section.intWallLF;
 
     if (totalLF <= 0) return items;
 
-    // Branch override for stud SKU
-    let studSku = wallSize === '2x4' ? '02048fir092' : '02068fir092';
-    const branchData = branches?.find((b: any) => b.branch_id === inputs.setup.branch);
-    if (branchData?.stud_sku_override) {
-        studSku = branchData.stud_sku_override;
-    }
+    const studLengthToCode: Record<'8ft' | '9ft' | '10ft', string> = {
+        '8ft': '08',
+        '9ft': '09',
+        '10ft': '10'
+    };
 
-    // Studs
-    const studQty = Math.ceil(totalLF * studMultiplier * multipliers.framing.twenty_percent_waste.value);
-    if (studQty > 0) {
+    const defaultStudSkus = {
+        '2x4': {
+            '8ft': '0204studfir08',
+            '9ft': '0204studfir09',
+            '10ft': '0204studfir10'
+        },
+        '2x6': {
+            '8ft': '0206studfir08',
+            '9ft': '0206studfir09',
+            '10ft': '0206studfir10'
+        }
+    } as const;
+
+    const branchData = branches?.find((b: any) => b.branch_id === inputs.setup.branch);
+    const branchStudSku8ft = branchData?.stud_sku;
+
+    // Studs (by wall height to match input sheet)
+    (Object.keys(extByHeight) as Array<keyof typeof extByHeight>).forEach((height) => {
+        const wallLF = extByHeight[height];
+        if (wallLF <= 0) return;
+
+        const studQty = Math.ceil(wallLF * studMultiplier * multipliers.framing.twenty_percent_waste.value);
+        if (studQty <= 0) return;
+
+        let studSku = defaultStudSkus[wallSize][height];
+        if (height === '8ft' && branchStudSku8ft) {
+            studSku = branchStudSku8ft;
+        } else if (height !== '8ft' && branchStudSku8ft?.includes('studfir08')) {
+            studSku = branchStudSku8ft.replace('08', studLengthToCode[height]);
+        } else if (height !== '8ft' && branchStudSku8ft?.includes('studprem08')) {
+            studSku = branchStudSku8ft.replace('08', studLengthToCode[height]);
+        }
+
         items.push({
             qty: studQty,
             uom: 'EA',
             sku: studSku,
-            description: `${wallSize} Studs - ${name}`,
+            description: `${wallSize} ${height} Studs - ${name}`,
             group: name,
             is_dynamic_sku: false
         });
+    });
+
+    // Interior studs (default to 9ft studs)
+    if (section.intWallLF > 0) {
+        const intStudQty = Math.ceil(section.intWallLF * studMultiplier * multipliers.framing.twenty_percent_waste.value);
+        const intStudSku = wallSize === '2x4' ? '0204studfir09' : '0206studfir09';
+        if (intStudQty > 0) {
+            items.push({
+                qty: intStudQty,
+                uom: 'EA',
+                sku: intStudSku,
+                description: `${wallSize} Interior Studs - ${name}`,
+                group: name,
+                is_dynamic_sku: false
+            });
+        }
     }
 
     // Plates

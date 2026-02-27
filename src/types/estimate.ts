@@ -170,7 +170,7 @@ export interface Multipliers {
 export interface Branch {
     branch_id: string;
     name: string;
-    stud_sku_override?: string;
+    stud_sku?: string;
 }
 
 export interface HardwareMatrix {
