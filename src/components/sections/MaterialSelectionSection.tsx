@@ -1,6 +1,7 @@
 import React from 'react';
 import { MaterialSelections } from '../../types/estimate';
 import { SectionCard, InputGroup } from '../ui/SectionCard';
+import { dataCache } from '../../utils/lookup';
 
 interface Props {
     data: MaterialSelections;
@@ -10,11 +11,10 @@ interface Props {
 export function MaterialSelectionSection({ data, onChange }: Props) {
     const handleChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
         const { name, value } = e.target;
-        onChange({
-            ...data,
-            [name]: value,
-        });
+        onChange({ ...data, [name]: value });
     };
+
+    const osbTypes: { display: string; sku: string }[] = dataCache.osbSheeting?.roof_sheeting_types || [];
 
     return (
         <SectionCard title="2. Material Selections">
@@ -42,13 +42,21 @@ export function MaterialSelectionSection({ data, onChange }: Props) {
                         <option value="true">Yes</option>
                     </select>
                 </InputGroup>
-                <InputGroup label="Tyvek Type">
+                <InputGroup label="Tyvek / House Wrap">
                     <select name="tyvekType" value={data.tyvekType} onChange={handleChange} className="input-field">
                         <option value="Standard 9ft">Standard 9ft</option>
                         <option value="Standard 10ft">Standard 10ft</option>
                         <option value="Zip Panels">Zip Panels</option>
                         <option value="N/A">N/A</option>
                         <option value="Tape Only">Tape Only</option>
+                    </select>
+                </InputGroup>
+                <InputGroup label="Roof Sheeting Size">
+                    <select name="roofSheetingSize" value={data.roofSheetingSize} onChange={handleChange} className="input-field">
+                        {osbTypes.length > 0
+                            ? osbTypes.map(t => <option key={t.sku} value={t.display}>{t.display}</option>)
+                            : <option value="7/16 OSB">7/16 OSB</option>
+                        }
                     </select>
                 </InputGroup>
             </div>
