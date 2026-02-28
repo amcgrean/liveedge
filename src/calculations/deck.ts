@@ -22,18 +22,18 @@ export function calculateDeck(
         }
     }
 
-    // Decking material
-    if (section.deckingType && section.deckingType !== '') {
-        if (section.postCount > 0 || section.railingLF > 0 || section.stairCount > 0) {
-            items.push({
-                qty: 1,
-                uom: 'LOT',
-                sku: `DECK-${section.deckingType.toUpperCase()}`,
-                description: `${section.deckingType} Decking Material`,
-                group: 'Ext Deck',
-                is_dynamic_sku: false
-            });
-        }
+    // Decking material — 5/4×6 boards at 12ft, 12% waste
+    if (section.deckingType && section.deckSF > 0) {
+        const boardPcs = Math.ceil((section.deckSF * 1.12) / ((5.5 / 12) * 12));
+        items.push({
+            qty: boardPcs,
+            uom: 'EA',
+            sku: `DECK-${section.deckingType.toUpperCase().replace(/\s+/g, '-')}`,
+            description: `${section.deckingType} 5/4×6 Decking × 12ft`,
+            group: 'Ext Deck',
+            is_dynamic_sku: false,
+            tally: `${boardPcs}/12ft`,
+        });
     }
 
     // Posts

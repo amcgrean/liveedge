@@ -24,7 +24,7 @@ export function TrimSectionComp({ data, onChange }: Props) {
     return (
         <SectionCard title="9. Trim" accent="emerald">
             <SubSection title="Trim Types">
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
                     <InputGroup label="Base Trim Type">
                         <select name="baseType" value={data.baseType} onChange={handleChange} className="input-field">
                             <option value="">Select base type...</option>
@@ -32,6 +32,9 @@ export function TrimSectionComp({ data, onChange }: Props) {
                                 <option key={t.id} value={t.switch_key}>{t.display}</option>
                             ))}
                         </select>
+                    </InputGroup>
+                    <InputGroup label="Base Trim LF" hint="Total LF of base trim needed">
+                        <input type="number" name="baseLF" value={data.baseLF || ''} onChange={handleChange} className="input-field" min="0" placeholder="Linear feet" />
                     </InputGroup>
                     <InputGroup label="Case Trim Type">
                         <select name="caseType" value={data.caseType} onChange={handleChange} className="input-field">

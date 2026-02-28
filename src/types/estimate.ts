@@ -76,6 +76,7 @@ export interface SidingSection {
 
 export interface TrimSection {
     baseType: string;
+    baseLF: number;         // user-entered total LF of base trim
     caseType: string;
     doorCounts: {
         single68: number;
@@ -112,6 +113,7 @@ export interface HardwareSection {
 }
 
 export interface ExteriorDeckSection {
+    deckSF: number;           // deck square footage → drives decking board quantity
     joistSize: '2x8' | '2x10' | '2x12';
     beamSize: '2x8' | '2x10' | '2x12';
     deckingType: string;
