@@ -75,7 +75,9 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
   pages: {
     signIn: '/login',
   },
-  secret: process.env.AUTH_SECRET,
+  // Allow local/dev startup without requiring .env setup.
+  // In production, AUTH_SECRET should always be explicitly configured.
+  secret: process.env.AUTH_SECRET ?? 'dev-only-auth-secret',
 });
 
 // Augment next-auth types
