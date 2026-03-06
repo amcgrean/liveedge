@@ -16,10 +16,11 @@ import { WindowsDoorsSectionComp } from './components/sections/WindowsDoorsSecti
 import { OptionsSectionComp } from './components/sections/OptionsSection';
 import { downloadCsv } from './utils/export';
 import { BidSummary } from './components/BidSummary';
+import { HardHat, FileSpreadsheet, FileDown, ArrowLeft, Loader2, Calculator } from 'lucide-react';
 
 const initialInputs: JobInputs = {
     setup: { branch: 'grimes', estimatorName: '', customerName: '', customerCode: '', jobName: '' },
-    materials: { plateType: 'Treated', wallSize: '2x4', triplePlate: false, tyvekType: 'Standard 9ft', roofSheetingSize: '7/16" OSB' },
+    materials: { plateType: 'Treated', wallSize: '2x4', triplePlate: false, tyvekType: 'Standard 9ft', roofSheetingSize: '7/16 OSB' },
     basement: { ext2x4_8ft: 0, ext2x4_9ft: 0, ext2x4_10ft: 0, ext2x6_8ft: 0, ext2x6_9ft: 0, ext2x6_10ft: 0, intWallLF: 0, beamLF: 0, stairCount: 0, headers: [], fhaCeilingHeight: 0, stoopJoistSize: '2x8' },
     firstFloor: { ext2x4_8ft: 0, ext2x4_9ft: 0, ext2x4_10ft: 0, ext2x6_8ft: 0, ext2x6_9ft: 0, ext2x6_10ft: 0, intWallLF: 0, beamLF: 0, stairCount: 0, headers: [], deckSF: 0, deckType: 'Edge T&G', tjiSize: '11-7/8', garageWallLF: 0 },
     secondFloor: { ext2x4_8ft: 0, ext2x4_9ft: 0, ext2x4_10ft: 0, ext2x6_8ft: 0, ext2x6_9ft: 0, ext2x6_10ft: 0, intWallLF: 0, beamLF: 0, stairCount: 0, headers: [], deckSF: 0, deckType: 'Edge T&G', tjiSize: '11-7/8', garageWallLF: 0 },
@@ -33,36 +34,14 @@ const initialInputs: JobInputs = {
     options: []
 };
 
-function validateInputs(inputs: JobInputs): string[] {
-    const errors: string[] = [];
-    if (!inputs.setup.branch) errors.push('Branch is required');
-    if (!inputs.setup.estimatorName.trim()) errors.push('Estimator name is required');
-    if (!inputs.setup.customerName.trim()) errors.push('Customer name is required');
-    if (!inputs.setup.jobName.trim()) errors.push('Job name is required');
-    return errors;
-}
-
 export default function App() {
     const [loading, setLoading] = useState(true);
     const [inputs, setInputs] = useState<JobInputs>(initialInputs);
     const [lineItems, setLineItems] = useState<LineItem[]>([]);
     const [view, setView] = useState<'takeoff' | 'summary'>('takeoff');
-    const [darkMode, setDarkMode] = useState(true);
-    const [validationErrors, setValidationErrors] = useState<string[]>([]);
-    const [showValidation, setShowValidation] = useState(false);
 
     useEffect(() => {
-        initializeData().then(() => {
-            // Update initial roof sheeting size from loaded data
-            const osbTypes = dataCache.osbSheeting?.roof_sheeting_types || [];
-            if (osbTypes.length > 0) {
-                setInputs(prev => ({
-                    ...prev,
-                    materials: { ...prev.materials, roofSheetingSize: osbTypes[1]?.display || osbTypes[0]?.display }
-                }));
-            }
-            setLoading(false);
-        });
+        initializeData().then(() => setLoading(false));
     }, []);
 
     useEffect(() => {
@@ -82,84 +61,64 @@ export default function App() {
     }, [inputs, loading]);
 
     const handleExport = () => {
-        const errors = validateInputs(inputs);
-        if (errors.length > 0) {
-            setValidationErrors(errors);
-            setShowValidation(true);
-            return;
-        }
-        setShowValidation(false);
         downloadCsv(lineItems, inputs.setup);
     };
 
-    const warnCount = lineItems.filter(i => i.warning).length;
-
-    if (loading) return (
-        <div className="min-h-screen flex items-center justify-center">
-            <div className="text-center">
-                <div className="text-3xl font-bold text-white mb-2">House Estimator</div>
-                <div className="text-slate-300 animate-pulse">Loading takeoff data...</div>
+    if (loading) {
+        return (
+            <div className="min-h-screen flex flex-col items-center justify-center text-slate-500 bg-slate-50">
+                <Loader2 className="w-12 h-12 text-blue-600 animate-spin mb-4" />
+                <p className="text-lg font-medium animate-pulse">Loading architectural takeoff data...</p>
             </div>
-        </div>
-    );
+        );
+    }
 
     return (
-        <div className={darkMode ? '' : 'light-mode'} style={!darkMode ? { background: '#f1f5f9', minHeight: '100vh' } : {}}>
-            <div className="max-w-7xl mx-auto px-4 py-6">
-                {/* Header */}
-                <header className="mb-6 flex flex-col md:flex-row md:items-center justify-between gap-4">
-                    <div>
-                        <h1 className={`text-3xl font-extrabold tracking-tight ${darkMode ? 'text-white' : 'text-slate-900'}`}>
-                            House Estimator <span className="text-cyan-400">Takeoff</span>
-                        </h1>
-                        <p className={`font-medium ${darkMode ? 'text-slate-300' : 'text-slate-500'}`}>Beisser Lumber Co. Digital Estimator</p>
-                    </div>
-                    <div className="flex items-center gap-3 flex-wrap">
-                        {/* Line item count */}
-                        <div className={`px-3 py-1.5 rounded-lg text-sm font-medium ${darkMode ? 'bg-slate-800 text-slate-300' : 'bg-white text-slate-600 shadow-sm border border-slate-200'}`}>
-                            <span className="text-cyan-400 font-bold">{lineItems.length}</span> line items
-                            {warnCount > 0 && <span className="ml-2 text-amber-400">⚠ {warnCount} warnings</span>}
+        <div className="pb-12">
+            {/* Premium Header */}
+            <div className="bg-white/70 backdrop-blur-xl border-b border-slate-200/60 sticky top-0 z-50 shadow-sm">
+                <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+                    <header className="py-4 flex flex-col md:flex-row md:items-center justify-between gap-4">
+                        <div className="flex items-center gap-4">
+                            <div className="bg-gradient-to-br from-blue-600 to-indigo-600 p-2.5 rounded-xl shadow-lg shadow-blue-500/20">
+                                <HardHat className="w-7 h-7 text-white" />
+                            </div>
+                            <div>
+                                <h1 className="text-2xl font-black tracking-tight bg-clip-text text-transparent bg-gradient-to-r from-slate-900 to-slate-700">
+                                    House Estimator <span className="text-blue-600 font-extrabold">Pro</span>
+                                </h1>
+                                <p className="text-xs font-semibold text-slate-500 uppercase tracking-widest mt-0.5">
+                                    Beisser Lumber Co. Digital Takeoff
+                                </p>
+                            </div>
                         </div>
+                        <div className="flex items-center gap-3">
+                            <button
+                                onClick={() => setView(view === 'takeoff' ? 'summary' : 'takeoff')}
+                                className="flex items-center gap-2 px-4 py-2.5 rounded-xl font-semibold bg-white border border-slate-200 text-slate-700 hover:bg-slate-50 hover:border-slate-300 transition-all shadow-sm focus:ring-4 focus:ring-slate-100 outline-none"
+                            >
+                                {view === 'takeoff' ? (
+                                    <><FileSpreadsheet size={18} /> Show Bid Summary</>
+                                ) : (
+                                    <><ArrowLeft size={18} /> Back to Takeoff</>
+                                )}
+                            </button>
+                            <button
+                                onClick={handleExport}
+                                disabled={lineItems.length === 0}
+                                className="flex items-center gap-2 px-5 py-2.5 rounded-xl font-bold bg-gradient-to-r from-blue-600 to-blue-700 text-white hover:from-blue-700 hover:to-blue-800 transition-all shadow-md shadow-blue-500/20 disabled:opacity-50 disabled:shadow-none focus:ring-4 focus:ring-blue-500/30 outline-none"
+                            >
+                                <FileDown size={18} /> Export CSV
+                            </button>
+                        </div>
+                    </header>
+                </div>
+            </div>
 
-                        {/* Dark/Light toggle */}
-                        <button
-                            onClick={() => setDarkMode(!darkMode)}
-                            className={`px-3 py-1.5 rounded-lg text-sm font-medium border transition ${darkMode ? 'bg-slate-800 text-slate-300 border-slate-700 hover:bg-slate-700' : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'}`}
-                            title="Toggle dark/light mode"
-                        >
-                            {darkMode ? '☀ Light' : '🌙 Dark'}
-                        </button>
-
-                        <button
-                            onClick={() => setView(view === 'takeoff' ? 'summary' : 'takeoff')}
-                            className={`px-4 py-2 rounded-lg font-semibold transition shadow-sm ${darkMode ? 'bg-slate-900/70 border border-white/15 text-slate-100 hover:bg-slate-800' : 'bg-white border border-slate-200 text-slate-700 hover:bg-slate-50'}`}
-                        >
-                            {view === 'takeoff' ? 'Bid Summary' : 'Back to Takeoff'}
-                        </button>
-                        <button
-                            onClick={handleExport}
-                            disabled={lineItems.length === 0}
-                            className="px-6 py-2 rounded-lg font-bold bg-cyan-500 text-slate-950 hover:bg-cyan-400 transition shadow-md disabled:bg-slate-700 disabled:text-slate-400 disabled:shadow-none"
-                        >
-                            Export Agility CSV
-                        </button>
-                    </div>
-                </header>
-
-                {/* Validation errors */}
-                {showValidation && validationErrors.length > 0 && (
-                    <div className="mb-4 p-4 bg-red-500/10 border border-red-500/30 rounded-xl">
-                        <p className="font-semibold text-red-400 mb-2">Please fix the following before exporting:</p>
-                        <ul className="list-disc list-inside space-y-1">
-                            {validationErrors.map((e, i) => <li key={i} className="text-red-300 text-sm">{e}</li>)}
-                        </ul>
-                    </div>
-                )}
-
+            <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-8">
                 {view === 'takeoff' ? (
-                    <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-                        {/* Main form */}
-                        <div className="lg:col-span-2 space-y-4">
+                    <div className="grid grid-cols-1 xl:grid-cols-12 gap-8">
+                        <div className="xl:col-span-8 space-y-6">
                             <JobSetupSection data={inputs.setup} onChange={(val) => setInputs({ ...inputs, setup: val })} />
                             <MaterialSelectionSection data={inputs.materials} onChange={(val) => setInputs({ ...inputs, materials: val })} />
                             <BasementSectionComp data={inputs.basement} onChange={(val) => setInputs({ ...inputs, basement: val })} />
@@ -185,45 +144,61 @@ export default function App() {
                             <OptionsSectionComp data={inputs.options} onChange={(val) => setInputs({ ...inputs, options: val })} />
                         </div>
 
-                        {/* Sticky sidebar */}
-                        <div className="lg:col-span-1">
-                            <div className={`sticky top-6 rounded-2xl border overflow-hidden ${darkMode ? 'bg-slate-900/80 border-white/15 shadow-xl shadow-slate-950/30' : 'bg-white border-slate-200 shadow-lg'}`}>
-                                <div className={`p-4 font-bold flex justify-between items-center border-b ${darkMode ? 'bg-slate-950/90 text-white border-white/10' : 'bg-slate-50 text-slate-900 border-slate-200'}`}>
-                                    <span>Estimate Review</span>
-                                    <div className="flex items-center gap-2">
-                                        <span className="bg-cyan-400 text-slate-950 px-2 py-0.5 rounded text-xs font-bold">{lineItems.length} items</span>
-                                        {warnCount > 0 && <span className="bg-amber-400 text-slate-950 px-2 py-0.5 rounded text-xs font-bold">⚠ {warnCount}</span>}
+                        <div className="xl:col-span-4 translate-y-0 xl:-translate-y-8 pointer-events-none">
+                            <div className="estimate-sidebar pointer-events-auto mt-0 xl:mt-8">
+                                <div className="card border-0 ring-1 ring-slate-200/50 shadow-xl shadow-slate-200/40 bg-white/90">
+                                    <div className="p-5 border-b border-slate-100 flex justify-between items-center bg-gradient-to-r from-slate-50 to-white">
+                                        <div className="flex items-center gap-2">
+                                            <Calculator className="text-blue-600 w-5 h-5" />
+                                            <span className="font-bold text-slate-800 text-lg">Live Estimate</span>
+                                        </div>
+                                        <span className="bg-blue-100 text-blue-700 font-bold px-3 py-1 rounded-full text-xs tracking-wide shadow-inner">
+                                            {lineItems.length} ITEMS
+                                        </span>
                                     </div>
-                                </div>
-                                <div className="divide-y divide-slate-800 max-h-[75vh] overflow-y-auto">
-                                    {lineItems.length === 0 && (
-                                        <div className="p-8 text-center">
-                                            <p className={`text-sm italic ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>No items yet. Enter dimensions to see your estimate.</p>
-                                        </div>
-                                    )}
-                                    {lineItems.map((item, idx) => (
-                                        <div key={idx} className={`p-3 hover:bg-slate-800/40 transition-colors ${item.warning ? 'border-l-2 border-amber-500' : ''}`}>
-                                            <div className="flex justify-between items-start mb-1">
-                                                <span className={`font-medium text-sm leading-tight ${darkMode ? 'text-slate-100' : 'text-slate-800'}`}>{item.description}</span>
-                                                <span className="font-bold text-cyan-300 text-sm whitespace-nowrap ml-2">{item.qty} {item.uom}</span>
+                                    <div className="p-0 divide-y divide-slate-100 max-h-[calc(100vh-12rem)] overflow-y-auto custom-scrollbar">
+                                        {lineItems.length === 0 && (
+                                            <div className="p-12 text-center flex flex-col items-center justify-center">
+                                                <Calculator className="w-12 h-12 text-slate-200 mb-4" />
+                                                <p className="text-slate-400 text-sm font-medium">No items yet.<br />Enter dimensions to generate takeoff.</p>
                                             </div>
-                                            <div className="flex justify-between items-center">
-                                                <span className={`text-[10px] font-mono uppercase tracking-wider ${darkMode ? 'text-slate-500' : 'text-slate-400'}`}>{item.sku}</span>
-                                                <span className={`text-[10px] px-1.5 py-0.5 rounded ${darkMode ? 'bg-slate-800 text-slate-300' : 'bg-slate-100 text-slate-600'}`}>{item.group}</span>
-                                            </div>
-                                            {item.warning && (
-                                                <div className="mt-1.5 text-[11px] bg-amber-500/10 text-amber-300 p-1.5 rounded border border-amber-500/20 font-medium">
-                                                    {item.warning}
+                                        )}
+                                        {lineItems.map((item, idx) => (
+                                            <div key={idx} className="p-4 hover:bg-blue-50/50 transition-colors group">
+                                                <div className="flex justify-between items-start mb-1.5 gap-2">
+                                                    <span className="font-semibold text-slate-800 text-sm leading-tight group-hover:text-blue-900 transition-colors">
+                                                        {item.description}
+                                                    </span>
+                                                    <span className="font-bold text-blue-600 text-sm whitespace-nowrap bg-blue-50 px-2 rounded">
+                                                        {item.qty} <span className="text-xs opacity-75">{item.uom}</span>
+                                                    </span>
                                                 </div>
-                                            )}
-                                        </div>
-                                    ))}
+                                                <div className="flex justify-between items-center">
+                                                    <span className="text-[10px] font-mono font-medium text-slate-400 uppercase tracking-wider bg-slate-100 px-1.5 py-0.5 rounded">
+                                                        {item.sku}
+                                                    </span>
+                                                    <span className="text-[10px] font-bold text-slate-400 tracking-wider uppercase">
+                                                        {item.group}
+                                                    </span>
+                                                </div>
+                                                {item.warning && (
+                                                    <div className="mt-3 text-[11px] bg-red-50 text-red-700 px-3 py-2 rounded-lg border border-red-100 font-medium flex items-center gap-2">
+                                                        <span className="relative flex h-2 w-2">
+                                                            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
+                                                            <span className="relative inline-flex rounded-full h-2 w-2 bg-red-500"></span>
+                                                        </span>
+                                                        {item.warning}
+                                                    </div>
+                                                )}
+                                            </div>
+                                        ))}
+                                    </div>
                                 </div>
                             </div>
                         </div>
                     </div>
                 ) : (
-                    <BidSummary inputs={inputs} lineItems={lineItems} darkMode={darkMode} />
+                    <BidSummary inputs={inputs} lineItems={lineItems} />
                 )}
             </div>
         </div>

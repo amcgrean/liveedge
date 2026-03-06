@@ -1,27 +1,49 @@
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
+@import "tailwindcss";
 
 @layer base {
   body {
-    @apply text-slate-100 antialiased;
-    background: radial-gradient(circle at top, #1e293b 0%, #0f172a 45%, #020617 100%);
+    @apply bg-slate-50 text-slate-900 antialiased;
+    font-family: 'Inter', sans-serif;
+    /* Soft gradient background */
+    background: linear-gradient(135deg, #f8fafc 0%, #e2e8f0 100%);
     min-height: 100vh;
   }
 }
 
-.card {
-  @apply rounded-2xl border border-white/15 bg-slate-900/70 shadow-xl shadow-slate-950/30 backdrop-blur overflow-hidden;
-}
+@layer components {
 
-.input-label {
-  @apply block text-sm font-medium text-slate-200 mb-1;
-}
+  /* Modern Glassmorphic Card */
+  .card {
+    @apply bg-white/80 backdrop-blur-md rounded-2xl border border-white/50 shadow-[0_8px_30px_#0000000a] overflow-hidden transition-all duration-300;
+  }
 
-.input-field {
-  @apply block w-full rounded-lg border border-slate-700 bg-slate-950/60 text-slate-100 shadow-sm focus:border-cyan-400 focus:ring-cyan-400 sm:text-sm;
-}
+  .card:hover {
+    @apply shadow-[0_8px_30px_#00000014] border-white/80 bg-white/90;
+  }
 
-select.input-field option {
-  @apply bg-slate-900 text-slate-100;
+  /* Form Labels */
+  .input-label {
+    @apply block text-xs font-semibold tracking-wide text-slate-500 uppercase mb-1.5 ml-1 transition-colors;
+  }
+
+  /* Premium Focus-within group trick */
+  .group:focus-within .input-label {
+    @apply text-blue-600;
+  }
+
+  /* Modern Inputs */
+  .input-field {
+    @apply block w-full rounded-xl border border-slate-200 bg-slate-50/50 px-4 py-2.5 text-sm font-medium text-slate-800 shadow-sm outline-none transition-all duration-200 placeholder:text-slate-400 focus:bg-white focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 hover:border-slate-300;
+  }
+
+  /* Select specific styling */
+  select.input-field {
+    @apply appearance-none bg-no-repeat bg-[position:right_1rem_center] bg-[length:1em_1em];
+    background-image: url("data:image/svg+xml;charset=UTF-8,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3e%3cpolyline points='6 9 12 15 18 9'%3e%3c/polyline%3e%3c/svg%3e");
+  }
+
+  /* Sticky sidebar styling */
+  .estimate-sidebar {
+    @apply sticky top-8;
+  }
 }
