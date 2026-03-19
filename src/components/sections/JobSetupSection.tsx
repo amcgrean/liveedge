@@ -99,8 +99,9 @@ export function JobSetupSection({ data, onChange }: Props) {
                         name="customerCode"
                         value={data.customerCode}
                         onChange={handleChange}
-                        className="input-field bg-slate-950/80"
+                        className="input-field bg-slate-100 text-slate-700"
                         placeholder="Auto-populated from customer"
+                        readOnly
                     />
                 </InputGroup>
                 <InputGroup label="Job Name">

@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { initializeData, dataCache } from './utils/lookup';
 import { JobInputs, LineItem } from './types/estimate';
 import { calculateEstimate } from './calculations/engine';
@@ -17,7 +17,23 @@ import { OptionsSectionComp } from './components/sections/OptionsSection';
 import { downloadCsv } from './utils/export';
 import { BidSummary } from './components/BidSummary';
 import { AdminDashboard } from './components/admin/AdminDashboard';
-import { HardHat, FileSpreadsheet, FileDown, ArrowLeft, Loader2, Calculator, ShieldCheck } from 'lucide-react';
+import {
+    HardHat,
+    FileSpreadsheet,
+    FileDown,
+    ArrowLeft,
+    Loader2,
+    Calculator,
+    ShieldCheck,
+    RotateCcw,
+    ArrowUp,
+    Search,
+    CircleAlert,
+    CheckCircle2,
+    Clock3
+} from 'lucide-react';
+
+const STORAGE_KEY = 'beisser-takeoff-inputs-v1';
 
 const initialInputs: JobInputs = {
     setup: { branch: 'grimes', estimatorName: '', customerName: '', customerCode: '', jobName: '' },
@@ -35,14 +51,93 @@ const initialInputs: JobInputs = {
     options: []
 };
 
+const takeoffSections = [
+    { id: 'section-job-setup', label: 'Job Setup' },
+    { id: 'section-materials', label: 'Materials' },
+    { id: 'section-basement', label: 'Basement' },
+    { id: 'section-first-floor', label: '1st Floor' },
+    { id: 'section-second-floor', label: '2nd Floor' },
+    { id: 'section-roof', label: 'Roof' },
+    { id: 'section-shingles', label: 'Shingles' },
+    { id: 'section-siding', label: 'Siding' },
+    { id: 'section-trim', label: 'Trim' },
+    { id: 'section-hardware', label: 'Hardware' },
+    { id: 'section-exterior-deck', label: 'Ext Deck' },
+    { id: 'section-windows-doors', label: 'Windows/Doors' },
+    { id: 'section-options', label: 'Options' },
+];
+
 export default function App() {
     const [loading, setLoading] = useState(true);
     const [inputs, setInputs] = useState<JobInputs>(initialInputs);
     const [lineItems, setLineItems] = useState<LineItem[]>([]);
     const [view, setView] = useState<'takeoff' | 'summary' | 'admin'>('takeoff');
+    const [showBackToTop, setShowBackToTop] = useState(false);
+    const [itemFilter, setItemFilter] = useState('');
+    const [lastSavedAt, setLastSavedAt] = useState<Date | null>(null);
+
+    const requiredChecks = useMemo(() => {
+        const missing: string[] = [];
+        if (!inputs.setup.estimatorName.trim()) missing.push('Estimator name');
+        if (!inputs.setup.customerName.trim()) missing.push('Customer name');
+        if (!inputs.setup.customerCode.trim()) missing.push('Customer code');
+        if (!inputs.setup.jobName.trim()) missing.push('Job name');
+        if (!inputs.trim.baseType.trim()) missing.push('Trim base type');
+        if (!inputs.trim.caseType.trim()) missing.push('Trim case type');
+        if (!inputs.hardware.type.trim()) missing.push('Door hardware type');
+        return missing;
+    }, [inputs]);
+
+    const completedSections = useMemo(() => {
+        const sectionStatus = [
+            inputs.setup.estimatorName && inputs.setup.customerName && inputs.setup.customerCode && inputs.setup.jobName,
+            !!inputs.materials.roofSheetingSize,
+            inputs.basement.ext2x4_8ft + inputs.basement.ext2x4_9ft + inputs.basement.ext2x4_10ft + inputs.basement.ext2x6_8ft + inputs.basement.ext2x6_9ft + inputs.basement.ext2x6_10ft + inputs.basement.intWallLF > 0,
+            inputs.firstFloor.deckSF + inputs.firstFloor.intWallLF + inputs.firstFloor.garageWallLF > 0,
+            inputs.secondFloor.deckSF + inputs.secondFloor.intWallLF + inputs.secondFloor.garageWallLF > 0,
+            inputs.roof.sheetingSF > 0,
+            inputs.shingles.sf > 0,
+            inputs.siding.lapSF + inputs.siding.shakeSF + inputs.siding.soffitSF > 0,
+            !!inputs.trim.baseType && !!inputs.trim.caseType,
+            !!inputs.hardware.type,
+            inputs.exteriorDeck.railingLF + inputs.exteriorDeck.postCount + inputs.exteriorDeck.stairCount > 0,
+            inputs.windowsDoors.windowCount + inputs.windowsDoors.doorCount > 0,
+            true,
+        ];
+        return sectionStatus.filter(Boolean).length;
+    }, [inputs]);
+
+    const warningsCount = useMemo(() => lineItems.filter(item => !!item.warning).length, [lineItems]);
+
+    const filteredLineItems = useMemo(() => {
+        const query = itemFilter.trim().toLowerCase();
+        if (!query) return lineItems;
+        return lineItems.filter((item) =>
+            item.description.toLowerCase().includes(query) ||
+            item.group.toLowerCase().includes(query) ||
+            item.sku.toLowerCase().includes(query)
+        );
+    }, [lineItems, itemFilter]);
+
+    const groupedItemCounts = useMemo(() => {
+        return filteredLineItems.reduce<Record<string, number>>((acc, item) => {
+            acc[item.group] = (acc[item.group] || 0) + 1;
+            return acc;
+        }, {});
+    }, [filteredLineItems]);
 
     useEffect(() => {
-        initializeData().then(() => setLoading(false));
+        initializeData().then(() => {
+            try {
+                const saved = window.localStorage.getItem(STORAGE_KEY);
+                if (saved) {
+                    setInputs(JSON.parse(saved) as JobInputs);
+                }
+            } catch (error) {
+                console.warn('Unable to load saved estimate.', error);
+            }
+            setLoading(false);
+        });
     }, []);
 
     useEffect(() => {
@@ -58,11 +153,43 @@ export default function App() {
                 osbSheeting: dataCache.osbSheeting,
             });
             setLineItems(items);
+
+            window.localStorage.setItem(STORAGE_KEY, JSON.stringify(inputs));
+            setLastSavedAt(new Date());
         }
     }, [inputs, loading]);
 
+    useEffect(() => {
+        const onScroll = () => setShowBackToTop(window.scrollY > 500);
+        window.addEventListener('scroll', onScroll, { passive: true });
+        return () => window.removeEventListener('scroll', onScroll);
+    }, []);
+
+    useEffect(() => {
+        const onKeyDown = (event: KeyboardEvent) => {
+            if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'e') {
+                event.preventDefault();
+                if (requiredChecks.length === 0 && lineItems.length > 0) {
+                    downloadCsv(lineItems, inputs.setup);
+                }
+            }
+        };
+        window.addEventListener('keydown', onKeyDown);
+        return () => window.removeEventListener('keydown', onKeyDown);
+    }, [inputs.setup, lineItems, requiredChecks.length]);
+
     const handleExport = () => {
+        if (requiredChecks.length > 0) return;
         downloadCsv(lineItems, inputs.setup);
+    };
+
+    const handleResetEstimate = () => {
+        const confirmed = window.confirm('Reset all estimate inputs and clear autosaved data?');
+        if (!confirmed) return;
+        setInputs(initialInputs);
+        setLineItems([]);
+        setItemFilter('');
+        window.localStorage.removeItem(STORAGE_KEY);
     };
 
     if (loading) {
@@ -76,7 +203,6 @@ export default function App() {
 
     return (
         <div className="pb-12">
-            {/* Premium Header */}
             <div className="bg-white/70 backdrop-blur-xl border-b border-slate-200/60 sticky top-0 z-50 shadow-sm">
                 <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
                     <header className="py-4 flex flex-col md:flex-row md:items-center justify-between gap-4">
@@ -91,9 +217,18 @@ export default function App() {
                                 <p className="text-xs font-semibold text-slate-500 uppercase tracking-widest mt-0.5">
                                     Beisser Lumber Co. Digital Takeoff
                                 </p>
+                                <div className="mt-1.5 flex flex-wrap items-center gap-2 text-xs">
+                                    <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 text-emerald-700 px-2 py-0.5 font-semibold">
+                                        <CheckCircle2 size={13} /> {completedSections}/{takeoffSections.length} sections active
+                                    </span>
+                                    <span className="inline-flex items-center gap-1 rounded-full bg-slate-100 text-slate-600 px-2 py-0.5 font-semibold">
+                                        <Clock3 size={13} />
+                                        {lastSavedAt ? `Autosaved ${lastSavedAt.toLocaleTimeString()}` : 'Autosave idle'}
+                                    </span>
+                                </div>
                             </div>
                         </div>
-                        <div className="flex items-center gap-3">
+                        <div className="flex flex-wrap items-center gap-3">
                             <button
                                 onClick={() => setView(view === 'summary' ? 'takeoff' : 'summary')}
                                 className="flex items-center gap-2 px-4 py-2.5 rounded-xl font-semibold bg-white border border-slate-200 text-slate-700 hover:bg-slate-50 hover:border-slate-300 transition-all shadow-sm focus:ring-4 focus:ring-slate-100 outline-none"
@@ -115,9 +250,16 @@ export default function App() {
                                 )}
                             </button>
                             <button
+                                onClick={handleResetEstimate}
+                                className="flex items-center gap-2 px-4 py-2.5 rounded-xl font-semibold bg-white border border-slate-200 text-slate-700 hover:bg-slate-50 hover:border-slate-300 transition-all shadow-sm"
+                            >
+                                <RotateCcw size={18} /> Reset
+                            </button>
+                            <button
                                 onClick={handleExport}
-                                disabled={lineItems.length === 0}
+                                disabled={lineItems.length === 0 || requiredChecks.length > 0}
                                 className="flex items-center gap-2 px-5 py-2.5 rounded-xl font-bold bg-gradient-to-r from-blue-600 to-blue-700 text-white hover:from-blue-700 hover:to-blue-800 transition-all shadow-md shadow-blue-500/20 disabled:opacity-50 disabled:shadow-none focus:ring-4 focus:ring-blue-500/30 outline-none"
+                                title="Shortcut: Ctrl/Cmd + E"
                             >
                                 <FileDown size={18} /> Export CSV
                             </button>
@@ -128,92 +270,151 @@ export default function App() {
 
             <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-8">
                 {view === 'takeoff' ? (
-                    <div className="grid grid-cols-1 xl:grid-cols-12 gap-8">
-                        <div className="xl:col-span-8 space-y-6">
-                            <JobSetupSection data={inputs.setup} onChange={(val) => setInputs({ ...inputs, setup: val })} />
-                            <MaterialSelectionSection data={inputs.materials} onChange={(val) => setInputs({ ...inputs, materials: val })} />
-                            <BasementSectionComp data={inputs.basement} onChange={(val) => setInputs({ ...inputs, basement: val })} />
-                            <FloorSectionComp
-                                sectionNumber={4}
-                                title="First Floor Deck & Walls"
-                                data={inputs.firstFloor}
-                                onChange={(val) => setInputs({ ...inputs, firstFloor: val })}
-                            />
-                            <FloorSectionComp
-                                sectionNumber={5}
-                                title="Second Floor Deck & Walls"
-                                data={inputs.secondFloor}
-                                onChange={(val) => setInputs({ ...inputs, secondFloor: val })}
-                            />
-                            <RoofSectionComp data={inputs.roof} onChange={(val) => setInputs({ ...inputs, roof: val })} />
-                            <ShinglesSectionComp data={inputs.shingles} onChange={(val) => setInputs({ ...inputs, shingles: val })} />
-                            <SidingSectionComp data={inputs.siding} onChange={(val) => setInputs({ ...inputs, siding: val })} />
-                            <TrimSectionComp data={inputs.trim} onChange={(val) => setInputs({ ...inputs, trim: val })} />
-                            <HardwareSectionComp data={inputs.hardware} lookups={dataCache.hardwareLookup || []} onChange={(val) => setInputs({ ...inputs, hardware: val })} />
-                            <ExteriorDeckSectionComp data={inputs.exteriorDeck} onChange={(val) => setInputs({ ...inputs, exteriorDeck: val })} />
-                            <WindowsDoorsSectionComp data={inputs.windowsDoors} onChange={(val) => setInputs({ ...inputs, windowsDoors: val })} />
-                            <OptionsSectionComp data={inputs.options} onChange={(val) => setInputs({ ...inputs, options: val })} />
+                    <>
+                        {requiredChecks.length > 0 && (
+                            <div className="mb-5 rounded-2xl border border-amber-200 bg-amber-50/70 px-4 py-3 text-amber-900">
+                                <p className="font-semibold text-sm flex items-center gap-2">
+                                    <CircleAlert size={16} /> Complete required fields before export ({requiredChecks.length} missing)
+                                </p>
+                                <p className="text-xs mt-1">Missing: {requiredChecks.join(', ')}</p>
+                            </div>
+                        )}
+
+                        <div className="mb-4 rounded-2xl bg-white/80 border border-slate-200 p-3">
+                            <p className="text-xs font-semibold uppercase tracking-widest text-slate-500 mb-2">Quick Jump</p>
+                            <div className="flex flex-wrap gap-2">
+                                {takeoffSections.map((section) => (
+                                    <button
+                                        key={section.id}
+                                        onClick={() => document.getElementById(section.id)?.scrollIntoView({ behavior: 'smooth', block: 'start' })}
+                                        className="px-2.5 py-1.5 rounded-lg bg-slate-100 text-slate-700 text-xs font-semibold hover:bg-blue-50 hover:text-blue-700"
+                                    >
+                                        {section.label}
+                                    </button>
+                                ))}
+                            </div>
                         </div>
 
-                        <div className="xl:col-span-4 translate-y-0 xl:-translate-y-8 pointer-events-none">
-                            <div className="estimate-sidebar pointer-events-auto mt-0 xl:mt-8">
-                                <div className="card border-0 ring-1 ring-slate-200/50 shadow-xl shadow-slate-200/40 bg-white/90">
-                                    <div className="p-5 border-b border-slate-100 flex justify-between items-center bg-gradient-to-r from-slate-50 to-white">
-                                        <div className="flex items-center gap-2">
-                                            <Calculator className="text-blue-600 w-5 h-5" />
-                                            <span className="font-bold text-slate-800 text-lg">Live Estimate</span>
+                        <div className="grid grid-cols-1 xl:grid-cols-12 gap-8">
+                            <div className="xl:col-span-8 space-y-2">
+                                <div id="section-job-setup"><JobSetupSection data={inputs.setup} onChange={(val) => setInputs({ ...inputs, setup: val })} /></div>
+                                <div id="section-materials"><MaterialSelectionSection data={inputs.materials} onChange={(val) => setInputs({ ...inputs, materials: val })} /></div>
+                                <div id="section-basement"><BasementSectionComp data={inputs.basement} onChange={(val) => setInputs({ ...inputs, basement: val })} /></div>
+                                <div id="section-first-floor"><FloorSectionComp
+                                    sectionNumber={4}
+                                    title="First Floor Deck & Walls"
+                                    data={inputs.firstFloor}
+                                    onChange={(val) => setInputs({ ...inputs, firstFloor: val })}
+                                /></div>
+                                <div id="section-second-floor"><FloorSectionComp
+                                    sectionNumber={5}
+                                    title="Second Floor Deck & Walls"
+                                    data={inputs.secondFloor}
+                                    onChange={(val) => setInputs({ ...inputs, secondFloor: val })}
+                                /></div>
+                                <div id="section-roof"><RoofSectionComp data={inputs.roof} onChange={(val) => setInputs({ ...inputs, roof: val })} /></div>
+                                <div id="section-shingles"><ShinglesSectionComp data={inputs.shingles} onChange={(val) => setInputs({ ...inputs, shingles: val })} /></div>
+                                <div id="section-siding"><SidingSectionComp data={inputs.siding} onChange={(val) => setInputs({ ...inputs, siding: val })} /></div>
+                                <div id="section-trim"><TrimSectionComp data={inputs.trim} onChange={(val) => setInputs({ ...inputs, trim: val })} /></div>
+                                <div id="section-hardware"><HardwareSectionComp data={inputs.hardware} lookups={dataCache.hardwareLookup || []} onChange={(val) => setInputs({ ...inputs, hardware: val })} /></div>
+                                <div id="section-exterior-deck"><ExteriorDeckSectionComp data={inputs.exteriorDeck} onChange={(val) => setInputs({ ...inputs, exteriorDeck: val })} /></div>
+                                <div id="section-windows-doors"><WindowsDoorsSectionComp data={inputs.windowsDoors} onChange={(val) => setInputs({ ...inputs, windowsDoors: val })} /></div>
+                                <div id="section-options"><OptionsSectionComp data={inputs.options} onChange={(val) => setInputs({ ...inputs, options: val })} /></div>
+                            </div>
+
+                            <div className="xl:col-span-4 translate-y-0 xl:-translate-y-8 pointer-events-none">
+                                <div className="estimate-sidebar pointer-events-auto mt-0 xl:mt-8">
+                                    <div className="card border-0 ring-1 ring-slate-200/50 shadow-xl shadow-slate-200/40 bg-white/90">
+                                        <div className="p-5 border-b border-slate-100 bg-gradient-to-r from-slate-50 to-white space-y-3">
+                                            <div className="flex justify-between items-center">
+                                                <div className="flex items-center gap-2">
+                                                    <Calculator className="text-blue-600 w-5 h-5" />
+                                                    <span className="font-bold text-slate-800 text-lg">Live Estimate</span>
+                                                </div>
+                                                <span className="bg-blue-100 text-blue-700 font-bold px-3 py-1 rounded-full text-xs tracking-wide shadow-inner">
+                                                    {filteredLineItems.length}/{lineItems.length} ITEMS
+                                                </span>
+                                            </div>
+                                            <div className="relative">
+                                                <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                                                <input
+                                                    value={itemFilter}
+                                                    onChange={(e) => setItemFilter(e.target.value)}
+                                                    className="input-field pl-9 py-2"
+                                                    placeholder="Filter by SKU, group, description"
+                                                />
+                                            </div>
+                                            {warningsCount > 0 && (
+                                                <p className="text-xs font-semibold text-amber-700 bg-amber-50 border border-amber-100 px-2 py-1 rounded-md">
+                                                    {warningsCount} item warning{warningsCount === 1 ? '' : 's'} need review before final export.
+                                                </p>
+                                            )}
+                                            <div className="flex flex-wrap gap-1.5">
+                                                {Object.entries(groupedItemCounts).slice(0, 6).map(([group, count]) => (
+                                                    <span key={group} className="text-[11px] px-2 py-0.5 rounded-full bg-slate-100 text-slate-600 font-semibold">
+                                                        {group}: {count}
+                                                    </span>
+                                                ))}
+                                            </div>
                                         </div>
-                                        <span className="bg-blue-100 text-blue-700 font-bold px-3 py-1 rounded-full text-xs tracking-wide shadow-inner">
-                                            {lineItems.length} ITEMS
-                                        </span>
-                                    </div>
-                                    <div className="p-0 divide-y divide-slate-100 max-h-[calc(100vh-12rem)] overflow-y-auto custom-scrollbar">
-                                        {lineItems.length === 0 && (
-                                            <div className="p-12 text-center flex flex-col items-center justify-center">
-                                                <Calculator className="w-12 h-12 text-slate-200 mb-4" />
-                                                <p className="text-slate-400 text-sm font-medium">No items yet.<br />Enter dimensions to generate takeoff.</p>
-                                            </div>
-                                        )}
-                                        {lineItems.map((item, idx) => (
-                                            <div key={idx} className="p-4 hover:bg-blue-50/50 transition-colors group">
-                                                <div className="flex justify-between items-start mb-1.5 gap-2">
-                                                    <span className="font-semibold text-slate-800 text-sm leading-tight group-hover:text-blue-900 transition-colors">
-                                                        {item.description}
-                                                    </span>
-                                                    <span className="font-bold text-blue-600 text-sm whitespace-nowrap bg-blue-50 px-2 rounded">
-                                                        {item.qty} <span className="text-xs opacity-75">{item.uom}</span>
-                                                    </span>
+                                        <div className="p-0 divide-y divide-slate-100 max-h-[calc(100vh-16rem)] overflow-y-auto custom-scrollbar">
+                                            {filteredLineItems.length === 0 && (
+                                                <div className="p-12 text-center flex flex-col items-center justify-center">
+                                                    <Calculator className="w-12 h-12 text-slate-200 mb-4" />
+                                                    <p className="text-slate-400 text-sm font-medium">No items match.<br />Adjust filters or input dimensions.</p>
                                                 </div>
-                                                <div className="flex justify-between items-center">
-                                                    <span className="text-[10px] font-mono font-medium text-slate-400 uppercase tracking-wider bg-slate-100 px-1.5 py-0.5 rounded">
-                                                        {item.sku}
-                                                    </span>
-                                                    <span className="text-[10px] font-bold text-slate-400 tracking-wider uppercase">
-                                                        {item.group}
-                                                    </span>
-                                                </div>
-                                                {item.warning && (
-                                                    <div className="mt-3 text-[11px] bg-red-50 text-red-700 px-3 py-2 rounded-lg border border-red-100 font-medium flex items-center gap-2">
-                                                        <span className="relative flex h-2 w-2">
-                                                            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
-                                                            <span className="relative inline-flex rounded-full h-2 w-2 bg-red-500"></span>
+                                            )}
+                                            {filteredLineItems.map((item, idx) => (
+                                                <div key={`${item.sku}-${idx}`} className="p-4 hover:bg-blue-50/50 transition-colors group">
+                                                    <div className="flex justify-between items-start mb-1.5 gap-2">
+                                                        <span className="font-semibold text-slate-800 text-sm leading-tight group-hover:text-blue-900 transition-colors">
+                                                            {item.description}
                                                         </span>
-                                                        {item.warning}
+                                                        <span className="font-bold text-blue-600 text-sm whitespace-nowrap bg-blue-50 px-2 rounded">
+                                                            {item.qty} <span className="text-xs opacity-75">{item.uom}</span>
+                                                        </span>
                                                     </div>
-                                                )}
-                                            </div>
-                                        ))}
+                                                    <div className="flex justify-between items-center">
+                                                        <span className="text-[10px] font-mono font-medium text-slate-400 uppercase tracking-wider bg-slate-100 px-1.5 py-0.5 rounded">
+                                                            {item.sku}
+                                                        </span>
+                                                        <span className="text-[10px] font-bold text-slate-400 tracking-wider uppercase">
+                                                            {item.group}
+                                                        </span>
+                                                    </div>
+                                                    {item.warning && (
+                                                        <div className="mt-3 text-[11px] bg-red-50 text-red-700 px-3 py-2 rounded-lg border border-red-100 font-medium flex items-center gap-2">
+                                                            <span className="relative flex h-2 w-2">
+                                                                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
+                                                                <span className="relative inline-flex rounded-full h-2 w-2 bg-red-500"></span>
+                                                            </span>
+                                                            {item.warning}
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            ))}
+                                        </div>
                                     </div>
                                 </div>
                             </div>
                         </div>
-                    </div>
+                    </>
                 ) : view === 'summary' ? (
                     <BidSummary inputs={inputs} lineItems={lineItems} />
                 ) : (
                     <AdminDashboard />
                 )}
             </div>
+
+            {showBackToTop && (
+                <button
+                    onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}
+                    className="fixed bottom-6 right-6 rounded-full p-3 bg-blue-600 text-white shadow-lg hover:bg-blue-700 z-40"
+                    aria-label="Back to top"
+                >
+                    <ArrowUp size={18} />
+                </button>
+            )}
         </div>
     );
 }
