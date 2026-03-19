@@ -16,7 +16,8 @@ import { WindowsDoorsSectionComp } from './components/sections/WindowsDoorsSecti
 import { OptionsSectionComp } from './components/sections/OptionsSection';
 import { downloadCsv } from './utils/export';
 import { BidSummary } from './components/BidSummary';
-import { HardHat, FileSpreadsheet, FileDown, ArrowLeft, Loader2, Calculator } from 'lucide-react';
+import { AdminDashboard } from './components/admin/AdminDashboard';
+import { HardHat, FileSpreadsheet, FileDown, ArrowLeft, Loader2, Calculator, ShieldCheck } from 'lucide-react';
 
 const initialInputs: JobInputs = {
     setup: { branch: 'grimes', estimatorName: '', customerName: '', customerCode: '', jobName: '' },
@@ -38,7 +39,7 @@ export default function App() {
     const [loading, setLoading] = useState(true);
     const [inputs, setInputs] = useState<JobInputs>(initialInputs);
     const [lineItems, setLineItems] = useState<LineItem[]>([]);
-    const [view, setView] = useState<'takeoff' | 'summary'>('takeoff');
+    const [view, setView] = useState<'takeoff' | 'summary' | 'admin'>('takeoff');
 
     useEffect(() => {
         initializeData().then(() => setLoading(false));
@@ -94,13 +95,23 @@ export default function App() {
                         </div>
                         <div className="flex items-center gap-3">
                             <button
-                                onClick={() => setView(view === 'takeoff' ? 'summary' : 'takeoff')}
+                                onClick={() => setView(view === 'summary' ? 'takeoff' : 'summary')}
                                 className="flex items-center gap-2 px-4 py-2.5 rounded-xl font-semibold bg-white border border-slate-200 text-slate-700 hover:bg-slate-50 hover:border-slate-300 transition-all shadow-sm focus:ring-4 focus:ring-slate-100 outline-none"
                             >
-                                {view === 'takeoff' ? (
-                                    <><FileSpreadsheet size={18} /> Show Bid Summary</>
-                                ) : (
+                                {view === 'summary' ? (
                                     <><ArrowLeft size={18} /> Back to Takeoff</>
+                                ) : (
+                                    <><FileSpreadsheet size={18} /> Show Bid Summary</>
+                                )}
+                            </button>
+                            <button
+                                onClick={() => setView(view === 'admin' ? 'takeoff' : 'admin')}
+                                className="flex items-center gap-2 px-4 py-2.5 rounded-xl font-semibold bg-white border border-slate-200 text-slate-700 hover:bg-slate-50 hover:border-slate-300 transition-all shadow-sm focus:ring-4 focus:ring-slate-100 outline-none"
+                            >
+                                {view === 'admin' ? (
+                                    <><ArrowLeft size={18} /> Back to Takeoff</>
+                                ) : (
+                                    <><ShieldCheck size={18} /> Admin Portal Plan</>
                                 )}
                             </button>
                             <button
@@ -197,8 +208,10 @@ export default function App() {
                             </div>
                         </div>
                     </div>
-                ) : (
+                ) : view === 'summary' ? (
                     <BidSummary inputs={inputs} lineItems={lineItems} />
+                ) : (
+                    <AdminDashboard />
                 )}
             </div>
         </div>
