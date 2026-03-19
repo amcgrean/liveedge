@@ -14,6 +14,17 @@ export function FormulaEditorModal({ formula, open, onClose, onSave }: Props) {
     const [newInput, setNewInput] = useState('');
 
     useEffect(() => {
+        if (open) {
+            document.body.style.overflow = 'hidden';
+        } else {
+            document.body.style.overflow = 'unset';
+        }
+        return () => {
+            document.body.style.overflow = 'unset';
+        };
+    }, [open]);
+
+    useEffect(() => {
         if (formula) {
             setFormData({ ...formula });
         } else {

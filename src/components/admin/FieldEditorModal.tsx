@@ -13,6 +13,17 @@ export function FieldEditorModal({ field, open, onClose, onSave }: Props) {
     const [formData, setFormData] = useState<Partial<AdminFieldDefinition>>({});
 
     useEffect(() => {
+        if (open) {
+            document.body.style.overflow = 'hidden';
+        } else {
+            document.body.style.overflow = 'unset';
+        }
+        return () => {
+            document.body.style.overflow = 'unset';
+        };
+    }, [open]);
+
+    useEffect(() => {
         if (field) {
             setFormData({ ...field });
         } else {

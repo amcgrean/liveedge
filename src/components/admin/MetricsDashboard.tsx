@@ -2,7 +2,11 @@ import React, { useState, useEffect } from 'react';
 import { TelemetryEvent, DataQualityAlert, metricsService } from '../../services/metricsService';
 import { Activity, AlertTriangle, Download, Database, ShieldAlert, CheckCircle2 } from 'lucide-react';
 
-export function MetricsDashboard() {
+interface Props {
+    isAdmin: boolean;
+}
+
+export function MetricsDashboard({ isAdmin }: Props) {
     const [events, setEvents] = useState<TelemetryEvent[]>([]);
     const [alerts, setAlerts] = useState<DataQualityAlert[]>([]);
     const [loading, setLoading] = useState(true);
@@ -59,8 +63,9 @@ export function MetricsDashboard() {
                 <div className="flex items-center">
                     <button
                         onClick={handleExport}
-                        disabled={isExporting}
+                        disabled={!isAdmin || isExporting}
                         className="flex items-center gap-2 px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-semibold rounded-lg shadow-sm transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                        title={isAdmin ? "Export" : "Requires Admin Role"}
                     >
                         <Download className="w-4 h-4" />
                         {isExporting ? 'Generating...' : 'Export Training Data'}

@@ -2,7 +2,11 @@ import React, { useState, useEffect } from 'react';
 import { IntegrationJob, OperationalStats, integrationService } from '../../services/integrationService';
 import { Network, ArrowRightLeft, Clock, AlertOctagon, TrendingUp, Filter, RefreshCw } from 'lucide-react';
 
-export function IntegrationDashboard() {
+interface Props {
+    isAdmin: boolean;
+}
+
+export function IntegrationDashboard({ isAdmin }: Props) {
     const [jobs, setJobs] = useState<IntegrationJob[]>([]);
     const [stats, setStats] = useState<OperationalStats | null>(null);
     const [loading, setLoading] = useState(true);
@@ -141,9 +145,9 @@ export function IntegrationDashboard() {
                                         {job.status === 'complete' || job.status === 'failed' ? (
                                             <button 
                                                 onClick={() => handleSync(job.id)}
-                                                disabled={syncingId === job.id}
-                                                className="inline-flex items-center justify-center p-2 rounded-lg bg-white border border-slate-200 text-slate-600 hover:text-teal-600 hover:border-teal-200 hover:bg-teal-50 transition-all disabled:opacity-50"
-                                                title="Trigger Sync"
+                                                disabled={!isAdmin || syncingId === job.id}
+                                                className="inline-flex items-center justify-center p-2 rounded-lg bg-white border border-slate-200 text-slate-600 hover:text-teal-600 hover:border-teal-200 hover:bg-teal-50 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                                                title={isAdmin ? "Trigger Sync" : "Requires Admin Role"}
                                             >
                                                 <RefreshCw className={`w-4 h-4 ${syncingId === job.id ? 'animate-spin' : ''}`} />
                                             </button>
