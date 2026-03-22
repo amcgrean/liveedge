@@ -188,8 +188,8 @@ export interface Multipliers {
 
 export interface Branch {
     branch_id: string;
-    display_name: string;
-    stud_sku: string;
+    name: string;
+    stud_sku?: string;
 }
 
 export interface HardwareMatrix {

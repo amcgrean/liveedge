@@ -1,6 +1,7 @@
 import React from 'react';
 import { clsx, type ClassValue } from 'clsx';
 import { twMerge } from 'tailwind-merge';
+import { ChevronDown, ChevronRight } from 'lucide-react';
 
 export function cn(...inputs: ClassValue[]) {
     return twMerge(clsx(inputs));
@@ -28,43 +29,36 @@ export function SectionCard({ title, children, defaultExpanded = false, badge, a
     const styles = ACCENT_STYLES[accent];
 
     return (
-        <div className={cn('card mb-3', isExpanded && `border-l-2 ${styles.border}`)}>
+        <div className="card mb-6 group">
             <button
                 onClick={() => setIsExpanded(!isExpanded)}
-                className="w-full flex items-center justify-between px-5 py-4 text-left hover:bg-white/3 transition-colors group"
-                style={{ '--tw-bg-opacity': 0.03 } as React.CSSProperties}
+                className="w-full flex items-center justify-between p-5 text-left transition-colors hover:bg-slate-50/50"
             >
-                <div className="flex items-center gap-3">
-                    <div className={cn('w-2 h-2 rounded-full flex-shrink-0 transition-all', styles.dot, !isExpanded && 'opacity-40')} />
-                    <h2 className="text-sm font-semibold text-slate-100 tracking-wide">{title}</h2>
-                </div>
-                <div className="flex items-center gap-2.5">
-                    {badge !== undefined && (
-                        <span className={cn('text-[10px] font-bold px-2 py-0.5 rounded border', styles.badge)}>
-                            {badge}
-                        </span>
-                    )}
-                    <svg
-                        className={cn('w-4 h-4 text-slate-500 transition-transform duration-200 group-hover:text-slate-300', isExpanded && 'rotate-180')}
-                        fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}
-                    >
-                        <path strokeLinecap="round" strokeLinejoin="round" d="m19 9-7 7-7-7" />
-                    </svg>
+                <h2 className="text-xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-slate-800 to-slate-600">
+                    {title}
+                </h2>
+                <div className="flex items-center justify-center w-8 h-8 rounded-full bg-slate-100 text-slate-500 group-hover:bg-blue-50 group-hover:text-blue-600 transition-colors">
+                    {isExpanded ? <ChevronDown size={20} /> : <ChevronRight size={20} />}
                 </div>
             </button>
-            {isExpanded && (
-                <div className="px-5 pb-5 pt-1 border-t border-white/8">
-                    {children}
+            <div
+                className={cn(
+                    "grid transition-all duration-300 ease-in-out",
+                    isExpanded ? "grid-rows-[1fr] opacity-100" : "grid-rows-[0fr] opacity-0"
+                )}
+            >
+                <div className="overflow-hidden">
+                    <div className="p-5 pt-0 border-t border-slate-100/60 mt-2">{children}</div>
                 </div>
-            )}
+            </div>
         </div>
     );
 }
 
 export function InputGroup({ label, children, hint }: { label: string; children: React.ReactNode; hint?: string }) {
     return (
-        <div>
-            <label className="input-label">{label}</label>
+        <div className="mb-2 group">
+            <label className="input-label transition-colors">{label}</label>
             {children}
             {hint && <p className="mt-1 text-[11px] text-slate-500">{hint}</p>}
         </div>

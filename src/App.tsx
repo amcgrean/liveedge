@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { initializeData, dataCache } from './utils/lookup';
 import { JobInputs, LineItem } from './types/estimate';
 import { calculateEstimate } from './calculations/engine';
@@ -16,10 +16,28 @@ import { WindowsDoorsSectionComp } from './components/sections/WindowsDoorsSecti
 import { OptionsSectionComp } from './components/sections/OptionsSection';
 import { downloadCsv } from './utils/export';
 import { BidSummary } from './components/BidSummary';
+import { AdminDashboard } from './components/admin/AdminDashboard';
+import {
+    HardHat,
+    FileSpreadsheet,
+    FileDown,
+    ArrowLeft,
+    Loader2,
+    Calculator,
+    ShieldCheck,
+    RotateCcw,
+    ArrowUp,
+    Search,
+    CircleAlert,
+    CheckCircle2,
+    Clock3
+} from 'lucide-react';
+
+const STORAGE_KEY = 'beisser-takeoff-inputs-v1';
 
 const initialInputs: JobInputs = {
     setup: { branch: 'grimes', estimatorName: '', customerName: '', customerCode: '', jobName: '' },
-    materials: { plateType: 'Treated', wallSize: '2x4', triplePlate: false, tyvekType: 'Standard 9ft', roofSheetingSize: '7/16" OSB' },
+    materials: { plateType: 'Treated', wallSize: '2x4', triplePlate: false, tyvekType: 'Standard 9ft', roofSheetingSize: '7/16 OSB' },
     basement: { ext2x4_8ft: 0, ext2x4_9ft: 0, ext2x4_10ft: 0, ext2x6_8ft: 0, ext2x6_9ft: 0, ext2x6_10ft: 0, intWallLF: 0, beamLF: 0, stairCount: 0, headers: [], fhaCeilingHeight: 0, fhaPostCount: 0, stoopJoistSize: '2x8', stoopSF: 0 },
     firstFloor: { ext2x4_8ft: 0, ext2x4_9ft: 0, ext2x4_10ft: 0, ext2x6_8ft: 0, ext2x6_9ft: 0, ext2x6_10ft: 0, intWallLF: 0, beamLF: 0, stairCount: 0, headers: [], deckSF: 0, deckType: 'Edge T&G', tjiSize: '11-7/8', tjiCount: 0, garageWallLF: 0 },
     secondFloor: { ext2x4_8ft: 0, ext2x4_9ft: 0, ext2x4_10ft: 0, ext2x6_8ft: 0, ext2x6_9ft: 0, ext2x6_10ft: 0, intWallLF: 0, beamLF: 0, stairCount: 0, headers: [], deckSF: 0, deckType: 'Edge T&G', tjiSize: '11-7/8', tjiCount: 0, garageWallLF: 0 },
@@ -33,41 +51,91 @@ const initialInputs: JobInputs = {
     options: []
 };
 
-function validateInputs(inputs: JobInputs): string[] {
-    const errors: string[] = [];
-    if (!inputs.setup.branch) errors.push('Branch is required');
-    if (!inputs.setup.estimatorName.trim()) errors.push('Estimator name is required');
-    if (!inputs.setup.customerName.trim()) errors.push('Customer name is required');
-    if (!inputs.setup.jobName.trim()) errors.push('Job name is required');
-    return errors;
-}
+const takeoffSections = [
+    { id: 'section-job-setup', label: 'Job Setup' },
+    { id: 'section-materials', label: 'Materials' },
+    { id: 'section-basement', label: 'Basement' },
+    { id: 'section-first-floor', label: '1st Floor' },
+    { id: 'section-second-floor', label: '2nd Floor' },
+    { id: 'section-roof', label: 'Roof' },
+    { id: 'section-shingles', label: 'Shingles' },
+    { id: 'section-siding', label: 'Siding' },
+    { id: 'section-trim', label: 'Trim' },
+    { id: 'section-hardware', label: 'Hardware' },
+    { id: 'section-exterior-deck', label: 'Ext Deck' },
+    { id: 'section-windows-doors', label: 'Windows/Doors' },
+    { id: 'section-options', label: 'Options' },
+];
 
-// Group items by group label for sidebar display
-function groupItems(items: LineItem[]): Record<string, LineItem[]> {
-    return items.reduce((acc, item) => {
-        (acc[item.group] = acc[item.group] || []).push(item);
-        return acc;
-    }, {} as Record<string, LineItem[]>);
-}
 
 export default function App() {
     const [loading, setLoading] = useState(true);
     const [inputs, setInputs] = useState<JobInputs>(initialInputs);
     const [lineItems, setLineItems] = useState<LineItem[]>([]);
-    const [view, setView] = useState<'takeoff' | 'summary'>('takeoff');
-    const [darkMode, setDarkMode] = useState(true);
-    const [validationErrors, setValidationErrors] = useState<string[]>([]);
-    const [showValidation, setShowValidation] = useState(false);
-    const [sidebarGrouped, setSidebarGrouped] = useState(false);
+    const [view, setView] = useState<'takeoff' | 'summary' | 'admin'>('takeoff');
+    const [showBackToTop, setShowBackToTop] = useState(false);
+    const [itemFilter, setItemFilter] = useState('');
+    const [lastSavedAt, setLastSavedAt] = useState<Date | null>(null);
+
+    const requiredChecks = useMemo(() => {
+        const missing: string[] = [];
+        if (!inputs.setup.estimatorName.trim()) missing.push('Estimator name');
+        if (!inputs.setup.customerName.trim()) missing.push('Customer name');
+        if (!inputs.setup.customerCode.trim()) missing.push('Customer code');
+        if (!inputs.setup.jobName.trim()) missing.push('Job name');
+        if (!inputs.trim.baseType.trim()) missing.push('Trim base type');
+        if (!inputs.trim.caseType.trim()) missing.push('Trim case type');
+        if (!inputs.hardware.type.trim()) missing.push('Door hardware type');
+        return missing;
+    }, [inputs]);
+
+    const completedSections = useMemo(() => {
+        const sectionStatus = [
+            inputs.setup.estimatorName && inputs.setup.customerName && inputs.setup.customerCode && inputs.setup.jobName,
+            !!inputs.materials.roofSheetingSize,
+            inputs.basement.ext2x4_8ft + inputs.basement.ext2x4_9ft + inputs.basement.ext2x4_10ft + inputs.basement.ext2x6_8ft + inputs.basement.ext2x6_9ft + inputs.basement.ext2x6_10ft + inputs.basement.intWallLF > 0,
+            inputs.firstFloor.deckSF + inputs.firstFloor.intWallLF + inputs.firstFloor.garageWallLF > 0,
+            inputs.secondFloor.deckSF + inputs.secondFloor.intWallLF + inputs.secondFloor.garageWallLF > 0,
+            inputs.roof.sheetingSF > 0,
+            inputs.shingles.sf > 0,
+            inputs.siding.lapSF + inputs.siding.shakeSF + inputs.siding.soffitSF > 0,
+            !!inputs.trim.baseType && !!inputs.trim.caseType,
+            !!inputs.hardware.type,
+            inputs.exteriorDeck.railingLF + inputs.exteriorDeck.postCount + inputs.exteriorDeck.stairCount > 0,
+            inputs.windowsDoors.windowCount + inputs.windowsDoors.doors.length > 0,
+            true,
+        ];
+        return sectionStatus.filter(Boolean).length;
+    }, [inputs]);
+
+    const warningsCount = useMemo(() => lineItems.filter(item => !!item.warning).length, [lineItems]);
+
+    const filteredLineItems = useMemo(() => {
+        const query = itemFilter.trim().toLowerCase();
+        if (!query) return lineItems;
+        return lineItems.filter((item) =>
+            item.description.toLowerCase().includes(query) ||
+            item.group.toLowerCase().includes(query) ||
+            item.sku.toLowerCase().includes(query)
+        );
+    }, [lineItems, itemFilter]);
+
+    const groupedItemCounts = useMemo(() => {
+        return filteredLineItems.reduce<Record<string, number>>((acc, item) => {
+            acc[item.group] = (acc[item.group] || 0) + 1;
+            return acc;
+        }, {});
+    }, [filteredLineItems]);
 
     useEffect(() => {
         initializeData().then(() => {
-            const osbTypes = dataCache.osbSheeting?.roof_sheeting_types || [];
-            if (osbTypes.length > 0) {
-                setInputs(prev => ({
-                    ...prev,
-                    materials: { ...prev.materials, roofSheetingSize: osbTypes[1]?.display || osbTypes[0]?.display }
-                }));
+            try {
+                const saved = window.localStorage.getItem(STORAGE_KEY);
+                if (saved) {
+                    setInputs(JSON.parse(saved) as JobInputs);
+                }
+            } catch (error) {
+                console.warn('Unable to load saved estimate.', error);
             }
             setLoading(false);
         });
@@ -88,241 +156,267 @@ export default function App() {
                 customerOverrides: dataCache.customerOverrides,
             });
             setLineItems(items);
+
+            window.localStorage.setItem(STORAGE_KEY, JSON.stringify(inputs));
+            setLastSavedAt(new Date());
         }
     }, [inputs, loading]);
 
+    useEffect(() => {
+        const onScroll = () => setShowBackToTop(window.scrollY > 500);
+        window.addEventListener('scroll', onScroll, { passive: true });
+        return () => window.removeEventListener('scroll', onScroll);
+    }, []);
+
+    useEffect(() => {
+        const onKeyDown = (event: KeyboardEvent) => {
+            if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'e') {
+                event.preventDefault();
+                if (requiredChecks.length === 0 && lineItems.length > 0) {
+                    downloadCsv(lineItems, inputs.setup);
+                }
+            }
+        };
+        window.addEventListener('keydown', onKeyDown);
+        return () => window.removeEventListener('keydown', onKeyDown);
+    }, [inputs.setup, lineItems, requiredChecks.length]);
+
     const handleExport = () => {
-        const errors = validateInputs(inputs);
-        if (errors.length > 0) {
-            setValidationErrors(errors);
-            setShowValidation(true);
-            return;
-        }
-        setShowValidation(false);
+        if (requiredChecks.length > 0) return;
         downloadCsv(lineItems, inputs.setup);
     };
 
-    const warnCount = lineItems.filter(i => i.warning).length;
-    const grouped = groupItems(lineItems);
-    const groupNames = Object.keys(grouped);
+    const handleResetEstimate = () => {
+        const confirmed = window.confirm('Reset all estimate inputs and clear autosaved data?');
+        if (!confirmed) return;
+        setInputs(initialInputs);
+        setLineItems([]);
+        setItemFilter('');
+        window.localStorage.removeItem(STORAGE_KEY);
+    };
 
-    if (loading) return (
-        <div className="min-h-screen flex items-center justify-center">
-            <div className="text-center space-y-4">
-                <div className="w-12 h-12 border-2 border-cyan-400 border-t-transparent rounded-full animate-spin mx-auto" />
-                <div>
-                    <div className="text-xl font-bold text-white">Beisser Lumber Co.</div>
-                    <div className="text-slate-400 text-sm mt-1 animate-pulse">Loading takeoff data...</div>
-                </div>
+    if (loading) {
+        return (
+            <div className="min-h-screen flex flex-col items-center justify-center text-slate-500 bg-slate-50">
+                <Loader2 className="w-12 h-12 text-blue-600 animate-spin mb-4" />
+                <p className="text-lg font-medium animate-pulse">Loading architectural takeoff data...</p>
             </div>
-        </div>
-    );
+        );
+    }
 
     return (
-        <div className={darkMode ? '' : 'light-mode'} style={!darkMode ? { background: '#f0f4f8', minHeight: '100vh' } : {}}>
-            <div className="max-w-screen-xl mx-auto px-4 sm:px-6 py-5">
-
-                {/* ── Header ── */}
-                <header className="mb-6">
-                    <div className={`rounded-2xl border px-6 py-4 flex flex-col sm:flex-row sm:items-center justify-between gap-4 ${darkMode ? 'bg-slate-900/80 border-white/10 shadow-xl' : 'bg-white border-slate-200 shadow-md'}`}>
-                        {/* Brand */}
+        <div className="pb-12">
+            <div className="bg-white/70 backdrop-blur-xl border-b border-slate-200/60 sticky top-0 z-50 shadow-sm">
+                <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+                    <header className="py-4 flex flex-col md:flex-row md:items-center justify-between gap-4">
                         <div className="flex items-center gap-4">
-                            <div className="w-10 h-10 rounded-xl bg-cyan-500/15 border border-cyan-500/30 flex items-center justify-center flex-shrink-0">
-                                <svg className="w-5 h-5 text-cyan-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-                                    <path strokeLinecap="round" strokeLinejoin="round" d="M2.25 12 12 2.25 21.75 12M4.5 9.75v10.125c0 .621.504 1.125 1.125 1.125H9.75v-4.875c0-.621.504-1.125 1.125-1.125h2.25c.621 0 1.125.504 1.125 1.125V21h4.125c.621 0 1.125-.504 1.125-1.125V9.75M8.25 21h8.25" />
-                                </svg>
+                            <div className="bg-gradient-to-br from-blue-600 to-indigo-600 p-2.5 rounded-xl shadow-lg shadow-blue-500/20">
+                                <HardHat className="w-7 h-7 text-white" />
                             </div>
                             <div>
-                                <h1 className={`text-lg font-bold leading-tight ${darkMode ? 'text-white' : 'text-slate-900'}`}>
-                                    House Estimator <span className="text-cyan-400 font-extrabold">Takeoff</span>
+                                <h1 className="text-2xl font-black tracking-tight bg-clip-text text-transparent bg-gradient-to-r from-slate-900 to-slate-700">
+                                    House Estimator <span className="text-blue-600 font-extrabold">Pro</span>
                                 </h1>
-                                <p className={`text-xs ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>Beisser Lumber Co. &mdash; Digital Estimating Tool</p>
+                                <p className="text-xs font-semibold text-slate-500 uppercase tracking-widest mt-0.5">
+                                    Beisser Lumber Co. Digital Takeoff
+                                </p>
+                                <div className="mt-1.5 flex flex-wrap items-center gap-2 text-xs">
+                                    <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 text-emerald-700 px-2 py-0.5 font-semibold">
+                                        <CheckCircle2 size={13} /> {completedSections}/{takeoffSections.length} sections active
+                                    </span>
+                                    <span className="inline-flex items-center gap-1 rounded-full bg-slate-100 text-slate-600 px-2 py-0.5 font-semibold">
+                                        <Clock3 size={13} />
+                                        {lastSavedAt ? `Autosaved ${lastSavedAt.toLocaleTimeString()}` : 'Autosave idle'}
+                                    </span>
+                                </div>
                             </div>
                         </div>
-
-                        {/* Actions */}
-                        <div className="flex items-center gap-2.5 flex-wrap">
-                            {/* Stats */}
-                            <div className={`flex items-center gap-2 text-xs font-medium px-3 py-1.5 rounded-lg border ${darkMode ? 'bg-slate-800 border-slate-700 text-slate-300' : 'bg-slate-50 border-slate-200 text-slate-600'}`}>
-                                <span className="text-cyan-400 font-bold">{lineItems.length}</span> items
-                                {warnCount > 0 && (
-                                    <span className="flex items-center gap-1 text-amber-400 font-semibold ml-1 pl-2 border-l border-slate-600">
-                                        <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20"><path d="M8.485 2.495c.673-1.167 2.357-1.167 3.03 0l6.28 10.875c.673 1.167-.17 2.625-1.516 2.625H3.72c-1.347 0-2.189-1.458-1.515-2.625L8.485 2.495zM10 5a.75.75 0 0 1 .75.75v3.5a.75.75 0 0 1-1.5 0v-3.5A.75.75 0 0 1 10 5zm0 9a1 1 0 1 1 0-2 1 1 0 0 1 0 2z"/></svg>
-                                        {warnCount}
-                                    </span>
+                        <div className="flex flex-wrap items-center gap-3">
+                            <button
+                                onClick={() => setView(view === 'summary' ? 'takeoff' : 'summary')}
+                                className="flex items-center gap-2 px-4 py-2.5 rounded-xl font-semibold bg-white border border-slate-200 text-slate-700 hover:bg-slate-50 hover:border-slate-300 transition-all shadow-sm focus:ring-4 focus:ring-slate-100 outline-none"
+                            >
+                                {view === 'summary' ? (
+                                    <><ArrowLeft size={18} /> Back to Takeoff</>
+                                ) : (
+                                    <><FileSpreadsheet size={18} /> Show Bid Summary</>
                                 )}
-                            </div>
-
-                            {/* Mode toggle */}
-                            <button
-                                onClick={() => setDarkMode(!darkMode)}
-                                className={`px-3 py-1.5 rounded-lg text-xs font-semibold border transition-all ${darkMode ? 'bg-slate-800 text-slate-300 border-slate-700 hover:bg-slate-700' : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'}`}
-                                title="Toggle theme"
-                            >
-                                {darkMode ? '☀ Light' : '🌙 Dark'}
                             </button>
-
-                            {/* View toggle */}
                             <button
-                                onClick={() => setView(view === 'takeoff' ? 'summary' : 'takeoff')}
-                                className={`px-4 py-1.5 rounded-lg text-sm font-semibold border transition-all ${darkMode ? 'bg-slate-800 border-slate-700 text-slate-100 hover:bg-slate-700' : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-50'}`}
+                                onClick={() => setView(view === 'admin' ? 'takeoff' : 'admin')}
+                                className="flex items-center gap-2 px-4 py-2.5 rounded-xl font-semibold bg-white border border-slate-200 text-slate-700 hover:bg-slate-50 hover:border-slate-300 transition-all shadow-sm focus:ring-4 focus:ring-slate-100 outline-none"
                             >
-                                {view === 'takeoff' ? 'Bid Summary →' : '← Back to Takeoff'}
+                                {view === 'admin' ? (
+                                    <><ArrowLeft size={18} /> Back to Takeoff</>
+                                ) : (
+                                    <><ShieldCheck size={18} /> Admin Portal Plan</>
+                                )}
                             </button>
-
-                            {/* Export */}
+                            <button
+                                onClick={handleResetEstimate}
+                                className="flex items-center gap-2 px-4 py-2.5 rounded-xl font-semibold bg-white border border-slate-200 text-slate-700 hover:bg-slate-50 hover:border-slate-300 transition-all shadow-sm"
+                            >
+                                <RotateCcw size={18} /> Reset
+                            </button>
                             <button
                                 onClick={handleExport}
-                                disabled={lineItems.length === 0}
-                                className="btn-primary flex items-center gap-2"
+                                disabled={lineItems.length === 0 || requiredChecks.length > 0}
+                                className="flex items-center gap-2 px-5 py-2.5 rounded-xl font-bold bg-gradient-to-r from-blue-600 to-blue-700 text-white hover:from-blue-700 hover:to-blue-800 transition-all shadow-md shadow-blue-500/20 disabled:opacity-50 disabled:shadow-none focus:ring-4 focus:ring-blue-500/30 outline-none"
+                                title="Shortcut: Ctrl/Cmd + E"
                             >
-                                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                                    <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75V16.5M16.5 12 12 16.5m0 0L7.5 12m4.5 4.5V3" />
-                                </svg>
-                                Export CSV
+                                <FileDown size={18} /> Export CSV
                             </button>
                         </div>
-                    </div>
+                    </header>
+                </div>
+            </div>
 
-                    {/* Validation banner */}
-                    {showValidation && validationErrors.length > 0 && (
-                        <div className="mt-3 px-5 py-3 bg-red-500/10 border border-red-500/30 rounded-xl flex items-start gap-3">
-                            <svg className="w-5 h-5 text-red-400 flex-shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                                <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z" />
-                            </svg>
-                            <div>
-                                <p className="font-semibold text-red-400 text-sm">Required fields missing:</p>
-                                <ul className="mt-1 space-y-0.5">
-                                    {validationErrors.map((e, i) => <li key={i} className="text-red-300 text-xs">• {e}</li>)}
-                                </ul>
-                            </div>
-                            <button onClick={() => setShowValidation(false)} className="ml-auto text-slate-500 hover:text-slate-300 text-lg leading-none">×</button>
-                        </div>
-                    )}
-                </header>
-
-                {/* ── Main content ── */}
+            <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-8">
                 {view === 'takeoff' ? (
-                    <div className="grid grid-cols-1 xl:grid-cols-[1fr_360px] gap-6 items-start">
+                    <>
+                        {requiredChecks.length > 0 && (
+                            <div className="mb-5 rounded-2xl border border-amber-200 bg-amber-50/70 px-4 py-3 text-amber-900">
+                                <p className="font-semibold text-sm flex items-center gap-2">
+                                    <CircleAlert size={16} /> Complete required fields before export ({requiredChecks.length} missing)
+                                </p>
+                                <p className="text-xs mt-1">Missing: {requiredChecks.join(', ')}</p>
+                            </div>
+                        )}
 
-                        {/* Form column */}
-                        <div className="min-w-0">
-                            {/* SETUP */}
-                            <div className="section-group-label">Project Setup</div>
-                            <JobSetupSection data={inputs.setup} onChange={(val) => setInputs({ ...inputs, setup: val })} />
-                            <MaterialSelectionSection data={inputs.materials} onChange={(val) => setInputs({ ...inputs, materials: val })} />
-
-                            {/* FRAMING */}
-                            <div className="section-group-label">Framing</div>
-                            <BasementSectionComp data={inputs.basement} onChange={(val) => setInputs({ ...inputs, basement: val })} />
-                            <FloorSectionComp
-                                sectionNumber={4}
-                                title="First Floor Deck & Walls"
-                                data={inputs.firstFloor}
-                                onChange={(val) => setInputs({ ...inputs, firstFloor: val })}
-                            />
-                            <FloorSectionComp
-                                sectionNumber={5}
-                                title="Second Floor Deck & Walls"
-                                data={inputs.secondFloor}
-                                onChange={(val) => setInputs({ ...inputs, secondFloor: val })}
-                            />
-                            <RoofSectionComp data={inputs.roof} onChange={(val) => setInputs({ ...inputs, roof: val })} />
-                            <ShinglesSectionComp data={inputs.shingles} onChange={(val) => setInputs({ ...inputs, shingles: val })} />
-
-                            {/* ENVELOPE */}
-                            <div className="section-group-label">Envelope & Finishes</div>
-                            <SidingSectionComp data={inputs.siding} onChange={(val) => setInputs({ ...inputs, siding: val })} />
-                            <TrimSectionComp data={inputs.trim} onChange={(val) => setInputs({ ...inputs, trim: val })} />
-                            <WindowsDoorsSectionComp data={inputs.windowsDoors} onChange={(val) => setInputs({ ...inputs, windowsDoors: val })} />
-
-                            {/* ACCESSORIES */}
-                            <div className="section-group-label">Accessories & Extras</div>
-                            <HardwareSectionComp data={inputs.hardware} lookups={dataCache.hardwareLookup || []} onChange={(val) => setInputs({ ...inputs, hardware: val })} />
-                            <ExteriorDeckSectionComp data={inputs.exteriorDeck} onChange={(val) => setInputs({ ...inputs, exteriorDeck: val })} />
-                            <OptionsSectionComp data={inputs.options} onChange={(val) => setInputs({ ...inputs, options: val })} />
+                        <div className="mb-4 rounded-2xl bg-white/80 border border-slate-200 p-3">
+                            <p className="text-xs font-semibold uppercase tracking-widest text-slate-500 mb-2">Quick Jump</p>
+                            <div className="flex flex-wrap gap-2">
+                                {takeoffSections.map((section) => (
+                                    <button
+                                        key={section.id}
+                                        onClick={() => document.getElementById(section.id)?.scrollIntoView({ behavior: 'smooth', block: 'start' })}
+                                        className="px-2.5 py-1.5 rounded-lg bg-slate-100 text-slate-700 text-xs font-semibold hover:bg-blue-50 hover:text-blue-700"
+                                    >
+                                        {section.label}
+                                    </button>
+                                ))}
+                            </div>
                         </div>
 
-                        {/* Sticky sidebar */}
-                        <div className="hidden xl:block">
-                            <div className={`sticky top-5 rounded-2xl border overflow-hidden ${darkMode ? 'bg-slate-900/80 border-white/10 shadow-2xl' : 'bg-white border-slate-200 shadow-lg'}`}>
-                                {/* Sidebar header */}
-                                <div className={`px-4 py-3 border-b flex items-center justify-between ${darkMode ? 'bg-slate-950/70 border-white/8' : 'bg-slate-50 border-slate-200'}`}>
-                                    <div className="flex items-center gap-2">
-                                        <span className={`text-sm font-bold ${darkMode ? 'text-white' : 'text-slate-900'}`}>Estimate Preview</span>
-                                        <span className="bg-cyan-500 text-slate-950 text-[10px] font-bold px-1.5 py-0.5 rounded">{lineItems.length}</span>
-                                        {warnCount > 0 && <span className="bg-amber-400 text-slate-950 text-[10px] font-bold px-1.5 py-0.5 rounded">⚠{warnCount}</span>}
-                                    </div>
-                                    <button
-                                        onClick={() => setSidebarGrouped(!sidebarGrouped)}
-                                        className={`text-[10px] font-semibold px-2 py-1 rounded border transition-colors ${darkMode ? 'border-slate-700 text-slate-400 hover:text-slate-200 hover:border-slate-500' : 'border-slate-200 text-slate-500 hover:text-slate-700'}`}
-                                    >
-                                        {sidebarGrouped ? 'Flat' : 'Grouped'}
-                                    </button>
-                                </div>
+                        <div className="grid grid-cols-1 xl:grid-cols-12 gap-8">
+                            <div className="xl:col-span-8 space-y-2">
+                                <div id="section-job-setup"><JobSetupSection data={inputs.setup} onChange={(val) => setInputs({ ...inputs, setup: val })} /></div>
+                                <div id="section-materials"><MaterialSelectionSection data={inputs.materials} onChange={(val) => setInputs({ ...inputs, materials: val })} /></div>
+                                <div id="section-basement"><BasementSectionComp data={inputs.basement} onChange={(val) => setInputs({ ...inputs, basement: val })} /></div>
+                                <div id="section-first-floor"><FloorSectionComp
+                                    sectionNumber={4}
+                                    title="First Floor Deck & Walls"
+                                    data={inputs.firstFloor}
+                                    onChange={(val) => setInputs({ ...inputs, firstFloor: val })}
+                                /></div>
+                                <div id="section-second-floor"><FloorSectionComp
+                                    sectionNumber={5}
+                                    title="Second Floor Deck & Walls"
+                                    data={inputs.secondFloor}
+                                    onChange={(val) => setInputs({ ...inputs, secondFloor: val })}
+                                /></div>
+                                <div id="section-roof"><RoofSectionComp data={inputs.roof} onChange={(val) => setInputs({ ...inputs, roof: val })} /></div>
+                                <div id="section-shingles"><ShinglesSectionComp data={inputs.shingles} onChange={(val) => setInputs({ ...inputs, shingles: val })} /></div>
+                                <div id="section-siding"><SidingSectionComp data={inputs.siding} onChange={(val) => setInputs({ ...inputs, siding: val })} /></div>
+                                <div id="section-trim"><TrimSectionComp data={inputs.trim} onChange={(val) => setInputs({ ...inputs, trim: val })} /></div>
+                                <div id="section-hardware"><HardwareSectionComp data={inputs.hardware} lookups={dataCache.hardwareLookup || []} onChange={(val) => setInputs({ ...inputs, hardware: val })} /></div>
+                                <div id="section-exterior-deck"><ExteriorDeckSectionComp data={inputs.exteriorDeck} onChange={(val) => setInputs({ ...inputs, exteriorDeck: val })} /></div>
+                                <div id="section-windows-doors"><WindowsDoorsSectionComp data={inputs.windowsDoors} onChange={(val) => setInputs({ ...inputs, windowsDoors: val })} /></div>
+                                <div id="section-options"><OptionsSectionComp data={inputs.options} onChange={(val) => setInputs({ ...inputs, options: val })} /></div>
+                            </div>
 
-                                {/* Items list */}
-                                <div className="max-h-[calc(100vh-160px)] overflow-y-auto">
-                                    {lineItems.length === 0 ? (
-                                        <div className="px-4 py-12 text-center">
-                                            <svg className="w-10 h-10 mx-auto text-slate-700 mb-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1}>
-                                                <path strokeLinecap="round" strokeLinejoin="round" d="M9 12h3.75M9 15h3.75M9 18h3.75m3 .75H18a2.25 2.25 0 0 0 2.25-2.25V6.108c0-1.135-.845-2.098-1.976-2.192a48.424 48.424 0 0 0-1.123-.08m-5.801 0c-.065.21-.1.433-.1.664 0 .414.336.75.75.75h4.5a.75.75 0 0 0 .75-.75 2.25 2.25 0 0 0-.1-.664m-5.8 0A2.251 2.251 0 0 1 13.5 2.25H15c1.012 0 1.867.668 2.15 1.586m-5.8 0c-.376.023-.75.05-1.124.08C9.095 4.01 8.25 4.973 8.25 6.108V8.25m0 0H4.875c-.621 0-1.125.504-1.125 1.125v11.25c0 .621.504 1.125 1.125 1.125h9.75c.621 0 1.125-.504 1.125-1.125V9.375c0-.621-.504-1.125-1.125-1.125H8.25zM6.75 12h.008v.008H6.75V12zm0 3h.008v.008H6.75V15zm0 3h.008v.008H6.75V18z" />
-                                            </svg>
-                                            <p className={`text-xs italic ${darkMode ? 'text-slate-500' : 'text-slate-400'}`}>Enter dimensions above to see your estimate.</p>
-                                        </div>
-                                    ) : sidebarGrouped ? (
-                                        // Grouped view
-                                        groupNames.map(grp => (
-                                            <div key={grp}>
-                                                <div className={`px-4 py-1.5 text-[9px] font-bold uppercase tracking-widest border-b sticky top-0 ${darkMode ? 'bg-slate-950/90 text-slate-500 border-white/5' : 'bg-slate-50 text-slate-400 border-slate-100'}`}>
-                                                    {grp} <span className="text-slate-600">({grouped[grp].length})</span>
+                            <div className="xl:col-span-4 translate-y-0 xl:-translate-y-8 pointer-events-none">
+                                <div className="estimate-sidebar pointer-events-auto mt-0 xl:mt-8">
+                                    <div className="card border-0 ring-1 ring-slate-200/50 shadow-xl shadow-slate-200/40 bg-white/90">
+                                        <div className="p-5 border-b border-slate-100 bg-gradient-to-r from-slate-50 to-white space-y-3">
+                                            <div className="flex justify-between items-center">
+                                                <div className="flex items-center gap-2">
+                                                    <Calculator className="text-blue-600 w-5 h-5" />
+                                                    <span className="font-bold text-slate-800 text-lg">Live Estimate</span>
                                                 </div>
-                                                {grouped[grp].map((item, idx) => (
-                                                    <SidebarItem key={idx} item={item} darkMode={darkMode} />
+                                                <span className="bg-blue-100 text-blue-700 font-bold px-3 py-1 rounded-full text-xs tracking-wide shadow-inner">
+                                                    {filteredLineItems.length}/{lineItems.length} ITEMS
+                                                </span>
+                                            </div>
+                                            <div className="relative">
+                                                <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                                                <input
+                                                    value={itemFilter}
+                                                    onChange={(e) => setItemFilter(e.target.value)}
+                                                    className="input-field pl-9 py-2"
+                                                    placeholder="Filter by SKU, group, description"
+                                                />
+                                            </div>
+                                            {warningsCount > 0 && (
+                                                <p className="text-xs font-semibold text-amber-700 bg-amber-50 border border-amber-100 px-2 py-1 rounded-md">
+                                                    {warningsCount} item warning{warningsCount === 1 ? '' : 's'} need review before final export.
+                                                </p>
+                                            )}
+                                            <div className="flex flex-wrap gap-1.5">
+                                                {Object.entries(groupedItemCounts).slice(0, 6).map(([group, count]) => (
+                                                    <span key={group} className="text-[11px] px-2 py-0.5 rounded-full bg-slate-100 text-slate-600 font-semibold">
+                                                        {group}: {count}
+                                                    </span>
                                                 ))}
                                             </div>
-                                        ))
-                                    ) : (
-                                        // Flat view
-                                        lineItems.map((item, idx) => (
-                                            <SidebarItem key={idx} item={item} darkMode={darkMode} />
-                                        ))
-                                    )}
-                                </div>
-
-                                {/* Footer with actions */}
-                                <div className={`px-4 py-3 border-t ${darkMode ? 'border-white/8 bg-slate-950/50' : 'border-slate-200 bg-slate-50'}`}>
-                                    <button
-                                        onClick={() => setView('summary')}
-                                        className="w-full py-2 rounded-lg text-sm font-semibold bg-cyan-500/15 text-cyan-300 border border-cyan-500/30 hover:bg-cyan-500/25 transition-colors"
-                                    >
-                                        View Bid Summary →
-                                    </button>
+                                        </div>
+                                        <div className="p-0 divide-y divide-slate-100 max-h-[calc(100vh-16rem)] overflow-y-auto custom-scrollbar">
+                                            {filteredLineItems.length === 0 && (
+                                                <div className="p-12 text-center flex flex-col items-center justify-center">
+                                                    <Calculator className="w-12 h-12 text-slate-200 mb-4" />
+                                                    <p className="text-slate-400 text-sm font-medium">No items match.<br />Adjust filters or input dimensions.</p>
+                                                </div>
+                                            )}
+                                            {filteredLineItems.map((item, idx) => (
+                                                <div key={`${item.sku}-${idx}`} className="p-4 hover:bg-blue-50/50 transition-colors group">
+                                                    <div className="flex justify-between items-start mb-1.5 gap-2">
+                                                        <span className="font-semibold text-slate-800 text-sm leading-tight group-hover:text-blue-900 transition-colors">
+                                                            {item.description}
+                                                        </span>
+                                                        <span className="font-bold text-blue-600 text-sm whitespace-nowrap bg-blue-50 px-2 rounded">
+                                                            {item.qty} <span className="text-xs opacity-75">{item.uom}</span>
+                                                        </span>
+                                                    </div>
+                                                    <div className="flex justify-between items-center">
+                                                        <span className="text-[10px] font-mono font-medium text-slate-400 uppercase tracking-wider bg-slate-100 px-1.5 py-0.5 rounded">
+                                                            {item.sku}
+                                                        </span>
+                                                        <span className="text-[10px] font-bold text-slate-400 tracking-wider uppercase">
+                                                            {item.group}
+                                                        </span>
+                                                    </div>
+                                                    {item.warning && (
+                                                        <div className="mt-3 text-[11px] bg-red-50 text-red-700 px-3 py-2 rounded-lg border border-red-100 font-medium flex items-center gap-2">
+                                                            <span className="relative flex h-2 w-2">
+                                                                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
+                                                                <span className="relative inline-flex rounded-full h-2 w-2 bg-red-500"></span>
+                                                            </span>
+                                                            {item.warning}
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            ))}
+                                        </div>
+                                    </div>
                                 </div>
                             </div>
                         </div>
-                    </div>
+                    </>
+                ) : view === 'summary' ? (
+                    <BidSummary inputs={inputs} lineItems={lineItems} />
                 ) : (
-                    <BidSummary inputs={inputs} lineItems={lineItems} darkMode={darkMode} />
+                    <AdminDashboard />
                 )}
             </div>
-        </div>
-    );
-}
 
-function SidebarItem({ item, darkMode }: { item: LineItem; darkMode: boolean }) {
-    return (
-        <div className={`px-4 py-2.5 border-b transition-colors ${darkMode ? 'border-white/5 hover:bg-white/3' : 'border-slate-100 hover:bg-slate-50'} ${item.warning ? 'border-l-2 !border-l-amber-500' : ''}`}>
-            <div className="flex justify-between items-start gap-2 mb-0.5">
-                <span className={`text-xs font-medium leading-snug flex-1 ${darkMode ? 'text-slate-100' : 'text-slate-800'}`}>{item.description}</span>
-                <span className={`text-xs font-bold whitespace-nowrap ${darkMode ? 'text-cyan-300' : 'text-cyan-600'}`}>{item.qty} {item.uom}</span>
-            </div>
-            <div className="flex items-center justify-between gap-2">
-                <span className={`text-[10px] font-mono ${darkMode ? 'text-slate-600' : 'text-slate-400'}`}>{item.sku}</span>
-                <span className={`text-[9px] px-1.5 py-0.5 rounded font-semibold ${darkMode ? 'bg-slate-800 text-slate-400' : 'bg-slate-100 text-slate-500'}`}>{item.group}</span>
-            </div>
-            {item.warning && (
-                <div className="mt-1 text-[10px] text-amber-300 font-medium">{item.warning}</div>
+            {showBackToTop && (
+                <button
+                    onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}
+                    className="fixed bottom-6 right-6 rounded-full p-3 bg-blue-600 text-white shadow-lg hover:bg-blue-700 z-40"
+                    aria-label="Back to top"
+                >
+                    <ArrowUp size={18} />
+                </button>
             )}
         </div>
     );
