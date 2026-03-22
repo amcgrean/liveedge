@@ -53,8 +53,8 @@ export function JobSetupSection({ data, onChange }: Props) {
     };
 
     return (
-        <SectionCard title="1. Job Setup" defaultExpanded>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <SectionCard title="1. Job Setup" defaultExpanded accent="cyan">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-3">
                 <InputGroup label="Branch">
                     <select name="branch" value={data.branch} onChange={handleChange} className="input-field">
                         <option value="grimes">Grimes</option>

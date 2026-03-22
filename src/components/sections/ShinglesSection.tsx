@@ -19,8 +19,8 @@ export function ShinglesSectionComp({ data, onChange }: Props) {
     };
 
     return (
-        <SectionCard title="7. Shingles">
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <SectionCard title="7. Shingles" accent="amber">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mt-3">
                 <InputGroup label="Roof SF">
                     <input type="number" name="sf" value={data.sf || ''} onChange={handleChange} className="input-field" min="0" />
                 </InputGroup>

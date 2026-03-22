@@ -14,6 +14,12 @@ export interface MaterialSelections {
     roofSheetingSize: string;
 }
 
+export interface HeaderEntry {
+    size: string;       // e.g. '1.75x9.5', '2x10'
+    length_ft: number;  // used to build LVL item code
+    count: number;
+}
+
 export interface WallSection {
     ext2x4_8ft: number;
     ext2x4_9ft: number;
@@ -24,18 +30,21 @@ export interface WallSection {
     intWallLF: number;
     beamLF: number;
     stairCount: number;
-    headers: { size: string; count: number }[];
+    headers: HeaderEntry[];
 }
 
 export interface BasementSection extends WallSection {
-    fhaCeilingHeight: number;
-    stoopJoistSize: string;
+    fhaCeilingHeight: number;  // ft — drives FHA post height/SKU
+    fhaPostCount: number;      // user-entered count of FHA adjustable posts
+    stoopJoistSize: string;    // '2x8' | '2x10' | '2x12'
+    stoopSF: number;           // stoop square footage → joist qty + treated plywood
 }
 
 export interface FloorSection extends WallSection {
     deckSF: number;
     deckType: 'Edge T&G' | 'Gold Edge' | 'Advantech' | 'Diamond';
     tjiSize: string;
+    tjiCount: number;   // user-entered count of I-joists
     garageWallLF: number;
 }
 
@@ -67,6 +76,7 @@ export interface SidingSection {
 
 export interface TrimSection {
     baseType: string;
+    baseLF: number;         // user-entered total LF of base trim
     caseType: string;
     doorCounts: {
         single68: number;
@@ -103,6 +113,7 @@ export interface HardwareSection {
 }
 
 export interface ExteriorDeckSection {
+    deckSF: number;           // deck square footage → drives decking board quantity
     joistSize: '2x8' | '2x10' | '2x12';
     beamSize: '2x8' | '2x10' | '2x12';
     deckingType: string;
@@ -112,6 +123,14 @@ export interface ExteriorDeckSection {
     postCount: number;
     stairCount: number;
     landing: boolean;
+}
+
+// Door entry for Windows & Doors section — resolves to door_styles.json SKU
+export interface DoorEntry {
+    style: string;      // 'Madison' | 'Cambridge' | 'Continental' | 'Craftsman'
+    sizeKey: string;    // e.g. 'slab.28', 'bi.40', 'dh.50', 'sh.30'
+    hcSc: 'hc' | 'sc'; // hollow core vs solid core
+    count: number;
 }
 
 export interface JobInputs {
@@ -126,7 +145,7 @@ export interface JobInputs {
     trim: TrimSection;
     hardware: HardwareSection;
     exteriorDeck: ExteriorDeckSection;
-    windowsDoors: { windowCount: number; doorCount: number };
+    windowsDoors: { windowCount: number; doors: DoorEntry[] };
     options: { description: string; price: number }[];
 }
 
@@ -141,7 +160,6 @@ export interface LineItem {
     warning?: string;
 }
 
-// Data Lookup Interfaces
 export interface Multipliers {
     framing: {
         stud_multiplier_basement: { value: number };
@@ -157,6 +175,7 @@ export interface Multipliers {
         osb_sf_per_panel: { value: number };
     };
     moisture_barrier: {
+        sill_seal_roll_lf?: { value: number };
         tyvek_9ft: { value: number };
         tyvek_10ft: { value: number };
     };
@@ -169,14 +188,12 @@ export interface Multipliers {
 
 export interface Branch {
     branch_id: string;
-    name: string;
-    stud_sku?: string;
+    display_name: string;
+    stud_sku: string;
 }
 
 export interface HardwareMatrix {
-    [finish: string]: {
-        [func: string]: string | null;
-    };
+    [finish: string]: { [func: string]: string | null };
 }
 
 export interface HardwareLookup {
