@@ -38,16 +38,16 @@ const STORAGE_KEY = 'beisser-takeoff-inputs-v1';
 const initialInputs: JobInputs = {
     setup: { branch: 'grimes', estimatorName: '', customerName: '', customerCode: '', jobName: '' },
     materials: { plateType: 'Treated', wallSize: '2x4', triplePlate: false, tyvekType: 'Standard 9ft', roofSheetingSize: '7/16 OSB' },
-    basement: { ext2x4_8ft: 0, ext2x4_9ft: 0, ext2x4_10ft: 0, ext2x6_8ft: 0, ext2x6_9ft: 0, ext2x6_10ft: 0, intWallLF: 0, beamLF: 0, stairCount: 0, headers: [], fhaCeilingHeight: 0, stoopJoistSize: '2x8' },
-    firstFloor: { ext2x4_8ft: 0, ext2x4_9ft: 0, ext2x4_10ft: 0, ext2x6_8ft: 0, ext2x6_9ft: 0, ext2x6_10ft: 0, intWallLF: 0, beamLF: 0, stairCount: 0, headers: [], deckSF: 0, deckType: 'Edge T&G', tjiSize: '11-7/8', garageWallLF: 0 },
-    secondFloor: { ext2x4_8ft: 0, ext2x4_9ft: 0, ext2x4_10ft: 0, ext2x6_8ft: 0, ext2x6_9ft: 0, ext2x6_10ft: 0, intWallLF: 0, beamLF: 0, stairCount: 0, headers: [], deckSF: 0, deckType: 'Edge T&G', tjiSize: '11-7/8', garageWallLF: 0 },
+    basement: { ext2x4_8ft: 0, ext2x4_9ft: 0, ext2x4_10ft: 0, ext2x6_8ft: 0, ext2x6_9ft: 0, ext2x6_10ft: 0, intWallLF: 0, beamLF: 0, stairCount: 0, headers: [], fhaCeilingHeight: 0, fhaPostCount: 0, stoopJoistSize: '2x8', stoopSF: 0 },
+    firstFloor: { ext2x4_8ft: 0, ext2x4_9ft: 0, ext2x4_10ft: 0, ext2x6_8ft: 0, ext2x6_9ft: 0, ext2x6_10ft: 0, intWallLF: 0, beamLF: 0, stairCount: 0, headers: [], deckSF: 0, deckType: 'Edge T&G', tjiSize: '11-7/8', tjiCount: 0, garageWallLF: 0 },
+    secondFloor: { ext2x4_8ft: 0, ext2x4_9ft: 0, ext2x4_10ft: 0, ext2x6_8ft: 0, ext2x6_9ft: 0, ext2x6_10ft: 0, intWallLF: 0, beamLF: 0, stairCount: 0, headers: [], deckSF: 0, deckType: 'Edge T&G', tjiSize: '11-7/8', tjiCount: 0, garageWallLF: 0 },
     roof: { sheetingSF: 0, postCount: 0, postSize: '4x4', headerSize: '2x8', headerCount: 0, soffitOverhang: 12 },
     shingles: { sf: 0, ridgeLF: 0, hipLF: 0 },
     siding: { lapType: 'LP', lapProfileSize: '8in', lapSF: 0, shakeType: 'N/A', shakeSF: 0, soffitType: 'LP', soffitSF: 0, porchSoffitType: 'N/A', porchSoffitSF: 0, trimBoardType: 'N/A', trimBoardLF: 0, cornerType: 'N/A', cornerCount: 0, splicers: false },
-    trim: { baseType: '', caseType: '', doorCounts: { single68: 0, single80: 0, double30: 0, double40: 0, double50: 0, bifold40: 0, bifold50: 0, bifold30: 0 }, windowCount: 0, windowLF: 0, handrailType: '', handrailLF: 0 },
+    trim: { baseType: '', baseLF: 0, caseType: '', doorCounts: { single68: 0, single80: 0, double30: 0, double40: 0, double50: 0, bifold40: 0, bifold50: 0, bifold30: 0 }, windowCount: 0, windowLF: 0, handrailType: '', handrailLF: 0 },
     hardware: { type: '', counts: { keyed: 0, passage: 0, privacy: 0, dummy: 0, deadbolt: 0, handleset: 0, stopHinged: 0, stopSpring: 0, fingerPull: 0, bifoldKnob: 0, pocketLock: 0, insideTrim: 0 } },
-    exteriorDeck: { joistSize: '2x8', beamSize: '2x10', deckingType: 'Treated', deckingLengths: [], railingStyle: 'Treated', railingLF: 0, postCount: 0, stairCount: 0, landing: false },
-    windowsDoors: { windowCount: 0, doorCount: 0 },
+    exteriorDeck: { deckSF: 0, joistSize: '2x8', beamSize: '2x10', deckingType: 'Treated', deckingLengths: [], railingStyle: 'Treated', railingLF: 0, postCount: 0, stairCount: 0, landing: false },
+    windowsDoors: { windowCount: 0, doors: [] },
     options: []
 };
 
@@ -66,6 +66,7 @@ const takeoffSections = [
     { id: 'section-windows-doors', label: 'Windows/Doors' },
     { id: 'section-options', label: 'Options' },
 ];
+
 
 export default function App() {
     const [loading, setLoading] = useState(true);
@@ -101,7 +102,7 @@ export default function App() {
             !!inputs.trim.baseType && !!inputs.trim.caseType,
             !!inputs.hardware.type,
             inputs.exteriorDeck.railingLF + inputs.exteriorDeck.postCount + inputs.exteriorDeck.stairCount > 0,
-            inputs.windowsDoors.windowCount + inputs.windowsDoors.doorCount > 0,
+            inputs.windowsDoors.windowCount + inputs.windowsDoors.doors.length > 0,
             true,
         ];
         return sectionStatus.filter(Boolean).length;
@@ -151,6 +152,8 @@ export default function App() {
                 trimSwitches: dataCache.trimSwitches,
                 railingMatrix: dataCache.railingMatrix,
                 osbSheeting: dataCache.osbSheeting,
+                doorStyles: dataCache.doorStyles,
+                customerOverrides: dataCache.customerOverrides,
             });
             setLineItems(items);
 

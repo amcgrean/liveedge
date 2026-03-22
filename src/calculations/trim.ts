@@ -7,19 +7,19 @@ export function calculateTrim(
 ): LineItem[] {
     const items: LineItem[] = [];
 
-    // Base trim
-    if (section.baseType) {
+    // Base trim — user enters total LF; convert to 8ft sticks with 10% waste
+    if (section.baseType && section.baseLF > 0) {
         const baseEntry = trimSwitches?.base_types?.find((t: any) => t.switch_key === section.baseType);
         if (baseEntry) {
-            // Calculate base trim quantity - approximate: need LF info, use window + door counts as proxy
-            // This is a placeholder - real calc would use room-by-room LF data
+            const stickCount = Math.ceil((section.baseLF * 1.10) / 8);
             items.push({
-                qty: 1,
-                uom: 'LOT',
-                sku: `BASE-${section.baseType}`,
-                description: `Base Trim: ${baseEntry.display}`,
+                qty: stickCount,
+                uom: 'EA',
+                sku: section.baseType,
+                description: `Base Trim: ${baseEntry.display} × 8ft`,
                 group: 'Trim',
-                is_dynamic_sku: false
+                is_dynamic_sku: false,
+                tally: `${stickCount}/8ft`,
             });
         }
     }

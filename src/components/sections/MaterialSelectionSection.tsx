@@ -17,8 +17,8 @@ export function MaterialSelectionSection({ data, onChange }: Props) {
     const osbTypes: { display: string; sku: string }[] = dataCache.osbSheeting?.roof_sheeting_types || [];
 
     return (
-        <SectionCard title="2. Material Selections">
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+        <SectionCard title="2. Material Selections" defaultExpanded accent="sky">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 mt-3">
                 <InputGroup label="Plate Type">
                     <select name="plateType" value={data.plateType} onChange={handleChange} className="input-field">
                         <option value="Treated">Treated</option>

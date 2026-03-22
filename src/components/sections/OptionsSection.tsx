@@ -34,7 +34,7 @@ export function OptionsSectionComp({ data, onChange }: Props) {
     };
 
     return (
-        <SectionCard title="13. Options">
+        <SectionCard title="13. Options" accent="rose">
             <div className="space-y-3">
                 {data.length === 0 && (
                     <p className="text-xs text-slate-500 italic">No options added. Up to {MAX_OPTIONS} options supported.</p>

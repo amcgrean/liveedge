@@ -17,109 +17,91 @@ export function calculateEstimate(
         trimSwitches?: any;
         railingMatrix?: any;
         osbSheeting?: any;
+        doorStyles?: any;
+        customerOverrides?: any;
     }
 ): LineItem[] {
-    let allItems: LineItem[] = [];
-
+    let all: LineItem[] = [];
     const eng = data.engineeredLumber;
-    const branches = data.branches;
+    const br  = data.branches;
+    const co  = data.customerOverrides;
 
-    // Basement
-    allItems = allItems.concat(
-        calculateFraming('Basement', inputs.basement, inputs, data.multipliers, eng, branches)
-    );
+    // ── Basement ─────────────────────────────────────────────────────────────────
+    all = all.concat(calculateFraming('Basement', inputs.basement, inputs, data.multipliers, eng, br, co));
 
-    // First Floor Deck
+    // ── 1st Floor deck panels ────────────────────────────────────────────────────
     if (inputs.firstFloor.deckSF > 0) {
-        const deckPanels = Math.ceil(inputs.firstFloor.deckSF / 32);
-        allItems.push({
-            qty: deckPanels,
+        all.push({
+            qty: Math.ceil(inputs.firstFloor.deckSF / 32),
             uom: 'EA',
             sku: `DECK-${inputs.firstFloor.deckType.replace(/\s+/g, '-').toUpperCase()}`,
-            description: `${inputs.firstFloor.deckType} Subfloor - 1st Floor`,
+            description: `${inputs.firstFloor.deckType} Subfloor — 1st Floor`,
             group: '1st Deck',
-            is_dynamic_sku: false
+            is_dynamic_sku: false,
         });
     }
 
-    // First Floor Walls
-    allItems = allItems.concat(
-        calculateFraming('1st Floor', inputs.firstFloor, inputs, data.multipliers, eng, branches)
-    );
+    // ── 1st Floor walls ──────────────────────────────────────────────────────────
+    all = all.concat(calculateFraming('1st Floor', inputs.firstFloor, inputs, data.multipliers, eng, br, co));
 
-    // Second Floor Deck
+    // ── 2nd Floor deck panels ────────────────────────────────────────────────────
     if (inputs.secondFloor.deckSF > 0) {
-        const deckPanels = Math.ceil(inputs.secondFloor.deckSF / 32);
-        allItems.push({
-            qty: deckPanels,
+        all.push({
+            qty: Math.ceil(inputs.secondFloor.deckSF / 32),
             uom: 'EA',
             sku: `DECK-${inputs.secondFloor.deckType.replace(/\s+/g, '-').toUpperCase()}`,
-            description: `${inputs.secondFloor.deckType} Subfloor - 2nd Floor`,
+            description: `${inputs.secondFloor.deckType} Subfloor — 2nd Floor`,
             group: '2nd Deck',
-            is_dynamic_sku: false
+            is_dynamic_sku: false,
         });
     }
 
-    // Second Floor Walls
-    allItems = allItems.concat(
-        calculateFraming('2nd Floor', inputs.secondFloor, inputs, data.multipliers, eng, branches)
-    );
+    // ── 2nd Floor walls ──────────────────────────────────────────────────────────
+    all = all.concat(calculateFraming('2nd Floor', inputs.secondFloor, inputs, data.multipliers, eng, br, co));
 
-    // Roof
-    allItems = allItems.concat(
-        calculateRoof(inputs.roof, inputs, data.multipliers, data.osbSheeting)
-    );
+    // ── Roof sheeting + posts/headers ────────────────────────────────────────────
+    all = all.concat(calculateRoof(inputs.roof, inputs, data.multipliers, data.osbSheeting));
 
-    // Shingles
-    allItems = allItems.concat(
-        calculateShingles(inputs.shingles, inputs)
-    );
+    // ── Shingles ─────────────────────────────────────────────────────────────────
+    all = all.concat(calculateShingles(inputs.shingles, inputs));
 
-    // Siding
-    allItems = allItems.concat(
-        calculateSiding(inputs.siding, inputs, data.multipliers)
-    );
+    // ── Siding ───────────────────────────────────────────────────────────────────
+    all = all.concat(calculateSiding(inputs.siding, inputs, data.multipliers));
 
-    // Trim
-    allItems = allItems.concat(
-        calculateTrim(inputs.trim, inputs, data.trimSwitches)
-    );
+    // ── Trim ─────────────────────────────────────────────────────────────────────
+    all = all.concat(calculateTrim(inputs.trim, inputs, data.trimSwitches));
 
-    // Hardware
-    allItems = allItems.concat(
-        calculateHardware(inputs.hardware, inputs, data.hardwareMatrix, data.hardwareLookup)
-    );
+    // ── Hardware ─────────────────────────────────────────────────────────────────
+    all = all.concat(calculateHardware(inputs.hardware, inputs, data.hardwareMatrix, data.hardwareLookup));
 
-    // Exterior Deck
-    allItems = allItems.concat(
-        calculateDeck(inputs.exteriorDeck, inputs, data.railingMatrix)
-    );
+    // ── Exterior deck + railing ───────────────────────────────────────────────────
+    all = all.concat(calculateDeck(inputs.exteriorDeck, inputs, data.railingMatrix));
 
-    // Windows & Doors package
+    // ── Windows & Doors package ───────────────────────────────────────────────────
     if (inputs.windowsDoors.windowCount > 0) {
-        allItems.push({
-            qty: inputs.windowsDoors.windowCount,
-            uom: 'EA',
-            sku: 'WINDOW-PKG',
-            description: 'Window Package',
-            group: 'Window Pkg',
-            is_dynamic_sku: false
-        });
+        all.push({ qty: inputs.windowsDoors.windowCount, uom: 'EA', sku: 'WINDOW-PKG', description: 'Window Package', group: 'Window Pkg', is_dynamic_sku: false });
     }
-    if (inputs.windowsDoors.doorCount > 0) {
-        allItems.push({
-            qty: inputs.windowsDoors.doorCount,
+
+    // Door units — resolved from door_styles.json
+    for (const door of inputs.windowsDoors.doors) {
+        if (door.count <= 0) continue;
+        const familyData = data.doorStyles?.[door.style];
+        const sizeData   = familyData?.sizes?.[door.sizeKey];
+        const sku        = sizeData?.[door.hcSc];
+        if (!sku) continue;
+
+        const hcLabel = door.hcSc === 'hc' ? 'HC' : 'SC';
+        const sizeLabel = door.sizeKey.replace('.', ' ');
+        all.push({
+            qty: door.count,
             uom: 'EA',
-            sku: 'DOOR-PKG',
-            description: 'Door Package',
+            sku,
+            description: `${door.style} ${sizeLabel} ${hcLabel} Door`,
             group: 'Doors',
-            is_dynamic_sku: false
+            is_dynamic_sku: false,
         });
     }
 
-    // Options — included in summary but not in materials export
-    // (Options are handled separately in BidSummary)
-
-    // Filter out zero quantities
-    return allItems.filter(item => item.qty > 0);
+    // Filter zero-qty items
+    return all.filter(item => item.qty > 0);
 }

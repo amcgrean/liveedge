@@ -18,8 +18,8 @@ export function RoofSectionComp({ data, onChange }: Props) {
     };
 
     return (
-        <SectionCard title="6. Roof">
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+        <SectionCard title="6. Roof" accent="violet">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 mt-3">
                 <InputGroup label="Sheeting SF">
                     <input type="number" name="sheetingSF" value={data.sheetingSF || ''} onChange={handleChange} className="input-field" min="0" />
                 </InputGroup>

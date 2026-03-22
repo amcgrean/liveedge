@@ -7,6 +7,11 @@
     /* Soft gradient background */
     background: linear-gradient(135deg, #f8fafc 0%, #e2e8f0 100%);
     min-height: 100vh;
+    font-feature-settings: "kern" 1, "liga" 1;
+  }
+
+  * {
+    @apply box-border;
   }
 }
 
