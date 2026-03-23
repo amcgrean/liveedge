@@ -27,5 +27,7 @@ export const authConfig = {
     },
   },
   providers: [],
-  secret: process.env.AUTH_SECRET,
+  // Match auth.ts so middleware can still initialize in local/dev
+  // environments where AUTH_SECRET has not been configured yet.
+  secret: process.env.AUTH_SECRET ?? 'dev-only-auth-secret',
 } satisfies NextAuthConfig;
