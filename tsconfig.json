@@ -20,5 +20,5 @@
     }
   },
   "include": ["next-env.d.ts", "**/*.ts", "**/*.tsx", ".next/types/**/*.ts"],
-  "exclude": ["node_modules", "vite.config.ts", "tsconfig.node.json"]
+  "exclude": ["node_modules", "vite.config.ts", "vite.config.mts", "tsconfig.node.json"]
 }
