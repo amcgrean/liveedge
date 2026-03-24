@@ -11,6 +11,9 @@ const loginSchema = z.object({
 });
 
 export const { handlers, signIn, signOut, auth } = NextAuth({
+  // Keep authentication checks in Node-backed pages/layouts and API routes.
+  // The Edge middleware path caused a Vercel runtime load failure, so this
+  // config is intentionally consumed from server components and route handlers.
   providers: [
     Credentials({
       credentials: {
