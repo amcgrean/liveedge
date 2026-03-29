@@ -185,6 +185,153 @@ export const branches = pgTable('branches', {
 });
 
 // ============================================================
+// ASSEMBLIES
+// ============================================================
+export const assemblies = pgTable('assemblies', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  name: varchar('name', { length: 255 }).notNull(),
+  description: text('description'),
+  category: varchar('category', { length: 100 }),
+  isActive: boolean('is_active').notNull().default(true),
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+  updatedAt: timestamp('updated_at').notNull().defaultNow(),
+});
+
+export const assemblyItems = pgTable(
+  'assembly_items',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    assemblyId: uuid('assembly_id')
+      .notNull()
+      .references(() => assemblies.id, { onDelete: 'cascade' }),
+    productId: uuid('product_id').references(() => products.id),
+    description: varchar('description', { length: 500 }),
+    qtyPerUnit: numeric('qty_per_unit', { precision: 10, scale: 4 }).notNull(),
+    unit: varchar('unit', { length: 50 }).notNull(),
+    sortOrder: integer('sort_order').notNull().default(0),
+  },
+  (table) => [index('assembly_items_assembly_idx').on(table.assemblyId)]
+);
+
+// ============================================================
+// TAKEOFF SESSIONS
+// ============================================================
+export const takeoffSessions = pgTable(
+  'takeoff_sessions',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    bidId: uuid('bid_id').references(() => bids.id),
+    name: varchar('name', { length: 255 }).notNull(),
+    pdfFileName: varchar('pdf_file_name', { length: 500 }),
+    pdfStorageKey: varchar('pdf_storage_key', { length: 1000 }),
+    pageCount: integer('page_count').notNull().default(0),
+    createdBy: uuid('created_by').references(() => users.id),
+    createdAt: timestamp('created_at').notNull().defaultNow(),
+    updatedAt: timestamp('updated_at').notNull().defaultNow(),
+  },
+  (table) => [
+    index('takeoff_sessions_bid_idx').on(table.bidId),
+  ]
+);
+
+// ============================================================
+// TAKEOFF VIEWPORTS
+// ============================================================
+export const takeoffViewports = pgTable(
+  'takeoff_viewports',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    sessionId: uuid('session_id')
+      .notNull()
+      .references(() => takeoffSessions.id, { onDelete: 'cascade' }),
+    pageNumber: integer('page_number').notNull(),
+    name: varchar('name', { length: 255 }).notNull(),
+    bounds: jsonb('bounds'), // { x, y, w, h }
+    pixelsPerUnit: numeric('pixels_per_unit', { precision: 14, scale: 6 }),
+    unit: varchar('unit', { length: 50 }).notNull().default('ft'),
+    scaleName: varchar('scale_name', { length: 100 }),
+    scalePreset: varchar('scale_preset', { length: 100 }),
+  },
+  (table) => [
+    index('takeoff_viewports_session_idx').on(table.sessionId),
+  ]
+);
+
+// ============================================================
+// TAKEOFF GROUPS (Measurement Presets)
+// ============================================================
+export const takeoffGroups = pgTable(
+  'takeoff_groups',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    sessionId: uuid('session_id')
+      .notNull()
+      .references(() => takeoffSessions.id, { onDelete: 'cascade' }),
+    name: varchar('name', { length: 255 }).notNull(),
+    color: varchar('color', { length: 20 }).notNull().default('#22d3ee'),
+    type: varchar('type', { length: 20 }).notNull(), // 'linear' | 'area' | 'count'
+    assemblyId: uuid('assembly_id').references(() => assemblies.id),
+    unit: varchar('unit', { length: 20 }).notNull().default('LF'),
+    sortOrder: integer('sort_order').notNull().default(0),
+    targetField: varchar('target_field', { length: 200 }), // e.g., 'firstFloor.ext2x6_9ft'
+    isPreset: boolean('is_preset').notNull().default(false),
+    category: varchar('category', { length: 100 }), // e.g., 'Basement', '1st Floor'
+  },
+  (table) => [
+    index('takeoff_groups_session_idx').on(table.sessionId),
+  ]
+);
+
+// ============================================================
+// TAKEOFF MEASUREMENTS
+// ============================================================
+export const takeoffMeasurements = pgTable(
+  'takeoff_measurements',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    groupId: uuid('group_id')
+      .notNull()
+      .references(() => takeoffGroups.id, { onDelete: 'cascade' }),
+    sessionId: uuid('session_id')
+      .notNull()
+      .references(() => takeoffSessions.id, { onDelete: 'cascade' }),
+    pageNumber: integer('page_number').notNull(),
+    viewportId: uuid('viewport_id').references(() => takeoffViewports.id),
+    type: varchar('type', { length: 50 }).notNull(), // 'polyline' | 'polygon' | 'count' | 'annotation'
+    geometry: jsonb('geometry'), // Fabric.js object JSON
+    calculatedValue: numeric('calculated_value', { precision: 14, scale: 4 }),
+    unit: varchar('unit', { length: 20 }),
+    label: varchar('label', { length: 500 }),
+    notes: text('notes'),
+    createdAt: timestamp('created_at').notNull().defaultNow(),
+  },
+  (table) => [
+    index('takeoff_measurements_group_idx').on(table.groupId),
+    index('takeoff_measurements_session_idx').on(table.sessionId),
+    index('takeoff_measurements_page_idx').on(table.sessionId, table.pageNumber),
+  ]
+);
+
+// ============================================================
+// TAKEOFF PAGE STATES (auto-save recovery)
+// ============================================================
+export const takeoffPageStates = pgTable(
+  'takeoff_page_states',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    sessionId: uuid('session_id')
+      .notNull()
+      .references(() => takeoffSessions.id, { onDelete: 'cascade' }),
+    pageNumber: integer('page_number').notNull(),
+    fabricJson: jsonb('fabric_json'),
+    updatedAt: timestamp('updated_at').notNull().defaultNow(),
+  },
+  (table) => [
+    uniqueIndex('takeoff_page_states_session_page_idx').on(table.sessionId, table.pageNumber),
+  ]
+);
+
+// ============================================================
 // RELATIONS
 // ============================================================
 export const bidsRelations = relations(bids, ({ one, many }) => ({
@@ -212,6 +359,78 @@ export const usersRelations = relations(users, ({ many }) => ({
   bidVersionsChanged: many(bidVersions),
 }));
 
+export const assembliesRelations = relations(assemblies, ({ many }) => ({
+  items: many(assemblyItems),
+  takeoffGroups: many(takeoffGroups),
+}));
+
+export const assemblyItemsRelations = relations(assemblyItems, ({ one }) => ({
+  assembly: one(assemblies, {
+    fields: [assemblyItems.assemblyId],
+    references: [assemblies.id],
+  }),
+  product: one(products, {
+    fields: [assemblyItems.productId],
+    references: [products.id],
+  }),
+}));
+
+export const takeoffSessionsRelations = relations(takeoffSessions, ({ one, many }) => ({
+  bid: one(bids, {
+    fields: [takeoffSessions.bidId],
+    references: [bids.id],
+  }),
+  createdByUser: one(users, {
+    fields: [takeoffSessions.createdBy],
+    references: [users.id],
+  }),
+  viewports: many(takeoffViewports),
+  groups: many(takeoffGroups),
+  measurements: many(takeoffMeasurements),
+  pageStates: many(takeoffPageStates),
+}));
+
+export const takeoffViewportsRelations = relations(takeoffViewports, ({ one }) => ({
+  session: one(takeoffSessions, {
+    fields: [takeoffViewports.sessionId],
+    references: [takeoffSessions.id],
+  }),
+}));
+
+export const takeoffGroupsRelations = relations(takeoffGroups, ({ one, many }) => ({
+  session: one(takeoffSessions, {
+    fields: [takeoffGroups.sessionId],
+    references: [takeoffSessions.id],
+  }),
+  assembly: one(assemblies, {
+    fields: [takeoffGroups.assemblyId],
+    references: [assemblies.id],
+  }),
+  measurements: many(takeoffMeasurements),
+}));
+
+export const takeoffMeasurementsRelations = relations(takeoffMeasurements, ({ one }) => ({
+  group: one(takeoffGroups, {
+    fields: [takeoffMeasurements.groupId],
+    references: [takeoffGroups.id],
+  }),
+  session: one(takeoffSessions, {
+    fields: [takeoffMeasurements.sessionId],
+    references: [takeoffSessions.id],
+  }),
+  viewport: one(takeoffViewports, {
+    fields: [takeoffMeasurements.viewportId],
+    references: [takeoffViewports.id],
+  }),
+}));
+
+export const takeoffPageStatesRelations = relations(takeoffPageStates, ({ one }) => ({
+  session: one(takeoffSessions, {
+    fields: [takeoffPageStates.sessionId],
+    references: [takeoffSessions.id],
+  }),
+}));
+
 // ============================================================
 // TYPE EXPORTS
 // ============================================================
@@ -226,3 +445,12 @@ export type Product = typeof products.$inferSelect;
 export type NewProduct = typeof products.$inferInsert;
 export type Multiplier = typeof multipliers.$inferSelect;
 export type Branch = typeof branches.$inferSelect;
+export type Assembly = typeof assemblies.$inferSelect;
+export type NewAssembly = typeof assemblies.$inferInsert;
+export type AssemblyItem = typeof assemblyItems.$inferSelect;
+export type TakeoffSession = typeof takeoffSessions.$inferSelect;
+export type NewTakeoffSession = typeof takeoffSessions.$inferInsert;
+export type TakeoffViewport = typeof takeoffViewports.$inferSelect;
+export type TakeoffGroup = typeof takeoffGroups.$inferSelect;
+export type TakeoffMeasurement = typeof takeoffMeasurements.$inferSelect;
+export type TakeoffPageState = typeof takeoffPageStates.$inferSelect;
