@@ -7,6 +7,7 @@ import { signOut } from 'next-auth/react';
 import {
   LayoutDashboard,
   FolderOpen,
+  FileText,
   Settings,
   LogOut,
   ChevronDown,
@@ -64,6 +65,7 @@ export function TopNav({ userName, userRole }: Props) {
           {/* Main nav */}
           <div className="flex items-center gap-1">
             {navLink('/', 'Takeoff', <LayoutDashboard className="w-4 h-4" />)}
+            {navLink('/takeoff', 'PDF Takeoff', <FileText className="w-4 h-4" />)}
             {navLink('/bids', 'Bids', <FolderOpen className="w-4 h-4" />)}
           </div>
         </div>
