@@ -34,6 +34,7 @@ interface TakeoffCanvasProps {
   dispatch: React.Dispatch<TakeoffAction>;
   pushUndo: (command: UndoableCommand) => void;
   pdfData: ArrayBuffer | null;
+  scrollMode: 'zoom' | 'pan';
   onObjectSelect: (objectId: string | null) => void;
   onCalibrationComplete: (viewportId: string, pixelsPerUnit: number) => void;
 }
@@ -43,6 +44,7 @@ export function TakeoffCanvas({
   dispatch,
   pushUndo,
   pdfData,
+  scrollMode,
   onObjectSelect,
   onCalibrationComplete,
 }: TakeoffCanvasProps) {
@@ -188,30 +190,48 @@ export function TakeoffCanvas({
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [state.currentPage]);
 
-  // ── Zoom handler ──
+  // ── Zoom/scroll handler ──
   useEffect(() => {
     const container = containerRef.current;
     if (!container) return;
 
     function handleWheel(e: WheelEvent) {
-      if (!e.ctrlKey && !e.metaKey) return;
-      e.preventDefault();
       const fabricCanvas = fabricInstanceRef.current;
       const el = containerRef.current;
       if (!fabricCanvas || !el) return;
 
-      const delta = -e.deltaY / 500;
-      const currentZoom = fabricCanvas.getZoom();
-      const newZoom = Math.min(Math.max(currentZoom + delta, 0.1), 10);
-
-      const rect = el.getBoundingClientRect();
-      setCanvasZoom(fabricCanvas, newZoom, { x: e.clientX - rect.left, y: e.clientY - rect.top });
-      dispatch({ type: 'SET_ZOOM', payload: newZoom });
+      if (scrollMode === 'zoom') {
+        // Scroll always zooms (no modifier required). Ctrl+scroll also zooms.
+        e.preventDefault();
+        const delta = -e.deltaY / 500;
+        const currentZoom = fabricCanvas.getZoom();
+        const newZoom = Math.min(Math.max(currentZoom + delta, 0.1), 10);
+        const rect = el.getBoundingClientRect();
+        setCanvasZoom(fabricCanvas, newZoom, { x: e.clientX - rect.left, y: e.clientY - rect.top });
+        dispatch({ type: 'SET_ZOOM', payload: newZoom });
+      } else {
+        // Pan mode: Ctrl+scroll still zooms; plain scroll pans the canvas
+        if (e.ctrlKey || e.metaKey) {
+          e.preventDefault();
+          const delta = -e.deltaY / 500;
+          const currentZoom = fabricCanvas.getZoom();
+          const newZoom = Math.min(Math.max(currentZoom + delta, 0.1), 10);
+          const rect = el.getBoundingClientRect();
+          setCanvasZoom(fabricCanvas, newZoom, { x: e.clientX - rect.left, y: e.clientY - rect.top });
+          dispatch({ type: 'SET_ZOOM', payload: newZoom });
+        } else {
+          // Pan canvas by scroll amount
+          e.preventDefault();
+          const dx = e.shiftKey ? -e.deltaY : -e.deltaX;
+          const dy = e.shiftKey ? 0 : -e.deltaY;
+          panCanvas(fabricCanvas, dx, dy);
+        }
+      }
     }
 
     container.addEventListener('wheel', handleWheel, { passive: false });
     return () => container.removeEventListener('wheel', handleWheel);
-  }, [dispatch]);
+  }, [dispatch, scrollMode]);
 
   // ── Keyboard handlers (space for pan, ctrl+z/y for undo/redo) ──
   useEffect(() => {
