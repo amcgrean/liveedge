@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '../../../../../../auth';
 import { getDb, schema } from '../../../../../../db/index';
 import { eq } from 'drizzle-orm';
-import { uploadPdf, getPresignedUploadUrl } from '@/lib/r2';
+import { uploadPdf, getPresignedUploadUrl, ensureBucketCors } from '@/lib/r2';
 
 const MAX_FILE_SIZE = 50 * 1024 * 1024; // 50 MB
 
@@ -49,6 +49,10 @@ export async function GET(
     if (!session) {
       return NextResponse.json({ error: 'Session not found' }, { status: 404 });
     }
+
+    // Ensure CORS is configured for browser-direct uploads
+    const origin = req.headers.get('origin') || 'https://beisser-takeoff.vercel.app';
+    await ensureBucketCors([origin, 'https://beisser-takeoff.vercel.app', 'http://localhost:3000']);
 
     const { url, key } = await getPresignedUploadUrl(sessionId, fileName);
     return NextResponse.json({ uploadUrl: url, storageKey: key });
