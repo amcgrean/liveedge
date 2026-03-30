@@ -12,6 +12,7 @@ import { useMeasurementReducer } from '@/hooks/useMeasurementReducer';
 import { useTakeoffSession } from '@/hooks/useTakeoffSession';
 import { useUndoRedo } from '@/hooks/useUndoRedo';
 import { exportMeasurementsCsv } from '@/lib/takeoff/exportCsv';
+import { BottomBar } from '@/components/takeoff/BottomBar';
 import type { PDFDocumentProxy } from 'pdfjs-dist';
 
 interface Props {
@@ -26,6 +27,8 @@ export function TakeoffWorkspace({ sessionId }: Props) {
   const [pdfDoc, setPdfDoc] = useState<PDFDocumentProxy | null>(null);
   const [showCalibration, setShowCalibration] = useState<string | null>(null); // viewport ID
   const [showFileUpload, setShowFileUpload] = useState(false);
+  const [scrollMode, setScrollMode] = useState<'zoom' | 'pan'>('zoom');
+  const [showThumbnails, setShowThumbnails] = useState(true);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Load session on mount
@@ -286,17 +289,12 @@ export function TakeoffWorkspace({ sessionId }: Props) {
       {/* Toolbar */}
       <TakeoffToolbar
         sessionName={state.sessionName}
-        currentPage={state.currentPage}
-        pageCount={state.pageCount}
-        zoom={state.zoom}
         activeTool={state.activeTool}
         activeViewportScale={activeVp?.scaleName ?? null}
         isDirty={state.isDirty}
         canUndo={canUndo}
         canRedo={canRedo}
         onSetTool={(tool) => dispatch({ type: 'SET_TOOL', payload: tool })}
-        onPageChange={(page) => dispatch({ type: 'SET_PAGE', payload: page })}
-        onZoomChange={(zoom) => dispatch({ type: 'SET_ZOOM', payload: zoom })}
         onSave={saveSession}
         onExport={handleExport}
         onSendToEstimate={handleSendToEstimate}
@@ -304,69 +302,88 @@ export function TakeoffWorkspace({ sessionId }: Props) {
         onRedo={redo}
       />
 
-      {/* Page thumbnails */}
-      <PageNavigator
-        pdf={pdfDoc}
-        currentPage={state.currentPage}
-        pageCount={state.pageCount}
-        onPageChange={(page) => dispatch({ type: 'SET_PAGE', payload: page })}
-      />
-
       {/* Main content area */}
-      <div className="flex-1 flex overflow-hidden">
-        {/* Canvas */}
-        <div className="flex-1 relative">
-          <TakeoffCanvas
-            state={state}
-            dispatch={dispatch}
-            pushUndo={pushUndo}
-            pdfData={pdfData}
-            onObjectSelect={handleObjectSelect}
-            onCalibrationComplete={handleCalibrationComplete}
-          />
+      <div className="flex-1 flex flex-col overflow-hidden">
+        {/* Canvas row */}
+        <div className="flex-1 flex overflow-hidden">
+          {/* Canvas column */}
+          <div className="flex-1 relative overflow-hidden">
+            <TakeoffCanvas
+              state={state}
+              dispatch={dispatch}
+              pushUndo={pushUndo}
+              pdfData={pdfData}
+              scrollMode={scrollMode}
+              onObjectSelect={handleObjectSelect}
+              onCalibrationComplete={handleCalibrationComplete}
+            />
 
-          {/* Inspector panel */}
-          <MeasurementInspector
-            measurement={selectedMeasurementData ?? null}
-            group={selectedGroup ?? null}
-            viewport={selectedViewport ?? null}
-            onClose={() => handleObjectSelect(null)}
-            onDelete={(id, page, groupId) => {
-              dispatch({ type: 'DELETE_MEASUREMENT', payload: { id, pageNumber: page, groupId } });
-              handleObjectSelect(null);
-            }}
-            onUpdateNotes={(id, page, notes) => {
-              dispatch({ type: 'UPDATE_MEASUREMENT', payload: { id, pageNumber: page, updates: { notes } } });
-            }}
-          />
-        </div>
-
-        {/* Right sidebar */}
-        <div className="flex flex-col border-l border-white/10">
-          {/* Viewport manager */}
-          <div className="border-b border-white/10">
-            <div className="px-3 py-2 text-xs font-semibold uppercase tracking-wider text-slate-400">
-              Viewports
-            </div>
-            <ViewportManager
-              viewports={state.viewports[state.currentPage] ?? []}
-              activeViewportId={state.activeViewportId}
-              onSelectViewport={(id) => dispatch({ type: 'SET_ACTIVE_VIEWPORT', payload: id })}
-              onCalibrateViewport={(id) => setShowCalibration(id)}
-              onDeleteViewport={(id, page) => dispatch({ type: 'DELETE_VIEWPORT', payload: { id, pageNumber: page } })}
+            {/* Inspector panel (absolute overlay) */}
+            <MeasurementInspector
+              measurement={selectedMeasurementData ?? null}
+              group={selectedGroup ?? null}
+              viewport={selectedViewport ?? null}
+              onClose={() => handleObjectSelect(null)}
+              onDelete={(id, page, groupId) => {
+                dispatch({ type: 'DELETE_MEASUREMENT', payload: { id, pageNumber: page, groupId } });
+                handleObjectSelect(null);
+              }}
+              onUpdateNotes={(id, page, notes) => {
+                dispatch({ type: 'UPDATE_MEASUREMENT', payload: { id, pageNumber: page, updates: { notes } } });
+              }}
             />
           </div>
 
-          {/* Measurement sidebar */}
-          <MeasurementSidebar
-            groups={state.groups}
-            activePresetId={state.activePresetId}
-            sessionName={state.sessionName}
-            onSelectPreset={(id) => dispatch({ type: 'SET_ACTIVE_PRESET', payload: id })}
-            onHighlightGroup={() => {}}
-            onAddCustomGroup={handleAddCustomGroup}
-          />
+          {/* Right sidebar */}
+          <div className="flex flex-col border-l border-white/10">
+            {/* Viewport manager */}
+            <div className="border-b border-white/10">
+              <div className="px-3 py-2 text-xs font-semibold uppercase tracking-wider text-slate-400">
+                Viewports
+              </div>
+              <ViewportManager
+                viewports={state.viewports[state.currentPage] ?? []}
+                activeViewportId={state.activeViewportId}
+                onSelectViewport={(id) => dispatch({ type: 'SET_ACTIVE_VIEWPORT', payload: id })}
+                onCalibrateViewport={(id) => setShowCalibration(id)}
+                onDeleteViewport={(id, page) => dispatch({ type: 'DELETE_VIEWPORT', payload: { id, pageNumber: page } })}
+              />
+            </div>
+
+            {/* Measurement sidebar */}
+            <MeasurementSidebar
+              groups={state.groups}
+              activePresetId={state.activePresetId}
+              sessionName={state.sessionName}
+              onSelectPreset={(id) => dispatch({ type: 'SET_ACTIVE_PRESET', payload: id })}
+              onHighlightGroup={() => {}}
+              onAddCustomGroup={handleAddCustomGroup}
+            />
+          </div>
         </div>
+
+        {/* Page thumbnail strip (collapsible) */}
+        {showThumbnails && (
+          <PageNavigator
+            pdf={pdfDoc}
+            currentPage={state.currentPage}
+            pageCount={state.pageCount}
+            onPageChange={(page) => dispatch({ type: 'SET_PAGE', payload: page })}
+          />
+        )}
+
+        {/* Bottom bar */}
+        <BottomBar
+          currentPage={state.currentPage}
+          pageCount={state.pageCount}
+          zoom={state.zoom}
+          scrollMode={scrollMode}
+          showThumbnails={showThumbnails}
+          onPageChange={(page) => dispatch({ type: 'SET_PAGE', payload: page })}
+          onZoomChange={(zoom) => dispatch({ type: 'SET_ZOOM', payload: zoom })}
+          onToggleScrollMode={() => setScrollMode((m) => m === 'zoom' ? 'pan' : 'zoom')}
+          onToggleThumbnails={() => setShowThumbnails((v) => !v)}
+        />
       </div>
 
       {/* Scale calibration modal */}
