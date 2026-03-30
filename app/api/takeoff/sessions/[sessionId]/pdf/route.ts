@@ -49,7 +49,7 @@ export async function GET(
     if (mode === 'download') {
       // Stream the PDF directly from R2
       const buffer = await downloadPdf(session.pdfStorageKey);
-      return new NextResponse(buffer, {
+      return new NextResponse(new Uint8Array(buffer), {
         headers: {
           'Content-Type': 'application/pdf',
           'Content-Disposition': `inline; filename="${session.pdfFileName || 'plan.pdf'}"`,
