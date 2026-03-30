@@ -38,6 +38,21 @@ export function TakeoffWorkspace({ sessionId }: Props) {
     const buffer = await file.arrayBuffer();
     setPdfData(buffer);
 
+    // Upload to R2 storage
+    const formData = new FormData();
+    formData.append('pdf', file);
+    try {
+      const res = await fetch(`/api/takeoff/sessions/${sessionId}/upload`, {
+        method: 'POST',
+        body: formData,
+      });
+      if (!res.ok) {
+        console.error('PDF upload failed:', await res.text());
+      }
+    } catch (err) {
+      console.error('PDF upload failed:', err);
+    }
+
     // Update session with page count (done via canvas component after PDF loads)
     dispatch({
       type: 'INIT_SESSION',
@@ -51,13 +66,30 @@ export function TakeoffWorkspace({ sessionId }: Props) {
     });
   }, [sessionId, state.sessionName, state.bidId, dispatch]);
 
-  // Check if PDF needs to be loaded (no pdfData yet)
+  // Load PDF from R2 if session has a stored PDF
   useEffect(() => {
-    if (!state.pdfFileName || pdfData) return;
-    // If there's a stored PDF, we'd load it from storage here
-    // For now, show the file upload prompt
-    setShowFileUpload(true);
-  }, [state.pdfFileName, pdfData]);
+    if (pdfData || !state.sessionId) return;
+
+    async function loadFromR2() {
+      try {
+        const res = await fetch(`/api/takeoff/sessions/${sessionId}/pdf?mode=download`);
+        if (res.ok) {
+          const buffer = await res.arrayBuffer();
+          setPdfData(buffer);
+          return;
+        }
+      } catch (err) {
+        console.warn('No stored PDF found, showing upload prompt:', err);
+      }
+      // No stored PDF — show upload prompt
+      setShowFileUpload(true);
+    }
+
+    // Wait for session data to load before trying R2
+    if (!state.isLoading) {
+      loadFromR2();
+    }
+  }, [sessionId, state.sessionId, state.isLoading, pdfData]);
 
   // Keyboard shortcuts
   useEffect(() => {

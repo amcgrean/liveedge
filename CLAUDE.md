@@ -83,15 +83,16 @@ See `src/lib/takeoff/presets.ts` for all 49 standard presets and `bidset.pdf` fo
 3. **Hover tooltips** — 300ms delayed tooltip showing group name + measurement value when hovering canvas objects. Positioned near cursor, auto-clears on mouse out.
 4. **Cloud markup tool** — Scalloped rectangle annotation tool fully implemented. Uses SVG arc paths along all four edges with 16px scallop radius. Two-click drawing (opposite corners). Available in toolbar.
 5. **Annotated PDF export refinement** — Export now composites Fabric.js annotations on top of PDF pages using a headless Fabric canvas. Creates transparent PNG overlays from saved page state JSON.
+6. **PDF file storage** — Cloudflare R2 integration via S3-compatible API. PDFs auto-upload on file select, auto-load from R2 when reopening sessions. Upload endpoint at `api/takeoff/sessions/[sessionId]/upload`, download at `api/takeoff/sessions/[sessionId]/pdf`. R2 client in `src/lib/r2.ts`. Env vars: `R2_ACCOUNT_ID`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`, `R2_BUCKET_NAME`.
 
 ### Remaining TODO
-1. **PDF file storage** — Currently PDFs are loaded client-side only per session. Need server upload (Vercel Blob or similar) so PDFs persist across sessions
-2. **Integration testing** — Test full workflow with bidset.pdf: upload, create viewports, calibrate, measure walls/areas, send to estimate
+1. **Integration testing** — Test full workflow with bidset.pdf: upload, create viewports, calibrate, measure walls/areas, send to estimate
 
 ## Tech Stack
 - Next.js 15.1 (App Router), React 19, TypeScript 5.7
 - Tailwind CSS 3.4 (dark theme, cyan accent: brand.400/500/600)
 - Drizzle ORM + Neon Postgres (serverless)
+- Cloudflare R2 (PDF storage via @aws-sdk/client-s3)
 - NextAuth v5 beta (credentials provider, JWT strategy)
 - pdfjs-dist 5.6, fabric 6.x, jspdf 2.x
 - Lucide React icons, papaparse, zod, date-fns
