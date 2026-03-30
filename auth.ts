@@ -32,7 +32,7 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
           console.error('[auth] attempting login for:', username);
 
           // When DB is not configured, allow a dev bypass
-          if (!process.env.DATABASE_URL) {
+          if (!process.env.DATABASE_URL && !process.env.BIDS_DATABASE_URL) {
             console.error('[auth] no DATABASE_URL, trying dev bypass');
             if (
               username === 'admin' &&
