@@ -37,6 +37,14 @@ export async function GET(
     return NextResponse.json({ error: 'fileName is required' }, { status: 400 });
   }
 
+  // Fail fast if R2 is not configured — prevents a cryptic crash inside the S3 client
+  if (!process.env.R2_ACCOUNT_ID || !process.env.R2_ACCESS_KEY_ID || !process.env.R2_SECRET_ACCESS_KEY) {
+    return NextResponse.json(
+      { error: 'R2 storage is not configured on this server. Set R2_ACCOUNT_ID, R2_ACCESS_KEY_ID, and R2_SECRET_ACCESS_KEY.' },
+      { status: 503 }
+    );
+  }
+
   try {
     // Verify session exists
     const db = getDb();
@@ -50,9 +58,18 @@ export async function GET(
       return NextResponse.json({ error: 'Session not found' }, { status: 404 });
     }
 
-    // Ensure CORS is configured for browser-direct uploads
+    // Ensure CORS is configured for browser-direct uploads.
+    // R2's S3-compatible API may not support PutBucketCorsCommand — wrap in
+    // try/catch so a CORS setup failure never blocks presigned URL generation.
+    // If this fails, configure CORS manually in the Cloudflare dashboard:
+    //   R2 > bids bucket > Settings > CORS: allow beisser-takeoff.vercel.app,
+    //   methods PUT/GET, headers *.
     const origin = req.headers.get('origin') || 'https://beisser-takeoff.vercel.app';
-    await ensureBucketCors([origin, 'https://beisser-takeoff.vercel.app', 'http://localhost:3000']);
+    try {
+      await ensureBucketCors([origin, 'https://beisser-takeoff.vercel.app', 'http://localhost:3000']);
+    } catch (corsErr) {
+      console.warn('[upload] ensureBucketCors failed (configure CORS manually in Cloudflare dashboard):', corsErr);
+    }
 
     const { url, key } = await getPresignedUploadUrl(sessionId, fileName);
     return NextResponse.json({ uploadUrl: url, storageKey: key });
