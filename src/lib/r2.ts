@@ -3,6 +3,7 @@ import {
   PutObjectCommand,
   GetObjectCommand,
   DeleteObjectCommand,
+  PutBucketCorsCommand,
 } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 
@@ -86,6 +87,33 @@ export async function downloadPdf(key: string): Promise<Buffer> {
     chunks.push(chunk);
   }
   return Buffer.concat(chunks);
+}
+
+let _corsConfigured = false;
+
+/**
+ * Ensure CORS is configured on the R2 bucket for browser uploads.
+ * Idempotent — only runs once per process lifecycle.
+ */
+export async function ensureBucketCors(allowedOrigins: string[]): Promise<void> {
+  if (_corsConfigured) return;
+  const client = getR2Client();
+  await client.send(
+    new PutBucketCorsCommand({
+      Bucket: R2_BUCKET_NAME,
+      CORSConfiguration: {
+        CORSRules: [
+          {
+            AllowedOrigins: allowedOrigins,
+            AllowedMethods: ['PUT', 'GET'],
+            AllowedHeaders: ['*'],
+            MaxAgeSeconds: 3600,
+          },
+        ],
+      },
+    })
+  );
+  _corsConfigured = true;
 }
 
 /**

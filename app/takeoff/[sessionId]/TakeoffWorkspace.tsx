@@ -41,31 +41,48 @@ export function TakeoffWorkspace({ sessionId }: Props) {
     const buffer = await file.arrayBuffer();
     setPdfData(buffer);
 
-    // Upload to R2 via presigned URL (bypasses Vercel 4.5MB body limit)
+    // Upload to R2 — try presigned URL first (bypasses Vercel 4.5MB limit),
+    // fall back to server-side proxy for smaller files
     try {
-      // 1. Get presigned upload URL
-      const presignRes = await fetch(
-        `/api/takeoff/sessions/${sessionId}/upload?fileName=${encodeURIComponent(file.name)}`
-      );
-      if (!presignRes.ok) throw new Error('Failed to get upload URL');
-      const { uploadUrl, storageKey } = await presignRes.json();
+      let uploaded = false;
 
-      // 2. Upload directly to R2
-      const uploadRes = await fetch(uploadUrl, {
-        method: 'PUT',
-        body: file,
-        headers: { 'Content-Type': 'application/pdf' },
-      });
-      if (!uploadRes.ok) throw new Error('Direct R2 upload failed');
+      // Attempt 1: presigned URL (direct browser → R2)
+      try {
+        const presignRes = await fetch(
+          `/api/takeoff/sessions/${sessionId}/upload?fileName=${encodeURIComponent(file.name)}`
+        );
+        if (presignRes.ok) {
+          const { uploadUrl, storageKey } = await presignRes.json();
+          const uploadRes = await fetch(uploadUrl, {
+            method: 'PUT',
+            body: file,
+            headers: { 'Content-Type': 'application/pdf' },
+          });
+          if (uploadRes.ok) {
+            // Confirm upload and update session record
+            await fetch(`/api/takeoff/sessions/${sessionId}/upload`, {
+              method: 'PUT',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ fileName: file.name, storageKey }),
+            });
+            uploaded = true;
+          }
+        }
+      } catch {
+        // Presigned upload failed (CORS, network, etc.) — try fallback
+      }
 
-      // 3. Confirm upload and update session record
-      const confirmRes = await fetch(`/api/takeoff/sessions/${sessionId}/upload`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ fileName: file.name, storageKey }),
-      });
-      if (!confirmRes.ok) {
-        console.error('Upload confirmation failed:', await confirmRes.text());
+      // Attempt 2: server-side proxy (works for files under ~4MB)
+      if (!uploaded) {
+        const formData = new FormData();
+        formData.append('pdf', file);
+        const res = await fetch(`/api/takeoff/sessions/${sessionId}/upload`, {
+          method: 'POST',
+          body: formData,
+        });
+        if (!res.ok) {
+          console.error('PDF upload failed:', await res.text());
+        }
       }
     } catch (err) {
       console.error('PDF upload failed:', err);
