@@ -38,16 +38,31 @@ export function TakeoffWorkspace({ sessionId }: Props) {
     const buffer = await file.arrayBuffer();
     setPdfData(buffer);
 
-    // Upload to R2 storage
-    const formData = new FormData();
-    formData.append('pdf', file);
+    // Upload to R2 via presigned URL (bypasses Vercel 4.5MB body limit)
     try {
-      const res = await fetch(`/api/takeoff/sessions/${sessionId}/upload`, {
-        method: 'POST',
-        body: formData,
+      // 1. Get presigned upload URL
+      const presignRes = await fetch(
+        `/api/takeoff/sessions/${sessionId}/upload?fileName=${encodeURIComponent(file.name)}`
+      );
+      if (!presignRes.ok) throw new Error('Failed to get upload URL');
+      const { uploadUrl, storageKey } = await presignRes.json();
+
+      // 2. Upload directly to R2
+      const uploadRes = await fetch(uploadUrl, {
+        method: 'PUT',
+        body: file,
+        headers: { 'Content-Type': 'application/pdf' },
       });
-      if (!res.ok) {
-        console.error('PDF upload failed:', await res.text());
+      if (!uploadRes.ok) throw new Error('Direct R2 upload failed');
+
+      // 3. Confirm upload and update session record
+      const confirmRes = await fetch(`/api/takeoff/sessions/${sessionId}/upload`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ fileName: file.name, storageKey }),
+      });
+      if (!confirmRes.ok) {
+        console.error('Upload confirmation failed:', await confirmRes.text());
       }
     } catch (err) {
       console.error('PDF upload failed:', err);

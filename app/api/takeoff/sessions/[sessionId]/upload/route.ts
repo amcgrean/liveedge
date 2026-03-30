@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '../../../../../../auth';
 import { getDb, schema } from '../../../../../../db/index';
 import { eq } from 'drizzle-orm';
-import { uploadPdf } from '@/lib/r2';
+import { uploadPdf, getPresignedUploadUrl } from '@/lib/r2';
 
 const MAX_FILE_SIZE = 50 * 1024 * 1024; // 50 MB
 
@@ -18,7 +18,48 @@ function dbError(err: unknown) {
 }
 
 // ──────────────────────────────────────────────────────────
+// GET /api/takeoff/sessions/[sessionId]/upload?fileName=...
+// Returns a presigned upload URL for direct-to-R2 upload
+// ──────────────────────────────────────────────────────────
+export async function GET(
+  req: NextRequest,
+  { params }: { params: Promise<{ sessionId: string }> }
+) {
+  const authSession = await auth();
+  if (!authSession)
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+
+  const { sessionId } = await params;
+  const { searchParams } = new URL(req.url);
+  const fileName = searchParams.get('fileName');
+
+  if (!fileName) {
+    return NextResponse.json({ error: 'fileName is required' }, { status: 400 });
+  }
+
+  try {
+    // Verify session exists
+    const db = getDb();
+    const [session] = await db
+      .select()
+      .from(schema.takeoffSessions)
+      .where(eq(schema.takeoffSessions.id, sessionId))
+      .limit(1);
+
+    if (!session) {
+      return NextResponse.json({ error: 'Session not found' }, { status: 404 });
+    }
+
+    const { url, key } = await getPresignedUploadUrl(sessionId, fileName);
+    return NextResponse.json({ uploadUrl: url, storageKey: key });
+  } catch (err) {
+    return dbError(err);
+  }
+}
+
+// ──────────────────────────────────────────────────────────
 // POST /api/takeoff/sessions/[sessionId]/upload  – upload PDF to R2
+// (fallback for smaller files; presigned URL preferred for large files)
 // ──────────────────────────────────────────────────────────
 export async function POST(
   req: NextRequest,
@@ -75,6 +116,56 @@ export async function POST(
       })
       .where(eq(schema.takeoffSessions.id, sessionId))
       .returning();
+
+    return NextResponse.json({
+      storageKey: updated.pdfStorageKey,
+      fileName: updated.pdfFileName,
+    });
+  } catch (err) {
+    return dbError(err);
+  }
+}
+
+// ──────────────────────────────────────────────────────────
+// PUT /api/takeoff/sessions/[sessionId]/upload  – confirm presigned upload
+// Called after client uploads directly to R2 via presigned URL
+// ──────────────────────────────────────────────────────────
+export async function PUT(
+  req: NextRequest,
+  { params }: { params: Promise<{ sessionId: string }> }
+) {
+  const authSession = await auth();
+  if (!authSession)
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+
+  const { sessionId } = await params;
+
+  let body: { fileName: string; storageKey: string };
+  try {
+    body = await req.json();
+  } catch {
+    return NextResponse.json({ error: 'Invalid JSON body' }, { status: 400 });
+  }
+
+  if (!body.fileName || !body.storageKey) {
+    return NextResponse.json({ error: 'fileName and storageKey are required' }, { status: 422 });
+  }
+
+  try {
+    const db = getDb();
+    const [updated] = await db
+      .update(schema.takeoffSessions)
+      .set({
+        pdfFileName: body.fileName,
+        pdfStorageKey: body.storageKey,
+        updatedAt: new Date(),
+      })
+      .where(eq(schema.takeoffSessions.id, sessionId))
+      .returning();
+
+    if (!updated) {
+      return NextResponse.json({ error: 'Session not found' }, { status: 404 });
+    }
 
     return NextResponse.json({
       storageKey: updated.pdfStorageKey,

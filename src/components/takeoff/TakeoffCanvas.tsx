@@ -262,8 +262,8 @@ export function TakeoffCanvas({
     const fabricCanvas = fabricInstanceRef.current;
     if (!fabricCanvas) return;
 
-    function handleMouseDown(opt: { e: MouseEvent; pointer: { x: number; y: number } }) {
-      const { pointer } = opt;
+    function handleMouseDown(opt: { e: MouseEvent; scenePoint: { x: number; y: number } }) {
+      const pointer = opt.scenePoint;
       const e = opt.e;
 
       // Pan mode
@@ -333,7 +333,7 @@ export function TakeoffCanvas({
       }
     }
 
-    function handleMouseMove(opt: { e: MouseEvent; pointer: { x: number; y: number } }) {
+    function handleMouseMove(opt: { e: MouseEvent; scenePoint: { x: number; y: number } }) {
       // Pan
       if (isPanningRef.current && lastPanPointRef.current && fabricCanvas) {
         const dx = opt.e.clientX - lastPanPointRef.current.x;
@@ -355,7 +355,7 @@ export function TakeoffCanvas({
             const activeGroup = state.groups.find((g) => g.id === state.activePresetId);
             const color = activeGroup?.color ?? '#22d3ee';
             const preview = new Line(
-              [lastPt.x, lastPt.y, opt.pointer.x, opt.pointer.y],
+              [lastPt.x, lastPt.y, opt.scenePoint.x, opt.scenePoint.y],
               {
                 stroke: color,
                 strokeWidth: 2,
@@ -395,7 +395,7 @@ export function TakeoffCanvas({
       }
     }
 
-    function handleDblClick(opt: { pointer: { x: number; y: number } }) {
+    function handleDblClick(opt: { scenePoint: { x: number; y: number } }) {
       const tool = state.activeTool;
 
       if (tool === 'polyline' && drawingPointsRef.current.length >= 2) {

@@ -89,6 +89,27 @@ export async function downloadPdf(key: string): Promise<Buffer> {
 }
 
 /**
+ * Get a presigned upload URL for a PDF (valid for 10 minutes).
+ */
+export async function getPresignedUploadUrl(
+  sessionId: string,
+  fileName: string
+): Promise<{ url: string; key: string }> {
+  const key = `takeoff/${sessionId}/${fileName}`;
+  const client = getR2Client();
+  const url = await getSignedUrl(
+    client,
+    new PutObjectCommand({
+      Bucket: R2_BUCKET_NAME,
+      Key: key,
+      ContentType: 'application/pdf',
+    }),
+    { expiresIn: 600 }
+  );
+  return { url, key };
+}
+
+/**
  * Delete a PDF from R2.
  */
 export async function deletePdf(key: string): Promise<void> {

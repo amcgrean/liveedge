@@ -21,29 +21,19 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
       },
       async authorize(credentials) {
         try {
-          console.error('[auth] authorize called, credentials keys:', credentials ? Object.keys(credentials) : 'null');
           const parsed = loginSchema.safeParse(credentials);
-          if (!parsed.success) {
-            console.error('[auth] zod parse failed:', parsed.error.message);
-            return null;
-          }
+          if (!parsed.success) return null;
 
           const { username, password } = parsed.data;
-          console.error('[auth] attempting login for:', username);
 
           // When DB is not configured, allow a dev bypass
           if (!process.env.DATABASE_URL && !process.env.BIDS_DATABASE_URL) {
-            console.error('[auth] no DATABASE_URL, trying dev bypass');
-            if (
-              username === 'admin' &&
-              password === 'ChangeMe123!'
-            ) {
+            if (username === 'admin' && password === 'ChangeMe123!') {
               return { id: 'dev', name: 'Dev Admin', email: 'admin@beisserlumber.com', role: 'admin' };
             }
             return null;
           }
 
-          console.error('[auth] querying database...');
           const db = getDb();
           const result = await db.execute(
             sql`SELECT id, username, email, password, is_active, is_admin, is_estimator
@@ -52,9 +42,6 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
                 LIMIT 1`
           );
 
-          console.error('[auth] query result type:', typeof result, 'isArray:', Array.isArray(result));
-          console.error('[auth] result:', JSON.stringify(result).slice(0, 500));
-
           // Handle both possible return shapes: direct array or { rows: [...] }
           let rows: Record<string, unknown>[];
           if (Array.isArray(result)) {
@@ -62,7 +49,6 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
           } else if (result && typeof result === 'object' && 'rows' in result) {
             rows = (result as { rows: Record<string, unknown>[] }).rows;
           } else {
-            console.error('[auth] unexpected result shape');
             return null;
           }
 
@@ -76,23 +62,14 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
             is_estimator: boolean | null;
           } | undefined;
 
-          if (!user) {
-            console.error('[auth] no user found for:', username);
-            return null;
-          }
-          console.error('[auth] found user:', user.username, 'active:', user.is_active);
-
+          if (!user) return null;
           if (user.is_active === false) return null;
 
           // Plain-text password comparison (legacy DB — do not change without
           // updating the existing estimating app's login flow as well)
-          if (password !== user.password) {
-            console.error('[auth] password mismatch for:', username);
-            return null;
-          }
+          if (password !== user.password) return null;
 
           const role = user.is_admin ? 'admin' : user.is_estimator ? 'estimator' : 'viewer';
-          console.error('[auth] login success:', username, 'role:', role);
 
           return {
             id: String(user.id),

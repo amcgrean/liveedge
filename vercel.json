@@ -1,0 +1,7 @@
+{
+  "functions": {
+    "app/api/takeoff/sessions/*/upload/route.ts": {
+      "maxDuration": 60
+    }
+  }
+}
