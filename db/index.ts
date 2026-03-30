@@ -5,7 +5,10 @@ import * as schema from './schema';
 // This will throw at runtime if DATABASE_URL is not set.
 // That's intentional - we want clear errors during development.
 function createDb() {
-  const databaseUrl = process.env.DATABASE_URL || process.env.BIDS_DATABASE_URL;
+  const databaseUrl =
+    process.env.DATABASE_URL ||
+    process.env.BIDS_DATABASE_URL ||
+    process.env.BIDS_DATABASE_URL_UNPOOLED;
   if (!databaseUrl) {
     throw new Error(
       'DATABASE_URL environment variable is not set. ' +
