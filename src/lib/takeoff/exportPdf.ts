@@ -51,7 +51,7 @@ export async function exportAnnotatedPdf(
     const fabricState = pageStates[pageNum];
     if (fabricState && typeof fabricState === 'object') {
       try {
-        const annotationImg = await renderFabricStateToImage(fabricState, pv.width, pv.height);
+        const annotationImg = await renderFabricStateToImage(fabricState as Record<string, unknown>, pv.width, pv.height);
         if (annotationImg) {
           doc.addImage(annotationImg, 'PNG', 0, 0, pageViewport.width, pageViewport.height);
         }
@@ -69,7 +69,7 @@ export async function exportAnnotatedPdf(
  * Creates a temporary off-screen Fabric canvas, loads the state, and exports.
  */
 async function renderFabricStateToImage(
-  fabricJson: unknown,
+  fabricJson: string | Record<string, unknown>,
   width: number,
   height: number
 ): Promise<string | null> {
