@@ -7,7 +7,7 @@ import { Hammer, Eye, EyeOff } from 'lucide-react';
 
 export default function LoginPage() {
   const router = useRouter();
-  const [email, setEmail] = useState('');
+  const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState('');
@@ -19,13 +19,13 @@ export default function LoginPage() {
     setError('');
 
     const result = await signIn('credentials', {
-      email,
+      username,
       password,
       redirect: false,
     });
 
     if (result?.error) {
-      setError('Invalid email or password. Please try again.');
+      setError('Invalid username or password. Please try again.');
       setLoading(false);
     } else {
       router.push('/');
@@ -52,15 +52,15 @@ export default function LoginPage() {
           <form onSubmit={handleSubmit} className="space-y-4">
             <div>
               <label className="block text-sm font-medium text-slate-300 mb-1.5">
-                Email
+                Username
               </label>
               <input
-                type="email"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
+                type="text"
+                value={username}
+                onChange={(e) => setUsername(e.target.value)}
                 required
-                autoComplete="email"
-                placeholder="you@beisserlumber.com"
+                autoComplete="username"
+                placeholder="Enter your username"
                 className="w-full px-3 py-2.5 bg-slate-950/60 border border-slate-700 rounded-lg text-slate-100 placeholder-slate-500 focus:border-cyan-400 focus:outline-none focus:ring-1 focus:ring-cyan-400 text-sm"
               />
             </div>

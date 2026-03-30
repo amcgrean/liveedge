@@ -1,12 +1,12 @@
 import NextAuth from 'next-auth';
 import Credentials from 'next-auth/providers/credentials';
 import bcrypt from 'bcryptjs';
-import { eq } from 'drizzle-orm';
+import { eq, or } from 'drizzle-orm';
 import { getDb, schema } from './db/index';
 import { z } from 'zod';
 
 const loginSchema = z.object({
-  email: z.string().email(),
+  username: z.string().min(1),
   password: z.string().min(1),
 });
 
@@ -17,31 +17,32 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
   providers: [
     Credentials({
       credentials: {
-        email: { label: 'Email', type: 'email' },
+        username: { label: 'Username', type: 'text' },
         password: { label: 'Password', type: 'password' },
       },
       async authorize(credentials) {
         const parsed = loginSchema.safeParse(credentials);
         if (!parsed.success) return null;
 
-        const { email, password } = parsed.data;
+        const { username, password } = parsed.data;
 
         // When DB is not configured, allow a dev bypass
         if (!process.env.DATABASE_URL) {
           if (
-            email === 'admin@beisserlumber.com' &&
+            username === 'admin' &&
             password === 'ChangeMe123!'
           ) {
-            return { id: 'dev', name: 'Dev Admin', email, role: 'admin' };
+            return { id: 'dev', name: 'Dev Admin', email: 'admin@beisserlumber.com', role: 'admin' };
           }
           return null;
         }
 
         const db = getDb();
+        // Match by name (username) or email
         const [user] = await db
           .select()
           .from(schema.users)
-          .where(eq(schema.users.email, email))
+          .where(or(eq(schema.users.name, username), eq(schema.users.email, username)))
           .limit(1);
 
         if (!user || !user.isActive) return null;
