@@ -91,6 +91,7 @@ See `src/lib/takeoff/presets.ts` for all 49 standard presets and `bidset.pdf` fo
    - Reconcile `bid` (legacy, serial ID) vs `bids` (Drizzle schema, UUID) — takeoff sessions FK to `bids.id` (UUID) but existing bids use `bid.id` (serial)
    - Decide whether to migrate legacy tables into Drizzle schema or keep raw SQL for cross-app queries
    - Audit FK references between takeoff tables and legacy tables (e.g., `takeoff_sessions.created_by` → `"user".id`)
+3. **Password security** — Legacy `"user"` table stores passwords as plain text. Auth currently does direct string comparison to avoid breaking the existing estimating app. Plan: address when merging the estimating app into the main WH tracker app with Supabase auth — migrate all users to hashed passwords and Supabase auth at that point rather than patching incrementally.
 
 ## Tech Stack
 - Next.js 15.1 (App Router), React 19, TypeScript 5.7
