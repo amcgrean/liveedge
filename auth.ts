@@ -1,8 +1,8 @@
 import NextAuth from 'next-auth';
 import Credentials from 'next-auth/providers/credentials';
 import bcrypt from 'bcryptjs';
-import { eq, or } from 'drizzle-orm';
-import { getDb, schema } from './db/index';
+import { eq, or, sql } from 'drizzle-orm';
+import { getDb } from './db/index';
 import { z } from 'zod';
 
 const loginSchema = z.object({
@@ -38,23 +38,36 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
         }
 
         const db = getDb();
-        // Match by name (username) or email
-        const [user] = await db
-          .select()
-          .from(schema.users)
-          .where(or(eq(schema.users.name, username), eq(schema.users.email, username)))
-          .limit(1);
+        // Query the existing "user" table directly (uses serial id, username, password columns)
+        const result = await db.execute(
+          sql`SELECT id, username, email, password, is_active, is_admin, is_estimator
+              FROM "user"
+              WHERE username = ${username} OR email = ${username}
+              LIMIT 1`
+        );
 
-        if (!user || !user.isActive) return null;
+        const user = result.rows?.[0] as {
+          id: number;
+          username: string;
+          email: string;
+          password: string;
+          is_active: boolean | null;
+          is_admin: boolean | null;
+          is_estimator: boolean | null;
+        } | undefined;
 
-        const passwordMatch = await bcrypt.compare(password, user.passwordHash);
+        if (!user || user.is_active === false) return null;
+
+        const passwordMatch = await bcrypt.compare(password, user.password);
         if (!passwordMatch) return null;
 
+        const role = user.is_admin ? 'admin' : user.is_estimator ? 'estimator' : 'viewer';
+
         return {
-          id: user.id,
-          name: user.name,
+          id: String(user.id),
+          name: user.username,
           email: user.email,
-          role: user.role,
+          role,
         };
       },
     }),

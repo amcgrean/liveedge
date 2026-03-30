@@ -87,6 +87,10 @@ See `src/lib/takeoff/presets.ts` for all 49 standard presets and `bidset.pdf` fo
 
 ### Remaining TODO
 1. **Integration testing** — Test full workflow with bidset.pdf: upload, create viewports, calibrate, measure walls/areas, send to estimate
+2. **DB schema audit** — The existing Neon DB uses a legacy schema from the estimating app (Alembic-managed, serial IDs, different table/column names). The takeoff app's Drizzle schema (`db/schema.ts`) defines its own UUID-based tables but does NOT manage the legacy tables. Auth queries the existing `"user"` table directly via raw SQL. Post-merge work needed:
+   - Reconcile `bid` (legacy, serial ID) vs `bids` (Drizzle schema, UUID) — takeoff sessions FK to `bids.id` (UUID) but existing bids use `bid.id` (serial)
+   - Decide whether to migrate legacy tables into Drizzle schema or keep raw SQL for cross-app queries
+   - Audit FK references between takeoff tables and legacy tables (e.g., `takeoff_sessions.created_by` → `"user".id`)
 
 ## Tech Stack
 - Next.js 15.1 (App Router), React 19, TypeScript 5.7
