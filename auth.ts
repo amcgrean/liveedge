@@ -1,7 +1,6 @@
 import NextAuth from 'next-auth';
 import Credentials from 'next-auth/providers/credentials';
-import bcrypt from 'bcryptjs';
-import { eq, or, sql } from 'drizzle-orm';
+import { sql } from 'drizzle-orm';
 import { getDb } from './db/index';
 import { z } from 'zod';
 
@@ -58,8 +57,9 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
 
         if (!user || user.is_active === false) return null;
 
-        const passwordMatch = await bcrypt.compare(password, user.password);
-        if (!passwordMatch) return null;
+        // Plain-text password comparison (legacy DB — do not change without
+        // updating the existing estimating app's login flow as well)
+        if (password !== user.password) return null;
 
         const role = user.is_admin ? 'admin' : user.is_estimator ? 'estimator' : 'viewer';
 
