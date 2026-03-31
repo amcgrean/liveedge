@@ -69,7 +69,7 @@ export function TopNav({ userName, userRole }: Props) {
           {/* Main nav */}
           <div className="flex items-center gap-1">
             {navLink('/dashboard', 'Dashboard', <LayoutDashboard className="w-4 h-4" />)}
-            {navLink('/legacy-bids', 'Bids', <FolderOpen className="w-4 h-4" />)}
+            {navLink('/all-bids', 'Bids', <FolderOpen className="w-4 h-4" />)}
             {navLink('/designs', 'Designs', <Ruler className="w-4 h-4" />)}
             {navLink('/ewp', 'EWP', <Layers className="w-4 h-4" />)}
             {navLink('/projects', 'Projects', <Building2 className="w-4 h-4" />)}
