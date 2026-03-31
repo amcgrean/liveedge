@@ -15,6 +15,7 @@ import {
   Ruler,
   Layers,
   Building2,
+  Wrench,
 } from 'lucide-react';
 import { cn } from '../../lib/utils';
 
@@ -72,6 +73,7 @@ export function TopNav({ userName, userRole }: Props) {
             {navLink('/designs', 'Designs', <Ruler className="w-4 h-4" />)}
             {navLink('/ewp', 'EWP', <Layers className="w-4 h-4" />)}
             {navLink('/projects', 'Projects', <Building2 className="w-4 h-4" />)}
+            {navLink('/it-issues', 'IT Issues', <Wrench className="w-4 h-4" />)}
             {navLink('/', 'Estimating', <FileText className="w-4 h-4" />)}
             {navLink('/takeoff', 'PDF Takeoff', <Hammer className="w-4 h-4" />)}
           </div>
@@ -104,6 +106,9 @@ export function TopNav({ userName, userRole }: Props) {
                     { href: '/admin/products', label: 'Products / SKUs' },
                     { href: '/admin/formulas', label: 'Formulas' },
                     { href: '/admin/users', label: 'Users' },
+                    { href: '/admin/bid-fields', label: 'Bid Fields' },
+                    { href: '/admin/notifications', label: 'Notifications' },
+                    { href: '/admin/audit', label: 'Audit Log' },
                   ].map((item) => (
                     <Link
                       key={item.href}

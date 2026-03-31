@@ -1,7 +1,8 @@
 'use client';
 
 import React, { useEffect, useState, useCallback } from 'react';
-import { Plus, RefreshCw, Pencil, Trash2, X, Check, Shield, Eye } from 'lucide-react';
+import { Plus, RefreshCw, Pencil, Trash2, X, Check, Shield, Eye, KeyRound } from 'lucide-react';
+import Link from 'next/link';
 import { formatDate } from '../../../src/lib/utils';
 import { useSession } from 'next-auth/react';
 
@@ -136,6 +137,7 @@ export default function UsersClient() {
                     <td className="text-slate-500 text-xs">{formatDate(u.createdAt)}</td>
                     <td>
                       <div className="flex items-center gap-1">
+                        <Link href={`/admin/users/${u.id}/permissions`} className="p-1.5 rounded hover:bg-slate-800 text-slate-500 hover:text-cyan-400 transition" title="Permissions"><KeyRound className="w-3.5 h-3.5" /></Link>
                         <button onClick={() => openEdit(u)} className="p-1.5 rounded hover:bg-slate-800 text-slate-500 hover:text-slate-200 transition"><Pencil className="w-3.5 h-3.5" /></button>
                         {!isSelf && u.isActive && (
                           <button onClick={() => handleDeactivate(u)} className="p-1.5 rounded hover:bg-red-900/20 text-slate-500 hover:text-red-400 transition"><Trash2 className="w-3.5 h-3.5" /></button>

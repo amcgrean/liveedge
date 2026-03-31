@@ -11,6 +11,9 @@ import {
   Building2,
   Package,
   Calculator,
+  FormInput,
+  Bell,
+  FileText,
 } from 'lucide-react';
 import { cn } from '../../src/lib/utils';
 
@@ -20,6 +23,9 @@ const NAV_ITEMS = [
   { href: '/admin/products', label: 'Products', icon: Package, exact: false },
   { href: '/admin/formulas', label: 'Formulas', icon: Calculator, exact: false },
   { href: '/admin/users', label: 'Users', icon: Users, exact: false },
+  { href: '/admin/bid-fields', label: 'Bid Fields', icon: FormInput, exact: false },
+  { href: '/admin/notifications', label: 'Notifications', icon: Bell, exact: false },
+  { href: '/admin/audit', label: 'Audit Log', icon: FileText, exact: false },
 ];
 
 interface Props { session: Session; children: React.ReactNode; }
