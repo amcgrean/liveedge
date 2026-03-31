@@ -1,19 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '../../../../auth';
-import { getDb, schema } from '../../../../db/index';
+import { getDb } from '../../../../db/index';
+import { legacyCustomer } from '../../../../db/schema-legacy';
 import { eq } from 'drizzle-orm';
 
 function dbError(err: unknown) {
-  if (err instanceof Error && err.message.includes('DATABASE_URL')) {
-    return NextResponse.json({ error: 'Database not configured.' }, { status: 503 });
-  }
   console.error('[customers/[id] API]', err);
   return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
-}
-
-function requireAdmin(role: string) {
-  if (role !== 'admin') return NextResponse.json({ error: 'Admin access required' }, { status: 403 });
-  return null;
 }
 
 export async function GET(
@@ -23,11 +16,22 @@ export async function GET(
   const session = await auth();
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   const { id } = await params;
+  const custId = parseInt(id, 10);
+  if (isNaN(custId)) return NextResponse.json({ error: 'Invalid ID' }, { status: 400 });
+
   try {
     const db = getDb();
-    const [row] = await db.select().from(schema.customers).where(eq(schema.customers.id, id)).limit(1);
+    const [row] = await db.select().from(legacyCustomer).where(eq(legacyCustomer.id, custId)).limit(1);
     if (!row) return NextResponse.json({ error: 'Not found' }, { status: 404 });
-    return NextResponse.json({ customer: row });
+    return NextResponse.json({
+      customer: {
+        id: String(row.id),
+        code: row.customerCode,
+        name: row.name,
+        contactName: row.salesAgent,
+        isActive: true,
+      },
+    });
   } catch (err) { return dbError(err); }
 }
 
@@ -37,23 +41,33 @@ export async function PUT(
 ) {
   const session = await auth();
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-  const userRole = (session.user as { role?: string }).role ?? 'estimator';
-  const adminCheck = requireAdmin(userRole);
-  if (adminCheck) return adminCheck;
+  if ((session.user as { role?: string }).role !== 'admin') {
+    return NextResponse.json({ error: 'Admin access required' }, { status: 403 });
+  }
 
   const { id } = await params;
-  let body: Partial<typeof schema.customers.$inferInsert>;
+  const custId = parseInt(id, 10);
+  if (isNaN(custId)) return NextResponse.json({ error: 'Invalid ID' }, { status: 400 });
+
+  let body: Record<string, unknown>;
   try { body = await req.json(); } catch { return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 }); }
 
   try {
     const db = getDb();
+    const updates: Record<string, unknown> = {};
+    if (body.name) updates.name = body.name;
+    if (body.code) updates.customerCode = body.code;
+    if (body.contactName !== undefined) updates.salesAgent = body.contactName;
+
     const [updated] = await db
-      .update(schema.customers)
-      .set({ ...body, updatedAt: new Date() })
-      .where(eq(schema.customers.id, id))
+      .update(legacyCustomer)
+      .set(updates)
+      .where(eq(legacyCustomer.id, custId))
       .returning();
     if (!updated) return NextResponse.json({ error: 'Not found' }, { status: 404 });
-    return NextResponse.json({ customer: updated });
+    return NextResponse.json({
+      customer: { id: String(updated.id), code: updated.customerCode, name: updated.name, isActive: true },
+    });
   } catch (err) { return dbError(err); }
 }
 
@@ -63,14 +77,18 @@ export async function DELETE(
 ) {
   const session = await auth();
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-  const userRole = (session.user as { role?: string }).role ?? 'estimator';
-  const adminCheck = requireAdmin(userRole);
-  if (adminCheck) return adminCheck;
+  if ((session.user as { role?: string }).role !== 'admin') {
+    return NextResponse.json({ error: 'Admin access required' }, { status: 403 });
+  }
 
   const { id } = await params;
+  const custId = parseInt(id, 10);
+  if (isNaN(custId)) return NextResponse.json({ error: 'Invalid ID' }, { status: 400 });
+
   try {
     const db = getDb();
-    await db.update(schema.customers).set({ isActive: false, updatedAt: new Date() }).where(eq(schema.customers.id, id));
+    const [deleted] = await db.delete(legacyCustomer).where(eq(legacyCustomer.id, custId)).returning({ id: legacyCustomer.id });
+    if (!deleted) return NextResponse.json({ error: 'Not found' }, { status: 404 });
     return NextResponse.json({ success: true });
   } catch (err) { return dbError(err); }
 }
