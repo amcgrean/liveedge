@@ -14,6 +14,7 @@ import {
   FormInput,
   Bell,
   FileText,
+  Database,
 } from 'lucide-react';
 import { cn } from '../../src/lib/utils';
 
@@ -26,6 +27,7 @@ const NAV_ITEMS = [
   { href: '/admin/bid-fields', label: 'Bid Fields', icon: FormInput, exact: false },
   { href: '/admin/notifications', label: 'Notifications', icon: Bell, exact: false },
   { href: '/admin/audit', label: 'Audit Log', icon: FileText, exact: false },
+  { href: '/admin/erp', label: 'ERP Sync', icon: Database, exact: false },
 ];
 
 interface Props { session: Session; children: React.ReactNode; }
