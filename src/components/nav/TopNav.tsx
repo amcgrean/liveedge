@@ -12,6 +12,9 @@ import {
   LogOut,
   ChevronDown,
   Hammer,
+  Ruler,
+  Layers,
+  Building2,
 } from 'lucide-react';
 import { cn } from '../../lib/utils';
 
@@ -66,6 +69,9 @@ export function TopNav({ userName, userRole }: Props) {
           <div className="flex items-center gap-1">
             {navLink('/dashboard', 'Dashboard', <LayoutDashboard className="w-4 h-4" />)}
             {navLink('/legacy-bids', 'Bids', <FolderOpen className="w-4 h-4" />)}
+            {navLink('/designs', 'Designs', <Ruler className="w-4 h-4" />)}
+            {navLink('/ewp', 'EWP', <Layers className="w-4 h-4" />)}
+            {navLink('/projects', 'Projects', <Building2 className="w-4 h-4" />)}
             {navLink('/', 'Estimating', <FileText className="w-4 h-4" />)}
             {navLink('/takeoff', 'PDF Takeoff', <Hammer className="w-4 h-4" />)}
           </div>
