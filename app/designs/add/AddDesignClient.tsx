@@ -16,6 +16,7 @@ export default function AddDesignClient({ session }: Props) {
   const [customers, setCustomers] = useState<{ id: number; customerCode: string; name: string }[]>([]);
   const [customerSearch, setCustomerSearch] = useState('');
   const [showDropdown, setShowDropdown] = useState(false);
+  const [designers, setDesigners] = useState<{ id: number; name: string }[]>([]);
 
   const [form, setForm] = useState({
     planName: '',
@@ -23,6 +24,7 @@ export default function AddDesignClient({ session }: Props) {
     customerDisplay: '',
     projectAddress: '',
     contractor: '',
+    designerId: null as number | null,
     planDescription: '',
     squareFootage: '' as string | number,
     notes: '',
@@ -30,6 +32,7 @@ export default function AddDesignClient({ session }: Props) {
 
   useEffect(() => {
     fetch('/api/customers').then((r) => r.json()).then((d) => setCustomers(d.customers ?? [])).catch(() => {});
+    fetch('/api/designers').then((r) => r.json()).then((d) => setDesigners(d.designers ?? [])).catch(() => {});
   }, []);
 
   const filtered = customers.filter((c) =>
@@ -113,6 +116,15 @@ export default function AddDesignClient({ session }: Props) {
               <input type="number" value={form.squareFootage} onChange={(e) => setField('squareFootage', e.target.value)}
                 className="w-full px-3 py-2 bg-gray-900 border border-gray-700 rounded-lg text-sm focus:outline-none focus:border-cyan-500" />
             </div>
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-400 mb-1">Designer</label>
+            <select value={form.designerId ?? ''} onChange={(e) => setField('designerId', e.target.value ? Number(e.target.value) : null)}
+              className="w-full px-3 py-2 bg-gray-900 border border-gray-700 rounded-lg text-sm focus:outline-none focus:border-cyan-500">
+              <option value="">— Unassigned —</option>
+              {designers.map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}
+            </select>
           </div>
 
           <div>
