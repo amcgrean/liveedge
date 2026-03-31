@@ -20,6 +20,7 @@ interface UnifiedBid {
   source: 'legacy' | 'estimator';
   name: string;
   customer: string | null;
+  customerId: number | null;
   estimator: string | null;
   status: string;
   planType: string | null;
@@ -208,7 +209,11 @@ export default function AllBidsClient({ session }: Props) {
                   <td className="px-4 py-3 text-gray-300">
                     <span className="flex items-center gap-1.5">
                       <Building2 className="w-3.5 h-3.5 text-gray-600 shrink-0" />
-                      {bid.customer ?? '—'}
+                      {bid.customerId ? (
+                        <Link href={`/customers/${bid.customerId}/bids`} className="hover:text-cyan-400 transition-colors">
+                          {bid.customer ?? '—'}
+                        </Link>
+                      ) : (bid.customer ?? '—')}
                     </span>
                   </td>
                   <td className="px-4 py-3 text-gray-400 text-xs">

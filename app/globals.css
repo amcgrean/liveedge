@@ -58,3 +58,73 @@ select.input-field option {
 .btn-danger {
   @apply px-4 py-2 rounded-lg font-semibold bg-red-600/20 border border-red-500/30 text-red-400 hover:bg-red-600/30 transition text-sm;
 }
+
+/* ── Print styles ─────────────────────────────────────────── */
+@media print {
+  /* Reset background to white, text to black */
+  body {
+    background: white !important;
+    color: black !important;
+    font-size: 11pt;
+  }
+
+  /* Hide navigation, action buttons, and interactive controls */
+  nav,
+  .print\:hidden,
+  button:not(.print-show),
+  [role="navigation"] {
+    display: none !important;
+  }
+
+  /* Remove decorative shadows and blur on cards */
+  .card,
+  .admin-card {
+    box-shadow: none !important;
+    backdrop-filter: none !important;
+    border: 1px solid #ccc !important;
+    background: white !important;
+  }
+
+  /* Make tables print-friendly */
+  table {
+    border-collapse: collapse;
+    width: 100%;
+    font-size: 10pt;
+  }
+
+  th, td {
+    border: 1px solid #ccc !important;
+    padding: 4pt 8pt !important;
+    color: black !important;
+    background: white !important;
+  }
+
+  th {
+    background: #f0f0f0 !important;
+    font-weight: 600;
+  }
+
+  /* Avoid page breaks inside rows */
+  tr {
+    page-break-inside: avoid;
+  }
+
+  /* Make badges readable in B&W */
+  span[class*="bg-"] {
+    background: none !important;
+    border: 1px solid currentColor !important;
+    color: black !important;
+  }
+
+  /* Links print as plain text */
+  a {
+    color: black !important;
+    text-decoration: none !important;
+  }
+
+  /* Full width content */
+  main {
+    max-width: 100% !important;
+    padding: 0 !important;
+  }
+}

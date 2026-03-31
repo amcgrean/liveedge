@@ -11,6 +11,8 @@ export interface UnifiedBid {
   source: 'legacy' | 'estimator';
   name: string;
   customer: string | null;
+  /** For legacy bids: the integer customer ID (for customer-centric view links) */
+  customerId: number | null;
   estimator: string | null;
   status: string;
   planType: string | null;
@@ -80,6 +82,7 @@ export async function GET(req: NextRequest) {
           includeWindow: legacyBid.includeWindow,
           includeDoor: legacyBid.includeDoor,
           branchId: legacyBid.branchId,
+          customerId: legacyBid.customerId,
           customerName: legacyCustomer.name,
           estimatorName: legacyEstimator.estimatorName,
         })
@@ -105,6 +108,7 @@ export async function GET(req: NextRequest) {
           source: 'legacy' as const,
           name: r.projectName,
           customer: r.customerName ?? null,
+          customerId: r.customerId ?? null,
           estimator: r.estimatorName ?? null,
           status: r.status ?? 'Incomplete',
           planType: r.planType ?? null,
@@ -165,6 +169,7 @@ export async function GET(req: NextRequest) {
         source: 'estimator' as const,
         name: r.jobName,
         customer: r.customerName ?? null,
+        customerId: null,
         estimator: r.estimatorName ?? null,
         status: r.status ?? 'draft',
         planType: null,
