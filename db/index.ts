@@ -1,6 +1,7 @@
 import { drizzle } from 'drizzle-orm/neon-http';
 import { neon } from '@neondatabase/serverless';
 import * as schema from './schema';
+import * as legacySchema from './schema-legacy';
 
 // This will throw at runtime if DATABASE_URL is not set.
 // That's intentional - we want clear errors during development.
@@ -16,7 +17,7 @@ function createDb() {
     );
   }
   const sql = neon(databaseUrl);
-  return drizzle(sql, { schema });
+  return drizzle(sql, { schema: { ...schema, ...legacySchema } });
 }
 
 // Singleton pattern to reuse the connection across requests
@@ -29,4 +30,4 @@ export function getDb() {
   return _db;
 }
 
-export { schema };
+export { schema, legacySchema };

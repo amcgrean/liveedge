@@ -1,7 +1,8 @@
 import NextAuth from 'next-auth';
 import Credentials from 'next-auth/providers/credentials';
-import { sql } from 'drizzle-orm';
+import { eq, or } from 'drizzle-orm';
 import { getDb } from './db/index';
+import { legacyUser, legacyLoginActivity } from './db/schema-legacy';
 import { z } from 'zod';
 
 const loginSchema = z.object({
@@ -29,53 +30,50 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
           // When DB is not configured, allow a dev bypass
           if (!process.env.DATABASE_URL && !process.env.BIDS_DATABASE_URL) {
             if (username === 'admin' && password === 'ChangeMe123!') {
-              return { id: 'dev', name: 'Dev Admin', email: 'admin@beisserlumber.com', role: 'admin' };
+              return { id: 'dev', name: 'Dev Admin', email: 'admin@beisserlumber.com', role: 'admin', branchId: null };
             }
             return null;
           }
 
           const db = getDb();
-          const result = await db.execute(
-            sql`SELECT id, username, email, password, is_active, is_admin, is_estimator
-                FROM "user"
-                WHERE username = ${username} OR email = ${username}
-                LIMIT 1`
-          );
+          const rows = await db
+            .select()
+            .from(legacyUser)
+            .where(
+              or(
+                eq(legacyUser.username, username),
+                eq(legacyUser.email, username)
+              )
+            )
+            .limit(1);
 
-          // Handle both possible return shapes: direct array or { rows: [...] }
-          let rows: Record<string, unknown>[];
-          if (Array.isArray(result)) {
-            rows = result as Record<string, unknown>[];
-          } else if (result && typeof result === 'object' && 'rows' in result) {
-            rows = (result as { rows: Record<string, unknown>[] }).rows;
-          } else {
-            return null;
-          }
-
-          const user = rows[0] as {
-            id: number;
-            username: string;
-            email: string;
-            password: string;
-            is_active: boolean | null;
-            is_admin: boolean | null;
-            is_estimator: boolean | null;
-          } | undefined;
-
+          const user = rows[0];
           if (!user) return null;
-          if (user.is_active === false) return null;
+          if (user.isActive === false) return null;
 
           // Plain-text password comparison (legacy DB — do not change without
           // updating the existing estimating app's login flow as well)
           if (password !== user.password) return null;
 
-          const role = user.is_admin ? 'admin' : user.is_estimator ? 'estimator' : 'viewer';
+          const role = user.isAdmin ? 'admin' : user.isEstimator ? 'estimator' : 'viewer';
+
+          // Track login activity
+          try {
+            await db.insert(legacyLoginActivity).values({
+              userId: user.id,
+              loggedIn: new Date(),
+            });
+          } catch (loginErr) {
+            // Non-critical — don't block login if activity tracking fails
+            console.warn('[auth] Failed to log login activity:', loginErr);
+          }
 
           return {
             id: String(user.id),
             name: user.username,
             email: user.email || `${user.username}@beisserlumber.com`,
             role,
+            branchId: user.userBranchId,
           };
         } catch (err) {
           console.error('[auth] authorize error:', err);
@@ -90,6 +88,7 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
       if (user) {
         token.id = user.id;
         token.role = (user as { role?: string }).role ?? 'estimator';
+        token.branchId = (user as { branchId?: number | null }).branchId ?? null;
       }
       return token;
     },
@@ -97,6 +96,7 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
       if (token && session.user) {
         session.user.id = token.id as string;
         (session.user as { role?: string }).role = token.role as string;
+        (session.user as { branchId?: number | null }).branchId = token.branchId as number | null;
       }
       return session;
     },
@@ -118,6 +118,7 @@ declare module 'next-auth' {
       email?: string | null;
       image?: string | null;
       role: string;
+      branchId: number | null;
     };
   }
 }
