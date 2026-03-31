@@ -64,9 +64,10 @@ export function TopNav({ userName, userRole }: Props) {
 
           {/* Main nav */}
           <div className="flex items-center gap-1">
-            {navLink('/', 'Takeoff', <LayoutDashboard className="w-4 h-4" />)}
-            {navLink('/takeoff', 'PDF Takeoff', <FileText className="w-4 h-4" />)}
-            {navLink('/bids', 'Bids', <FolderOpen className="w-4 h-4" />)}
+            {navLink('/dashboard', 'Dashboard', <LayoutDashboard className="w-4 h-4" />)}
+            {navLink('/legacy-bids', 'Bids', <FolderOpen className="w-4 h-4" />)}
+            {navLink('/', 'Estimating', <FileText className="w-4 h-4" />)}
+            {navLink('/takeoff', 'PDF Takeoff', <Hammer className="w-4 h-4" />)}
           </div>
         </div>
 
