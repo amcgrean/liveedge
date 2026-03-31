@@ -3,25 +3,38 @@ import {
   PutObjectCommand,
   GetObjectCommand,
   DeleteObjectCommand,
-  PutBucketCorsCommand,
 } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 
-const R2_ACCOUNT_ID = process.env.R2_ACCOUNT_ID!;
-const R2_ACCESS_KEY_ID = process.env.R2_ACCESS_KEY_ID!;
-const R2_SECRET_ACCESS_KEY = process.env.R2_SECRET_ACCESS_KEY!;
-const R2_BUCKET_NAME = process.env.R2_BUCKET_NAME || 'bids';
+// Env vars are read lazily inside getR2Client() — NOT at module load time.
+// Reading them at the top level caused crashes in serverless environments
+// when the module was imported before env vars were available, or when
+// R2 wasn't configured (endpoint became "https://undefined.r2.cloudflarestorage.com").
 
 let _client: S3Client | null = null;
 
+function getBucketName(): string {
+  return process.env.R2_BUCKET_NAME || 'bids';
+}
+
 function getR2Client(): S3Client {
   if (!_client) {
+    const accountId = process.env.R2_ACCOUNT_ID;
+    const accessKeyId = process.env.R2_ACCESS_KEY_ID;
+    const secretAccessKey = process.env.R2_SECRET_ACCESS_KEY;
+
+    if (!accountId || !accessKeyId || !secretAccessKey) {
+      throw new Error(
+        'R2 storage is not configured. Set R2_ACCOUNT_ID, R2_ACCESS_KEY_ID, and R2_SECRET_ACCESS_KEY.'
+      );
+    }
+
     _client = new S3Client({
       region: 'auto',
-      endpoint: `https://${R2_ACCOUNT_ID}.r2.cloudflarestorage.com`,
+      endpoint: `https://${accountId}.r2.cloudflarestorage.com`,
       credentials: {
-        accessKeyId: R2_ACCESS_KEY_ID,
-        secretAccessKey: R2_SECRET_ACCESS_KEY,
+        accessKeyId,
+        secretAccessKey,
       },
     });
   }
@@ -41,7 +54,7 @@ export async function uploadPdf(
 
   await client.send(
     new PutObjectCommand({
-      Bucket: R2_BUCKET_NAME,
+      Bucket: getBucketName(),
       Key: key,
       Body: data,
       ContentType: 'application/pdf',
@@ -59,7 +72,7 @@ export async function getPresignedPdfUrl(key: string): Promise<string> {
   return getSignedUrl(
     client,
     new GetObjectCommand({
-      Bucket: R2_BUCKET_NAME,
+      Bucket: getBucketName(),
       Key: key,
     }),
     { expiresIn: 3600 }
@@ -73,7 +86,7 @@ export async function downloadPdf(key: string): Promise<Buffer> {
   const client = getR2Client();
   const response = await client.send(
     new GetObjectCommand({
-      Bucket: R2_BUCKET_NAME,
+      Bucket: getBucketName(),
       Key: key,
     })
   );
@@ -89,31 +102,18 @@ export async function downloadPdf(key: string): Promise<Buffer> {
   return Buffer.concat(chunks);
 }
 
-let _corsConfigured = false;
-
 /**
- * Ensure CORS is configured on the R2 bucket for browser uploads.
- * Idempotent — only runs once per process lifecycle.
+ * No-op placeholder. R2 does not support PutBucketCorsCommand via the S3 API.
+ * CORS must be configured manually in the Cloudflare dashboard:
+ *   R2 > bids bucket > Settings > CORS policy:
+ *   Allow origin: https://beisser-takeoff.vercel.app
+ *   Allow methods: PUT, GET
+ *   Allow headers: *
+ *
+ * This function is kept so existing call sites don't need to change.
  */
-export async function ensureBucketCors(allowedOrigins: string[]): Promise<void> {
-  if (_corsConfigured) return;
-  const client = getR2Client();
-  await client.send(
-    new PutBucketCorsCommand({
-      Bucket: R2_BUCKET_NAME,
-      CORSConfiguration: {
-        CORSRules: [
-          {
-            AllowedOrigins: allowedOrigins,
-            AllowedMethods: ['PUT', 'GET'],
-            AllowedHeaders: ['*'],
-            MaxAgeSeconds: 3600,
-          },
-        ],
-      },
-    })
-  );
-  _corsConfigured = true;
+export async function ensureBucketCors(_allowedOrigins: string[]): Promise<void> {
+  // CORS is configured in Cloudflare dashboard, not via S3 API
 }
 
 /**
@@ -128,7 +128,7 @@ export async function getPresignedUploadUrl(
   const url = await getSignedUrl(
     client,
     new PutObjectCommand({
-      Bucket: R2_BUCKET_NAME,
+      Bucket: getBucketName(),
       Key: key,
       ContentType: 'application/pdf',
     }),
@@ -144,7 +144,7 @@ export async function deletePdf(key: string): Promise<void> {
   const client = getR2Client();
   await client.send(
     new DeleteObjectCommand({
-      Bucket: R2_BUCKET_NAME,
+      Bucket: getBucketName(),
       Key: key,
     })
   );
