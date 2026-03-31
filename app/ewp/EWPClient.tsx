@@ -1,10 +1,10 @@
 'use client';
 
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useEffect, useState, useCallback, useRef } from 'react';
 import type { Session } from 'next-auth';
 import Link from 'next/link';
 import { TopNav } from '../../src/components/nav/TopNav';
-import { Search, RefreshCw, Plus, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Search, RefreshCw, Plus, ChevronLeft, ChevronRight, Upload, X, Download, AlertCircle, CheckCircle } from 'lucide-react';
 
 interface EWPRow {
   id: number;
@@ -21,6 +21,13 @@ interface EWPRow {
   customerCode: string | null;
 }
 
+interface ImportResult {
+  imported: number;
+  skipped: number;
+  total: number;
+  errors: { row: number; reason: string }[];
+}
+
 interface Props { session: Session; }
 
 export default function EWPClient({ session }: Props) {
@@ -30,6 +37,14 @@ export default function EWPClient({ session }: Props) {
   const [search, setSearch] = useState('');
   const [page, setPage] = useState(0);
   const limit = 50;
+
+  // Import modal state
+  const [showImport, setShowImport] = useState(false);
+  const [csvText, setCsvText] = useState('');
+  const [importing, setImporting] = useState(false);
+  const [importResult, setImportResult] = useState<ImportResult | null>(null);
+  const [importError, setImportError] = useState('');
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const fetchEWPs = useCallback(async () => {
     setLoading(true);
@@ -49,15 +64,61 @@ export default function EWPClient({ session }: Props) {
   const formatDate = (d: string | null) => d ? new Date(d).toLocaleDateString() : '—';
   const totalPages = Math.ceil(total / limit);
 
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (ev) => setCsvText(ev.target?.result as string ?? '');
+    reader.readAsText(file);
+  };
+
+  const handleImport = async () => {
+    if (!csvText.trim()) { setImportError('Paste CSV data or upload a file first'); return; }
+    setImporting(true);
+    setImportError('');
+    setImportResult(null);
+    try {
+      const res = await fetch('/api/ewp/import', {
+        method: 'POST',
+        headers: { 'Content-Type': 'text/plain' },
+        body: csvText,
+      });
+      const data = await res.json();
+      if (!res.ok && !data.imported) {
+        setImportError(data.error ?? 'Import failed');
+      } else {
+        setImportResult(data);
+        if (data.imported > 0) fetchEWPs();
+      }
+    } catch { setImportError('Network error'); }
+    finally { setImporting(false); }
+  };
+
+  const closeImport = () => {
+    setShowImport(false);
+    setCsvText('');
+    setImportResult(null);
+    setImportError('');
+    if (fileInputRef.current) fileInputRef.current.value = '';
+  };
+
   return (
     <div className="min-h-screen bg-gray-950 text-gray-100">
       <TopNav userName={session.user?.name} userRole={session.user?.role} />
       <main className="max-w-7xl mx-auto px-4 sm:px-6 py-8">
         <div className="flex items-center justify-between mb-6">
           <h1 className="text-2xl font-bold">EWP</h1>
-          <Link href="/ewp/add" className="flex items-center gap-2 px-4 py-2 bg-cyan-600 hover:bg-cyan-500 text-white rounded-lg text-sm font-medium">
-            <Plus className="w-4 h-4" /> New EWP
-          </Link>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setShowImport(true)}
+              className="flex items-center gap-2 px-4 py-2 bg-gray-700 hover:bg-gray-600 text-white rounded-lg text-sm font-medium"
+            >
+              <Upload className="w-4 h-4" /> Import CSV
+            </button>
+            <Link href="/ewp/add" className="flex items-center gap-2 px-4 py-2 bg-cyan-600 hover:bg-cyan-500 text-white rounded-lg text-sm font-medium">
+              <Plus className="w-4 h-4" /> New EWP
+            </Link>
+          </div>
         </div>
 
         <div className="flex flex-wrap items-center gap-3 mb-4">
@@ -126,6 +187,98 @@ export default function EWPClient({ session }: Props) {
           </div>
         )}
       </main>
+
+      {/* CSV Import Modal */}
+      {showImport && (
+        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4">
+          <div className="bg-gray-900 border border-gray-700 rounded-xl w-full max-w-2xl max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between p-5 border-b border-gray-800">
+              <h2 className="text-lg font-semibold">Import EWP from CSV</h2>
+              <button onClick={closeImport} className="p-1 rounded hover:bg-gray-800">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="p-5 space-y-4">
+              <div className="flex items-center gap-3 p-3 bg-gray-800 rounded-lg text-sm text-gray-300">
+                <Download className="w-4 h-4 text-cyan-400 shrink-0" />
+                <span>Required columns: <code className="text-cyan-400">plan_number, customer_code, address, tji_depth</code></span>
+                <a
+                  href="/api/ewp/import"
+                  download="ewp-import-template.csv"
+                  className="ml-auto text-cyan-400 hover:text-cyan-300 whitespace-nowrap"
+                >
+                  Download template
+                </a>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-400 mb-1">Upload CSV file</label>
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept=".csv,text/csv"
+                  onChange={handleFileChange}
+                  className="block w-full text-sm text-gray-400 file:mr-3 file:py-1.5 file:px-3 file:rounded file:border-0 file:text-sm file:bg-gray-700 file:text-gray-200 hover:file:bg-gray-600 cursor-pointer"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-400 mb-1">Or paste CSV data</label>
+                <textarea
+                  value={csvText}
+                  onChange={(e) => setCsvText(e.target.value)}
+                  rows={8}
+                  placeholder={'plan_number,customer_code,address,tji_depth,...\nD-2401-001,SMITH,123 Main St,9-1/2",...'}
+                  className="w-full px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg text-xs font-mono focus:outline-none focus:border-cyan-500 resize-y"
+                />
+              </div>
+
+              {importError && (
+                <div className="flex items-start gap-2 p-3 bg-red-900/30 border border-red-700 rounded-lg text-red-300 text-sm">
+                  <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
+                  {importError}
+                </div>
+              )}
+
+              {importResult && (
+                <div className="space-y-2">
+                  <div className="flex items-center gap-2 p-3 bg-green-900/30 border border-green-700 rounded-lg text-green-300 text-sm">
+                    <CheckCircle className="w-4 h-4 shrink-0" />
+                    <span>Imported {importResult.imported} of {importResult.total} rows ({importResult.skipped} skipped)</span>
+                  </div>
+                  {importResult.errors.length > 0 && (
+                    <div className="bg-gray-800 rounded-lg p-3">
+                      <p className="text-xs text-gray-400 font-medium mb-2">Row errors:</p>
+                      <ul className="space-y-1">
+                        {importResult.errors.map((e, i) => (
+                          <li key={i} className="text-xs text-red-400">Row {e.row}: {e.reason}</li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+
+            <div className="flex justify-end gap-3 p-5 border-t border-gray-800">
+              <button onClick={closeImport} className="px-4 py-2 bg-gray-700 hover:bg-gray-600 rounded-lg text-sm">
+                {importResult ? 'Close' : 'Cancel'}
+              </button>
+              {!importResult && (
+                <button
+                  onClick={handleImport}
+                  disabled={importing || !csvText.trim()}
+                  className="flex items-center gap-2 px-5 py-2 bg-cyan-600 hover:bg-cyan-500 disabled:opacity-50 text-white rounded-lg text-sm font-medium"
+                >
+                  <Upload className="w-4 h-4" />
+                  {importing ? 'Importing...' : 'Import'}
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

@@ -4,6 +4,37 @@ import { eq, or } from 'drizzle-orm';
 import { getDb } from './db/index';
 import { legacyUser, legacyLoginActivity } from './db/schema-legacy';
 import { z } from 'zod';
+import bcrypt from 'bcryptjs';
+
+const BCRYPT_PREFIX_RE = /^\$2[abxy]\$/;
+
+/** Returns true if the stored hash looks like a bcrypt hash */
+function isBcryptHash(stored: string) {
+  return BCRYPT_PREFIX_RE.test(stored);
+}
+
+/** Verify password against stored value (bcrypt or legacy plaintext) */
+async function verifyPassword(plain: string, stored: string): Promise<boolean> {
+  if (isBcryptHash(stored)) {
+    return bcrypt.compare(plain, stored);
+  }
+  return plain === stored;
+}
+
+/** Upgrade a legacy plaintext password to bcrypt in the DB */
+async function upgradePasswordHash(userId: number, plain: string) {
+  try {
+    const hash = await bcrypt.hash(plain, 12);
+    const db = getDb();
+    await db
+      .update(legacyUser)
+      .set({ password: hash, updatedAt: new Date() })
+      .where(eq(legacyUser.id, userId));
+  } catch (err) {
+    // Non-critical — log but don't fail login
+    console.warn('[auth] Failed to upgrade password hash:', err);
+  }
+}
 
 const loginSchema = z.object({
   username: z.string().min(1),
@@ -51,9 +82,15 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
           if (!user) return null;
           if (user.isActive === false) return null;
 
-          // Plain-text password comparison (legacy DB — do not change without
-          // updating the existing estimating app's login flow as well)
-          if (password !== user.password) return null;
+          // Verify password — supports both bcrypt hashes and legacy plaintext.
+          // On successful plaintext login, the hash is automatically upgraded.
+          const passwordOk = await verifyPassword(password, user.password);
+          if (!passwordOk) return null;
+
+          // Auto-upgrade: if stored as plaintext, silently rehash to bcrypt
+          if (!isBcryptHash(user.password)) {
+            upgradePasswordHash(user.id, password);
+          }
 
           const role = user.isAdmin ? 'admin' : user.isEstimator ? 'estimator' : 'viewer';
 
