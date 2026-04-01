@@ -157,13 +157,19 @@ Full migration plan in `docs/migration-plan.md`. Six phases.
 - `app/api/customers/[id]/bids/route.ts` already existed and returns both legacy + UUID bids
 - `CustomersClient.tsx` — added ExternalLink icon button on each row to `/admin/customers/[id]`
 
-### Phase 6: Polish and Sunset — NOT STARTED
-- Print-optimized CSS, responsive audit, error boundaries
-- Flask app sunset, DNS routing, archive
+### Phase 6: Polish and Sunset — PARTIALLY COMPLETE
+
+#### Polish — COMPLETE
+- **Viewport meta tag**: added `export const viewport: Viewport` to `app/layout.tsx` (was missing, broke mobile layout)
+- **Mobile nav**: `TopNav.tsx` refactored — desktop nav hidden below `lg:`, hamburger button (`Menu`/`X`) toggles a full-width drawer at mobile breakpoints; closes on route change
+- **Print CSS**: already comprehensive in `app/globals.css` (lines 63–130) — hides nav/buttons, white bg, page-break handling
+- **Error boundaries**: `app/error.tsx` + 6 route-level `error.tsx` files already in place; no additional work needed
+
+#### Flask Sunset — NOT STARTED
+- DNS routing, archive Flask app
 
 ## Pending Actions
-1. **Phase 5B follow-up**: Run `db/bulk-bcrypt-migrate.ts` in production, then remove the plaintext branch from `verifyPassword()` in `auth.ts`
-2. **Phase 6**: Polish, Flask sunset
+1. **Phase 6 Flask sunset**: DNS cutover, archive Flask app
 
 ## API Route Patterns
 - **Legacy tables**: Import from `'<relative>/db/schema-legacy'`, use `legacyBid`, `legacyCustomer`, etc. (all now in `bids` schema — queries work transparently via Drizzle)

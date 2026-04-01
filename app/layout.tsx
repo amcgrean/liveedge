@@ -1,4 +1,4 @@
-import type { Metadata } from 'next';
+import type { Metadata, Viewport } from 'next';
 import './globals.css';
 import { SessionProvider } from 'next-auth/react';
 import { auth } from '../auth';
@@ -6,6 +6,11 @@ import { auth } from '../auth';
 export const metadata: Metadata = {
   title: 'Beisser Takeoff | House Estimator',
   description: 'Beisser Lumber Co. Digital Takeoff Estimator',
+};
+
+export const viewport: Viewport = {
+  width: 'device-width',
+  initialScale: 1,
 };
 
 export default async function RootLayout({
