@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '../../../../../auth';
-import { getDb, schema } from '../../../../../db/index';
+import { getDb } from '../../../../../db/index';
+import { legacyUser } from '../../../../../db/schema-legacy';
 import { eq } from 'drizzle-orm';
 import bcrypt from 'bcryptjs';
 
@@ -21,24 +22,45 @@ export async function PUT(
   if (role !== 'admin') return NextResponse.json({ error: 'Admin access required' }, { status: 403 });
 
   const { id } = await params;
+  const userId = parseInt(id, 10);
+  if (isNaN(userId)) return NextResponse.json({ error: 'Invalid ID' }, { status: 400 });
+
   let body: { name?: string; role?: string; isActive?: boolean; password?: string };
   try { body = await req.json(); } catch { return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 }); }
 
-  const update: Partial<typeof schema.users.$inferInsert> = { updatedAt: new Date() };
-  if (body.name) update.name = body.name.trim();
-  if (body.role) update.role = body.role;
+  const update: Record<string, unknown> = { updatedAt: new Date() };
+  if (body.name) update.username = body.name.trim();
   if (body.isActive !== undefined) update.isActive = body.isActive;
-  if (body.password) update.passwordHash = await bcrypt.hash(body.password, 12);
+  if (body.password) update.password = await bcrypt.hash(body.password, 12);
+  if (body.role) {
+    update.isAdmin               = body.role === 'admin';
+    update.isEstimator           = body.role === 'estimator';
+    update.isCommercialEstimator = false;
+  }
 
   try {
     const db = getDb();
     const [updated] = await db
-      .update(schema.users)
+      .update(legacyUser)
       .set(update)
-      .where(eq(schema.users.id, id))
-      .returning({ id: schema.users.id, email: schema.users.email, name: schema.users.name, role: schema.users.role, isActive: schema.users.isActive });
+      .where(eq(legacyUser.id, userId))
+      .returning({
+        id:       legacyUser.id,
+        username: legacyUser.username,
+        email:    legacyUser.email,
+        isAdmin:  legacyUser.isAdmin,
+        isActive: legacyUser.isActive,
+      });
     if (!updated) return NextResponse.json({ error: 'Not found' }, { status: 404 });
-    return NextResponse.json({ user: updated });
+    return NextResponse.json({
+      user: {
+        id:    String(updated.id),
+        name:  updated.username,
+        email: updated.email,
+        role:  updated.isAdmin ? 'admin' : 'estimator',
+        isActive: updated.isActive ?? true,
+      },
+    });
   } catch (err) { return dbError(err); }
 }
 
@@ -52,15 +74,16 @@ export async function DELETE(
   if (role !== 'admin') return NextResponse.json({ error: 'Admin access required' }, { status: 403 });
 
   const { id } = await params;
+  const userId = parseInt(id, 10);
+  if (isNaN(userId)) return NextResponse.json({ error: 'Invalid ID' }, { status: 400 });
 
-  // Prevent self-deletion
   if (id === session.user?.id) {
     return NextResponse.json({ error: 'Cannot deactivate your own account' }, { status: 400 });
   }
 
   try {
     const db = getDb();
-    await db.update(schema.users).set({ isActive: false, updatedAt: new Date() }).where(eq(schema.users.id, id));
+    await db.update(legacyUser).set({ isActive: false, updatedAt: new Date() }).where(eq(legacyUser.id, userId));
     return NextResponse.json({ success: true });
   } catch (err) { return dbError(err); }
 }

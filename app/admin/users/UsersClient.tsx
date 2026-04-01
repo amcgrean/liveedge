@@ -162,7 +162,7 @@ export default function UsersClient() {
             </div>
             <div className="p-6 space-y-4">
               <div>
-                <label className="block text-xs font-medium text-slate-400 mb-1">Full Name *</label>
+                <label className="block text-xs font-medium text-slate-400 mb-1">Username *</label>
                 <input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })}
                   className="w-full px-3 py-2 bg-slate-950/60 border border-slate-700 rounded-lg text-sm text-slate-100 focus:border-cyan-400 focus:outline-none" />
               </div>

@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '../../../../auth';
-import { getDb, schema } from '../../../../db/index';
-import { eq, desc } from 'drizzle-orm';
+import { getDb } from '../../../../db/index';
+import { legacyUser, legacyUserType } from '../../../../db/schema-legacy';
+import { eq, desc, ilike } from 'drizzle-orm';
 import bcrypt from 'bcryptjs';
 import type { Session } from 'next-auth';
 
@@ -20,6 +21,12 @@ async function requireAdmin(session: Session | null) {
   return null;
 }
 
+function deriveRole(row: { isAdmin: boolean | null; isEstimator: boolean | null; isCommercialEstimator: boolean | null }): string {
+  if (row.isAdmin) return 'admin';
+  if (row.isEstimator || row.isCommercialEstimator) return 'estimator';
+  return 'viewer';
+}
+
 export async function GET(_req: NextRequest) {
   const session = await auth();
   const err = await requireAdmin(session);
@@ -29,18 +36,28 @@ export async function GET(_req: NextRequest) {
     const db = getDb();
     const rows = await db
       .select({
-        id: schema.users.id,
-        email: schema.users.email,
-        name: schema.users.name,
-        role: schema.users.role,
-        isActive: schema.users.isActive,
-        createdAt: schema.users.createdAt,
-        updatedAt: schema.users.updatedAt,
+        id:                    legacyUser.id,
+        username:              legacyUser.username,
+        email:                 legacyUser.email,
+        isAdmin:               legacyUser.isAdmin,
+        isEstimator:           legacyUser.isEstimator,
+        isCommercialEstimator: legacyUser.isCommercialEstimator,
+        isActive:              legacyUser.isActive,
+        createdAt:             legacyUser.createdAt,
       })
-      .from(schema.users)
-      .orderBy(desc(schema.users.createdAt));
+      .from(legacyUser)
+      .orderBy(desc(legacyUser.createdAt));
 
-    return NextResponse.json({ users: rows });
+    return NextResponse.json({
+      users: rows.map((r) => ({
+        id:        String(r.id),
+        name:      r.username,
+        email:     r.email,
+        role:      deriveRole(r),
+        isActive:  r.isActive ?? true,
+        createdAt: r.createdAt ? r.createdAt.toISOString() : new Date(0).toISOString(),
+      })),
+    });
   } catch (err) {
     return dbError(err);
   }
@@ -51,11 +68,12 @@ export async function POST(req: NextRequest) {
   const adminErr = await requireAdmin(session);
   if (adminErr) return adminErr;
 
-  let body: { email: string; name: string; role: string; password: string };
+  let body: { username?: string; name?: string; email: string; role: string; password: string };
   try { body = await req.json(); } catch { return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 }); }
 
-  if (!body.email || !body.name || !body.password) {
-    return NextResponse.json({ error: 'email, name, and password are required' }, { status: 422 });
+  const username = (body.username ?? body.name ?? '').trim();
+  if (!username || !body.email || !body.password) {
+    return NextResponse.json({ error: 'username, email, and password are required' }, { status: 422 });
   }
 
   const validRoles = ['admin', 'estimator', 'viewer'];
@@ -65,25 +83,51 @@ export async function POST(req: NextRequest) {
 
   try {
     const db = getDb();
-    const passwordHash = await bcrypt.hash(body.password, 12);
+
+    // Resolve a usertypeId — pick by matching name, fall back to first available
+    const allTypes = await db.select().from(legacyUserType);
+    let usertypeId = allTypes[0]?.id ?? 1;
+    const roleLabel = body.role === 'admin' ? 'admin' : body.role === 'estimator' ? 'estimat' : 'viewer';
+    const match = allTypes.find((t) => t.name.toLowerCase().includes(roleLabel));
+    if (match) usertypeId = match.id;
+
+    const password = await bcrypt.hash(body.password, 12);
+    const isAdmin      = body.role === 'admin';
+    const isEstimator  = body.role === 'estimator';
+
     const [user] = await db
-      .insert(schema.users)
+      .insert(legacyUser)
       .values({
+        username,
         email: body.email.toLowerCase().trim(),
-        name: body.name.trim(),
-        role: body.role,
-        passwordHash,
+        password,
+        usertypeId,
+        isAdmin,
+        isEstimator,
+        isCommercialEstimator: false,
+        isResidentialEstimator: false,
+        isDesigner: false,
+        isActive: true,
       })
       .returning({
-        id: schema.users.id,
-        email: schema.users.email,
-        name: schema.users.name,
-        role: schema.users.role,
-        isActive: schema.users.isActive,
-        createdAt: schema.users.createdAt,
+        id:       legacyUser.id,
+        username: legacyUser.username,
+        email:    legacyUser.email,
+        isAdmin:  legacyUser.isAdmin,
+        isActive: legacyUser.isActive,
+        createdAt: legacyUser.createdAt,
       });
 
-    return NextResponse.json({ user }, { status: 201 });
+    return NextResponse.json({
+      user: {
+        id:        String(user.id),
+        name:      user.username,
+        email:     user.email,
+        role:      body.role,
+        isActive:  user.isActive ?? true,
+        createdAt: user.createdAt ? user.createdAt.toISOString() : new Date().toISOString(),
+      },
+    }, { status: 201 });
   } catch (err) {
     return dbError(err);
   }
