@@ -20,7 +20,8 @@ export async function GET() {
   const configured = isErpConfigured();
 
   // Get recent ERP sync audit entries
-  let recentSyncs: { id: number; action: string; timestamp: Date; changes: string | null }[] = [];
+  // changes is jsonb (upgraded from text) — Drizzle types it as unknown
+  let recentSyncs: { id: number; action: string; timestamp: Date; changes: unknown }[] = [];
   try {
     const db = getDb();
     recentSyncs = await db
