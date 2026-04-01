@@ -1,26 +1,47 @@
-import { drizzle } from 'drizzle-orm/neon-http';
-import { neon } from '@neondatabase/serverless';
+import { drizzle } from 'drizzle-orm/postgres-js';
+import postgres from 'postgres';
 import * as schema from './schema';
 import * as legacySchema from './schema-legacy';
 
-// This will throw at runtime if DATABASE_URL is not set.
-// That's intentional - we want clear errors during development.
+// Supabase connection for the beisser-takeoff app database.
+// All app tables live in the `bids` schema on the same Supabase instance
+// used for ERP reads (db/supabase.ts points at the same DB, public schema).
+//
+// Env var resolution order:
+//   BIDS_DATABASE_URL          — preferred: direct (non-pooled) Supabase URL for bids schema
+//   POSTGRES_URL_NON_POOLING   — Vercel Supabase integration direct URL
+//   POSTGRES_URL               — Vercel Supabase integration pooled URL (transaction mode)
+//
+// Use the direct (non-pooled) URL when available — avoids pgBouncer issues
+// with Drizzle's prepared statements. In serverless, max:1 is correct.
 function createDb() {
   const databaseUrl =
-    process.env.DATABASE_URL ||
     process.env.BIDS_DATABASE_URL ||
-    process.env.BIDS_DATABASE_URL_UNPOOLED;
+    process.env.POSTGRES_URL_NON_POOLING ||
+    process.env.POSTGRES_URL;
+
   if (!databaseUrl) {
     throw new Error(
-      'DATABASE_URL environment variable is not set. ' +
-        'Please add your Neon Postgres connection string to .env.local'
+      'App database not configured. ' +
+        'Set BIDS_DATABASE_URL to the Supabase direct connection string, ' +
+        'or connect Supabase to your Vercel project.'
     );
   }
-  const sql = neon(databaseUrl);
+
+  const sql = postgres(databaseUrl, {
+    // Serverless-safe: one connection per invocation, released on function exit
+    max: 1,
+    idle_timeout: 20,
+    connect_timeout: 10,
+    // Required when using a pooled URL (pgBouncer transaction mode)
+    prepare: false,
+  });
+
   return drizzle(sql, { schema: { ...schema, ...legacySchema } });
 }
 
-// Singleton pattern to reuse the connection across requests
+// Singleton — reuses the connection across requests within the same
+// serverless function invocation.
 let _db: ReturnType<typeof createDb> | null = null;
 
 export function getDb() {

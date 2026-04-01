@@ -5,11 +5,17 @@ export default {
   out: './db/migrations',
   dialect: 'postgresql',
   dbCredentials: {
-    url: process.env.DATABASE_URL!,
+    // Use the direct (non-pooled) Supabase connection for migrations.
+    // Set BIDS_DATABASE_URL in .env.local to the Supabase direct URL.
+    // Never use the pooled pgBouncer URL here — drizzle-kit needs a real connection.
+    url: process.env.BIDS_DATABASE_URL || process.env.POSTGRES_URL_NON_POOLING!,
   },
-  // Only manage tables defined in schema.ts (UUID-based).
-  // Legacy tables (serial-ID, from Flask/Alembic) are defined in
-  // schema-legacy.ts but must NOT be touched by drizzle-kit.
+  // Scope all drizzle-kit operations to the `bids` schema only.
+  // This prevents touching WH-Tracker's Alembic-managed public schema tables.
+  schemaFilter: ['bids'],
+  // Only manage UUID-based tables via drizzle-kit.
+  // Legacy serial-ID tables (schema-legacy.ts) are NOT in this list —
+  // they were migrated manually and must never be touched by drizzle-kit push/generate.
   tablesFilter: [
     'users',
     'customers',

@@ -1,16 +1,19 @@
 /**
- * Supabase (ERP) database connection.
+ * Supabase ERP database connection.
  *
- * This is a SECOND Postgres connection for the Supabase-hosted ERP database.
- * The primary app database remains on Neon (see db/index.ts).
+ * Both the app tables (bids schema) and the ERP mirror tables (public schema)
+ * live in the same Supabase instance. This module provides the connection used
+ * specifically for ERP reads against the public schema — keeping the separation
+ * explicit even though it's the same underlying database.
  *
- * Vercel's Supabase integration provides these env vars:
- *   POSTGRES_URL          — pooled connection string (Transaction mode)
- *   POSTGRES_URL_NON_POOLING — direct connection string
- *   POSTGRES_USER, POSTGRES_PASSWORD, POSTGRES_DATABASE, POSTGRES_HOST
+ * App tables → db/index.ts  (bids schema, read/write)
+ * ERP tables → db/supabase.ts (public schema, read-only)
  *
- * We use postgres.js (postgres) as the driver since @neondatabase/serverless
- * is Neon-specific and won't work with Supabase's Postgres.
+ * Vercel's Supabase integration auto-provisions these env vars:
+ *   POSTGRES_URL              — pooled connection (pgBouncer, transaction mode)
+ *   POSTGRES_URL_NON_POOLING  — direct connection
+ *
+ * We prefer the non-pooling URL to avoid pgBouncer issues with prepared statements.
  */
 import { drizzle } from 'drizzle-orm/postgres-js';
 import postgres from 'postgres';
@@ -19,7 +22,6 @@ let _erpDb: ReturnType<typeof createErpDb> | null = null;
 let _erpSql: ReturnType<typeof postgres> | null = null;
 
 function getErpConnectionString(): string {
-  // Prefer non-pooling for Drizzle (avoids pgbouncer issues with prepared statements)
   const url =
     process.env.POSTGRES_URL_NON_POOLING ||
     process.env.POSTGRES_URL_UNPOOLED ||
@@ -37,19 +39,17 @@ function getErpConnectionString(): string {
 }
 
 function createErpDb() {
-  const connectionString = getErpConnectionString();
-  _erpSql = postgres(connectionString, {
-    // Serverless-friendly settings
+  _erpSql = postgres(getErpConnectionString(), {
     max: 1,
     idle_timeout: 20,
     connect_timeout: 10,
+    prepare: false,
   });
   return drizzle(_erpSql);
 }
 
 /**
- * Get the Drizzle instance for the ERP (Supabase) database.
- * Uses singleton pattern like the primary DB.
+ * Drizzle instance for ERP reads (public schema, read-only).
  */
 export function getErpDb() {
   if (!_erpDb) {
@@ -59,18 +59,22 @@ export function getErpDb() {
 }
 
 /**
- * Get the raw postgres.js SQL client for raw queries (e.g., introspection).
+ * Raw postgres.js client for ERP introspection queries (admin panel, table discovery).
  */
 export function getErpSql() {
   if (!_erpSql) {
-    const connectionString = getErpConnectionString();
-    _erpSql = postgres(connectionString, { max: 1, idle_timeout: 20, connect_timeout: 10 });
+    _erpSql = postgres(getErpConnectionString(), {
+      max: 1,
+      idle_timeout: 20,
+      connect_timeout: 10,
+      prepare: false,
+    });
   }
   return _erpSql;
 }
 
 /**
- * Check if the ERP database is configured (env vars present).
+ * Returns true if the ERP database env vars are present.
  */
 export function isErpConfigured(): boolean {
   return !!(
