@@ -36,7 +36,10 @@ export default function DashboardClient({ session }: Props) {
 
   useEffect(() => {
     fetch('/api/dashboard')
-      .then((r) => r.json())
+      .then((r) => {
+        if (!r.ok) throw new Error(`Dashboard API error: ${r.status}`);
+        return r.json();
+      })
       .then(setData)
       .catch(console.error)
       .finally(() => setLoading(false));

@@ -86,17 +86,22 @@ export async function GET() {
         )
       );
 
-    // Recent activity (last 20 entries)
-    const recentActivity = await db
-      .select({
-        id: legacyBidActivity.id,
-        bidId: legacyBidActivity.bidId,
-        action: legacyBidActivity.action,
-        timestamp: legacyBidActivity.timestamp,
-      })
-      .from(legacyBidActivity)
-      .orderBy(sql`${legacyBidActivity.timestamp} desc`)
-      .limit(20);
+    // Recent activity (last 20 entries) — non-fatal: empty array if query fails
+    let recentActivity: { id: number; bidId: number; action: string; timestamp: string }[] = [];
+    try {
+      recentActivity = await db
+        .select({
+          id: legacyBidActivity.id,
+          bidId: legacyBidActivity.bidId,
+          action: legacyBidActivity.action,
+          timestamp: legacyBidActivity.timestamp,
+        })
+        .from(legacyBidActivity)
+        .orderBy(sql`${legacyBidActivity.timestamp} desc`)
+        .limit(20);
+    } catch (actErr) {
+      console.error('[dashboard API] recentActivity query failed:', actErr);
+    }
 
     return NextResponse.json({
       openBids: openBidsResult?.count ?? 0,
