@@ -1,7 +1,8 @@
 'use client';
 
 import React, { useEffect, useState, useCallback } from 'react';
-import { Plus, Search, Pencil, Trash2, RefreshCw, X, Check } from 'lucide-react';
+import { Plus, Search, Pencil, Trash2, RefreshCw, X, Check, ExternalLink } from 'lucide-react';
+import Link from 'next/link';
 import { formatDate } from '../../../src/lib/utils';
 
 interface Customer {
@@ -150,6 +151,7 @@ export default function CustomersClient() {
                   <td className="text-slate-500 text-xs">{formatDate(c.createdAt)}</td>
                   <td>
                     <div className="flex items-center gap-1">
+                      <Link href={`/admin/customers/${c.id}`} className="p-1.5 rounded hover:bg-slate-800 text-slate-500 hover:text-cyan-400 transition" title="View details"><ExternalLink className="w-3.5 h-3.5" /></Link>
                       <button onClick={() => openEdit(c)} className="p-1.5 rounded hover:bg-slate-800 text-slate-500 hover:text-slate-200 transition"><Pencil className="w-3.5 h-3.5" /></button>
                       {c.isActive && <button onClick={() => handleDeactivate(c)} className="p-1.5 rounded hover:bg-red-900/20 text-slate-500 hover:text-red-400 transition"><Trash2 className="w-3.5 h-3.5" /></button>}
                     </div>

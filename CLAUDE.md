@@ -138,33 +138,31 @@ Full migration plan in `docs/migration-plan.md`. Six phases.
 - `db/migrate-from-neon.ts` — one-time migration script (reference only, migration executed)
 - Migration SQL files in `db/migrations/0003*` — applied in Supabase SQL editor
 
-### Phase 5: Unification and Cleanup — NOT STARTED
+### Phase 5: Unification and Cleanup — COMPLETE
 
-#### 5A: Unified Bid View
-Combine the legacy flat bid (`legacyBid`) and the new JSONB takeoff bid (`bids` UUID table) into a single customer-facing view. A legacy bid may have 0 or 1 linked takeoff session (`takeoffSessions.legacyBidId` FK). The UI should show both side-by-side or merged in one card — takeoff totals surfaced next to the flat bid fields.
-- Key join: `legacyBid.id` ↔ `takeoffSessions.legacyBidId` (integer FK added in migration 0003c)
-- "Send to Estimate" in the takeoff workspace already writes `inputs` JSONB back to the linked `bids` record
+#### 5A: Unified Bid View — COMPLETE
+- `GET /api/legacy-bids/[id]` now queries `takeoffSessions` + `bids.inputs` for the linked session and returns `takeoffSession: { id, name, updatedAt, measurements }` where `measurements` is a pre-computed summary (basement/floor ext LF, roof SF, siding SF, deck SF, window/door counts)
+- `ManageBidClient` consolidates to a single GET fetch (no longer calls start-takeoff separately); shows a cyan-bordered "Takeoff Measurements" sidebar card with row-level metrics and a direct link to the takeoff workspace
+- Helper `computeMeasurementSummary()` in the API route converts the raw `bids.inputs` JSONB to a flat `Record<string, number>` — safe to null-check and extend
 
-#### 5B: Bcrypt Password Migration
-All passwords in `bids."user"` are plaintext (legacy Flask). Auto-upgrade on login is already in place (`auth.ts` — verifies plaintext, then rehashes to bcrypt on success). Phase 5B bulk-migrates all remaining plaintext passwords at once.
-- Approach: write a one-time script similar to `db/migrate-from-neon.ts` — query all users where `password NOT LIKE '$2%'`, hash each with bcrypt cost 12, update in batches
-- Run as a Vercel cron job or a standalone Node script against `POSTGRES_URL_NON_POOLING`
-- After migration, remove the plaintext branch from `verifyPassword()` in `auth.ts`
+#### 5B: Bcrypt Password Migration — COMPLETE
+- `db/bulk-bcrypt-migrate.ts` — one-time Node script: queries `bids."user"` WHERE `password NOT LIKE '$2%'`, hashes in batches of 10 at cost 12, updates in-place
+- Run with: `npx tsx db/bulk-bcrypt-migrate.ts` (requires `POSTGRES_URL_NON_POOLING` or `BIDS_DATABASE_URL`)
+- After running: verify with `SELECT count(*) FROM bids."user" WHERE password NOT LIKE '$2%'` = 0, then remove plaintext branch from `verifyPassword()` in `auth.ts`
 
-#### 5C: Customer-Centric Views
-Add a customer detail page at `app/admin/customers/[id]/` (or `app/customers/[id]/`) that shows:
-- All legacy bids for this customer (`legacyBid` filtered by `customerId`)
-- All designs (`legacyDesign` filtered by `customerId`)
-- All EWP records (`legacyEWP` filtered by `customerId`)
-- All takeoff sessions (via `bids` UUID table joined to `legacyBid`)
-- Currently, `app/admin/` has a customers list using `legacyCustomer` (serial IDs) — customer detail page is the missing piece
+#### 5C: Customer-Centric Views — COMPLETE
+- `app/admin/customers/[id]/CustomerDetailClient.tsx` — full customer detail page: stat cards (bid/design/EWP/takeoff counts), bids list, designs list, EWP list, estimator bids list; each row links to its manage page
+- `app/api/customers/[id]/designs/route.ts` — GET designs for a legacy customer ID (joins `legacyDesigner`)
+- `app/api/customers/[id]/ewp/route.ts` — GET EWP records for a legacy customer ID
+- `app/api/customers/[id]/bids/route.ts` already existed and returns both legacy + UUID bids
+- `CustomersClient.tsx` — added ExternalLink icon button on each row to `/admin/customers/[id]`
 
 ### Phase 6: Polish and Sunset — NOT STARTED
 - Print-optimized CSS, responsive audit, error boundaries
 - Flask app sunset, DNS routing, archive
 
 ## Pending Actions
-1. **Phase 5**: Unified bid view, bcrypt password migration, customer-centric views
+1. **Phase 5B follow-up**: Run `db/bulk-bcrypt-migrate.ts` in production, then remove the plaintext branch from `verifyPassword()` in `auth.ts`
 2. **Phase 6**: Polish, Flask sunset
 
 ## API Route Patterns
