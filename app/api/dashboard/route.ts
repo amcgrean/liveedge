@@ -58,8 +58,8 @@ export async function GET() {
           : eq(legacyDesign.status, 'Active')
       );
 
-    // YTD completed bids
-    const yearStart = new Date(new Date().getFullYear(), 0, 1);
+    // YTD completed bids — use ISO string so postgres.js serializes it correctly
+    const yearStart = `${new Date().getFullYear()}-01-01`;
     const [ytdResult] = await db
       .select({ count: sql<number>`count(*)::int` })
       .from(legacyBid)
