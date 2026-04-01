@@ -35,6 +35,7 @@ import { PutObjectCommand } from '@aws-sdk/client-s3';
 
 const S3_BUCKET = 'beisser-bid-uploads';
 const S3_REGION = process.env.AWS_REGION ?? 'us-east-1';
+const DRY_RUN   = process.env.DRY_RUN === 'true';
 
 const s3 = new S3Client({
   region: S3_REGION,
@@ -106,9 +107,15 @@ async function run() {
       const size = ((obj.Size ?? 0) / 1024).toFixed(1);
 
       // Skip already-migrated files
-      if (await existsInR2(key)) {
+      if (!DRY_RUN && await existsInR2(key)) {
         console.log(`  SKIP  ${key} (already in R2)`);
         totalSkipped++;
+        continue;
+      }
+
+      if (DRY_RUN) {
+        console.log(`  DRY   ${key}  (${size} KB)`);
+        totalCopied++;
         continue;
       }
 
