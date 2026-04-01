@@ -18,6 +18,13 @@ import {
 } from 'lucide-react';
 import Link from 'next/link';
 
+interface TakeoffSession {
+  id: string;
+  name: string;
+  updatedAt: string | null;
+  measurements: Record<string, number> | null;
+}
+
 interface BidDetail {
   id: number;
   planType: string;
@@ -54,6 +61,7 @@ interface BidDetail {
   estimatorName: string | null;
   files: { id: number; filename: string; fileType: string | null; uploadedAt: string | null }[];
   activity: { id: number; action: string; timestamp: string }[];
+  takeoffSession: TakeoffSession | null;
 }
 
 interface Props {
@@ -81,20 +89,14 @@ export default function ManageBidClient({ session }: Props) {
   const fetchBid = useCallback(async () => {
     setLoading(true);
     try {
-      const [bidRes, takeoffRes] = await Promise.all([
-        fetch(`/api/legacy-bids/${bidId}`),
-        fetch(`/api/legacy-bids/${bidId}/start-takeoff`),
-      ]);
+      const bidRes = await fetch(`/api/legacy-bids/${bidId}`);
       if (!bidRes.ok) {
         setError('Bid not found');
         return;
       }
       const data = await bidRes.json();
       setBid(data);
-      if (takeoffRes.ok) {
-        const td = await takeoffRes.json();
-        if (td.exists) setTakeoffSessionId(td.session.id);
-      }
+      if (data.takeoffSession?.id) setTakeoffSessionId(data.takeoffSession.id);
       // Initialize form from bid data
       setForm({
         projectName: data.projectName,
@@ -458,6 +460,56 @@ export default function ManageBidClient({ session }: Props) {
 
           {/* Sidebar */}
           <div className="space-y-4">
+            {/* Takeoff Measurements */}
+            {bid.takeoffSession && (
+              <div className="bg-gray-900 border border-cyan-900/50 rounded-lg p-4">
+                <div className="flex items-center justify-between mb-3">
+                  <h3 className="font-semibold text-sm flex items-center gap-1.5">
+                    <Ruler className="w-3.5 h-3.5 text-cyan-400" />
+                    Takeoff Measurements
+                  </h3>
+                  <Link
+                    href={`/takeoff/${bid.takeoffSession.id}`}
+                    className="text-xs text-cyan-400 hover:text-cyan-300 flex items-center gap-0.5"
+                  >
+                    Open <ExternalLink className="w-3 h-3" />
+                  </Link>
+                </div>
+                {bid.takeoffSession.measurements && Object.keys(bid.takeoffSession.measurements).length > 0 ? (
+                  <div className="space-y-1">
+                    {Object.entries(bid.takeoffSession.measurements).map(([key, val]) => {
+                      const labels: Record<string, string> = {
+                        basementExtLF: 'Basement Ext LF',
+                        firstFloorExtLF: '1st Floor Ext LF',
+                        secondFloorExtLF: '2nd Floor Ext LF',
+                        roofSF: 'Roof SF',
+                        sidingSF: 'Siding SF',
+                        deckSF: 'Deck SF',
+                        windowCount: 'Windows',
+                        doorCount: 'Doors',
+                      };
+                      const isCount = key === 'windowCount' || key === 'doorCount';
+                      return (
+                        <div key={key} className="flex justify-between text-xs">
+                          <span className="text-gray-400">{labels[key] ?? key}</span>
+                          <span className="text-gray-200 font-medium tabular-nums">
+                            {isCount ? val : val.toLocaleString()} {isCount ? '' : key.endsWith('SF') ? 'sf' : 'lf'}
+                          </span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                ) : (
+                  <p className="text-xs text-gray-500">No measurements recorded yet.</p>
+                )}
+                {bid.takeoffSession.updatedAt && (
+                  <p className="text-xs text-gray-600 mt-2">
+                    Updated {new Date(bid.takeoffSession.updatedAt).toLocaleDateString()}
+                  </p>
+                )}
+              </div>
+            )}
+
             {/* Files */}
             <div className="bg-gray-900 border border-gray-800 rounded-lg p-4">
               <div className="flex items-center justify-between mb-3">
