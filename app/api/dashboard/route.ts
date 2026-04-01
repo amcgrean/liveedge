@@ -87,7 +87,7 @@ export async function GET() {
       );
 
     // Recent activity (last 20 entries) — non-fatal: empty array if query fails
-    let recentActivity: { id: number; bidId: number; action: string; timestamp: string }[] = [];
+    let recentActivity: { id: number; bidId: number; action: string; timestamp: Date | null }[] = [];
     try {
       recentActivity = await db
         .select({
