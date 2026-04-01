@@ -23,11 +23,6 @@
  * Re-run safely if the process is interrupted.
  */
 
-import { config } from 'dotenv';
-import { resolve } from 'path';
-// Load .env.local from project root
-config({ path: resolve(process.cwd(), '.env.local') });
-
 import {
   S3Client,
   ListObjectsV2Command,
