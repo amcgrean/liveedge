@@ -6,14 +6,23 @@
  * existing JSON data files so the app works out of the box.
  */
 
-import { neon } from '@neondatabase/serverless';
-import { drizzle } from 'drizzle-orm/neon-http';
+import postgres from 'postgres';
+import { drizzle } from 'drizzle-orm/postgres-js';
 import * as schema from './schema';
 import bcrypt from 'bcryptjs';
 import { readFileSync } from 'fs';
 import { join } from 'path';
 
-const sql = neon(process.env.DATABASE_URL!);
+const databaseUrl =
+  process.env.BIDS_DATABASE_URL ||
+  process.env.POSTGRES_URL_NON_POOLING ||
+  process.env.POSTGRES_URL;
+
+if (!databaseUrl) {
+  throw new Error('Set BIDS_DATABASE_URL (or POSTGRES_URL_NON_POOLING / POSTGRES_URL) to run seed.');
+}
+
+const sql = postgres(databaseUrl, { max: 1, prepare: false });
 const db = drizzle(sql, { schema });
 
 async function main() {
