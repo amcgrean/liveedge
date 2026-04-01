@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '../../../../auth';
 import { getDb } from '../../../../db/index';
-import { legacyEWP, legacyCustomer } from '../../../../db/schema-legacy';
-import { eq } from 'drizzle-orm';
+import { legacyEWP, legacyCustomer, legacyGeneralAudit } from '../../../../db/schema-legacy';
+import { eq, and, sql } from 'drizzle-orm';
 
 type RouteContext = { params: Promise<{ id: string }> };
 
@@ -25,7 +25,30 @@ export async function GET(_req: NextRequest, context: RouteContext) {
 
     if (rows.length === 0) return NextResponse.json({ error: 'Not found' }, { status: 404 });
     const { ewp, customerName, customerCode } = rows[0];
-    return NextResponse.json({ ...ewp, customerName, customerCode });
+
+    const activity = await db
+      .select()
+      .from(legacyGeneralAudit)
+      .where(
+        and(
+          eq(legacyGeneralAudit.modelName, 'ewp'),
+          sql`(${legacyGeneralAudit.changes}->>'ewpId')::int = ${ewpId}`
+        )
+      )
+      .orderBy(legacyGeneralAudit.timestamp);
+
+    // Log view
+    const userId = parseInt(session.user.id, 10);
+    if (!isNaN(userId)) {
+      await db.insert(legacyGeneralAudit).values({
+        userId,
+        modelName: 'ewp',
+        action: 'viewed',
+        changes: { ewpId },
+      });
+    }
+
+    return NextResponse.json({ ...ewp, customerName, customerCode, activity });
   } catch (err) {
     console.error('[ewp/[id] API]', err);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
@@ -64,6 +87,17 @@ export async function PUT(req: NextRequest, context: RouteContext) {
 
     const [updated] = await db.update(legacyEWP).set(updates).where(eq(legacyEWP.id, ewpId)).returning();
     if (!updated) return NextResponse.json({ error: 'Not found' }, { status: 404 });
+
+    const userId = parseInt(session.user.id, 10);
+    if (!isNaN(userId)) {
+      await db.insert(legacyGeneralAudit).values({
+        userId,
+        modelName: 'ewp',
+        action: 'updated',
+        changes: { ewpId },
+      });
+    }
+
     return NextResponse.json({ ewp: updated });
   } catch (err) {
     console.error('[ewp/[id] API]', err);

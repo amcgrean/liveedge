@@ -20,6 +20,7 @@ export default function ManageEWPClient({ session }: Props) {
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
   const [form, setForm] = useState<Record<string, unknown>>({});
+  const [activity, setActivity] = useState<{ id: number; action: string; timestamp: string }[]>([]);
 
   const fetchEWP = useCallback(async () => {
     setLoading(true);
@@ -28,6 +29,7 @@ export default function ManageEWPClient({ session }: Props) {
       if (!res.ok) { setError('EWP not found'); return; }
       const data = await res.json();
       setEwp(data);
+      setActivity((data.activity as { id: number; action: string; timestamp: string }[]) ?? []);
       setForm({
         planNumber: data.planNumber ?? '',
         address: data.address ?? '',
@@ -146,6 +148,20 @@ export default function ManageEWPClient({ session }: Props) {
               className="w-full px-3 py-2 bg-gray-800 border border-gray-700 rounded text-sm focus:outline-none focus:border-cyan-500 resize-y" />
           </div>
         </div>
+
+        {activity.length > 0 && (
+          <div className="mt-6 bg-gray-900 border border-gray-800 rounded-lg p-4">
+            <h2 className="text-sm font-semibold text-gray-300 mb-3">Activity Log</h2>
+            <ul className="space-y-1.5 max-h-48 overflow-y-auto">
+              {activity.map((a) => (
+                <li key={a.id} className="flex items-center justify-between text-xs">
+                  <span className="text-gray-300 capitalize">{a.action}</span>
+                  <span className="text-gray-500">{new Date(a.timestamp).toLocaleString()}</span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
 
         <div className="flex justify-end mt-6">
           <button onClick={handleSave} disabled={saving}

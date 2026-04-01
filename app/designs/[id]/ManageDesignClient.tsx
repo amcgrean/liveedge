@@ -38,7 +38,7 @@ export default function ManageDesignClient({ session }: Props) {
         designerId: data.designerId ?? null,
         status: data.status ?? 'Active',
         planDescription: data.planDescription ?? '',
-        squareFootage: data.squareFootage ?? '',
+        squareFootage:   data.squareFootage ?? '',
         preliminarySetDate: data.preliminarySetDate ? new Date(data.preliminarySetDate as string).toISOString().split('T')[0] : '',
         notes: data.notes ?? '',
       });
@@ -155,6 +155,11 @@ export default function ManageDesignClient({ session }: Props) {
               <option value="">— Unassigned —</option>
               {designers.map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}
             </select>
+          </div>
+          <div>
+            <label className="block text-xs text-gray-400 mb-1">Plan Description</label>
+            <input type="text" maxLength={50} value={(form.planDescription as string) ?? ''} onChange={(e) => setField('planDescription', e.target.value)}
+              className="w-full px-3 py-2 bg-gray-800 border border-gray-700 rounded text-sm focus:outline-none focus:border-cyan-500" />
           </div>
           <div>
             <label className="block text-xs text-gray-400 mb-1">Notes</label>

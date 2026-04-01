@@ -108,9 +108,10 @@ Full migration plan in `docs/migration-plan.md`. Six phases.
 - **Schema**: `takeoff_sessions.legacy_bid_id` (integer) links to legacy bid table.
 
 ### Phase 2: Designs, EWP, Projects — COMPLETE
-- EWP pages: `app/ewp/` (list, add, manage)
+- EWP pages: `app/ewp/` (list, add, manage, CSV import via `app/api/ewp/import/`)
 - Projects pages: `app/projects/` (list, manage)
-- Design management still needs full CRUD (2A) and Layouts (2B)
+- **Design CRUD (2A)**: `app/designs/` — list, add, manage with activity log (`legacyDesignActivity`). Plan number auto-generated as `D-YYMM-NNN`.
+- **Layouts/EWP CRUD (2B)**: Full CRUD + CSV import. Activity tracked via `legacyGeneralAudit` (modelName=`'ewp'`, ewpId stored in `changes` JSONB — no dedicated ewp_activity table in legacy DB).
 
 ### Phase 3: Admin Portal Expansion — COMPLETE
 - Permissions: `app/admin/users/[id]/permissions/`
@@ -138,20 +139,33 @@ Full migration plan in `docs/migration-plan.md`. Six phases.
 - Migration SQL files in `db/migrations/0003*` — applied in Supabase SQL editor
 
 ### Phase 5: Unification and Cleanup — NOT STARTED
-- Unified bid view (legacy flat + JSONB takeoff bids in combined display)
-- Password security (bcrypt migration for legacy `bids."user"` table)
-- Customer-centric views (all bids for a customer)
+
+#### 5A: Unified Bid View
+Combine the legacy flat bid (`legacyBid`) and the new JSONB takeoff bid (`bids` UUID table) into a single customer-facing view. A legacy bid may have 0 or 1 linked takeoff session (`takeoffSessions.legacyBidId` FK). The UI should show both side-by-side or merged in one card — takeoff totals surfaced next to the flat bid fields.
+- Key join: `legacyBid.id` ↔ `takeoffSessions.legacyBidId` (integer FK added in migration 0003c)
+- "Send to Estimate" in the takeoff workspace already writes `inputs` JSONB back to the linked `bids` record
+
+#### 5B: Bcrypt Password Migration
+All passwords in `bids."user"` are plaintext (legacy Flask). Auto-upgrade on login is already in place (`auth.ts` — verifies plaintext, then rehashes to bcrypt on success). Phase 5B bulk-migrates all remaining plaintext passwords at once.
+- Approach: write a one-time script similar to `db/migrate-from-neon.ts` — query all users where `password NOT LIKE '$2%'`, hash each with bcrypt cost 12, update in batches
+- Run as a Vercel cron job or a standalone Node script against `POSTGRES_URL_NON_POOLING`
+- After migration, remove the plaintext branch from `verifyPassword()` in `auth.ts`
+
+#### 5C: Customer-Centric Views
+Add a customer detail page at `app/admin/customers/[id]/` (or `app/customers/[id]/`) that shows:
+- All legacy bids for this customer (`legacyBid` filtered by `customerId`)
+- All designs (`legacyDesign` filtered by `customerId`)
+- All EWP records (`legacyEWP` filtered by `customerId`)
+- All takeoff sessions (via `bids` UUID table joined to `legacyBid`)
+- Currently, `app/admin/` has a customers list using `legacyCustomer` (serial IDs) — customer detail page is the missing piece
 
 ### Phase 6: Polish and Sunset — NOT STARTED
 - Print-optimized CSS, responsive audit, error boundaries
 - Flask app sunset, DNS routing, archive
 
 ## Pending Actions
-1. **S3 → R2 file migration**: PR `claude/migrate-s3-to-r2` is open. Needs repo secrets (AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY, AWS_REGION, R2_ACCOUNT_ID, R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY) added before merge. Supports `dry_run=true`.
-2. **Design management (2A)**: Full CRUD for designs with activity log
-3. **Layouts management (2B)**: Full CRUD for layouts/EWP with CSV import
-4. **Phase 5**: Unified bid view, bcrypt password migration, customer-centric views
-5. **Phase 6**: Polish, Flask sunset
+1. **Phase 5**: Unified bid view, bcrypt password migration, customer-centric views
+2. **Phase 6**: Polish, Flask sunset
 
 ## API Route Patterns
 - **Legacy tables**: Import from `'<relative>/db/schema-legacy'`, use `legacyBid`, `legacyCustomer`, etc. (all now in `bids` schema — queries work transparently via Drizzle)
