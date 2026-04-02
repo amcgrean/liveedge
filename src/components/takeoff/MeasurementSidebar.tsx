@@ -48,7 +48,7 @@ export function MeasurementSidebar({
   }
 
   return (
-    <div className="w-72 flex-shrink-0 border-l border-white/10 bg-slate-900/50 flex flex-col overflow-hidden">
+    <div className="w-full flex-shrink-0 border-l border-white/10 bg-slate-900/50 flex flex-col overflow-hidden">
       {/* Header */}
       <div className="p-3 border-b border-white/10">
         <div className="flex items-center gap-2 text-white font-medium text-sm">

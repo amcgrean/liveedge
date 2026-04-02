@@ -8,10 +8,17 @@ interface PageNavigatorProps {
   pdf: PDFDocumentProxy | null;
   currentPage: number;
   pageCount: number;
+  thumbnailSize?: number;
   onPageChange: (page: number) => void;
 }
 
-export function PageNavigator({ pdf, currentPage, pageCount, onPageChange }: PageNavigatorProps) {
+export function PageNavigator({
+  pdf,
+  currentPage,
+  pageCount,
+  thumbnailSize = 48,
+  onPageChange,
+}: PageNavigatorProps) {
   const [thumbnails, setThumbnails] = useState<Record<number, string>>({});
   const scrollRef = useRef<HTMLDivElement>(null);
 
@@ -56,8 +63,8 @@ export function PageNavigator({ pdf, currentPage, pageCount, onPageChange }: Pag
   if (pageCount === 0) return null;
 
   return (
-    <div className="flex-shrink-0 border-b border-white/10 bg-slate-900/50">
-      <div ref={scrollRef} className="flex gap-2 p-2 overflow-x-auto">
+    <div className="h-full flex-shrink-0 border-b border-white/10 bg-slate-900/50">
+      <div ref={scrollRef} className="h-full flex items-start gap-2 p-2 overflow-x-auto">
         {Array.from({ length: pageCount }, (_, i) => i + 1).map((page) => (
           <button
             key={page}
@@ -74,10 +81,14 @@ export function PageNavigator({ pdf, currentPage, pageCount, onPageChange }: Pag
               <img
                 src={thumbnails[page]}
                 alt={`Page ${page}`}
-                className="w-16 h-12 object-cover bg-white"
+                className="object-cover bg-white"
+                style={{ width: thumbnailSize * 1.33, height: thumbnailSize }}
               />
             ) : (
-              <div className="w-16 h-12 bg-slate-800 flex items-center justify-center">
+              <div
+                className="bg-slate-800 flex items-center justify-center"
+                style={{ width: thumbnailSize * 1.33, height: thumbnailSize }}
+              >
                 <span className="text-xs text-slate-500">{page}</span>
               </div>
             )}

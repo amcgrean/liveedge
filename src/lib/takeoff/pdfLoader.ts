@@ -21,7 +21,11 @@ export async function loadPdf(source: File | ArrayBuffer | Uint8Array): Promise<
   } else {
     data = source;
   }
-  const loadingTask = getDocument({ data });
+  const loadingTask = getDocument({
+    data,
+    // Avoid JBIG2 wasm URL resolution issues in bundled environments.
+    useWasm: false,
+  });
   return loadingTask.promise;
 }
 

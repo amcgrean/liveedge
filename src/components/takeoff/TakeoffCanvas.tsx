@@ -206,6 +206,8 @@ export function TakeoffCanvas({
   // ── Zoom/scroll handler ──
   useEffect(() => {
     const container = containerRef.current;
+    const pdfCanvasEl = pdfCanvasRef.current;
+    const fabricCanvasEl = fabricCanvasRef.current;
     if (!container) return;
 
     function handleWheel(e: WheelEvent) {
@@ -242,8 +244,15 @@ export function TakeoffCanvas({
       }
     }
 
-    container.addEventListener('wheel', handleWheel, { passive: false });
-    return () => container.removeEventListener('wheel', handleWheel);
+    const opts: AddEventListenerOptions = { passive: false };
+    container.addEventListener('wheel', handleWheel, opts);
+    pdfCanvasEl?.addEventListener('wheel', handleWheel, opts);
+    fabricCanvasEl?.addEventListener('wheel', handleWheel, opts);
+    return () => {
+      container.removeEventListener('wheel', handleWheel);
+      pdfCanvasEl?.removeEventListener('wheel', handleWheel);
+      fabricCanvasEl?.removeEventListener('wheel', handleWheel);
+    };
   }, [dispatch, scrollMode]);
 
   // ── Keyboard handlers (space for pan, ctrl+z/y for undo/redo) ──

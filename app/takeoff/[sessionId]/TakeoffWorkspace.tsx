@@ -29,7 +29,11 @@ export function TakeoffWorkspace({ sessionId }: Props) {
   const [showFileUpload, setShowFileUpload] = useState(false);
   const [scrollMode, setScrollMode] = useState<'zoom' | 'pan'>('zoom');
   const [showThumbnails, setShowThumbnails] = useState(true);
+  const [sidebarWidth, setSidebarWidth] = useState(320);
+  const [thumbnailStripHeight, setThumbnailStripHeight] = useState(108);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const resizingSidebarRef = useRef(false);
+  const resizingStripRef = useRef(false);
 
   // Load session on mount
   useEffect(() => {
@@ -264,6 +268,32 @@ export function TakeoffWorkspace({ sessionId }: Props) {
     }
   }, [state.sessionId]);
 
+  // Resize handles (sidebar + page strip)
+  useEffect(() => {
+    function handleMouseMove(e: MouseEvent) {
+      if (resizingSidebarRef.current) {
+        const next = window.innerWidth - e.clientX;
+        setSidebarWidth(Math.max(240, Math.min(560, next)));
+      }
+      if (resizingStripRef.current) {
+        const next = window.innerHeight - e.clientY - 36; // account for bottom toolbar
+        setThumbnailStripHeight(Math.max(72, Math.min(220, next)));
+      }
+    }
+
+    function handleMouseUp() {
+      resizingSidebarRef.current = false;
+      resizingStripRef.current = false;
+    }
+
+    window.addEventListener('mousemove', handleMouseMove);
+    window.addEventListener('mouseup', handleMouseUp);
+    return () => {
+      window.removeEventListener('mousemove', handleMouseMove);
+      window.removeEventListener('mouseup', handleMouseUp);
+    };
+  }, []);
+
   // Loading state
   if (state.isLoading) {
     return (
@@ -353,7 +383,12 @@ export function TakeoffWorkspace({ sessionId }: Props) {
           </div>
 
           {/* Right sidebar */}
-          <div className="flex flex-col border-l border-white/10">
+          <div
+            className="w-1 cursor-col-resize bg-white/10 hover:bg-cyan-400/70 transition-colors"
+            onMouseDown={() => { resizingSidebarRef.current = true; }}
+            title="Drag to resize sidebar"
+          />
+          <div className="flex flex-col border-l border-white/10" style={{ width: sidebarWidth }}>
             {/* Viewport manager */}
             <div className="border-b border-white/10">
               <div className="px-3 py-2 text-xs font-semibold uppercase tracking-wider text-slate-400">
@@ -382,12 +417,22 @@ export function TakeoffWorkspace({ sessionId }: Props) {
 
         {/* Page thumbnail strip (collapsible) */}
         {showThumbnails && (
-          <PageNavigator
-            pdf={pdfDoc}
-            currentPage={state.currentPage}
-            pageCount={state.pageCount}
-            onPageChange={(page) => dispatch({ type: 'SET_PAGE', payload: page })}
-          />
+          <>
+            <div
+              className="h-1 cursor-row-resize bg-white/10 hover:bg-cyan-400/70 transition-colors"
+              onMouseDown={() => { resizingStripRef.current = true; }}
+              title="Drag to resize page strip"
+            />
+            <div style={{ height: thumbnailStripHeight }}>
+              <PageNavigator
+                pdf={pdfDoc}
+                currentPage={state.currentPage}
+                pageCount={state.pageCount}
+                thumbnailSize={Math.max(30, Math.min(72, Math.round((thumbnailStripHeight - 16) * 0.72)))}
+                onPageChange={(page) => dispatch({ type: 'SET_PAGE', payload: page })}
+              />
+            </div>
+          </>
         )}
 
         {/* Bottom bar */}
