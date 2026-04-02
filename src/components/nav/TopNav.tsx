@@ -18,6 +18,7 @@ import {
   Wrench,
   Menu,
   X,
+  PackageCheck,
 } from 'lucide-react';
 import { cn } from '../../lib/utils';
 
@@ -33,6 +34,7 @@ const NAV_LINKS = [
   { href: '/ewp',       label: 'EWP',        icon: <Layers className="w-4 h-4" /> },
   { href: '/projects',  label: 'Projects',   icon: <Building2 className="w-4 h-4" /> },
   { href: '/it-issues', label: 'IT Issues',  icon: <Wrench className="w-4 h-4" /> },
+  { href: '/purchasing', label: 'Purchasing', icon: <PackageCheck className="w-4 h-4" /> },
   { href: '/',          label: 'Estimating', icon: <FileText className="w-4 h-4" /> },
   { href: '/takeoff',   label: 'PDF Takeoff', icon: <Hammer className="w-4 h-4" /> },
 ];
@@ -47,6 +49,7 @@ const ADMIN_LINKS = [
   { href: '/admin/notifications',  label: 'Notifications' },
   { href: '/admin/audit',          label: 'Audit Log' },
   { href: '/admin/erp',            label: 'ERP Sync' },
+  { href: '/purchasing/review',    label: 'PO Review' },
 ];
 
 export function TopNav({ userName, userRole }: Props) {
