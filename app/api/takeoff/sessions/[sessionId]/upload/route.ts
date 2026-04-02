@@ -62,11 +62,11 @@ export async function GET(
     // R2's S3-compatible API may not support PutBucketCorsCommand — wrap in
     // try/catch so a CORS setup failure never blocks presigned URL generation.
     // If this fails, configure CORS manually in the Cloudflare dashboard:
-    //   R2 > bids bucket > Settings > CORS: allow beisser-takeoff.vercel.app,
+    //   R2 > bids bucket > Settings > CORS: allow liveedge.vercel.app,
     //   methods PUT/GET, headers *.
-    const origin = req.headers.get('origin') || 'https://beisser-takeoff.vercel.app';
+    const origin = req.headers.get('origin') || 'https://liveedge.vercel.app';
     try {
-      await ensureBucketCors([origin, 'https://beisser-takeoff.vercel.app', 'http://localhost:3000']);
+      await ensureBucketCors([origin, 'https://liveedge.vercel.app', 'https://beisser-takeoff.vercel.app', 'http://localhost:3000']);
     } catch (corsErr) {
       console.warn('[upload] ensureBucketCors failed (configure CORS manually in Cloudflare dashboard):', corsErr);
     }

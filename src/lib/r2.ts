@@ -106,7 +106,7 @@ export async function downloadPdf(key: string): Promise<Buffer> {
  * No-op placeholder. R2 does not support PutBucketCorsCommand via the S3 API.
  * CORS must be configured manually in the Cloudflare dashboard:
  *   R2 > bids bucket > Settings > CORS policy:
- *   Allow origin: https://beisser-takeoff.vercel.app
+ *   Allow origin: https://liveedge.vercel.app
  *   Allow methods: PUT, GET
  *   Allow headers: *
  *
