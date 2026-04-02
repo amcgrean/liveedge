@@ -20,6 +20,7 @@ import {
   X,
   PackageCheck,
   Warehouse,
+  ClipboardList,
 } from 'lucide-react';
 import { cn } from '../../lib/utils';
 
@@ -36,8 +37,9 @@ const NAV_LINKS = [
   { href: '/projects',  label: 'Projects',   icon: <Building2 className="w-4 h-4" /> },
   { href: '/it-issues', label: 'IT Issues',  icon: <Wrench className="w-4 h-4" /> },
   { href: '/purchasing', label: 'Purchasing', icon: <PackageCheck className="w-4 h-4" /> },
-  { href: '/warehouse',  label: 'Warehouse',  icon: <Warehouse className="w-4 h-4" /> },
-  { href: '/',          label: 'Estimating', icon: <FileText className="w-4 h-4" /> },
+  { href: '/warehouse',   label: 'Warehouse',   icon: <Warehouse className="w-4 h-4" /> },
+  { href: '/work-orders', label: 'Work Orders', icon: <ClipboardList className="w-4 h-4" /> },
+  { href: '/',           label: 'Estimating',  icon: <FileText className="w-4 h-4" /> },
   { href: '/takeoff',   label: 'PDF Takeoff', icon: <Hammer className="w-4 h-4" /> },
 ];
 
