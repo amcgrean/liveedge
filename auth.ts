@@ -1,14 +1,10 @@
 import NextAuth from 'next-auth';
 import Credentials from 'next-auth/providers/credentials';
-import { eq, or } from 'drizzle-orm';
-import { getDb } from './db/index';
-import { legacyUser, legacyLoginActivity } from './db/schema-legacy';
 import { z } from 'zod';
-import bcrypt from 'bcryptjs';
 
-const loginSchema = z.object({
-  username: z.string().min(1),
-  password: z.string().min(1),
+const otpSchema = z.object({
+  email: z.string().email(),
+  code: z.string().min(1),
 });
 
 export const { handlers, signIn, signOut, auth } = NextAuth({
@@ -18,62 +14,101 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
   providers: [
     Credentials({
       credentials: {
-        username: { label: 'Username', type: 'text' },
-        password: { label: 'Password', type: 'password' },
+        email: { label: 'Email', type: 'email' },
+        code:  { label: 'Code',  type: 'text'  },
       },
       async authorize(credentials) {
         try {
-          const parsed = loginSchema.safeParse(credentials);
+          const parsed = otpSchema.safeParse(credentials);
           if (!parsed.success) return null;
 
-          const { username, password } = parsed.data;
+          const { email, code } = parsed.data;
 
-          // When DB is not configured, allow a dev bypass
-          if (!process.env.DATABASE_URL && !process.env.BIDS_DATABASE_URL) {
-            if (username === 'admin' && password === 'ChangeMe123!') {
-              return { id: 'dev', name: 'Dev Admin', email: 'admin@beisserlumber.com', role: 'admin', branchId: null };
+          // Dev bypass: no DB configured, accept magic code
+          const hasDb =
+            process.env.BIDS_DATABASE_URL ||
+            process.env.POSTGRES_URL_NON_POOLING ||
+            process.env.POSTGRES_URL ||
+            process.env.SUPABASE_DB_URL;
+
+          if (!hasDb) {
+            if (email === 'admin@beisserlumber.com' && code === '000000') {
+              return {
+                id: 'dev',
+                name: 'Dev Admin',
+                email: 'admin@beisserlumber.com',
+                role: 'admin',
+                roles: ['admin'],
+                branch: null,
+                branchId: null,
+              };
             }
             return null;
           }
 
-          const db = getDb();
-          const rows = await db
-            .select()
-            .from(legacyUser)
-            .where(
-              or(
-                eq(legacyUser.username, username),
-                eq(legacyUser.email, username)
+          // Lazy-import avoids loading the postgres client on the edge
+          const { getErpSql } = await import('./db/supabase');
+          const sql = getErpSql();
+
+          // Verify OTP: find most-recent unused, non-expired code for this email
+          const otpRows = await sql<{ id: number; code: string }[]>`
+            SELECT id, code
+            FROM otp_codes
+            WHERE email = ${email}
+              AND used = false
+              AND expires_at > NOW()
+            ORDER BY created_at DESC
+            LIMIT 1
+          `;
+
+          if (otpRows.length === 0) return null;
+
+          const otp = otpRows[0];
+          if (otp.code !== code) return null;
+
+          // Mark code as used — one-time only
+          await sql`UPDATE otp_codes SET used = true WHERE id = ${otp.id}`;
+
+          // Fetch the authenticated user from public.app_users
+          const userRows = await sql<{
+            id: number;
+            email: string;
+            display_name: string | null;
+            roles: string[] | null;
+            branch: string | null;
+          }[]>`
+            SELECT id, email, display_name, roles, branch
+            FROM app_users
+            WHERE email = ${email}
+              AND is_active = true
+            LIMIT 1
+          `;
+
+          if (userRows.length === 0) return null;
+
+          const user = userRows[0];
+          const roles: string[] = Array.isArray(user.roles) ? user.roles : [];
+
+          // Map WH-Tracker role array to a single estimating-app role string
+          const role = roles.includes('admin')
+            ? 'admin'
+            : roles.some((r) =>
+                ['ops', 'sales', 'supervisor', 'purchasing', 'warehouse'].includes(r)
               )
-            )
-            .limit(1);
+            ? 'estimator'
+            : 'viewer';
 
-          const user = rows[0];
-          if (!user) return null;
-          if (user.isActive === false) return null;
-
-          const passwordOk = await bcrypt.compare(password, user.password);
-          if (!passwordOk) return null;
-
-          const role = user.isAdmin ? 'admin' : user.isEstimator ? 'estimator' : 'viewer';
-
-          // Track login activity
-          try {
-            await db.insert(legacyLoginActivity).values({
-              userId: user.id,
-              loggedIn: new Date(),
-            });
-          } catch (loginErr) {
-            // Non-critical — don't block login if activity tracking fails
-            console.warn('[auth] Failed to log login activity:', loginErr);
-          }
+          // Update last_login_at (non-critical)
+          sql`UPDATE app_users SET last_login_at = NOW() WHERE id = ${user.id}`.catch(() => {});
 
           return {
             id: String(user.id),
-            name: user.username,
-            email: user.email || `${user.username}@beisserlumber.com`,
+            name: user.display_name ?? email.split('@')[0],
+            email: user.email,
             role,
-            branchId: user.userBranchId,
+            roles,
+            branch: user.branch ?? null,
+            branchId: null, // app_users.branch is a string code; no integer FK in bids schema
           };
         } catch (err) {
           console.error('[auth] authorize error:', err);
@@ -87,7 +122,9 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
     jwt({ token, user }) {
       if (user) {
         token.id = user.id;
-        token.role = (user as { role?: string }).role ?? 'estimator';
+        token.role = (user as { role?: string }).role ?? 'viewer';
+        token.roles = (user as { roles?: string[] }).roles ?? [];
+        token.branch = (user as { branch?: string | null }).branch ?? null;
         token.branchId = (user as { branchId?: number | null }).branchId ?? null;
       }
       return token;
@@ -96,7 +133,10 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
       if (token && session.user) {
         session.user.id = token.id as string;
         (session.user as { role?: string }).role = token.role as string;
-        (session.user as { branchId?: number | null }).branchId = token.branchId as number | null;
+        (session.user as { roles?: string[] }).roles = (token.roles ?? []) as string[];
+        (session.user as { branch?: string | null }).branch = (token.branch ?? null) as string | null;
+        (session.user as { branchId?: number | null }).branchId =
+          token.branchId as number | null;
       }
       return session;
     },
@@ -117,7 +157,9 @@ declare module 'next-auth' {
       name?: string | null;
       email?: string | null;
       image?: string | null;
-      role: string;
+      role: string;         // 'admin' | 'estimator' | 'viewer'
+      roles: string[];      // raw WH-Tracker roles: ['purchasing', 'warehouse', 'admin', ...]
+      branch: string | null; // branch system_id code e.g. '20GR'
       branchId: number | null;
     };
   }

@@ -358,6 +358,49 @@ export const takeoffPageStates = bidsSchema.table(
 );
 
 // ============================================================
+// PO SUBMISSIONS (receiving check-in photos)
+// ============================================================
+export const poSubmissions = bidsSchema.table(
+  'po_submissions',
+  {
+    id:             uuid('id').primaryKey().defaultRandom(),
+    poNumber:       varchar('po_number', { length: 50 }).notNull(),
+    imageUrls:      jsonb('image_urls').notNull().default([]),
+    // R2 object keys for deletion (parallel array to imageUrls)
+    imageKeys:      jsonb('image_keys').notNull().default([]),
+    supplierName:   varchar('supplier_name', { length: 255 }),
+    supplierKey:    varchar('supplier_key', { length: 50 }),
+    // ERP po_status snapshot at submission time
+    poStatus:       varchar('po_status', { length: 50 }),
+    submissionType: varchar('submission_type', { length: 50 }).notNull().default('receiving_checkin'),
+    priority:       varchar('priority', { length: 20 }),
+    // 'high' | 'normal' | null
+    notes:          text('notes'),
+    // Workflow status
+    status:         varchar('status', { length: 20 }).notNull().default('pending'),
+    // 'pending' | 'reviewed' | 'flagged'
+    // Submitter (string ID from NextAuth/app_users)
+    submittedBy:    varchar('submitted_by', { length: 50 }).notNull(),
+    submittedUsername: varchar('submitted_username', { length: 255 }),
+    branch:         varchar('branch', { length: 20 }),
+    // branch system_id e.g. '20GR'
+    // Reviewer
+    reviewerNotes:  text('reviewer_notes'),
+    reviewedBy:     varchar('reviewed_by', { length: 50 }),
+    reviewedAt:     timestamp('reviewed_at', { withTimezone: true }),
+    createdAt:      timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt:      timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    index('po_submissions_po_number_idx').on(table.poNumber),
+    index('po_submissions_status_idx').on(table.status),
+    index('po_submissions_submitted_by_idx').on(table.submittedBy),
+    index('po_submissions_branch_idx').on(table.branch),
+    index('po_submissions_created_at_idx').on(table.createdAt),
+  ]
+);
+
+// ============================================================
 // RELATIONS
 // ============================================================
 export const bidsRelations = relations(bids, ({ one, many }) => ({
@@ -484,3 +527,5 @@ export type TakeoffViewport = typeof takeoffViewports.$inferSelect;
 export type TakeoffGroup = typeof takeoffGroups.$inferSelect;
 export type TakeoffMeasurement = typeof takeoffMeasurements.$inferSelect;
 export type TakeoffPageState = typeof takeoffPageStates.$inferSelect;
+export type PoSubmission = typeof poSubmissions.$inferSelect;
+export type NewPoSubmission = typeof poSubmissions.$inferInsert;
