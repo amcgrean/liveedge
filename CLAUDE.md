@@ -231,8 +231,8 @@ Full WH-Tracker (Python/Flask) migration into LiveEdge. All modules ported:
 - `SESSION_COOKIE_SECURE` — Secure flag on session cookie (`true` in prod, `false` in dev)
 
 ## Navigation Structure
-- **Top nav**: Dashboard, Bids, Designs, EWP, Projects, IT Issues, Estimating, PDF Takeoff
-- **Admin dropdown** (admin role only): Dashboard, Customers, Products/SKUs, Formulas, Users, Bid Fields, Notifications, Audit Log, ERP Sync
+- **Top nav**: Dashboard, Bids, Designs, EWP, Projects, IT Issues, Purchasing, Warehouse, Work Orders, Dispatch, Delivery, Sales, Supervisor, Estimating, PDF Takeoff
+- **Admin dropdown** (admin role only): Dashboard, Customers, Products/SKUs, Formulas, Users, Bid Fields, Notifications, Audit Log, ERP Sync, PO Review, Delivery Report
 - Component: `src/components/nav/TopNav.tsx`
 
 ## Key Conventions
