@@ -165,11 +165,24 @@ Full migration plan in `docs/migration-plan.md`. Six phases.
 - **Print CSS**: already comprehensive in `app/globals.css` (lines 63–130) — hides nav/buttons, white bg, page-break handling
 - **Error boundaries**: `app/error.tsx` + 6 route-level `error.tsx` files already in place; no additional work needed
 
+#### WH-Tracker Migration — COMPLETE (2026-04-02)
+Full WH-Tracker (Python/Flask) migration into LiveEdge. All modules ported:
+- **Warehouse Board** (`/warehouse`): stats cards, picks board, 60s refresh. API: `/api/warehouse/stats`, `/api/warehouse/picks`
+- **Work Orders** (`/work-orders`): open WO board, barcode SO search, assignments with Mark Complete. API: `/api/work-orders/open`, `/api/work-orders/search`, `/api/work-orders/assignments`, `/api/work-orders/assignments/[id]`
+- **Dispatch Board** (`/dispatch`): delivery stops from ERP, route planning CRUD, Samsara GPS proxy. API: `/api/dispatch/deliveries`, `/api/dispatch/routes`, `/api/dispatch/routes/[id]/stops`, `/api/dispatch/vehicles`
+- **Delivery Tracker** (`/delivery`): today + overdue K/P/S statuses, status label logic, fleet GPS panel. API: `/api/delivery/tracker`
+- **Sales Hub** (`/sales`): KPI dashboard + order status table. API: `/api/sales/metrics`, `/api/sales/orders`
+- **Supervisor Dashboard** (`/supervisor`): picker status board (active/assigned/idle), 30s refresh. API: `/api/supervisor/pickers`
+- **Ops Delivery Reporting** (`/ops/delivery-reporting`): ERP analytics, bar chart by date, CSV export. API: `/api/ops/delivery-reporting`
+- **Auth**: OTP-based via `otp_codes` + `app_users` tables, `roles[]` array + `branch` in JWT
+
 #### Flask Sunset — NOT STARTED
 - DNS routing, archive Flask app
 
 ## Pending Actions
-1. **Phase 6 Flask sunset**: DNS cutover, archive Flask app
+1. **Vercel env vars**: Add `SAMSARA_API_TOKEN`, `SAMSARA_BRANCH_TAGS_JSON`, `SAMSARA_VEHICLE_BRANCH_MAP`, `SAMSARA_CACHE_TTL` to Vercel environment
+2. **Bug testing**: Users testing 2026-04-03. Known risk areas: WH-Tracker public schema table access (pick, pickster, pick_assignments, work_orders tables), Samsara vehicle GPS
+3. **Phase 6 Flask sunset**: DNS cutover, archive Flask app after testing confirms parity
 
 ## API Route Patterns
 - **Legacy tables**: Import from `'<relative>/db/schema-legacy'`, use `legacyBid`, `legacyCustomer`, etc. (all now in `bids` schema — queries work transparently via Drizzle)
