@@ -1,4 +1,5 @@
 import { auth } from '../../auth';
+import { redirect } from 'next/navigation';
 import { getErpSql } from '../../db/supabase';
 import WorkOrdersClient from './WorkOrdersClient';
 
@@ -11,24 +12,29 @@ interface Builder {
 
 export default async function WorkOrdersPage() {
   const session = await auth();
+  if (!session?.user) redirect('/login');
+
   const isAdmin =
-    session!.user.role === 'admin' ||
-    (session!.user.roles ?? []).some((r) => ['admin', 'supervisor', 'ops'].includes(r));
+    session.user.role === 'admin' ||
+    (session.user.roles ?? []).some((r) => ['admin', 'supervisor', 'ops'].includes(r));
 
-  const sql = getErpSql();
-
-  // Load builders for assignment dropdown
-  const builders = await sql<Builder[]>`
-    SELECT id, name, user_type, branch_code FROM pickster ORDER BY name
-  `;
+  let builders: Builder[] = [];
+  try {
+    const sql = getErpSql();
+    builders = await sql<Builder[]>`
+      SELECT id, name, user_type, branch_code FROM pickster ORDER BY name
+    `;
+  } catch (err) {
+    console.error('[work-orders page] Failed to load builders:', err);
+  }
 
   return (
     <WorkOrdersClient
       isAdmin={isAdmin}
-      userBranch={session!.user.branch ?? null}
+      userBranch={session.user.branch ?? null}
       builders={builders}
-      userName={session!.user.name ?? null}
-      userRole={session!.user.role}
+      userName={session.user.name ?? null}
+      userRole={session.user.role}
     />
   );
 }

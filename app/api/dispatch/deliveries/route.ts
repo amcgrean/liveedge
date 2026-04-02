@@ -68,48 +68,31 @@ export async function GET(req: NextRequest) {
       city: string | null;
     };
 
-    const rows = effectiveBranch
-      ? await sql<RawRow[]>`
-          SELECT
-            sh.so_id, sh.shipment_num, sh.system_id,
-            sh.ship_date::text, sh.status_flag, sh.route_id_char, sh.driver,
-            sh.ship_via, sh.loaded_date::text, sh.loaded_time,
-            soh.reference, soh.sale_type,
-            c.cust_name,
-            cs.address_1, cs.city
-          FROM erp_mirror_shipments_header sh
-          JOIN erp_mirror_so_header soh
-            ON soh.system_id = sh.system_id AND soh.so_id = sh.so_id AND soh.is_deleted = false
-          LEFT JOIN erp_mirror_cust c
-            ON TRIM(c.cust_key) = TRIM(soh.cust_key)
-          LEFT JOIN erp_mirror_cust_shipto cs
-            ON TRIM(cs.cust_key) = TRIM(soh.cust_key)
-           AND TRIM(CAST(cs.seq_num AS TEXT)) = TRIM(CAST(soh.shipto_seq_num AS TEXT))
-          WHERE sh.is_deleted = false
-            AND sh.system_id = ${effectiveBranch}
-            AND CAST(sh.ship_date AS DATE) = ${deliveryDate}::date
-          ORDER BY sh.route_id_char NULLS LAST, sh.so_id
-        `
-      : await sql<RawRow[]>`
-          SELECT
-            sh.so_id, sh.shipment_num, sh.system_id,
-            sh.ship_date::text, sh.status_flag, sh.route_id_char, sh.driver,
-            sh.ship_via, sh.loaded_date::text, sh.loaded_time,
-            soh.reference, soh.sale_type,
-            c.cust_name,
-            cs.address_1, cs.city
-          FROM erp_mirror_shipments_header sh
-          JOIN erp_mirror_so_header soh
-            ON soh.system_id = sh.system_id AND soh.so_id = sh.so_id AND soh.is_deleted = false
-          LEFT JOIN erp_mirror_cust c
-            ON TRIM(c.cust_key) = TRIM(soh.cust_key)
-          LEFT JOIN erp_mirror_cust_shipto cs
-            ON TRIM(cs.cust_key) = TRIM(soh.cust_key)
-           AND TRIM(CAST(cs.seq_num AS TEXT)) = TRIM(CAST(soh.shipto_seq_num AS TEXT))
-          WHERE sh.is_deleted = false
-            AND CAST(sh.ship_date AS DATE) = ${deliveryDate}::date
-          ORDER BY sh.system_id, sh.route_id_char NULLS LAST, sh.so_id
-        `;
+    const branchFilter = effectiveBranch
+      ? sql`AND sh.system_id = ${effectiveBranch}`
+      : sql``;
+
+    const rows = await sql<RawRow[]>`
+      SELECT
+        sh.so_id, sh.shipment_num, sh.system_id,
+        sh.ship_date::text, sh.status_flag, sh.route_id_char, sh.driver,
+        sh.ship_via, sh.loaded_date::text, sh.loaded_time,
+        soh.reference, soh.sale_type,
+        c.cust_name,
+        cs.address_1, cs.city
+      FROM erp_mirror_shipments_header sh
+      JOIN erp_mirror_so_header soh
+        ON soh.system_id = sh.system_id AND soh.so_id = sh.so_id AND soh.is_deleted = false
+      LEFT JOIN erp_mirror_cust c
+        ON TRIM(c.cust_key) = TRIM(soh.cust_key)
+      LEFT JOIN erp_mirror_cust_shipto cs
+        ON TRIM(cs.cust_key) = TRIM(soh.cust_key)
+       AND TRIM(CAST(cs.seq_num AS TEXT)) = TRIM(CAST(soh.shipto_seq_num AS TEXT))
+      WHERE sh.is_deleted = false
+        ${branchFilter}
+        AND CAST(sh.ship_date AS DATE) = ${deliveryDate}::date
+      ORDER BY sh.system_id, sh.route_id_char NULLS LAST, sh.so_id
+    `;
 
     const stops: DeliveryStop[] = rows.map((r) => ({
       so_id: r.so_id,

@@ -33,39 +33,33 @@ export async function GET() {
   try {
     const sql = getErpSql();
 
-    // Fetch all pickers
-    const pickers = await sql<{ id: number; name: string; user_type: string }[]>`
-      SELECT id, name, user_type FROM pickster ORDER BY name
-    `;
-
-    // Active picks (not completed)
-    const activePicks = await sql<{ picker_id: number; barcode_number: string; start_time: string | null }[]>`
-      SELECT picker_id, barcode_number, start_time
-      FROM pick
-      WHERE completed_time IS NULL
-    `;
-
-    // Pick assignments
-    const pickAssignments = await sql<{ picker_id: number; so_number: string }[]>`
-      SELECT picker_id, so_number FROM pick_assignments
-    `;
-
-    // Active WO assignments (not completed)
-    const woAssignments = await sql<{ assigned_to_id: number; wo_id: string; sales_order_number: string }[]>`
-      SELECT assigned_to_id, wo_id, sales_order_number
-      FROM work_orders
-      WHERE assigned_to_id IS NOT NULL AND completed_at IS NULL AND status != 'Complete'
-    `;
-
-    // Recent completed picks (last 10)
-    const recentPicks = await sql<{ id: number; picker_id: number; picker_name: string; barcode_number: string; start_time: string | null; completed_time: string | null }[]>`
-      SELECT p.id, p.picker_id, pk.name AS picker_name, p.barcode_number, p.start_time::text, p.completed_time::text
-      FROM pick p
-      JOIN pickster pk ON pk.id = p.picker_id
-      WHERE p.completed_time IS NOT NULL
-      ORDER BY p.completed_time DESC
-      LIMIT 10
-    `;
+    // Run all 5 independent queries in parallel
+    const [pickers, activePicks, pickAssignments, woAssignments, recentPicks] = await Promise.all([
+      sql<{ id: number; name: string; user_type: string }[]>`
+        SELECT id, name, user_type FROM pickster ORDER BY name
+      `,
+      sql<{ picker_id: number; barcode_number: string; start_time: string | null }[]>`
+        SELECT picker_id, barcode_number, start_time
+        FROM pick
+        WHERE completed_time IS NULL
+      `,
+      sql<{ picker_id: number; so_number: string }[]>`
+        SELECT picker_id, so_number FROM pick_assignments
+      `,
+      sql<{ assigned_to_id: number; wo_id: string; sales_order_number: string }[]>`
+        SELECT assigned_to_id, wo_id, sales_order_number
+        FROM work_orders
+        WHERE assigned_to_id IS NOT NULL AND completed_at IS NULL AND status != 'Complete'
+      `,
+      sql<{ id: number; picker_id: number; picker_name: string; barcode_number: string; start_time: string | null; completed_time: string | null }[]>`
+        SELECT p.id, p.picker_id, pk.name AS picker_name, p.barcode_number, p.start_time::text, p.completed_time::text
+        FROM pick p
+        JOIN pickster pk ON pk.id = p.picker_id
+        WHERE p.completed_time IS NOT NULL
+        ORDER BY p.completed_time DESC
+        LIMIT 10
+      `,
+    ]);
 
     // Build maps
     const activeMap = new Map(activePicks.map((a) => [a.picker_id, a]));

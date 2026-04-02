@@ -1,6 +1,14 @@
 import NextAuth from 'next-auth';
 import Credentials from 'next-auth/providers/credentials';
+import { eq, or } from 'drizzle-orm';
+import { legacyUser, legacyLoginActivity } from './db/schema-legacy';
 import { z } from 'zod';
+import bcrypt from 'bcryptjs';
+
+const loginSchema = z.object({
+  username: z.string().min(1),
+  password: z.string().min(1),
+});
 
 const otpSchema = z.object({
   email: z.string().email(),
@@ -12,10 +20,95 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
   // The Edge middleware path caused a Vercel runtime load failure, so this
   // config is intentionally consumed from server components and route handlers.
   providers: [
+    // ──────────────────────────────────────────────────────────
+    // Legacy username/password provider (beisser-takeoff users)
+    // ──────────────────────────────────────────────────────────
     Credentials({
+      id: 'credentials',
+      credentials: {
+        username: { label: 'Username', type: 'text' },
+        password: { label: 'Password', type: 'password' },
+      },
+      async authorize(credentials) {
+        try {
+          const parsed = loginSchema.safeParse(credentials);
+          if (!parsed.success) return null;
+
+          const { username, password } = parsed.data;
+
+          // Dev bypass when DB is not configured
+          const hasDb =
+            process.env.BIDS_DATABASE_URL ||
+            process.env.POSTGRES_URL_NON_POOLING ||
+            process.env.POSTGRES_URL;
+
+          if (!hasDb) {
+            if (username === 'admin' && password === 'ChangeMe123!') {
+              return {
+                id: 'dev',
+                name: 'Dev Admin',
+                email: 'admin@beisserlumber.com',
+                role: 'admin',
+                roles: ['admin'],
+                branch: null,
+                branchId: null,
+              };
+            }
+            return null;
+          }
+
+          const { getDb } = await import('./db/index');
+          const db = getDb();
+          const rows = await db
+            .select()
+            .from(legacyUser)
+            .where(
+              or(
+                eq(legacyUser.username, username),
+                eq(legacyUser.email, username)
+              )
+            )
+            .limit(1);
+
+          const user = rows[0];
+          if (!user) return null;
+          if (user.isActive === false) return null;
+
+          const passwordOk = await bcrypt.compare(password, user.password);
+          if (!passwordOk) return null;
+
+          const role = user.isAdmin ? 'admin' : user.isEstimator ? 'estimator' : 'viewer';
+
+          // Track login activity (non-critical)
+          db.insert(legacyLoginActivity).values({
+            userId: user.id,
+            loggedIn: new Date(),
+          }).catch((err) => console.warn('[auth] login activity log failed:', err));
+
+          return {
+            id: String(user.id),
+            name: user.username,
+            email: user.email || `${user.username}@beisserlumber.com`,
+            role,
+            roles: user.isAdmin ? ['admin'] : [],
+            branch: null,
+            branchId: user.userBranchId,
+          };
+        } catch (err) {
+          console.error('[auth] credentials authorize error:', err);
+          return null;
+        }
+      },
+    }),
+
+    // ──────────────────────────────────────────────────────────
+    // OTP provider (WH-Tracker / ops users)
+    // ──────────────────────────────────────────────────────────
+    Credentials({
+      id: 'otp',
       credentials: {
         email: { label: 'Email', type: 'email' },
-        code:  { label: 'Code',  type: 'text'  },
+        code: { label: 'Code', type: 'text' },
       },
       async authorize(credentials) {
         try {
@@ -24,7 +117,7 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
 
           const { email, code } = parsed.data;
 
-          // Dev bypass: no DB configured, accept magic code
+          // Dev bypass: no DB configured
           const hasDb =
             process.env.BIDS_DATABASE_URL ||
             process.env.POSTGRES_URL_NON_POOLING ||
@@ -46,11 +139,10 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
             return null;
           }
 
-          // Lazy-import avoids loading the postgres client on the edge
           const { getErpSql } = await import('./db/supabase');
           const sql = getErpSql();
 
-          // Verify OTP: find most-recent unused, non-expired code for this email
+          // Verify OTP
           const otpRows = await sql<{ id: number; code: string }[]>`
             SELECT id, code
             FROM otp_codes
@@ -66,10 +158,10 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
           const otp = otpRows[0];
           if (otp.code !== code) return null;
 
-          // Mark code as used — one-time only
+          // Mark code as used
           await sql`UPDATE otp_codes SET used = true WHERE id = ${otp.id}`;
 
-          // Fetch the authenticated user from public.app_users
+          // Fetch user from public.app_users
           const userRows = await sql<{
             id: number;
             email: string;
@@ -89,7 +181,6 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
           const user = userRows[0];
           const roles: string[] = Array.isArray(user.roles) ? user.roles : [];
 
-          // Map WH-Tracker role array to a single estimating-app role string
           const role = roles.includes('admin')
             ? 'admin'
             : roles.some((r) =>
@@ -108,10 +199,10 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
             role,
             roles,
             branch: user.branch ?? null,
-            branchId: null, // app_users.branch is a string code; no integer FK in bids schema
+            branchId: null,
           };
         } catch (err) {
-          console.error('[auth] authorize error:', err);
+          console.error('[auth] otp authorize error:', err);
           return null;
         }
       },
@@ -126,6 +217,10 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
         token.roles = (user as { roles?: string[] }).roles ?? [];
         token.branch = (user as { branch?: string | null }).branch ?? null;
         token.branchId = (user as { branchId?: number | null }).branchId ?? null;
+      }
+      // Compatibility: old JWTs from before WH-Tracker migration lack roles/branch
+      if (!token.roles || (token.roles as string[]).length === 0) {
+        if (token.role === 'admin') token.roles = ['admin'];
       }
       return token;
     },

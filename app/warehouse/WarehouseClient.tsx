@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { TopNav } from '../../src/components/nav/TopNav';
 import type { OpenPickSummary } from '../api/warehouse/picks/route';
 
@@ -50,9 +50,10 @@ export default function WarehouseClient({ initialStats, isAdmin, userBranch, use
   const [lastRefresh, setLastRefresh] = useState(new Date());
   const [handlingFilter, setHandlingFilter] = useState('');
 
-  // Refresh stats every 60 seconds
+  // Refresh stats every 60 seconds (only when tab is visible)
   useEffect(() => {
     const id = setInterval(async () => {
+      if (document.visibilityState !== 'visible') return;
       try {
         const res = await fetch('/api/warehouse/stats');
         if (res.ok) {
@@ -87,15 +88,17 @@ export default function WarehouseClient({ initialStats, isAdmin, userBranch, use
   }, [selectedBranch, loadPicks]);
 
   // Collect all handling codes from loaded picks for filter dropdown
-  const allHandlingCodes = picks
-    ? [...new Set(picks.flatMap((p) => p.handling_codes))].sort()
-    : [];
+  const allHandlingCodes = useMemo(
+    () => picks ? [...new Set(picks.flatMap((p) => p.handling_codes))].sort() : [],
+    [picks]
+  );
 
-  const filteredPicks = picks
-    ? (handlingFilter
-      ? picks.filter((p) => p.handling_codes.includes(handlingFilter))
-      : picks)
-    : [];
+  const filteredPicks = useMemo(
+    () => picks
+      ? (handlingFilter ? picks.filter((p) => p.handling_codes.includes(handlingFilter)) : picks)
+      : [],
+    [picks, handlingFilter]
+  );
 
   const displayedBranch = selectedBranch || 'All Branches';
 

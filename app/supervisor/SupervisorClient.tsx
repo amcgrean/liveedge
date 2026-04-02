@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { TopNav } from '../../src/components/nav/TopNav';
 import type { PickerStatus, RecentPick } from '../api/supervisor/pickers/route';
 
@@ -42,13 +42,15 @@ export default function SupervisorClient({ isAdmin, userName, userRole }: Props)
 
   useEffect(() => { load(); }, [load]);
   useEffect(() => {
-    const t = setInterval(load, 30_000);
+    const t = setInterval(() => {
+      if (document.visibilityState === 'visible') load();
+    }, 30_000);
     return () => clearInterval(t);
   }, [load]);
 
-  const active = pickers.filter((p) => p.status === 'active');
-  const assigned = pickers.filter((p) => p.status === 'assigned');
-  const idle = pickers.filter((p) => p.status === 'idle');
+  const active = useMemo(() => pickers.filter((p) => p.status === 'active'), [pickers]);
+  const assigned = useMemo(() => pickers.filter((p) => p.status === 'assigned'), [pickers]);
+  const idle = useMemo(() => pickers.filter((p) => p.status === 'idle'), [pickers]);
 
   return (
     <>

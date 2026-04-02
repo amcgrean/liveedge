@@ -32,27 +32,21 @@ export async function GET(req: NextRequest) {
       stop_count: number;
     };
 
-    const rows = effectiveBranch
-      ? await sql<RouteRow[]>`
-          SELECT r.id, r.route_date::text, r.route_name, r.branch_code,
-                 r.driver_name, r.truck_id, r.status, r.notes,
-                 COUNT(s.id)::int AS stop_count
-          FROM dispatch_routes r
-          LEFT JOIN dispatch_route_stops s ON s.route_id = r.id
-          WHERE r.route_date = ${routeDate}::date AND r.branch_code = ${effectiveBranch}
-          GROUP BY r.id
-          ORDER BY r.route_name
-        `
-      : await sql<RouteRow[]>`
-          SELECT r.id, r.route_date::text, r.route_name, r.branch_code,
-                 r.driver_name, r.truck_id, r.status, r.notes,
-                 COUNT(s.id)::int AS stop_count
-          FROM dispatch_routes r
-          LEFT JOIN dispatch_route_stops s ON s.route_id = r.id
-          WHERE r.route_date = ${routeDate}::date
-          GROUP BY r.id
-          ORDER BY r.branch_code, r.route_name
-        `;
+    const branchFilter = effectiveBranch
+      ? sql`AND r.branch_code = ${effectiveBranch}`
+      : sql``;
+
+    const rows = await sql<RouteRow[]>`
+      SELECT r.id, r.route_date::text, r.route_name, r.branch_code,
+             r.driver_name, r.truck_id, r.status, r.notes,
+             COUNT(s.id)::int AS stop_count
+      FROM dispatch_routes r
+      LEFT JOIN dispatch_route_stops s ON s.route_id = r.id
+      WHERE r.route_date = ${routeDate}::date
+        ${branchFilter}
+      GROUP BY r.id
+      ORDER BY r.branch_code, r.route_name
+    `;
 
     return NextResponse.json(rows);
   } catch (err) {

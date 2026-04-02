@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { TopNav } from '../../src/components/nav/TopNav';
 import type { DeliveryRecord } from '../api/delivery/tracker/route';
 
@@ -89,13 +89,15 @@ export default function DeliveryClient({ isAdmin, userBranch, userName, userRole
   useEffect(() => { loadDeliveries(); }, [loadDeliveries]);
   useEffect(() => { loadVehicles(); }, [loadVehicles]);
 
-  // Auto-refresh every 60s
+  // Auto-refresh every 60s (only when tab is visible)
   useEffect(() => {
-    const timer = setInterval(() => { loadDeliveries(); loadVehicles(); }, 60_000);
+    const timer = setInterval(() => {
+      if (document.visibilityState === 'visible') { loadDeliveries(); loadVehicles(); }
+    }, 60_000);
     return () => clearInterval(timer);
   }, [loadDeliveries, loadVehicles]);
 
-  const filtered = deliveries.filter((d) => {
+  const filtered = useMemo(() => deliveries.filter((d) => {
     if (!q) return true;
     const ql = q.toLowerCase();
     return (
@@ -104,13 +106,13 @@ export default function DeliveryClient({ isAdmin, userBranch, userName, userRole
       (d.reference ?? '').toLowerCase().includes(ql) ||
       (d.city ?? '').toLowerCase().includes(ql)
     );
-  });
+  }), [deliveries, q]);
 
   // KPI counts by status label
-  const statusCounts = deliveries.reduce<Record<string, number>>((acc, d) => {
+  const statusCounts = useMemo(() => deliveries.reduce<Record<string, number>>((acc, d) => {
     acc[d.status_label] = (acc[d.status_label] ?? 0) + 1;
     return acc;
-  }, {});
+  }, {}), [deliveries]);
 
   return (
     <>
