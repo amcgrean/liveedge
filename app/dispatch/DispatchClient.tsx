@@ -115,7 +115,7 @@ export default function DispatchClient({ isAdmin, userBranch }: Props) {
   const grouped = deliveries.reduce<Record<string, DeliveryStop[]>>((acc, d) => {
     let key: string;
     if (groupBy === 'route') key = d.route_id_char || '(Unrouted)';
-    else if (groupBy === 'status') key = STATUS_FLAG[d.status_flag?.toUpperCase()]?.label ?? d.status_flag || '—';
+    else if (groupBy === 'status') key = (STATUS_FLAG[d.status_flag?.toUpperCase()]?.label ?? d.status_flag) || '—';
     else key = d.system_id;
     (acc[key] ??= []).push(d);
     return acc;
