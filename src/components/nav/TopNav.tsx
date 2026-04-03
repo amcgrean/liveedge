@@ -2,13 +2,105 @@
 
 import React from 'react';
 import Link from 'next/link';
-import { usePathname } from 'next/navigation';
+import { usePathname, useRouter } from 'next/navigation';
 import { signOut } from 'next-auth/react';
 import {
   Hammer, LogOut, ChevronDown, Menu, X, Settings,
-  Truck, ShoppingCart, FileText, Wrench, PackageCheck,
+  Truck, ShoppingCart, FileText, Wrench, PackageCheck, MapPin,
 } from 'lucide-react';
 import { cn } from '../../lib/utils';
+
+const BRANCH_OPTIONS = [
+  { code: '',     label: 'All Branches' },
+  { code: '10FD', label: '10FD · Fort Dodge' },
+  { code: '20GR', label: '20GR · Grimes' },
+  { code: '25BW', label: '25BW · Birchwood' },
+  { code: '40CV', label: '40CV · Coralville' },
+] as const;
+
+function readBranchCookie(): string {
+  if (typeof document === 'undefined') return '';
+  const match = document.cookie.match(/(?:^|;\s*)beisser-branch=([^;]*)/);
+  return match ? decodeURIComponent(match[1]) : '';
+}
+
+function BranchSwitcher() {
+  const router = useRouter();
+  const [current, setCurrent] = React.useState('');
+  const [open, setOpen] = React.useState(false);
+  const [saving, setSaving] = React.useState(false);
+  const ref = React.useRef<HTMLDivElement>(null);
+
+  React.useEffect(() => {
+    setCurrent(readBranchCookie());
+  }, []);
+
+  React.useEffect(() => {
+    function handler(e: MouseEvent) {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    }
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, []);
+
+  async function select(code: string) {
+    setOpen(false);
+    if (code === current) return;
+    setSaving(true);
+    try {
+      await fetch('/api/auth/set-branch', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ branchCode: code }),
+      });
+      setCurrent(code);
+      router.refresh();
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  const label = BRANCH_OPTIONS.find((b) => b.code === current)?.label ?? 'All Branches';
+  const shortLabel = current || 'All';
+
+  return (
+    <div ref={ref} className="relative hidden sm:block">
+      <button
+        onClick={() => setOpen((p) => !p)}
+        disabled={saving}
+        className={cn(
+          'flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium transition',
+          current
+            ? 'bg-cyan-800/40 text-cyan-300 hover:bg-cyan-800/60'
+            : 'bg-gray-800 text-gray-400 hover:text-white hover:bg-gray-700'
+        )}
+        title={label}
+      >
+        <MapPin className="w-3 h-3" />
+        {saving ? '…' : shortLabel}
+        <ChevronDown className={cn('w-3 h-3 transition-transform', open && 'rotate-180')} />
+      </button>
+      {open && (
+        <div className="absolute right-0 mt-1 min-w-[190px] bg-slate-900 border border-white/10 rounded-xl shadow-xl overflow-hidden z-50">
+          {BRANCH_OPTIONS.map((b) => (
+            <button
+              key={b.code}
+              onClick={() => select(b.code)}
+              className={cn(
+                'w-full text-left px-4 py-2.5 text-sm transition',
+                b.code === current
+                  ? 'bg-cyan-500/20 text-cyan-400'
+                  : 'text-slate-300 hover:bg-slate-800 hover:text-white'
+              )}
+            >
+              {b.label}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
 
 interface NavLink { href: string; label: string }
 
@@ -232,6 +324,9 @@ export function TopNav({ userName, userRole }: Props) {
 
           {/* Right side */}
           <div className="flex items-center gap-2">
+            {/* Branch switcher */}
+            <BranchSwitcher />
+
             {/* Admin dropdown — desktop only, admin role */}
             {userRole === 'admin' && (
               <div className="relative hidden lg:block">
