@@ -37,11 +37,23 @@ export interface WarehouseOrderAssignedPicker {
   picker_name: string;
 }
 
+export interface WarehouseOrderShipment {
+  shipment_num: number | null;
+  ship_date: string | null;
+  invoice_date: string | null;
+  status_flag: string | null;
+  route_id_char: string | null;
+  driver: string | null;
+  ship_via: string | null;
+  loaded_date: string | null;
+}
+
 export interface WarehouseOrderDetail {
   header: WarehouseOrderHeader;
   lines: WarehouseOrderLine[];
   picks: WarehouseOrderPick[];
   assigned_picker: WarehouseOrderAssignedPicker | null;
+  shipments: WarehouseOrderShipment[];
 }
 
 // Strip leading zeros from SO number for ERP lookup
@@ -166,6 +178,45 @@ export async function GET(
       print_status: r.print_status,
     }));
 
+    // --- Shipment history ---
+    type ShipRow = {
+      shipment_num: number | null;
+      ship_date: string | null;
+      invoice_date: string | null;
+      status_flag: string | null;
+      route_id_char: string | null;
+      driver: string | null;
+      ship_via: string | null;
+      loaded_date: string | null;
+    };
+
+    const shipRows = (await sql`
+      SELECT
+        shipment_num,
+        ship_date::text,
+        invoice_date::text,
+        status_flag,
+        route_id_char,
+        driver,
+        ship_via,
+        loaded_date::text
+      FROM agility_shipments
+      WHERE is_deleted = false
+        AND so_id::text = ${soNumber}
+      ORDER BY shipment_num NULLS LAST
+    `) as unknown as ShipRow[];
+
+    const shipments: WarehouseOrderShipment[] = shipRows.map((r) => ({
+      shipment_num:  r.shipment_num,
+      ship_date:     r.ship_date,
+      invoice_date:  r.invoice_date,
+      status_flag:   r.status_flag,
+      route_id_char: r.route_id_char,
+      driver:        r.driver,
+      ship_via:      r.ship_via,
+      loaded_date:   r.loaded_date,
+    }));
+
     // --- Assigned picker ---
     type AssignRow = {
       picker_id: number;
@@ -186,6 +237,7 @@ export async function GET(
         : null;
 
     const detail: WarehouseOrderDetail = {
+      shipments,
       header: {
         so_id: h.so_id,
         cust_name: h.cust_name,

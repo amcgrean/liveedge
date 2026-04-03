@@ -150,8 +150,10 @@ const DOMAINS: Domain[] = [
       { href: '/sales/history',       label: 'Purchase History' },
       { href: '/sales/products',      label: 'Products & Stock' },
       { href: '/sales/reports',       label: 'Reports' },
-      { href: '/sales/tracker',       label: 'Delivery Tracker' },
-      { href: '/credits',             label: 'RMA Credits' },
+      { href: '/sales/tracker',        label: 'Delivery Tracker' },
+      { href: '/sales/deliveries',     label: 'Sales Deliveries' },
+      { href: '/sales/rep-dashboard',  label: 'Rep Dashboard' },
+      { href: '/credits',              label: 'RMA Credits' },
     ],
   },
   {

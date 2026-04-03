@@ -26,6 +26,15 @@ interface Props {
 
 type Tab = 'board' | 'routes';
 
+async function copyPreviousTrucks(date: string, branchCode: string): Promise<{ copied: number; from_date: string } | { error: string }> {
+  const res = await fetch('/api/dispatch/truck-assignments/copy-previous', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ target_date: date, branch_code: branchCode }),
+  });
+  return res.json() as Promise<{ copied: number; from_date: string } | { error: string }>;
+}
+
 const STATUS_FLAG: Record<string, { label: string; color: string }> = {
   K: { label: 'Picking',          color: 'bg-yellow-900/60 text-yellow-300 border-yellow-700' },
   P: { label: 'Picked',           color: 'bg-blue-900/60 text-blue-300 border-blue-700' },
@@ -65,6 +74,8 @@ export default function DispatchClient({ isAdmin, userBranch, userName, userRole
   const [showNewRoute, setShowNewRoute] = useState(false);
   const [newRoute, setNewRoute] = useState({ route_name: '', branch_code: userBranch ?? '', driver_name: '', truck_id: '' });
   const [savingRoute, setSavingRoute] = useState(false);
+  const [copyingPrev, setCopyingPrev] = useState(false);
+  const [copyMsg, setCopyMsg] = useState<string | null>(null);
 
   const loadDeliveries = useCallback(async () => {
     setLoading(true);
@@ -312,12 +323,29 @@ export default function DispatchClient({ isAdmin, userBranch, userName, userRole
                 {loadingRoutes ? 'Loading…' : `${routes.length} route${routes.length !== 1 ? 's' : ''} on ${date}`}
               </span>
               {isAdmin && (
-                <button
-                  onClick={() => setShowNewRoute(true)}
-                  className="text-sm px-3 py-1.5 bg-cyan-700 hover:bg-cyan-600 rounded text-white transition"
-                >
-                  + New Route
-                </button>
+                <div className="flex items-center gap-2">
+                  {copyMsg && <span className="text-xs text-cyan-400">{copyMsg}</span>}
+                  <button
+                    onClick={async () => {
+                      if (!branch) { setCopyMsg('Select a branch first'); return; }
+                      setCopyingPrev(true); setCopyMsg(null);
+                      const r = await copyPreviousTrucks(date, branch);
+                      if ('error' in r) setCopyMsg(r.error);
+                      else { setCopyMsg(`Copied ${r.copied} truck${r.copied !== 1 ? 's' : ''} from ${r.from_date}`); loadRoutes(); }
+                      setCopyingPrev(false);
+                    }}
+                    disabled={copyingPrev}
+                    className="text-sm px-3 py-1.5 bg-gray-700 hover:bg-gray-600 disabled:opacity-40 rounded text-gray-300 transition"
+                  >
+                    {copyingPrev ? 'Copying…' : 'Copy Previous Trucks'}
+                  </button>
+                  <button
+                    onClick={() => setShowNewRoute(true)}
+                    className="text-sm px-3 py-1.5 bg-cyan-700 hover:bg-cyan-600 rounded text-white transition"
+                  >
+                    + New Route
+                  </button>
+                </div>
               )}
             </div>
 

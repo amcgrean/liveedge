@@ -1,8 +1,8 @@
 'use client';
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useCallback } from 'react';
 import Link from 'next/link';
-import { RefreshCw, Package, CheckCircle, Clock } from 'lucide-react';
+import { RefreshCw, Package, CheckCircle, Clock, MessageSquare, Send, Lock } from 'lucide-react';
 
 interface PoHeader {
   po_number: string;
@@ -35,12 +35,52 @@ interface PoData {
   receiving_summary: ReceivingSummary | null;
 }
 
+interface Note {
+  id: number;
+  body: string;
+  is_internal: boolean;
+  created_by_user_id: number | null;
+  created_at: string;
+}
+
 interface Props { po: string; isAdmin: boolean; }
 
 export default function PosDetailClient({ po, isAdmin }: Props) {
   const [data, setData] = useState<PoData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [notes, setNotes] = useState<Note[]>([]);
+  const [noteText, setNoteText] = useState('');
+  const [isInternal, setIsInternal] = useState(false);
+  const [savingNote, setSavingNote] = useState(false);
+
+  const loadNotes = useCallback(async () => {
+    try {
+      const res = await fetch(`/api/purchasing/pos/${encodeURIComponent(po)}/notes`);
+      if (res.ok) {
+        const d = await res.json() as { notes: Note[] };
+        setNotes(d.notes ?? []);
+      }
+    } catch { /* silent */ }
+  }, [po]);
+
+  const submitNote = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const text = noteText.trim();
+    if (!text) return;
+    setSavingNote(true);
+    try {
+      const res = await fetch(`/api/purchasing/pos/${encodeURIComponent(po)}/notes`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ body: text, is_internal: isInternal }),
+      });
+      if (res.ok) {
+        setNoteText('');
+        await loadNotes();
+      }
+    } finally { setSavingNote(false); }
+  };
 
   useEffect(() => {
     (async () => {
@@ -55,7 +95,8 @@ export default function PosDetailClient({ po, isAdmin }: Props) {
         setLoading(false);
       }
     })();
-  }, [po]);
+    loadNotes();
+  }, [po, loadNotes]);
 
   if (loading) {
     return (
@@ -177,6 +218,64 @@ export default function PosDetailClient({ po, isAdmin }: Props) {
             </table>
           </div>
         )}
+      </div>
+      {/* Notes */}
+      <div className="bg-slate-900 border border-white/10 rounded-xl overflow-hidden">
+        <div className="px-4 py-3 border-b border-white/10 flex items-center gap-2">
+          <MessageSquare className="w-4 h-4 text-slate-400" />
+          <h2 className="text-sm font-semibold text-white">Notes ({notes.length})</h2>
+        </div>
+        <div className="p-4 space-y-3">
+          {notes.length === 0 && (
+            <p className="text-slate-500 text-sm text-center py-4">No notes yet</p>
+          )}
+          {notes.map((n) => (
+            <div key={n.id} className="bg-slate-800 rounded-lg p-3 space-y-1">
+              <div className="flex items-center gap-2">
+                {n.is_internal && (
+                  <span className="flex items-center gap-1 text-xs text-orange-400">
+                    <Lock className="w-3 h-3" /> Internal
+                  </span>
+                )}
+                <span className="text-xs text-slate-500 ml-auto">
+                  {new Date(n.created_at).toLocaleString()}
+                </span>
+              </div>
+              <p className="text-sm text-slate-200 whitespace-pre-wrap">{n.body}</p>
+            </div>
+          ))}
+
+          <form onSubmit={submitNote} className="space-y-2 pt-2 border-t border-white/10">
+            <textarea
+              value={noteText}
+              onChange={(e) => setNoteText(e.target.value)}
+              placeholder="Add a note…"
+              rows={2}
+              className="w-full bg-slate-800 border border-white/10 rounded-lg px-3 py-2 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-cyan-500 resize-none"
+            />
+            <div className="flex items-center justify-between">
+              {isAdmin && (
+                <label className="flex items-center gap-2 text-xs text-slate-400 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={isInternal}
+                    onChange={(e) => setIsInternal(e.target.checked)}
+                    className="rounded"
+                  />
+                  Internal only
+                </label>
+              )}
+              <button
+                type="submit"
+                disabled={!noteText.trim() || savingNote}
+                className="ml-auto flex items-center gap-1.5 px-3 py-1.5 bg-cyan-700 hover:bg-cyan-600 disabled:opacity-40 text-white text-sm rounded-lg transition"
+              >
+                <Send className="w-3.5 h-3.5" />
+                {savingNote ? 'Saving…' : 'Add Note'}
+              </button>
+            </div>
+          </form>
+        </div>
       </div>
     </div>
   );

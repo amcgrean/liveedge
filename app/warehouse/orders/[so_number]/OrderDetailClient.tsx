@@ -2,13 +2,14 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
-import { ArrowLeft, Package, Ticket, User } from 'lucide-react';
+import { ArrowLeft, Package, Ticket, User, Truck } from 'lucide-react';
 import type {
   WarehouseOrderDetail,
   WarehouseOrderHeader,
   WarehouseOrderLine,
   WarehouseOrderPick,
   WarehouseOrderAssignedPicker,
+  WarehouseOrderShipment,
 } from '../../../api/warehouse/orders/[so_number]/route';
 
 const SO_STATUS: Record<string, { label: string; color: string }> = {
@@ -277,6 +278,44 @@ export default function OrderDetailClient({ soNumber }: Props) {
               )}
             </div>
           </>
+        )}
+
+        {/* Shipment History */}
+        {detail && detail.shipments.length > 0 && (
+          <div className="bg-gray-900 border border-gray-700 rounded-xl overflow-hidden">
+            <div className="px-4 py-3 border-b border-gray-700 flex items-center gap-2">
+              <Truck size={15} className="text-cyan-500" />
+              <h3 className="text-sm font-semibold text-white">Shipment History ({detail.shipments.length})</h3>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b border-gray-700 text-xs uppercase text-gray-500">
+                    <th className="px-4 py-2 text-left">Ship #</th>
+                    <th className="px-4 py-2 text-left">Status</th>
+                    <th className="px-4 py-2 text-left">Ship Date</th>
+                    <th className="px-4 py-2 text-left">Invoice Date</th>
+                    <th className="px-4 py-2 text-left">Driver</th>
+                    <th className="px-4 py-2 text-left">Route</th>
+                    <th className="px-4 py-2 text-left">Ship Via</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {detail.shipments.map((s: WarehouseOrderShipment, i: number) => (
+                    <tr key={i} className="border-b border-gray-800">
+                      <td className="px-4 py-2 font-mono text-gray-300">{s.shipment_num ?? '—'}</td>
+                      <td className="px-4 py-2 text-xs text-gray-400">{s.status_flag ?? '—'}</td>
+                      <td className="px-4 py-2 text-gray-400 text-xs">{fmt(s.ship_date)}</td>
+                      <td className="px-4 py-2 text-gray-400 text-xs">{fmt(s.invoice_date)}</td>
+                      <td className="px-4 py-2 text-gray-400 text-xs">{s.driver ?? '—'}</td>
+                      <td className="px-4 py-2 text-gray-400 text-xs">{s.route_id_char ?? '—'}</td>
+                      <td className="px-4 py-2 text-gray-500 text-xs">{s.ship_via ?? '—'}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
         )}
       </div>
     </div>
