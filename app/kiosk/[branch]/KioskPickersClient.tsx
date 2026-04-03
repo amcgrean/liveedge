@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import KioskScanClient from './KioskScanClient';
+import KioskWorkOrdersClient from './KioskWorkOrdersClient';
 
 const PICK_TYPES = [
   { id: 1, name: 'Yard',      color: 'bg-green-800 hover:bg-green-700 border-green-600' },
@@ -27,7 +28,7 @@ interface IncompletePick {
   pick_type_name: string | null;
 }
 
-type Step = 'select-picker' | 'select-type' | 'scan';
+type Step = 'select-picker' | 'select-type' | 'scan' | 'work-orders';
 
 export default function KioskPickersClient({ branch }: { branch: string }) {
   const [pickers, setPickers] = useState<Picker[]>([]);
@@ -94,6 +95,16 @@ export default function KioskPickersClient({ branch }: { branch: string }) {
         picker={selectedPicker}
         pickTypeId={selectedTypeId}
         pickTypeName={PICK_TYPES.find((t) => t.id === selectedTypeId)?.name ?? 'Unknown'}
+        onDone={reset}
+      />
+    );
+  }
+
+  if (step === 'work-orders' && selectedPicker) {
+    return (
+      <KioskWorkOrdersClient
+        branch={branch}
+        picker={selectedPicker}
         onDone={reset}
       />
     );
@@ -187,6 +198,15 @@ export default function KioskPickersClient({ branch }: { branch: string }) {
                   {t.name}
                 </button>
               ))}
+            </div>
+
+            <div className="pt-2 border-t border-gray-800">
+              <button
+                onClick={() => setStep('work-orders')}
+                className="w-full py-4 px-4 bg-gray-800 hover:bg-gray-700 border border-gray-600 rounded-xl text-base font-semibold text-gray-300 transition active:scale-95"
+              >
+                Work Orders
+              </button>
             </div>
           </>
         )}

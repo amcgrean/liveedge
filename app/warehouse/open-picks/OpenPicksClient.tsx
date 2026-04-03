@@ -110,7 +110,13 @@ export default function OpenPicksClient({ isAdmin }: Props) {
                   const mins = minutesSince(ap.start_time);
                   return (
                     <div key={ap.pick_id} className="flex items-center justify-between py-1.5 border-t border-white/5">
-                      <span className="text-xs text-slate-300 font-mono">{ap.barcode_number ?? `#${ap.pick_id}`}</span>
+                      {ap.barcode_number ? (
+                        <Link href={`/warehouse/orders/${ap.barcode_number}`} className="text-xs text-cyan-400 hover:underline font-mono">
+                          {ap.barcode_number}
+                        </Link>
+                      ) : (
+                        <span className="text-xs text-slate-300 font-mono">#{ap.pick_id}</span>
+                      )}
                       {mins !== null && (
                         <span className={`flex items-center gap-1 text-xs ${mins > 30 ? 'text-red-400' : 'text-slate-400'}`}>
                           <Clock className="w-3 h-3" />{mins}m
