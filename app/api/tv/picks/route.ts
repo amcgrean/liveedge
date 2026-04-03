@@ -57,11 +57,11 @@ export async function GET(req: NextRequest) {
     WHERE pa.branch_code = ${branch} OR pa.branch_code IS NULL
   `;
   const assignMap = new Map(
-    (assignRows as { so_number: string; picker_id: number; picker_name: string }[])
+    (assignRows as unknown as { so_number: string; picker_id: number; picker_name: string }[])
       .map((r) => [r.so_number, { picker_id: r.picker_id, picker_name: r.picker_name }])
   );
 
-  const items = (soRows as {
+  const items = (soRows as unknown as {
     so_id: string; cust_name: string | null; reference: string | null;
     so_status: string | null; expect_date: string | null; sale_type: string | null;
     handling_code: string; line_count: number; pick_printed_date: string | null;
