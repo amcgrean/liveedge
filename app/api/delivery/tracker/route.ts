@@ -75,29 +75,24 @@ export async function GET(req: NextRequest) {
 
     const rows = await sql<RawRow[]>`
       SELECT
-        soh.so_id::text AS so_id,
+        soh.so_id::text            AS so_id,
         soh.system_id,
-        MAX(c.cust_name)   AS cust_name,
-        MAX(cs.address_1)  AS address_1,
-        MAX(cs.city)       AS city,
-        MAX(soh.reference) AS reference,
-        MAX(soh.so_status) AS so_status,
-        MAX(sh.status_flag) AS shipment_status,
+        soh.cust_name,
+        soh.shipto_address_1       AS address_1,
+        soh.shipto_city            AS city,
+        soh.reference,
+        soh.so_status,
+        MAX(sh.status_flag)        AS shipment_status,
         MAX(sh.invoice_date)::text AS invoice_date,
-        MAX(soh.expect_date)::text AS expect_date,
-        MAX(soh.sale_type) AS sale_type,
-        MAX(sh.route_id_char) AS route,
+        soh.expect_date::text      AS expect_date,
+        soh.sale_type,
+        MAX(sh.route_id_char)      AS route,
         MAX(COALESCE(sh.ship_via, soh.ship_via)) AS ship_via,
-        MAX(sh.driver) AS driver,
+        MAX(sh.driver)             AS driver,
         MAX(sh.status_flag_delivery) AS status_flag_delivery
-      FROM erp_mirror_so_header soh
-      LEFT JOIN erp_mirror_cust c
-        ON TRIM(c.cust_key) = TRIM(soh.cust_key)
-      LEFT JOIN erp_mirror_cust_shipto cs
-        ON TRIM(cs.cust_key) = TRIM(soh.cust_key)
-       AND TRIM(CAST(cs.seq_num AS TEXT)) = TRIM(CAST(soh.shipto_seq_num AS TEXT))
-      LEFT JOIN erp_mirror_shipments_header sh
-        ON sh.system_id = soh.system_id AND sh.so_id = soh.so_id
+      FROM agility_so_header soh
+      LEFT JOIN agility_shipments sh
+        ON sh.system_id = soh.system_id AND sh.so_id = soh.so_id AND sh.is_deleted = false
       WHERE soh.is_deleted = false
         AND UPPER(COALESCE(soh.so_status, '')) != 'C'
         ${effectiveBranch ? sql`AND soh.system_id = ${effectiveBranch}` : sql``}
@@ -109,8 +104,9 @@ export async function GET(req: NextRequest) {
               AND CAST(soh.expect_date AS DATE) <= ${dateParam}::date)
         )
         AND UPPER(COALESCE(soh.sale_type, '')) NOT IN ('DIRECT', 'WILLCALL', 'XINSTALL', 'HOLD')
-      GROUP BY soh.system_id, soh.so_id
-      ORDER BY MAX(soh.so_id) DESC
+      GROUP BY soh.system_id, soh.so_id, soh.cust_name, soh.shipto_address_1,
+               soh.shipto_city, soh.reference, soh.so_status, soh.expect_date, soh.sale_type
+      ORDER BY soh.so_id DESC
     `;
 
     const deliveries: DeliveryRecord[] = rows.map((r) => ({

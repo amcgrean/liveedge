@@ -152,10 +152,10 @@ export async function GET() {
         kpis.openWorkOrders = statsRows[0].open_work_orders;
       }
 
-      // Open orders count from ERP mirror
+      // Open orders count
       const [ordersRes] = await erpSql<{ cnt: number }[]>`
         SELECT COUNT(*)::int AS cnt
-        FROM erp_mirror_so_header
+        FROM agility_so_header
         WHERE is_deleted = false AND UPPER(COALESCE(so_status,'')) = 'O'
       `;
       kpis.openOrders = ordersRes?.cnt ?? 0;

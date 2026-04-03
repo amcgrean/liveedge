@@ -1,12 +1,12 @@
 /**
  * ERP Sync Engine
  *
- * Syncs customer data from the Supabase ERP mirror into the Neon app database.
+ * Syncs customer data from the Supabase agility_customers table into the app database.
  * For large tables (items, ship-to, PO/SO), we query Supabase directly via
  * dedicated API endpoints instead of syncing.
  *
- * Sync: erp_mirror_cust → customer (by cust_code)
- * Read-only: erp_mirror_item, erp_mirror_item_branch, erp_mirror_cust_shipto
+ * Sync: agility_customers → customer (by cust_code)
+ * Read-only: agility_items, agility_customers (ship-to rows)
  */
 import { getErpSql, isErpConfigured } from '@/db/supabase';
 import { getDb } from '@/db/index';
@@ -24,13 +24,13 @@ export interface SyncResult {
 }
 
 /**
- * Sync customers from erp_mirror_cust into the Neon customer table.
+ * Sync customers from agility_customers into the app customer table.
  * Uses cust_code as the unique match key.
  */
 async function syncCustomers(): Promise<SyncResult> {
   const start = Date.now();
   const result: SyncResult = {
-    table: 'erp_mirror_cust',
+    table: 'agility_customers',
     inserted: 0,
     updated: 0,
     skipped: 0,
@@ -43,11 +43,13 @@ async function syncCustomers(): Promise<SyncResult> {
     const erpSql = getErpSql();
     const db = getDb();
 
-    // Read active customers from ERP
+    // Read active customers from ERP (one row per customer via GROUP BY)
     const erpCustomers = await erpSql`
-      SELECT cust_code, cust_name, branch_code, phone, email
-      FROM public.erp_mirror_cust
+      SELECT cust_code, MAX(cust_name) AS cust_name, MAX(branch_code) AS branch_code,
+             MAX(cust_phone) AS phone, MAX(cust_email) AS email
+      FROM public.agility_customers
       WHERE is_deleted = false
+      GROUP BY cust_code
       ORDER BY cust_code
     `;
 
@@ -129,7 +131,7 @@ export async function runErpSync(options: {
   const results: SyncResult[] = [];
 
   // Run customer sync
-  if (!options.tables || options.tables.includes('erp_mirror_cust')) {
+  if (!options.tables || options.tables.includes('agility_customers')) {
     results.push(await syncCustomers());
   }
 
@@ -179,45 +181,42 @@ export async function searchErpItems(options: {
   const limit = Math.min(options.limit ?? 50, 200);
   const offset = options.offset ?? 0;
 
-  // Base query joins item with item_branch for branch-specific data
-  let whereClause = 'WHERE i.is_deleted = false';
+  let whereClause = 'WHERE is_deleted = false';
   const params: unknown[] = [];
   let paramIdx = 0;
 
   if (options.branchCode) {
     paramIdx++;
-    whereClause += ` AND ib.system_id = $${paramIdx}`;
+    whereClause += ` AND system_id = $${paramIdx}`;
     params.push(options.branchCode);
   }
 
   if (options.stockOnly) {
-    whereClause += ' AND ib.stock = true';
+    whereClause += ' AND stock = true';
   }
 
   if (options.q) {
     paramIdx++;
-    whereClause += ` AND (i.item ILIKE $${paramIdx} OR i.description ILIKE $${paramIdx} OR i.short_des ILIKE $${paramIdx})`;
+    whereClause += ` AND (item ILIKE $${paramIdx} OR description ILIKE $${paramIdx} OR short_des ILIKE $${paramIdx})`;
     params.push(`%${options.q}%`);
   }
 
   const countResult = await erpSql.unsafe(
     `SELECT count(*)::int as total
-     FROM public.erp_mirror_item i
-     LEFT JOIN public.erp_mirror_item_branch ib ON ib.item_ptr = i.item_ptr AND ib.is_deleted = false
+     FROM public.agility_items
      ${whereClause}`,
     params as never[]
   );
 
   const rows = await erpSql.unsafe(
     `SELECT
-       i.item, i.description, i.short_des, i.size_, i.type, i.stocking_uom,
-       i.ext_description, i.link_product_group,
-       ib.active_flag, ib.stock, ib.display_uom, ib.picking_uom,
-       ib.weight, ib.weight_uom, ib.contentcode, ib.discontinued_item
-     FROM public.erp_mirror_item i
-     LEFT JOIN public.erp_mirror_item_branch ib ON ib.item_ptr = i.item_ptr AND ib.is_deleted = false
+       item, description, short_des, size_, type, stocking_uom,
+       ext_description, link_product_group,
+       active_flag, stock, display_uom, picking_uom,
+       weight, weight_uom, contentcode, discontinued_item
+     FROM public.agility_items
      ${whereClause}
-     ORDER BY i.item
+     ORDER BY item
      LIMIT ${limit} OFFSET ${offset}`,
     params as never[]
   );
@@ -234,12 +233,9 @@ export async function getCustomerShipTos(custCode: string): Promise<Record<strin
   const rows = await erpSql`
     SELECT
       seq_num, shipto_name, address_1, address_2, address_3,
-      city, state, zip, phone, branch_code, lat, lon
-    FROM public.erp_mirror_cust_shipto
-    WHERE cust_key = (
-      SELECT cust_key FROM public.erp_mirror_cust WHERE cust_code = ${custCode} LIMIT 1
-    )
-    AND is_deleted = false
+      city, state, zip, shipto_phone AS phone, branch_code, lat, lon
+    FROM public.agility_customers
+    WHERE cust_code = ${custCode} AND is_deleted = false
     ORDER BY seq_num
   `;
   return rows as Record<string, unknown>[];
@@ -249,10 +245,12 @@ export async function getCustomerShipTos(custCode: string): Promise<Record<strin
 export async function getErpCustomer(custCode: string): Promise<Record<string, unknown> | null> {
   const erpSql = getErpSql();
   const rows = await erpSql`
-    SELECT cust_code, cust_name, phone, email, balance, credit_limit,
-           credit_account, cust_type, branch_code
-    FROM public.erp_mirror_cust
+    SELECT DISTINCT ON (cust_code)
+      cust_code, cust_name, cust_phone AS phone, cust_email AS email,
+      balance, credit_limit, cust_type, branch_code
+    FROM public.agility_customers
     WHERE cust_code = ${custCode} AND is_deleted = false
+    ORDER BY cust_code, seq_num NULLS LAST
     LIMIT 1
   `;
   return (rows[0] as Record<string, unknown>) ?? null;

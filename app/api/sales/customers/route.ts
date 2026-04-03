@@ -26,12 +26,15 @@ export async function GET(req: NextRequest) {
     };
 
     const rows = await sql<Row[]>`
-      SELECT cust_code, cust_name, branch_code, phone, email, balance, credit_limit
-      FROM erp_mirror_cust
+      SELECT cust_code, MAX(cust_name) AS cust_name, MAX(branch_code) AS branch_code,
+             MAX(cust_phone) AS phone, MAX(cust_email) AS email,
+             MAX(balance) AS balance, MAX(credit_limit) AS credit_limit
+      FROM agility_customers
       WHERE is_deleted = false
         ${q ? sql`AND (cust_code ILIKE ${'%' + q + '%'} OR cust_name ILIKE ${'%' + q + '%'})` : sql``}
         ${branch ? sql`AND branch_code = ${branch}` : sql``}
-      ORDER BY cust_name ASC NULLS LAST
+      GROUP BY cust_code
+      ORDER BY MAX(cust_name) ASC NULLS LAST
       LIMIT ${limit}
     `;
 

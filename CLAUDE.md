@@ -10,10 +10,38 @@ All data lives in one Supabase Postgres instance, split into two schemas:
 
 | Schema | Owner | Contents |
 |--------|-------|----------|
-| `public` | WH-Tracker (Alembic) | ERP mirror tables (`erp_mirror_*`), WH-Tracker app tables |
+| `public` | WH-Tracker (Alembic) | `agility_*` optimized ERP tables (primary), legacy `erp_mirror_*` tables (being phased out), WH-Tracker app tables |
 | `bids` | beisser-takeoff (Drizzle) | All beisser-takeoff tables — UUID-based new tables + migrated legacy serial-ID tables |
 
 **Never run drizzle-kit against the `public` schema.** `drizzle.config.ts` has `schemaFilter: ['bids']` to enforce this.
+
+### ERP Table Layer — agility_* (2026-04-04)
+All LiveEdge API routes now query the optimized `agility_*` tables instead of the old `erp_mirror_*` tables. **Never write new queries against `erp_mirror_*` — use `agility_*`.**
+
+| agility_ table | Replaces | Key differences |
+|----------------|----------|-----------------|
+| `agility_so_header` | `erp_mirror_so_header` | Has `cust_name`, `cust_code`, `shipto_*` denormalized — no JOIN to customers/shipto needed. Missing `invoice_date`/`ship_date`/`terms` (now in `agility_shipments`) |
+| `agility_so_lines` | `erp_mirror_so_detail` | Has `item_code`, `handling_code` inline — no JOIN to items needed for most queries |
+| `agility_customers` | `erp_mirror_cust` + `erp_mirror_cust_shipto` | One row per ship-to address (seq_num≥1). Use `GROUP BY cust_code` or `DISTINCT ON` to get one row per customer |
+| `agility_items` | `erp_mirror_item` + `erp_mirror_item_branch` | Has `handling_code`, `qty_on_hand`, `default_location` inline. One row per item per branch (`system_id`) |
+| `agility_shipments` | `erp_mirror_shipments_header` | Same fields. Source for `invoice_date`, `ship_date` per SO |
+| `agility_wo_header` | `erp_mirror_wo_header` | `source_id` is INTEGER (cast with `::text` for joins). Has `item_code`, `description` inline |
+| `agility_picks` | `erp_mirror_pick_header` + `erp_mirror_pick_detail` | Combined — one row per pick line. `tran_id` = SO number, `tran_type` = 'SO' |
+| `agility_po_header` | `erp_mirror_po_header` | Use `app_po_header` matview or `app_po_search` view for enriched PO data |
+| `agility_po_lines` | `erp_mirror_po_detail` | Use `app_po_detail` view for enriched lines |
+| `agility_suggested_po_header` | `erp_mirror_ppo_header` | `ppo_id` is the key |
+| `agility_suggested_po_lines` | `erp_mirror_ppo_detail` | Use `app_suggested_po_summary` view |
+| `agility_suppliers` | `erp_mirror_suppname` + `erp_mirror_supp_ship_from` | Ship-from fields inline per row |
+| `agility_receiving_header` | `erp_mirror_receiving_header` | Same structure |
+| `agility_receiving_lines` | `erp_mirror_receiving_detail` | Same structure |
+| `agility_ar_open` | (new) | AR open items — `cust_key`, `ref_num`, `open_amt`, `open_flag` |
+
+App views backed by agility_ tables (via the old erp_mirror_ as of 2026-04-04 — will be updated to point at agility_ tables):
+- `app_po_search` → `app_po_header` (matview) — enriched PO list for purchasing routes
+- `app_po_detail` — PO line items with item lookup
+- `app_po_receiving_summary` — receipt counts/dates per PO
+- `app_suggested_po_summary` — suggested PO with supplier info
+- `vw_board_open_orders` → `app_mv_board_open_orders` (matview)
 
 ### Database Connections
 - `db/index.ts` — App DB. Uses `postgres.js` + `drizzle-orm/postgres-js`. Resolves `BIDS_DATABASE_URL` → `POSTGRES_URL_NON_POOLING` → `POSTGRES_URL`. All tables in `bids` schema.

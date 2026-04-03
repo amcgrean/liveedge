@@ -35,23 +35,14 @@ export async function GET(req: NextRequest) {
     }
 
     const rows = await sql<ProductRow[]>`
-      SELECT
-        i.item                                          AS item_number,
-        i.description,
-        MAX(ib.handling_code)                           AS handling_code,
-        MAX(ib.system_id)                               AS system_id
-      FROM erp_mirror_item i
-      LEFT JOIN erp_mirror_item_branch ib
-        ON ib.item_ptr = i.item_ptr
-        AND ib.is_deleted = false
-        ${effectiveBranch ? sql`AND ib.system_id = ${effectiveBranch}` : sql``}
-      WHERE i.is_deleted = false
-        AND (
-          i.item ILIKE ${'%' + q + '%'}
-          OR i.description ILIKE ${'%' + q + '%'}
-        )
-      GROUP BY i.item, i.description
-      ORDER BY i.item
+      SELECT item AS item_number, MAX(description) AS description,
+             MAX(handling_code) AS handling_code, MAX(system_id) AS system_id
+      FROM agility_items
+      WHERE is_deleted = false
+        AND (item ILIKE ${'%' + q + '%'} OR description ILIKE ${'%' + q + '%'})
+        ${effectiveBranch ? sql`AND system_id = ${effectiveBranch}` : sql``}
+      GROUP BY item
+      ORDER BY item
       LIMIT ${limit}
     `;
 

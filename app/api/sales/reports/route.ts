@@ -34,7 +34,7 @@ export async function GET(req: NextRequest) {
             SELECT
               CAST(COALESCE(expect_date, synced_at) AS DATE)::text AS order_date,
               COUNT(DISTINCT so_id)::int AS count
-            FROM erp_mirror_so_header
+            FROM agility_so_header
             WHERE is_deleted = false AND system_id = ${effectiveBranch}
               AND CAST(COALESCE(expect_date, synced_at) AS DATE) >= ${since}::date
             GROUP BY CAST(COALESCE(expect_date, synced_at) AS DATE)
@@ -44,7 +44,7 @@ export async function GET(req: NextRequest) {
             SELECT
               CAST(COALESCE(expect_date, synced_at) AS DATE)::text AS order_date,
               COUNT(DISTINCT so_id)::int AS count
-            FROM erp_mirror_so_header
+            FROM agility_so_header
             WHERE is_deleted = false
               AND CAST(COALESCE(expect_date, synced_at) AS DATE) >= ${since}::date
             GROUP BY CAST(COALESCE(expect_date, synced_at) AS DATE)
@@ -55,7 +55,7 @@ export async function GET(req: NextRequest) {
         ? sql<SaleTypeRow[]>`
             SELECT COALESCE(NULLIF(TRIM(sale_type),''), 'UNKNOWN') AS sale_type,
                    COUNT(DISTINCT so_id)::int AS count
-            FROM erp_mirror_so_header
+            FROM agility_so_header
             WHERE is_deleted = false AND system_id = ${effectiveBranch}
               AND CAST(COALESCE(expect_date, synced_at) AS DATE) >= ${since}::date
             GROUP BY sale_type
@@ -65,7 +65,7 @@ export async function GET(req: NextRequest) {
         : sql<SaleTypeRow[]>`
             SELECT COALESCE(NULLIF(TRIM(sale_type),''), 'UNKNOWN') AS sale_type,
                    COUNT(DISTINCT so_id)::int AS count
-            FROM erp_mirror_so_header
+            FROM agility_so_header
             WHERE is_deleted = false
               AND CAST(COALESCE(expect_date, synced_at) AS DATE) >= ${since}::date
             GROUP BY sale_type
@@ -77,7 +77,7 @@ export async function GET(req: NextRequest) {
         ? sql<ShipViaRow[]>`
             SELECT COALESCE(NULLIF(TRIM(ship_via),''), 'UNKNOWN') AS ship_via,
                    COUNT(DISTINCT so_id)::int AS count
-            FROM erp_mirror_so_header
+            FROM agility_so_header
             WHERE is_deleted = false AND system_id = ${effectiveBranch}
               AND CAST(COALESCE(expect_date, synced_at) AS DATE) >= ${since}::date
             GROUP BY ship_via
@@ -87,7 +87,7 @@ export async function GET(req: NextRequest) {
         : sql<ShipViaRow[]>`
             SELECT COALESCE(NULLIF(TRIM(ship_via),''), 'UNKNOWN') AS ship_via,
                    COUNT(DISTINCT so_id)::int AS count
-            FROM erp_mirror_so_header
+            FROM agility_so_header
             WHERE is_deleted = false
               AND CAST(COALESCE(expect_date, synced_at) AS DATE) >= ${since}::date
             GROUP BY ship_via
@@ -97,22 +97,20 @@ export async function GET(req: NextRequest) {
 
       effectiveBranch
         ? sql<TopCustomerRow[]>`
-            SELECT c.cust_name, COUNT(DISTINCT soh.so_id)::int AS order_count
-            FROM erp_mirror_so_header soh
-            LEFT JOIN erp_mirror_cust c ON TRIM(c.cust_key) = TRIM(soh.cust_key)
-            WHERE soh.is_deleted = false AND soh.system_id = ${effectiveBranch}
-              AND CAST(COALESCE(soh.expect_date, soh.synced_at) AS DATE) >= ${since}::date
-            GROUP BY c.cust_name
+            SELECT cust_name, COUNT(DISTINCT so_id)::int AS order_count
+            FROM agility_so_header
+            WHERE is_deleted = false AND system_id = ${effectiveBranch}
+              AND CAST(COALESCE(expect_date, synced_at) AS DATE) >= ${since}::date
+            GROUP BY cust_name
             ORDER BY order_count DESC
             LIMIT 10
           `
         : sql<TopCustomerRow[]>`
-            SELECT c.cust_name, COUNT(DISTINCT soh.so_id)::int AS order_count
-            FROM erp_mirror_so_header soh
-            LEFT JOIN erp_mirror_cust c ON TRIM(c.cust_key) = TRIM(soh.cust_key)
-            WHERE soh.is_deleted = false
-              AND CAST(COALESCE(soh.expect_date, soh.synced_at) AS DATE) >= ${since}::date
-            GROUP BY c.cust_name
+            SELECT cust_name, COUNT(DISTINCT so_id)::int AS order_count
+            FROM agility_so_header
+            WHERE is_deleted = false
+              AND CAST(COALESCE(expect_date, synced_at) AS DATE) >= ${since}::date
+            GROUP BY cust_name
             ORDER BY order_count DESC
             LIMIT 10
           `,
@@ -120,7 +118,7 @@ export async function GET(req: NextRequest) {
       effectiveBranch
         ? sql<StatusRow[]>`
             SELECT UPPER(COALESCE(so_status,'—')) AS so_status, COUNT(DISTINCT so_id)::int AS cnt
-            FROM erp_mirror_so_header
+            FROM agility_so_header
             WHERE is_deleted = false AND system_id = ${effectiveBranch}
               AND CAST(COALESCE(expect_date, synced_at) AS DATE) >= ${since}::date
             GROUP BY UPPER(COALESCE(so_status,'—'))
@@ -128,7 +126,7 @@ export async function GET(req: NextRequest) {
           `
         : sql<StatusRow[]>`
             SELECT UPPER(COALESCE(so_status,'—')) AS so_status, COUNT(DISTINCT so_id)::int AS cnt
-            FROM erp_mirror_so_header
+            FROM agility_so_header
             WHERE is_deleted = false
               AND CAST(COALESCE(expect_date, synced_at) AS DATE) >= ${since}::date
             GROUP BY UPPER(COALESCE(so_status,'—'))

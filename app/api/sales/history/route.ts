@@ -42,6 +42,11 @@ export async function GET(req: NextRequest) {
     };
 
     const rows = await sql<HistoryRow[]>`
+      WITH inv AS (
+        SELECT system_id, so_id, MAX(invoice_date) AS invoice_date
+        FROM agility_shipments WHERE is_deleted = false
+        GROUP BY system_id, so_id
+      )
       SELECT
         soh.so_id            AS so_number,
         soh.system_id,
@@ -50,28 +55,27 @@ export async function GET(req: NextRequest) {
         soh.ship_via,
         soh.salesperson,
         soh.expect_date      ::text AS expect_date,
-        soh.invoice_date     ::text AS invoice_date,
+        inv.invoice_date     ::text AS invoice_date,
         soh.reference,
         soh.po_number,
-        MAX(c.cust_name)     AS customer_name,
-        MAX(TRIM(c.cust_key))AS customer_code,
-        COUNT(DISTINCT sod.sequence)::int AS line_count
-      FROM erp_mirror_so_header soh
-      LEFT JOIN erp_mirror_cust c
-        ON TRIM(c.cust_key) = TRIM(soh.cust_key)
-      LEFT JOIN erp_mirror_so_detail sod
-        ON sod.so_id = soh.so_id AND sod.system_id = soh.system_id AND sod.is_deleted = false
+        soh.cust_name        AS customer_name,
+        soh.cust_code        AS customer_code,
+        COUNT(DISTINCT sol.sequence)::int AS line_count
+      FROM agility_so_header soh
+      LEFT JOIN agility_so_lines sol
+        ON sol.so_id = soh.so_id AND sol.system_id = soh.system_id AND sol.is_deleted = false
+      LEFT JOIN inv ON inv.so_id = soh.so_id AND inv.system_id = soh.system_id
       WHERE soh.is_deleted = false
         AND UPPER(COALESCE(soh.so_status, '')) IN ('I', 'C')
         ${effectiveBranch ? sql`AND soh.system_id = ${effectiveBranch}` : sql``}
-        ${customerNumber ? sql`AND TRIM(soh.cust_key) = TRIM(${customerNumber})` : sql``}
-        ${dateFrom ? sql`AND CAST(COALESCE(soh.invoice_date, soh.expect_date) AS DATE) >= ${dateFrom}::date` : sql``}
-        ${dateTo ? sql`AND CAST(COALESCE(soh.invoice_date, soh.expect_date) AS DATE) <= ${dateTo}::date` : sql``}
+        ${customerNumber ? sql`AND TRIM(soh.cust_code) = TRIM(${customerNumber})` : sql``}
+        ${dateFrom ? sql`AND CAST(COALESCE(inv.invoice_date, soh.expect_date) AS DATE) >= ${dateFrom}::date` : sql``}
+        ${dateTo ? sql`AND CAST(COALESCE(inv.invoice_date, soh.expect_date) AS DATE) <= ${dateTo}::date` : sql``}
         ${
           q
             ? sql`AND (
                 soh.so_id ILIKE ${'%' + q + '%'}
-                OR c.cust_name ILIKE ${'%' + q + '%'}
+                OR soh.cust_name ILIKE ${'%' + q + '%'}
                 OR soh.reference ILIKE ${'%' + q + '%'}
                 OR soh.po_number ILIKE ${'%' + q + '%'}
               )`
@@ -79,8 +83,9 @@ export async function GET(req: NextRequest) {
         }
       GROUP BY
         soh.so_id, soh.system_id, soh.so_status, soh.sale_type, soh.ship_via,
-        soh.salesperson, soh.expect_date, soh.invoice_date, soh.reference, soh.po_number
-      ORDER BY soh.invoice_date DESC NULLS LAST, soh.so_id DESC
+        soh.salesperson, soh.expect_date, soh.reference, soh.po_number,
+        soh.cust_name, soh.cust_code, inv.invoice_date
+      ORDER BY inv.invoice_date DESC NULLS LAST, soh.so_id DESC
       LIMIT ${limit} OFFSET ${offset}
     `;
 

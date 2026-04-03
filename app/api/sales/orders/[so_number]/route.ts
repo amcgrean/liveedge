@@ -73,24 +73,27 @@ export async function GET(
         soh.system_id,
         soh.so_status,
         soh.sale_type,
-        c.cust_name  AS customer_name,
-        c.cust_code  AS customer_code,
+        soh.cust_name  AS customer_name,
+        soh.cust_code  AS customer_code,
         soh.reference,
         soh.po_number,
         soh.expect_date::text,
         soh.created_date::text,
-        soh.invoice_date::text,
-        soh.ship_date::text,
-        soh.promise_date::text,
+        MAX(sh.invoice_date)::text AS invoice_date,
+        MAX(sh.ship_date)::text    AS ship_date,
+        NULL::text                 AS promise_date,
         soh.ship_via,
-        soh.terms,
+        NULL::text                 AS terms,
         soh.salesperson,
         soh.branch_code
-      FROM erp_mirror_so_header soh
-      LEFT JOIN erp_mirror_cust c
-        ON TRIM(c.cust_key) = TRIM(soh.cust_key)
+      FROM agility_so_header soh
+      LEFT JOIN agility_shipments sh
+        ON sh.system_id = soh.system_id AND sh.so_id = soh.so_id AND sh.is_deleted = false
       WHERE soh.is_deleted = false
         AND soh.so_id::text = ${so_number}
+      GROUP BY soh.so_id, soh.system_id, soh.so_status, soh.sale_type,
+               soh.cust_name, soh.cust_code, soh.reference, soh.po_number,
+               soh.expect_date, soh.created_date, soh.ship_via, soh.salesperson, soh.branch_code
       LIMIT 1
     `;
 
@@ -113,21 +116,19 @@ export async function GET(
 
     const lineRows = await sql<LineRow[]>`
       SELECT
-        sod.sequence,
-        i.item,
-        COALESCE(NULLIF(TRIM(sod.so_desc), ''), i.description) AS description,
-        COALESCE(NULLIF(TRIM(sod.size_), ''), i.size_)         AS size_,
-        sod.qty_ordered::text,
-        sod.bo::text,
-        sod.price::text,
-        sod.price_uom_ptr
-      FROM erp_mirror_so_detail sod
-      LEFT JOIN erp_mirror_item i
-        ON i.item_ptr = sod.item_ptr AND i.system_id = sod.system_id
-      WHERE sod.is_deleted = false
-        AND sod.system_id = ${h.system_id}
-        AND sod.so_id::text = ${so_number}
-      ORDER BY sod.sequence
+        sol.sequence,
+        sol.item_code AS item,
+        COALESCE(NULLIF(TRIM(sol.so_desc), ''), sol.description) AS description,
+        sol.size_,
+        sol.qty_ordered::text,
+        sol.bo::text,
+        sol.price::text,
+        sol.price_uom_ptr
+      FROM agility_so_lines sol
+      WHERE sol.is_deleted = false
+        AND sol.system_id = ${h.system_id}
+        AND sol.so_id::text = ${so_number}
+      ORDER BY sol.sequence
     `;
 
     const lines: OrderLine[] = lineRows.map((r) => ({

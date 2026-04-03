@@ -48,8 +48,8 @@ export async function GET(req: NextRequest) {
     const [byDate, bySaleType, byShipVia, detail] = await Promise.all([
       sql<{ ship_date: string; cnt: number }[]>`
         SELECT CAST(sh.ship_date AS DATE)::text AS ship_date, COUNT(DISTINCT soh.so_id) AS cnt
-        FROM erp_mirror_shipments_header sh
-        JOIN erp_mirror_so_header soh ON soh.system_id = sh.system_id AND soh.so_id = sh.so_id
+        FROM agility_shipments sh
+        JOIN agility_so_header soh ON soh.system_id = sh.system_id AND soh.so_id = sh.so_id
         WHERE soh.is_deleted = false
           AND CAST(sh.ship_date AS DATE) >= CURRENT_DATE - (${windowDays} * INTERVAL '1 day')
           AND CAST(sh.ship_date AS DATE) < CURRENT_DATE + INTERVAL '1 day'
@@ -61,8 +61,8 @@ export async function GET(req: NextRequest) {
       `,
       sql<SummaryRow[]>`
         SELECT COALESCE(soh.sale_type,'Unknown') AS grp, COUNT(DISTINCT soh.so_id) AS cnt
-        FROM erp_mirror_shipments_header sh
-        JOIN erp_mirror_so_header soh ON soh.system_id = sh.system_id AND soh.so_id = sh.so_id
+        FROM agility_shipments sh
+        JOIN agility_so_header soh ON soh.system_id = sh.system_id AND soh.so_id = sh.so_id
         WHERE soh.is_deleted = false
           AND CAST(sh.ship_date AS DATE) >= CURRENT_DATE - (${windowDays} * INTERVAL '1 day')
           AND CAST(sh.ship_date AS DATE) < CURRENT_DATE + INTERVAL '1 day'
@@ -73,8 +73,8 @@ export async function GET(req: NextRequest) {
       `,
       sql<SummaryRow[]>`
         SELECT COALESCE(sh.ship_via, soh.ship_via, 'Unknown') AS grp, COUNT(DISTINCT soh.so_id) AS cnt
-        FROM erp_mirror_shipments_header sh
-        JOIN erp_mirror_so_header soh ON soh.system_id = sh.system_id AND soh.so_id = sh.so_id
+        FROM agility_shipments sh
+        JOIN agility_so_header soh ON soh.system_id = sh.system_id AND soh.so_id = sh.so_id
         WHERE soh.is_deleted = false
           AND CAST(sh.ship_date AS DATE) >= CURRENT_DATE - (${windowDays} * INTERVAL '1 day')
           AND CAST(sh.ship_date AS DATE) < CURRENT_DATE + INTERVAL '1 day'
@@ -93,9 +93,9 @@ export async function GET(req: NextRequest) {
           soh.sale_type,
           COALESCE(sh.ship_via, soh.ship_via) AS ship_via,
           COUNT(DISTINCT shd.sequence)::int AS line_count
-        FROM erp_mirror_shipments_header sh
-        JOIN erp_mirror_so_header soh ON soh.system_id = sh.system_id AND soh.so_id = sh.so_id
-        LEFT JOIN erp_mirror_so_detail shd ON shd.system_id = soh.system_id AND shd.so_id = soh.so_id AND shd.is_deleted = false
+        FROM agility_shipments sh
+        JOIN agility_so_header soh ON soh.system_id = sh.system_id AND soh.so_id = sh.so_id
+        LEFT JOIN agility_so_lines shd ON shd.system_id = soh.system_id AND shd.so_id = soh.so_id AND shd.is_deleted = false
         WHERE soh.is_deleted = false
           AND CAST(sh.ship_date AS DATE) >= CURRENT_DATE - (${windowDays} * INTERVAL '1 day')
           AND CAST(sh.ship_date AS DATE) < CURRENT_DATE + INTERVAL '1 day'

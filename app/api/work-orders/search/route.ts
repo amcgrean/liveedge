@@ -35,36 +35,28 @@ export async function GET(req: NextRequest) {
 
     const rows = await sql<RawRow[]>`
       SELECT
-        wh.wo_id,
-        wh.source_id,
-        COALESCE(i.item, sod_item.item)               AS item_number,
-        COALESCE(i.description, sod_item.description)  AS description,
+        wh.wo_id::text AS wo_id,
+        wh.source_id::text,
+        COALESCE(wh.item_code, sol.item_code)              AS item_number,
+        COALESCE(wh.description, sol.description)          AS description,
         wh.wo_status,
-        COALESCE(ib.handling_code, NULLIF(wh.department,''), wh.wo_rule) AS handling_code,
+        COALESCE(sol.handling_code, NULLIF(wh.department,''), wh.wo_rule) AS handling_code,
         soh.system_id  AS so_branch,
         wa.id          AS assignment_id,
         wa.assigned_to_id,
         ps.name        AS assigned_to_name,
         wa.status      AS assignment_status
-      FROM erp_mirror_wo_header wh
-      LEFT JOIN erp_mirror_so_detail sod
-        ON sod.so_id = wh.source_id AND sod.sequence = wh.source_seq AND sod.is_deleted = false
-      LEFT JOIN erp_mirror_item i
-        ON i.item_ptr = wh.item_ptr AND i.is_deleted = false
-      LEFT JOIN erp_mirror_item sod_item
-        ON sod_item.item_ptr = sod.item_ptr AND sod_item.is_deleted = false
-      LEFT JOIN erp_mirror_so_header soh
-        ON soh.so_id = wh.source_id AND soh.is_deleted = false
-      LEFT JOIN erp_mirror_item_branch ib
-        ON (ib.item_ptr = wh.item_ptr OR ib.item_ptr = sod.item_ptr)
-           AND ib.system_id = COALESCE(wh.branch_code, soh.system_id)
-           AND ib.is_deleted = false
+      FROM agility_wo_header wh
+      LEFT JOIN agility_so_lines sol
+        ON sol.so_id = wh.source_id::text AND sol.sequence = wh.source_seq AND sol.is_deleted = false
+      LEFT JOIN agility_so_header soh
+        ON soh.so_id = wh.source_id::text AND soh.is_deleted = false
       LEFT JOIN work_orders wa
-        ON wa.work_order_number = wh.wo_id
+        ON wa.work_order_number = wh.wo_id::text
       LEFT JOIN pickster ps
         ON ps.id = wa.assigned_to_id
       WHERE wh.is_deleted = false
-        AND CAST(wh.source_id AS TEXT) = ${so}
+        AND wh.source_id::text = ${so}
         AND UPPER(COALESCE(wh.source, '')) = 'SO'
         ${effectiveBranch ? sql`AND soh.system_id = ${effectiveBranch}` : sql``}
       ORDER BY wh.wo_id

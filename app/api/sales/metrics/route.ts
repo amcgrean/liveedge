@@ -47,21 +47,21 @@ export async function GET(req: NextRequest) {
             SELECT
               COUNT(DISTINCT CASE WHEN UPPER(COALESCE(so_status,'')) = 'O' THEN so_id END)::int AS open_orders_count,
               COUNT(DISTINCT CASE WHEN CAST(expect_date AS DATE) = ${today}::date THEN so_id END)::int AS total_orders_today
-            FROM erp_mirror_so_header
+            FROM agility_so_header
             WHERE is_deleted = false AND system_id = ${effectiveBranch}
           `
         : sql<MetricsRow[]>`
             SELECT
               COUNT(DISTINCT CASE WHEN UPPER(COALESCE(so_status,'')) = 'O' THEN so_id END)::int AS open_orders_count,
               COUNT(DISTINCT CASE WHEN CAST(expect_date AS DATE) = ${today}::date THEN so_id END)::int AS total_orders_today
-            FROM erp_mirror_so_header
+            FROM agility_so_header
             WHERE is_deleted = false
           `,
 
       effectiveBranch
         ? sql<StatusRow[]>`
             SELECT UPPER(COALESCE(so_status,'—')) AS so_status, COUNT(DISTINCT so_id)::int AS cnt
-            FROM erp_mirror_so_header
+            FROM agility_so_header
             WHERE is_deleted = false AND system_id = ${effectiveBranch}
               AND CAST(COALESCE(expect_date, synced_at) AS DATE) >= ${since}::date
             GROUP BY UPPER(COALESCE(so_status,'—'))
@@ -69,7 +69,7 @@ export async function GET(req: NextRequest) {
           `
         : sql<StatusRow[]>`
             SELECT UPPER(COALESCE(so_status,'—')) AS so_status, COUNT(DISTINCT so_id)::int AS cnt
-            FROM erp_mirror_so_header
+            FROM agility_so_header
             WHERE is_deleted = false
               AND CAST(COALESCE(expect_date, synced_at) AS DATE) >= ${since}::date
             GROUP BY UPPER(COALESCE(so_status,'—'))
@@ -78,22 +78,20 @@ export async function GET(req: NextRequest) {
 
       effectiveBranch
         ? sql<TopCustomerRow[]>`
-            SELECT c.cust_name, COUNT(DISTINCT soh.so_id)::int AS order_count
-            FROM erp_mirror_so_header soh
-            LEFT JOIN erp_mirror_cust c ON TRIM(c.cust_key) = TRIM(soh.cust_key)
-            WHERE soh.is_deleted = false AND soh.system_id = ${effectiveBranch}
-              AND CAST(COALESCE(soh.expect_date, soh.synced_at) AS DATE) >= ${since}::date
-            GROUP BY c.cust_name
+            SELECT cust_name, COUNT(DISTINCT so_id)::int AS order_count
+            FROM agility_so_header
+            WHERE is_deleted = false AND system_id = ${effectiveBranch}
+              AND CAST(COALESCE(expect_date, synced_at) AS DATE) >= ${since}::date
+            GROUP BY cust_name
             ORDER BY order_count DESC
             LIMIT 10
           `
         : sql<TopCustomerRow[]>`
-            SELECT c.cust_name, COUNT(DISTINCT soh.so_id)::int AS order_count
-            FROM erp_mirror_so_header soh
-            LEFT JOIN erp_mirror_cust c ON TRIM(c.cust_key) = TRIM(soh.cust_key)
-            WHERE soh.is_deleted = false
-              AND CAST(COALESCE(soh.expect_date, soh.synced_at) AS DATE) >= ${since}::date
-            GROUP BY c.cust_name
+            SELECT cust_name, COUNT(DISTINCT so_id)::int AS order_count
+            FROM agility_so_header
+            WHERE is_deleted = false
+              AND CAST(COALESCE(expect_date, synced_at) AS DATE) >= ${since}::date
+            GROUP BY cust_name
             ORDER BY order_count DESC
             LIMIT 10
           `,

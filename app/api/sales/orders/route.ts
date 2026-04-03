@@ -66,40 +66,38 @@ export async function GET(req: NextRequest) {
       SELECT
         soh.so_id::text    AS so_number,
         soh.system_id,
-        MAX(c.cust_name)   AS customer_name,
-        MAX(c.cust_code)   AS customer_code,
-        MAX(cs.address_1)  AS address_1,
-        MAX(cs.city)       AS city,
-        MAX(soh.expect_date)::text AS expect_date,
-        MAX(soh.reference) AS reference,
-        MAX(soh.so_status) AS so_status,
-        MAX(soh.sale_type) AS sale_type,
-        MAX(soh.ship_via)  AS ship_via,
-        MAX(soh.salesperson) AS salesperson,
-        MAX(soh.po_number) AS po_number,
-        COUNT(DISTINCT sod.sequence)::int AS line_count
-      FROM erp_mirror_so_header soh
-      LEFT JOIN erp_mirror_cust c
-        ON TRIM(c.cust_key) = TRIM(soh.cust_key)
-      LEFT JOIN erp_mirror_cust_shipto cs
-        ON TRIM(cs.cust_key) = TRIM(soh.cust_key)
-       AND TRIM(CAST(cs.seq_num AS TEXT)) = TRIM(CAST(soh.shipto_seq_num AS TEXT))
-      LEFT JOIN erp_mirror_so_detail sod
-        ON sod.system_id = soh.system_id AND sod.so_id = soh.so_id AND sod.is_deleted = false
+        soh.cust_name      AS customer_name,
+        soh.cust_code      AS customer_code,
+        soh.shipto_address_1 AS address_1,
+        soh.shipto_city    AS city,
+        soh.expect_date::text AS expect_date,
+        soh.reference,
+        soh.so_status,
+        soh.sale_type,
+        soh.ship_via,
+        soh.salesperson,
+        soh.po_number,
+        COUNT(DISTINCT sol.sequence)::int AS line_count
+      FROM agility_so_header soh
+      LEFT JOIN agility_so_lines sol
+        ON sol.system_id = soh.system_id AND sol.so_id = soh.so_id AND sol.is_deleted = false
       WHERE soh.is_deleted = false
         ${statusParam ? sql`AND UPPER(COALESCE(soh.so_status,'')) = ${statusParam.toUpperCase()}` : sql``}
         ${effectiveBranch ? sql`AND soh.system_id = ${effectiveBranch}` : sql``}
         ${q ? sql`AND (
           soh.so_id::text ILIKE ${'%' + q + '%'}
-          OR COALESCE(c.cust_name,'') ILIKE ${'%' + q + '%'}
+          OR COALESCE(soh.cust_name,'') ILIKE ${'%' + q + '%'}
           OR COALESCE(soh.reference,'') ILIKE ${'%' + q + '%'}
           OR COALESCE(soh.po_number,'') ILIKE ${'%' + q + '%'}
         )` : sql``}
         ${dateFrom ? sql`AND CAST(soh.expect_date AS DATE) >= ${dateFrom}::date` : sql``}
         ${dateTo ? sql`AND CAST(soh.expect_date AS DATE) <= ${dateTo}::date` : sql``}
         ${saleTypeParam ? sql`AND UPPER(COALESCE(soh.sale_type,'')) = ${saleTypeParam.toUpperCase()}` : sql``}
-      GROUP BY soh.system_id, soh.so_id
-      ORDER BY MAX(soh.expect_date) ASC NULLS LAST, soh.so_id DESC
+      GROUP BY soh.system_id, soh.so_id, soh.cust_name, soh.cust_code,
+               soh.shipto_address_1, soh.shipto_city, soh.expect_date,
+               soh.reference, soh.so_status, soh.sale_type, soh.ship_via,
+               soh.salesperson, soh.po_number
+      ORDER BY soh.expect_date ASC NULLS LAST, soh.so_id DESC
       LIMIT ${limit} OFFSET ${offset}
     `;
 

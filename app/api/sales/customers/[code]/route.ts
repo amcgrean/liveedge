@@ -48,24 +48,25 @@ export async function GET(
 
     const [custRows, orderRows, shiptoRows] = await Promise.all([
       sql<CustRow[]>`
-        SELECT cust_key, cust_name, address_1, city, state, zip, phone
-        FROM erp_mirror_cust
-        WHERE TRIM(cust_key) = TRIM(${code}) AND is_deleted = false
+        SELECT DISTINCT ON (cust_code) cust_key, cust_name, address_1, city, state, zip, cust_phone AS phone
+        FROM agility_customers
+        WHERE TRIM(cust_code) = TRIM(${code}) AND is_deleted = false
+        ORDER BY cust_code, seq_num NULLS LAST
         LIMIT 1
       `,
       sql<OrderRow[]>`
         SELECT so_id AS so_number, system_id, so_status, sale_type, ship_via,
-               expect_date::text, invoice_date::text, reference
-        FROM erp_mirror_so_header
-        WHERE TRIM(cust_key) = TRIM(${code}) AND is_deleted = false
-        ORDER BY COALESCE(invoice_date, expect_date) DESC NULLS LAST
+               expect_date::text, NULL::text AS invoice_date, reference
+        FROM agility_so_header
+        WHERE TRIM(cust_code) = TRIM(${code}) AND is_deleted = false
+        ORDER BY expect_date DESC NULLS LAST
         LIMIT 50
       `,
       sql<ShipToRow[]>`
-        SELECT shipto_seq, shipto_name, address_1, city, state
-        FROM erp_mirror_cust_shipto
-        WHERE TRIM(cust_key) = TRIM(${code}) AND is_deleted = false
-        ORDER BY shipto_seq
+        SELECT seq_num AS shipto_seq, shipto_name, address_1, city, state
+        FROM agility_customers
+        WHERE TRIM(cust_code) = TRIM(${code}) AND is_deleted = false
+        ORDER BY seq_num
         LIMIT 20
       `,
     ]);

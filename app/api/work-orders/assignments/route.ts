@@ -45,8 +45,8 @@ export async function GET() {
           SELECT wa.*, ps.name AS assigned_to_name
           FROM work_orders wa
           LEFT JOIN pickster ps ON ps.id = wa.assigned_to_id
-          LEFT JOIN erp_mirror_wo_header wh ON wh.wo_id = wa.work_order_number AND wh.is_deleted = false
-          LEFT JOIN erp_mirror_so_header soh ON soh.so_id = wh.source_id AND soh.is_deleted = false
+          LEFT JOIN agility_wo_header wh ON wh.wo_id::text = wa.work_order_number AND wh.is_deleted = false
+          LEFT JOIN agility_so_header soh ON soh.so_id = wh.source_id::text AND soh.is_deleted = false
           WHERE wa.status IN ('Open', 'Assigned')
             AND soh.system_id = ${effectiveBranch}
           ORDER BY wa.created_at DESC

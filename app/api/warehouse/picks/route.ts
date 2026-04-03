@@ -69,61 +69,55 @@ export async function GET(req: NextRequest) {
     const rows = await sql<RawRow[]>`
       WITH shipment_rollup AS (
         SELECT sh.system_id, sh.so_id,
-          MAX(sh.status_flag)           AS status_flag,
-          MAX(sh.invoice_date)          AS invoice_date,
-          MAX(sh.ship_date)             AS ship_date,
-          MAX(sh.ship_via)              AS ship_via,
-          MAX(sh.driver)                AS driver,
-          MAX(sh.route_id_char)         AS route_id_char,
-          MAX(sh.loaded_time)           AS loaded_time,
-          MAX(sh.loaded_date)           AS loaded_date
-        FROM erp_mirror_shipments_header sh
+          MAX(sh.status_flag)   AS status_flag,
+          MAX(sh.invoice_date)  AS invoice_date,
+          MAX(sh.ship_date)     AS ship_date,
+          MAX(sh.ship_via)      AS ship_via,
+          MAX(sh.driver)        AS driver,
+          MAX(sh.route_id_char) AS route_id_char,
+          MAX(sh.loaded_time)   AS loaded_time,
+          MAX(sh.loaded_date)   AS loaded_date
+        FROM agility_shipments sh
         WHERE sh.is_deleted = false
         GROUP BY sh.system_id, sh.so_id
       ),
       pick_rollup AS (
-        SELECT pd.system_id, pd.tran_id AS so_id,
-          MAX(ph.created_date) AS created_date,
-          MAX(ph.created_time) AS created_time
-        FROM erp_mirror_pick_header ph
-        JOIN erp_mirror_pick_detail pd
-          ON ph.pick_id = pd.pick_id AND ph.system_id = pd.system_id
-        WHERE ph.is_deleted = false AND pd.is_deleted = false
-          AND UPPER(COALESCE(ph.print_status, '')) = 'PICK TICKET'
-          AND UPPER(COALESCE(pd.tran_type, '')) = 'SO'
-          AND ph.created_date >= CURRENT_DATE - INTERVAL '30 days'
-        GROUP BY pd.system_id, pd.tran_id
+        SELECT system_id, tran_id AS so_id,
+          MAX(created_date) AS created_date,
+          MAX(created_time) AS created_time
+        FROM agility_picks
+        WHERE is_deleted = false
+          AND UPPER(COALESCE(print_status, '')) = 'PICK TICKET'
+          AND UPPER(COALESCE(tran_type, '')) = 'SO'
+          AND created_date >= CURRENT_DATE - INTERVAL '30 days'
+        GROUP BY system_id, tran_id
       )
       SELECT
         soh.so_id,
-        c.cust_name,
+        soh.cust_name,
         soh.reference,
         soh.so_status,
-        UPPER(COALESCE(ib.handling_code, 'UNROUTED')) AS handling_code,
+        UPPER(COALESCE(sol.handling_code, 'UNROUTED')) AS handling_code,
         soh.system_id,
-        soh.expect_date::text              AS expect_date,
+        soh.expect_date::text         AS expect_date,
         soh.sale_type,
         sh.ship_via,
         sh.driver,
         sh.route_id_char,
-        COUNT(sod.id)                      AS line_count,
-        pr.created_date::text              AS pick_printed_date,
-        pr.created_time                    AS pick_printed_time,
-        sh.loaded_date::text               AS loaded_date,
+        COUNT(sol.id)                 AS line_count,
+        pr.created_date::text         AS pick_printed_date,
+        pr.created_time               AS pick_printed_time,
+        sh.loaded_date::text          AS loaded_date,
         sh.loaded_time
-      FROM erp_mirror_so_detail sod
-      JOIN erp_mirror_so_header soh
-        ON soh.system_id = sod.system_id AND soh.so_id = sod.so_id
-      LEFT JOIN erp_mirror_item_branch ib
-        ON ib.system_id = sod.system_id AND ib.item_ptr = sod.item_ptr AND ib.is_deleted = false
-      LEFT JOIN erp_mirror_cust c
-        ON TRIM(c.cust_key) = TRIM(soh.cust_key)
+      FROM agility_so_lines sol
+      JOIN agility_so_header soh
+        ON soh.system_id = sol.system_id AND soh.so_id = sol.so_id
       LEFT JOIN shipment_rollup sh
         ON sh.system_id = soh.system_id AND sh.so_id = soh.so_id
       LEFT JOIN pick_rollup pr
         ON pr.system_id = soh.system_id AND pr.so_id = soh.so_id
       WHERE soh.is_deleted = false
-        AND sod.is_deleted = false
+        AND sol.is_deleted = false
         ${branchFilter}
         AND UPPER(COALESCE(soh.so_status, '')) != 'C'
         AND (
@@ -132,8 +126,8 @@ export async function GET(req: NextRequest) {
           OR CAST(soh.expect_date AS DATE) = CURRENT_DATE
         )
         AND UPPER(COALESCE(soh.sale_type, '')) NOT IN ('DIRECT', 'WILLCALL', 'XINSTALL', 'HOLD')
-      GROUP BY soh.system_id, soh.so_id, c.cust_name, soh.reference, soh.so_status,
-        UPPER(COALESCE(ib.handling_code, 'UNROUTED')), soh.expect_date, soh.sale_type,
+      GROUP BY soh.system_id, soh.so_id, soh.cust_name, soh.reference, soh.so_status,
+        UPPER(COALESCE(sol.handling_code, 'UNROUTED')), soh.expect_date, soh.sale_type,
         sh.ship_via, sh.driver, sh.route_id_char, pr.created_date, pr.created_time,
         sh.loaded_date, sh.loaded_time
       ORDER BY soh.system_id, soh.so_id
