@@ -23,12 +23,13 @@ export async function GET(req: NextRequest) {
       id: number; rma_number: string; filename: string; filepath: string;
       email_from: string | null; email_subject: string | null;
       received_at: string | null; uploaded_at: string | null;
+      r2_key: string | null;
     };
 
     const rows = rma
       ? await sql<Row[]>`
           SELECT id, rma_number, filename, filepath, email_from, email_subject,
-                 received_at::text, uploaded_at::text
+                 received_at::text, uploaded_at::text, r2_key
           FROM credit_images
           WHERE rma_number ILIKE ${rma + '%'}
           ORDER BY received_at DESC
@@ -36,7 +37,7 @@ export async function GET(req: NextRequest) {
         `
       : await sql<Row[]>`
           SELECT id, rma_number, filename, filepath, email_from, email_subject,
-                 received_at::text, uploaded_at::text
+                 received_at::text, uploaded_at::text, r2_key
           FROM credit_images
           WHERE rma_number ILIKE ${'%' + q + '%'}
              OR email_from ILIKE ${'%' + q + '%'}
