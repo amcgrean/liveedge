@@ -122,7 +122,7 @@ export async function GET() {
       const pagesRes = await db.execute(
         sql`SELECT path, visit_count FROM bids.page_visits WHERE user_id = ${userId} ORDER BY visit_count DESC LIMIT 6`
       );
-      topPages = (pagesRes as { path: string; visit_count: number }[]).map((r) => ({
+      topPages = (pagesRes as unknown as { path: string; visit_count: number }[]).map((r) => ({
         path: r.path,
         label: pathLabel(r.path),
         visit_count: r.visit_count,
