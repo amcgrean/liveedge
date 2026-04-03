@@ -64,9 +64,9 @@ export async function GET(
     // If this fails, configure CORS manually in the Cloudflare dashboard:
     //   R2 > bids bucket > Settings > CORS: allow liveedge.vercel.app,
     //   methods PUT/GET, headers *.
-    const origin = req.headers.get('origin') || 'https://liveedge.vercel.app';
+    const origin = req.headers.get('origin') || 'https://app.beisser.cloud';
     try {
-      await ensureBucketCors([origin, 'https://liveedge.vercel.app', 'https://beisser-takeoff.vercel.app', 'http://localhost:3000']);
+      await ensureBucketCors([origin, 'https://app.beisser.cloud', 'https://beisser-takeoff.vercel.app', 'http://localhost:3000']);
     } catch (corsErr) {
       console.warn('[upload] ensureBucketCors failed (configure CORS manually in Cloudflare dashboard):', corsErr);
     }

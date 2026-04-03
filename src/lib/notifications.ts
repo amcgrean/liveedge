@@ -49,7 +49,7 @@ export async function processNotification(context: NotificationContext): Promise
           method: 'POST',
           headers: { Authorization: `Bearer ${resendKey}`, 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            from: 'LiveEdge <noreply@beisser-takeoff.vercel.app>',
+            from: 'LiveEdge <noreply@app.beisser.cloud>',
             to: recipients.split(', '),
             subject: `[LiveEdge] ${context.eventType}${context.details?.projectName ? ': ' + context.details.projectName : ''}`,
             text: `Event: ${context.eventType}\n${JSON.stringify(context.details ?? {}, null, 2)}`,
