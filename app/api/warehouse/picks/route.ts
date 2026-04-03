@@ -79,8 +79,9 @@ export async function GET(req: NextRequest) {
         GROUP BY sh.system_id, sh.so_id
       ),
       pick_rollup AS (
-        SELECT system_id, tran_id AS so_id,
-          MAX(created_date) AS created_date
+        SELECT system_id, tran_id::text AS so_id,
+          MAX(created_date) AS created_date,
+          MAX(created_time) AS created_time
         FROM agility_picks
         WHERE is_deleted = false
           AND UPPER(COALESCE(print_status, '')) = 'PICK TICKET'

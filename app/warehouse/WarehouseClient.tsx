@@ -59,8 +59,11 @@ export default function WarehouseClient({ initialStats, isAdmin, userBranch, use
       try {
         const res = await fetch('/api/warehouse/stats');
         if (res.ok) {
-          setStats(await res.json() as BranchStats[]);
-          setLastRefresh(new Date());
+          const data = await res.json();
+          if (Array.isArray(data)) {
+            setStats(data as BranchStats[]);
+            setLastRefresh(new Date());
+          }
         }
       } catch { /* silent */ }
     }, 60_000);
