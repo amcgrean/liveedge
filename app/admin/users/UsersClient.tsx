@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useEffect, useState, useCallback } from 'react';
-import { Plus, RefreshCw, Pencil, Trash2, X, Check, Shield, Eye, KeyRound } from 'lucide-react';
+import { Plus, RefreshCw, Pencil, Trash2, X, Check, Shield, Eye, KeyRound, ShoppingCart } from 'lucide-react';
 import Link from 'next/link';
 import { formatDate } from '../../../src/lib/utils';
 import { useSession } from 'next-auth/react';
@@ -18,6 +18,7 @@ interface AppUser {
 const ROLES = [
   { value: 'admin', label: 'Admin', icon: <Shield className="w-3 h-3" />, desc: 'Full access, admin panel' },
   { value: 'estimator', label: 'Estimator', icon: <Pencil className="w-3 h-3" />, desc: 'Create & manage own bids' },
+  { value: 'purchasing', label: 'Purchasing', icon: <ShoppingCart className="w-3 h-3" />, desc: 'PO check-in, open POs, receiving' },
   { value: 'viewer', label: 'Viewer', icon: <Eye className="w-3 h-3" />, desc: 'Read-only access to bids' },
 ];
 
@@ -122,6 +123,7 @@ export default function UsersClient() {
                     <td>
                       <span className={`flex items-center gap-1.5 w-fit px-2 py-0.5 rounded text-[11px] font-medium capitalize ${
                         u.role === 'admin' ? 'bg-purple-900/40 text-purple-400 border border-purple-700' :
+                        u.role === 'purchasing' ? 'bg-amber-900/30 text-amber-400 border border-amber-800' :
                         u.role === 'viewer' ? 'bg-slate-800 text-slate-400' :
                         'bg-blue-900/30 text-blue-400 border border-blue-800'
                       }`}>

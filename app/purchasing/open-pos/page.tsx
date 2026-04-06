@@ -4,7 +4,7 @@ import OpenPosClient from './OpenPosClient';
 
 export default async function OpenPosPage() {
   const session = await auth();
-  if (!session?.user) redirect('/ops-login');
+  if (!session?.user) redirect('/login');
 
   const isAdmin =
     session.user.role === 'admin' ||

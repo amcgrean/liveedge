@@ -91,6 +91,7 @@ export const legacyUser = bidsSchema.table('user', {
   isCommercialEstimator:    boolean('is_commercial_estimator').default(false),
   isResidentialEstimator:   boolean('is_residential_estimator').default(false),
   isDesigner:               boolean('is_designer').default(false),
+  isPurchasing:             boolean('is_purchasing').default(false),
   loginCount:               integer('login_count').default(0),
 });
 

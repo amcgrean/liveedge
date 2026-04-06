@@ -11,7 +11,7 @@ export default async function ReviewPage({
   searchParams: Promise<{ status?: string; branch?: string; days?: string }>;
 }) {
   const session = await auth();
-  if (!session?.user) redirect('/ops-login');
+  if (!session?.user) redirect('/login');
 
   const canReview = session.user.role === 'admin' ||
     (session.user.roles ?? []).some((r) => ['supervisor', 'ops', 'admin'].includes(r));

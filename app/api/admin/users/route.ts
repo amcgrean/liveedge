@@ -21,9 +21,10 @@ async function requireAdmin(session: Session | null) {
   return null;
 }
 
-function deriveRole(row: { isAdmin: boolean | null; isEstimator: boolean | null; isCommercialEstimator: boolean | null }): string {
+function deriveRole(row: { isAdmin: boolean | null; isEstimator: boolean | null; isCommercialEstimator: boolean | null; isPurchasing?: boolean | null }): string {
   if (row.isAdmin) return 'admin';
   if (row.isEstimator || row.isCommercialEstimator) return 'estimator';
+  if (row.isPurchasing) return 'purchasing';
   return 'viewer';
 }
 
@@ -42,6 +43,7 @@ export async function GET(_req: NextRequest) {
         isAdmin:               legacyUser.isAdmin,
         isEstimator:           legacyUser.isEstimator,
         isCommercialEstimator: legacyUser.isCommercialEstimator,
+        isPurchasing:          legacyUser.isPurchasing,
         isActive:              legacyUser.isActive,
         createdAt:             legacyUser.createdAt,
       })
@@ -76,7 +78,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'username, email, and password are required' }, { status: 422 });
   }
 
-  const validRoles = ['admin', 'estimator', 'viewer'];
+  const validRoles = ['admin', 'estimator', 'purchasing', 'viewer'];
   if (!validRoles.includes(body.role)) {
     return NextResponse.json({ error: `role must be one of: ${validRoles.join(', ')}` }, { status: 422 });
   }
@@ -92,8 +94,9 @@ export async function POST(req: NextRequest) {
     if (match) usertypeId = match.id;
 
     const password = await bcrypt.hash(body.password, 12);
-    const isAdmin      = body.role === 'admin';
-    const isEstimator  = body.role === 'estimator';
+    const isAdmin       = body.role === 'admin';
+    const isEstimator   = body.role === 'estimator';
+    const isPurchasing  = body.role === 'purchasing';
 
     const [user] = await db
       .insert(legacyUser)
@@ -104,6 +107,7 @@ export async function POST(req: NextRequest) {
         usertypeId,
         isAdmin,
         isEstimator,
+        isPurchasing,
         isCommercialEstimator: false,
         isResidentialEstimator: false,
         isDesigner: false,

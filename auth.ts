@@ -78,6 +78,11 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
           if (!passwordOk) return null;
 
           const role = user.isAdmin ? 'admin' : user.isEstimator ? 'estimator' : 'viewer';
+          const roles: string[] = user.isAdmin
+            ? ['admin']
+            : user.isPurchasing
+            ? ['purchasing']
+            : [];
 
           // Track login activity (non-critical)
           db.insert(legacyLoginActivity).values({
@@ -90,7 +95,7 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
             name: user.username,
             email: user.email || `${user.username}@beisserlumber.com`,
             role,
-            roles: user.isAdmin ? ['admin'] : [],
+            roles,
             branch: null,
             branchId: user.userBranchId,
           };

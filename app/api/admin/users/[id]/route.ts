@@ -35,6 +35,7 @@ export async function PUT(
   if (body.role) {
     update.isAdmin               = body.role === 'admin';
     update.isEstimator           = body.role === 'estimator';
+    update.isPurchasing          = body.role === 'purchasing';
     update.isCommercialEstimator = false;
   }
 
@@ -45,19 +46,22 @@ export async function PUT(
       .set(update)
       .where(eq(legacyUser.id, userId))
       .returning({
-        id:       legacyUser.id,
-        username: legacyUser.username,
-        email:    legacyUser.email,
-        isAdmin:  legacyUser.isAdmin,
-        isActive: legacyUser.isActive,
+        id:          legacyUser.id,
+        username:    legacyUser.username,
+        email:       legacyUser.email,
+        isAdmin:     legacyUser.isAdmin,
+        isEstimator: legacyUser.isEstimator,
+        isPurchasing: legacyUser.isPurchasing,
+        isActive:    legacyUser.isActive,
       });
     if (!updated) return NextResponse.json({ error: 'Not found' }, { status: 404 });
+    const role = updated.isAdmin ? 'admin' : updated.isEstimator ? 'estimator' : updated.isPurchasing ? 'purchasing' : 'viewer';
     return NextResponse.json({
       user: {
         id:    String(updated.id),
         name:  updated.username,
         email: updated.email,
-        role:  updated.isAdmin ? 'admin' : 'estimator',
+        role,
         isActive: updated.isActive ?? true,
       },
     });

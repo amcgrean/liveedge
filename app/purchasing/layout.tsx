@@ -3,8 +3,14 @@ import { auth } from '../../auth';
 
 export default async function PurchasingLayout({ children }: { children: React.ReactNode }) {
   const session = await auth();
-  if (!session?.user) redirect('/ops-login');
-  // Viewers (no WH-Tracker role) cannot access purchasing
-  if (session.user.role === 'viewer') redirect('/dashboard');
+  if (!session?.user) redirect('/login');
+  const roles = session.user.roles ?? [];
+  // Allow: admin, estimator (ops staff), or users with purchasing role
+  const canAccess =
+    session.user.role === 'admin' ||
+    session.user.role === 'estimator' ||
+    roles.includes('purchasing') ||
+    roles.some((r) => ['admin', 'supervisor', 'ops', 'purchasing', 'warehouse'].includes(r));
+  if (!canAccess) redirect('/');
   return <>{children}</>;
 }
