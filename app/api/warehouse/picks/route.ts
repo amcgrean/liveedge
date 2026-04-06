@@ -54,9 +54,7 @@ export async function GET(req: NextRequest) {
       route_id_char: string | null;
       line_count: number;
       pick_printed_date: string | null;
-      pick_printed_time: string | null;
       loaded_date: string | null;
-      loaded_time: string | null;
     };
 
     // Conditional branch filter — avoids duplicating the entire query
@@ -75,7 +73,6 @@ export async function GET(req: NextRequest) {
           MAX(sh.ship_via)      AS ship_via,
           MAX(sh.driver)        AS driver,
           MAX(sh.route_id_char) AS route_id_char,
-          MAX(sh.loaded_time)   AS loaded_time,
           MAX(sh.loaded_date)   AS loaded_date
         FROM agility_shipments sh
         WHERE sh.is_deleted = false
@@ -83,8 +80,7 @@ export async function GET(req: NextRequest) {
       ),
       pick_rollup AS (
         SELECT system_id, tran_id AS so_id,
-          MAX(created_date) AS created_date,
-          MAX(created_time) AS created_time
+          MAX(created_date) AS created_date
         FROM agility_picks
         WHERE is_deleted = false
           AND UPPER(COALESCE(print_status, '')) = 'PICK TICKET'
@@ -106,9 +102,7 @@ export async function GET(req: NextRequest) {
         sh.route_id_char,
         COUNT(sol.id)                 AS line_count,
         pr.created_date::text         AS pick_printed_date,
-        pr.created_time               AS pick_printed_time,
-        sh.loaded_date::text          AS loaded_date,
-        sh.loaded_time
+        sh.loaded_date::text          AS loaded_date
       FROM agility_so_lines sol
       JOIN agility_so_header soh
         ON soh.system_id = sol.system_id AND soh.so_id = sol.so_id
@@ -128,8 +122,8 @@ export async function GET(req: NextRequest) {
         AND UPPER(COALESCE(soh.sale_type, '')) NOT IN ('DIRECT', 'WILLCALL', 'XINSTALL', 'HOLD')
       GROUP BY soh.system_id, soh.so_id, soh.cust_name, soh.reference, soh.so_status,
         UPPER(COALESCE(sol.handling_code, 'UNROUTED')), soh.expect_date, soh.sale_type,
-        sh.ship_via, sh.driver, sh.route_id_char, pr.created_date, pr.created_time,
-        sh.loaded_date, sh.loaded_time
+        sh.ship_via, sh.driver, sh.route_id_char, pr.created_date,
+        sh.loaded_date
       ORDER BY soh.system_id, soh.so_id
       LIMIT ${limit}
     `;
@@ -157,12 +151,8 @@ export async function GET(req: NextRequest) {
           driver: r.driver ?? null,
           route: r.route_id_char ?? null,
           line_count: Number(r.line_count),
-          printed_at: r.pick_printed_date
-            ? `${r.pick_printed_date}${r.pick_printed_time ? ' ' + r.pick_printed_time : ''}`
-            : null,
-          staged_at: r.loaded_date
-            ? `${r.loaded_date}${r.loaded_time ? ' ' + r.loaded_time : ''}`
-            : null,
+          printed_at: r.pick_printed_date ?? null,
+          staged_at: r.loaded_date ?? null,
         });
       }
     }
