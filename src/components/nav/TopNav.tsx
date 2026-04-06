@@ -205,11 +205,12 @@ const DOMAINS: Domain[] = [
     dropdown: true,
     isActive: (p) => p === '/purchasing' || p.startsWith('/purchasing/'),
     links: [
-      { href: '/purchasing/workspace',      label: 'Buyer Workspace', requireAnyRole: ['purchasing', 'ops', 'supervisor'] },
-      { href: '/purchasing/open-pos',       label: 'Open POs',        requireAnyRole: ['purchasing', 'ops', 'supervisor', 'sales'] },
-      { href: '/purchasing/manage',         label: 'Command Center',  requireAnyRole: ['purchasing', 'ops', 'supervisor'] },
+      { href: '/purchasing/workspace',      label: 'Buyer Workspace',  requireAnyRole: ['purchasing', 'ops', 'supervisor'] },
+      { href: '/purchasing/open-pos',       label: 'Open POs',         requireAnyRole: ['purchasing', 'ops', 'supervisor', 'sales'] },
+      { href: '/purchasing/suggested-buys', label: 'Suggested Buys',   requireAnyRole: ['purchasing', 'ops', 'supervisor'] },
+      { href: '/purchasing/manage',         label: 'Command Center',   requireAnyRole: ['purchasing', 'ops', 'supervisor'] },
       { href: '/purchasing',                label: 'PO Check-In' },
-      { href: '/purchasing/review',         label: 'Review Queue',    requireAnyRole: ['purchasing', 'ops', 'supervisor'] },
+      { href: '/purchasing/review',         label: 'Review Queue',     requireAnyRole: ['purchasing', 'ops', 'supervisor'] },
     ],
   },
 ];
@@ -234,10 +235,6 @@ const ADMIN_LINKS: NavLink[] = [
 // WH-Tracker operational roles (from app_users.roles[])
 const WH_ROLES = ['warehouse', 'sales', 'ops', 'supervisor', 'purchasing', 'dispatch'] as const;
 type WHRole = typeof WH_ROLES[number];
-
-function hasRole(roles: string[], r: WHRole): boolean {
-  return roles.includes(r);
-}
 
 function hasAnyRole(roles: string[], ...check: WHRole[]): boolean {
   return check.some((r) => roles.includes(r));

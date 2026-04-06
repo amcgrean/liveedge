@@ -4,7 +4,7 @@ import PosDetailClient from './PosDetailClient';
 
 export default async function PosDetailPage({ params }: { params: Promise<{ po: string }> }) {
   const session = await auth();
-  if (!session?.user) redirect('/login');
+  if (!session?.user) redirect('/ops-login');
 
   const { po } = await params;
 

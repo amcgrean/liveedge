@@ -2,15 +2,13 @@
 
 import React, { useState } from 'react';
 import { signIn } from 'next-auth/react';
-import { useRouter, useSearchParams } from 'next/navigation';
+import { useRouter } from 'next/navigation';
 import { HardHat, ArrowLeft, Mail } from 'lucide-react';
 
 type Step = 'email' | 'code';
 
 export default function OpsLoginPage() {
   const router = useRouter();
-  const searchParams = useSearchParams();
-  const callbackUrl = searchParams.get('callbackUrl') ?? '/';
 
   const [step, setStep] = useState<Step>('email');
   const [email, setEmail] = useState('');
@@ -58,7 +56,7 @@ export default function OpsLoginPage() {
       return;
     }
 
-    router.push(callbackUrl);
+    router.push('/');
     router.refresh();
   }
 

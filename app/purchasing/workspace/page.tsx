@@ -7,7 +7,7 @@ export const metadata = { title: 'Buyer Workspace' };
 
 export default async function BuyerWorkspacePage() {
   const session = await auth();
-  if (!session?.user) redirect('/login');
+  if (!session?.user) redirect('/ops-login');
 
   return (
     <div className="min-h-screen bg-gray-950">

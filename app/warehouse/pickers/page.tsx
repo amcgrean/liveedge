@@ -4,7 +4,7 @@ import PickerAdminClient from './PickerAdminClient';
 
 export default async function PickerAdminPage() {
   const session = await auth();
-  if (!session?.user) redirect('/login');
+  if (!session?.user) redirect('/ops-login');
 
   const isAdmin =
     session.user.role === 'admin' ||

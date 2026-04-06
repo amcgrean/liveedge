@@ -4,7 +4,7 @@ import DeliveryReportingClient from './DeliveryReportingClient';
 
 export default async function OpsDeliveryReportingPage() {
   const session = await auth();
-  if (!session?.user) redirect('/login');
+  if (!session?.user) redirect('/ops-login');
 
   const isAdmin =
     session.user.role === 'admin' ||

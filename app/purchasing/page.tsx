@@ -7,7 +7,7 @@ export const metadata = { title: 'PO Check-In' };
 
 export default async function PurchasingCheckinPage() {
   const session = await auth();
-  if (!session?.user) redirect('/login');
+  if (!session?.user) redirect('/ops-login');
 
   return (
     <div className="min-h-screen bg-gray-950">

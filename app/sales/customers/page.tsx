@@ -7,7 +7,7 @@ export const metadata = { title: 'Customers' };
 
 export default async function CustomersPage() {
   const session = await auth();
-  if (!session?.user) redirect('/login');
+  if (!session?.user) redirect('/ops-login');
 
   return (
     <div className="min-h-screen bg-gray-950">

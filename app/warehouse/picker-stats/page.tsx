@@ -4,7 +4,7 @@ import PickerStatsClient from './PickerStatsClient';
 
 export default async function PickerStatsPage() {
   const session = await auth();
-  if (!session?.user) redirect('/login');
+  if (!session?.user) redirect('/ops-login');
 
   const isAdmin =
     session.user.role === 'admin' ||

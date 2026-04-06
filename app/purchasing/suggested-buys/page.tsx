@@ -4,7 +4,7 @@ import SuggestedBuysClient from './SuggestedBuysClient';
 
 export default async function SuggestedBuysPage() {
   const session = await auth();
-  if (!session?.user) redirect('/login');
+  if (!session?.user) redirect('/ops-login');
 
   const isAdmin =
     session.user.role === 'admin' ||

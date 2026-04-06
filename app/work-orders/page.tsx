@@ -12,7 +12,7 @@ interface Builder {
 
 export default async function WorkOrdersPage() {
   const session = await auth();
-  if (!session?.user) redirect('/login');
+  if (!session?.user) redirect('/ops-login');
 
   const isAdmin =
     session.user.role === 'admin' ||
