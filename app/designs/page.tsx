@@ -6,6 +6,6 @@ export const metadata = { title: 'Designs | LiveEdge' };
 
 export default async function DesignsPage() {
   const session = await auth();
-  if (!session) redirect('/login');
+  if (!session) redirect('/ops-login');
   return <DesignsClient session={session} />;
 }

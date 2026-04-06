@@ -8,7 +8,7 @@ interface Props {
 
 export default async function TakeoffSessionPage({ params }: Props) {
   const session = await auth();
-  if (!session) redirect('/login');
+  if (!session) redirect('/ops-login');
 
   const { sessionId } = await params;
 

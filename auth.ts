@@ -189,7 +189,7 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
           const role = roles.includes('admin')
             ? 'admin'
             : roles.some((r) =>
-                ['ops', 'sales', 'supervisor', 'purchasing', 'warehouse'].includes(r)
+                ['ops', 'sales', 'supervisor', 'purchasing', 'warehouse', 'estimating'].includes(r)
               )
             ? 'estimator'
             : 'viewer';

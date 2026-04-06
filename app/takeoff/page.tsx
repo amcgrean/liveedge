@@ -4,7 +4,7 @@ import { TakeoffSessionList } from './TakeoffSessionList';
 
 export default async function TakeoffPage() {
   const session = await auth();
-  if (!session) redirect('/login');
+  if (!session) redirect('/ops-login');
 
   let sessions: Array<{
     id: string;

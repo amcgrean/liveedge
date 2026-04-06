@@ -6,6 +6,6 @@ export const metadata = { title: 'Manage Project | LiveEdge' };
 
 export default async function ManageProjectPage() {
   const session = await auth();
-  if (!session) redirect('/login');
+  if (!session) redirect('/ops-login');
   return <ManageProjectClient session={session} />;
 }

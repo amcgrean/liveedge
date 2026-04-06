@@ -6,6 +6,6 @@ export const metadata = { title: 'All Bids | LiveEdge' };
 
 export default async function AllBidsPage() {
   const session = await auth();
-  if (!session) redirect('/login');
+  if (!session) redirect('/ops-login');
   return <AllBidsClient session={session} />;
 }
