@@ -4,7 +4,7 @@ import SalesDeliveriesClient from './SalesDeliveriesClient';
 
 export default async function SalesDeliveriesPage() {
   const session = await auth();
-  if (!session?.user) redirect('/login');
+  if (!session?.user) redirect('/ops-login');
 
   const isAdmin =
     session.user.role === 'admin' ||

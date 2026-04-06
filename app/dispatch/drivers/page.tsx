@@ -4,7 +4,7 @@ import DriversClient from './DriversClient';
 
 export default async function DriversPage() {
   const session = await auth();
-  if (!session?.user) redirect('/login');
+  if (!session?.user) redirect('/ops-login');
 
   const canAccess =
     session.user.role === 'admin' ||

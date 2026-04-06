@@ -4,7 +4,7 @@ import MapClient from './MapClient';
 
 export default async function DeliveryMapPage() {
   const session = await auth();
-  if (!session?.user) redirect('/login');
+  if (!session?.user) redirect('/ops-login');
 
   const isAdmin =
     session.user.role === 'admin' ||

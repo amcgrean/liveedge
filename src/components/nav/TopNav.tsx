@@ -3,12 +3,14 @@
 import React from 'react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
-import { signOut } from 'next-auth/react';
+import { signOut, useSession } from 'next-auth/react';
 import {
   Hammer, LogOut, ChevronDown, Menu, X, Settings,
   Truck, ShoppingCart, FileText, Wrench, PackageCheck, MapPin,
 } from 'lucide-react';
 import { cn } from '../../lib/utils';
+
+// ─── Branch switcher ──────────────────────────────────────────────────────────
 
 const BRANCH_OPTIONS = [
   { code: '',     label: 'All Branches' },
@@ -102,7 +104,14 @@ function BranchSwitcher() {
   );
 }
 
-interface NavLink { href: string; label: string }
+// ─── Nav structure ────────────────────────────────────────────────────────────
+
+interface NavLink {
+  href: string;
+  label: string;
+  // If set, only shown to users with at least one of these WH-Tracker roles (admins always see all)
+  requireAnyRole?: string[];
+}
 
 interface Domain {
   id: string;
@@ -125,16 +134,16 @@ const DOMAINS: Domain[] = [
         (prefix) => p === prefix || p.startsWith(prefix + '/')
       ),
     links: [
-      { href: '/warehouse',               label: 'Picks Board' },
-      { href: '/warehouse/open-picks',    label: 'Open Picks' },
-      { href: '/warehouse/picker-stats',  label: 'Picker Stats' },
-      { href: '/work-orders',             label: 'Work Orders' },
-      { href: '/supervisor',              label: 'Supervisor' },
-      { href: '/dispatch',                label: 'Dispatch Board' },
-      { href: '/dispatch/drivers',        label: 'Driver Roster' },
-      { href: '/delivery',                label: 'Delivery Tracker' },
-      { href: '/delivery/map',            label: 'Fleet Map' },
-      { href: '/tv/20GR',                label: 'TV Board' },
+      { href: '/warehouse',              label: 'Picks Board' },
+      { href: '/warehouse/open-picks',   label: 'Open Picks' },
+      { href: '/warehouse/picker-stats', label: 'Picker Stats' },
+      { href: '/work-orders',            label: 'Work Orders' },
+      { href: '/supervisor',             label: 'Supervisor',    requireAnyRole: ['supervisor', 'ops', 'warehouse'] },
+      { href: '/dispatch',               label: 'Dispatch Board' },
+      { href: '/dispatch/drivers',       label: 'Driver Roster', requireAnyRole: ['supervisor', 'ops', 'dispatch'] },
+      { href: '/delivery',               label: 'Delivery Tracker' },
+      { href: '/delivery/map',           label: 'Fleet Map' },
+      { href: '/tv/20GR',                label: 'TV Board',      requireAnyRole: ['supervisor', 'ops', 'warehouse'] },
     ],
   },
   {
@@ -144,16 +153,16 @@ const DOMAINS: Domain[] = [
     dropdown: true,
     isActive: (p) => p.startsWith('/sales') || p.startsWith('/credits'),
     links: [
-      { href: '/sales',               label: 'Sales Hub' },
-      { href: '/sales/customers',     label: 'Customers' },
-      { href: '/sales/transactions',  label: 'Transactions' },
-      { href: '/sales/history',       label: 'Purchase History' },
-      { href: '/sales/products',      label: 'Products & Stock' },
-      { href: '/sales/reports',       label: 'Reports' },
-      { href: '/sales/tracker',        label: 'Delivery Tracker' },
-      { href: '/sales/deliveries',     label: 'Sales Deliveries' },
-      { href: '/sales/rep-dashboard',  label: 'Rep Dashboard' },
-      { href: '/credits',              label: 'RMA Credits' },
+      { href: '/sales',              label: 'Sales Hub' },
+      { href: '/sales/customers',    label: 'Customers' },
+      { href: '/sales/transactions', label: 'Transactions' },
+      { href: '/sales/history',      label: 'Purchase History' },
+      { href: '/sales/products',     label: 'Products & Stock' },
+      { href: '/sales/reports',      label: 'Reports' },
+      { href: '/sales/tracker',      label: 'Delivery Tracker', requireAnyRole: ['sales', 'ops', 'supervisor'] },
+      { href: '/sales/deliveries',   label: 'Sales Deliveries', requireAnyRole: ['sales', 'ops', 'supervisor'] },
+      { href: '/sales/rep-dashboard',label: 'Rep Dashboard',    requireAnyRole: ['sales'] },
+      { href: '/credits',            label: 'RMA Credits' },
     ],
   },
   {
@@ -194,45 +203,117 @@ const DOMAINS: Domain[] = [
     label: 'Purchasing',
     icon: <PackageCheck className="w-4 h-4" />,
     dropdown: true,
-    isActive: (p) =>
-      p === '/purchasing' ||
-      p.startsWith('/purchasing/'),
+    isActive: (p) => p === '/purchasing' || p.startsWith('/purchasing/'),
     links: [
-      { href: '/purchasing/workspace',      label: 'Buyer Workspace' },
-      { href: '/purchasing/open-pos',       label: 'Open POs' },
-      { href: '/purchasing/suggested-buys', label: 'Suggested Buys' },
-      { href: '/purchasing/manage',         label: 'Command Center' },
+      { href: '/purchasing/workspace',      label: 'Buyer Workspace',  requireAnyRole: ['purchasing', 'ops', 'supervisor'] },
+      { href: '/purchasing/open-pos',       label: 'Open POs',         requireAnyRole: ['purchasing', 'ops', 'supervisor', 'sales'] },
+      { href: '/purchasing/suggested-buys', label: 'Suggested Buys',   requireAnyRole: ['purchasing', 'ops', 'supervisor'] },
+      { href: '/purchasing/manage',         label: 'Command Center',   requireAnyRole: ['purchasing', 'ops', 'supervisor'] },
       { href: '/purchasing',                label: 'PO Check-In' },
-      { href: '/purchasing/review',         label: 'Review Queue' },
+      { href: '/purchasing/review',         label: 'Review Queue',     requireAnyRole: ['purchasing', 'ops', 'supervisor'] },
     ],
   },
 ];
 
 const ADMIN_LINKS: NavLink[] = [
-  { href: '/admin',                   label: 'Dashboard' },
-  { href: '/admin/customers',         label: 'Customers' },
-  { href: '/admin/products',          label: 'Products / SKUs' },
-  { href: '/admin/formulas',          label: 'Formulas' },
-  { href: '/admin/users',             label: 'Users' },
-  { href: '/admin/bid-fields',        label: 'Bid Fields' },
-  { href: '/admin/notifications',     label: 'Notifications' },
-  { href: '/admin/audit',             label: 'Audit Log' },
-  { href: '/admin/erp',               label: 'ERP Sync' },
-  { href: '/admin/app-users',         label: 'App Users' },
-  { href: '/ops/delivery-reporting',  label: 'Delivery Report' },
-  { href: '/warehouse/pickers',       label: 'Picker Admin' },
+  { href: '/admin',                  label: 'Dashboard' },
+  { href: '/admin/customers',        label: 'Customers' },
+  { href: '/admin/products',         label: 'Products / SKUs' },
+  { href: '/admin/formulas',         label: 'Formulas' },
+  { href: '/admin/users',            label: 'Users' },
+  { href: '/admin/bid-fields',       label: 'Bid Fields' },
+  { href: '/admin/notifications',    label: 'Notifications' },
+  { href: '/admin/audit',            label: 'Audit Log' },
+  { href: '/admin/erp',              label: 'ERP Sync' },
+  { href: '/admin/app-users',        label: 'App Users' },
+  { href: '/ops/delivery-reporting', label: 'Delivery Report' },
+  { href: '/warehouse/pickers',      label: 'Picker Admin' },
 ];
 
+// ─── Role helpers ─────────────────────────────────────────────────────────────
+
+// WH-Tracker operational roles (from app_users.roles[])
+const WH_ROLES = ['warehouse', 'sales', 'ops', 'supervisor', 'purchasing', 'dispatch'] as const;
+type WHRole = typeof WH_ROLES[number];
+
+function hasAnyRole(roles: string[], ...check: WHRole[]): boolean {
+  return check.some((r) => roles.includes(r));
+}
+
+/**
+ * Returns true if the current user should see the given domain section.
+ * Admins always see everything. WH-Tracker users see only their sections.
+ * Legacy credential users (no WH-Tracker roles) see estimating/service/purchasing.
+ */
+function canSeeSection(domainId: string, role: string, roles: string[]): boolean {
+  if (role === 'admin') return true;
+
+  // Is this a WH-Tracker OTP user? (has at least one ops role)
+  const isWHUser = (WH_ROLES as readonly string[]).some((r) => roles.includes(r));
+
+  switch (domainId) {
+    case 'dispatch':
+      return hasAnyRole(roles, 'warehouse', 'sales', 'ops', 'supervisor', 'dispatch');
+    case 'sales':
+      return hasAnyRole(roles, 'sales', 'ops', 'supervisor');
+    case 'estimating':
+      // Legacy credential users only (estimators / admins without WH-Tracker roles)
+      return (role === 'admin' || role === 'estimator') && !isWHUser;
+    case 'service':
+      // All authenticated users (not viewer-only guard needed — layouts handle that)
+      return role !== 'viewer';
+    case 'purchasing':
+      // Any authenticated non-viewer can reach at least PO Check-In
+      return role !== 'viewer';
+    default:
+      return false;
+  }
+}
+
+/**
+ * Returns true if the current user should see a specific nav link.
+ * If requireAnyRole is unset the link is visible to all who can see its section.
+ */
+function canSeeLink(link: NavLink, role: string, roles: string[]): boolean {
+  if (role === 'admin') return true;
+  if (!link.requireAnyRole) return true;
+  return link.requireAnyRole.some((r) => roles.includes(r));
+}
+
+// ─── Props ────────────────────────────────────────────────────────────────────
+
 interface Props {
+  // Optional: displayed name / role overrides (used by components that don't
+  // yet call useSession themselves). Session-derived values take precedence.
   userName?: string | null;
   userRole?: string;
 }
 
+// ─── Component ────────────────────────────────────────────────────────────────
+
 export function TopNav({ userName, userRole }: Props) {
+  const { data: session } = useSession();
   const pathname = usePathname();
   const [openMenu, setOpenMenu] = React.useState<string | null>(null);
   const [mobileOpen, setMobileOpen] = React.useState(false);
   const navRef = React.useRef<HTMLElement>(null);
+
+  // Derive auth state — session wins over props
+  const name: string = session?.user?.name ?? userName ?? 'User';
+  const role: string = (session?.user as { role?: string } | undefined)?.role ?? userRole ?? 'viewer';
+  const roles: string[] = (session?.user as { roles?: string[] } | undefined)?.roles ?? [];
+
+  // WH-Tracker user = has at least one ops role in the raw roles array
+  const isWHUser = (WH_ROLES as readonly string[]).some((r) => roles.includes(r));
+  const signOutUrl = isWHUser ? '/ops-login' : '/login';
+
+  // Build the filtered domain list once per render
+  const visibleDomains = DOMAINS
+    .filter((d) => canSeeSection(d.id, role, roles))
+    .map((d) => ({
+      ...d,
+      links: d.links.filter((l) => canSeeLink(l, role, roles)),
+    }));
 
   React.useEffect(() => {
     function handler(e: MouseEvent) {
@@ -281,9 +362,9 @@ export function TopNav({ userName, userRole }: Props) {
               <span>Live<span className="text-cyan-400">Edge</span></span>
             </Link>
 
-            {/* Desktop domain nav */}
+            {/* Desktop domain nav — role-filtered */}
             <div className="hidden lg:flex items-center gap-0.5">
-              {DOMAINS.map((domain) => {
+              {visibleDomains.map((domain) => {
                 const active = domain.isActive(pathname);
                 const baseCls = cn(
                   'flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium transition',
@@ -330,7 +411,7 @@ export function TopNav({ userName, userRole }: Props) {
             <BranchSwitcher />
 
             {/* Admin dropdown — desktop only, admin role */}
-            {userRole === 'admin' && (
+            {role === 'admin' && (
               <div className="relative hidden lg:block">
                 <button
                   onClick={() => toggle('admin')}
@@ -357,9 +438,9 @@ export function TopNav({ userName, userRole }: Props) {
 
             {/* User + logout */}
             <div className="hidden sm:flex items-center gap-2 pl-3 border-l border-slate-700">
-              <span className="text-sm text-slate-400">{userName ?? 'User'}</span>
+              <span className="text-sm text-slate-400">{name}</span>
               <button
-                onClick={() => signOut({ callbackUrl: '/login' })}
+                onClick={() => signOut({ callbackUrl: signOutUrl })}
                 className="p-2 rounded-lg text-slate-400 hover:text-red-400 hover:bg-slate-800 transition"
                 title="Sign out"
               >
@@ -379,7 +460,7 @@ export function TopNav({ userName, userRole }: Props) {
         </div>
       </nav>
 
-      {/* Mobile drawer */}
+      {/* Mobile drawer — same role-filtered domains */}
       {mobileOpen && (
         <div className="lg:hidden fixed inset-0 z-40 flex flex-col print:hidden">
           <div
@@ -388,7 +469,7 @@ export function TopNav({ userName, userRole }: Props) {
           />
           <div className="relative mt-14 bg-slate-900 border-b border-white/10 shadow-xl overflow-y-auto max-h-[calc(100vh-3.5rem)]">
             <div className="px-4 py-3 space-y-0.5">
-              {DOMAINS.map((domain) => (
+              {visibleDomains.map((domain) => (
                 <React.Fragment key={domain.id}>
                   <div className="pt-2 pb-0.5 px-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">
                     {domain.label}
@@ -426,7 +507,7 @@ export function TopNav({ userName, userRole }: Props) {
                 </React.Fragment>
               ))}
 
-              {userRole === 'admin' && (
+              {role === 'admin' && (
                 <>
                   <div className="pt-2 pb-0.5 px-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">
                     Admin
@@ -450,9 +531,9 @@ export function TopNav({ userName, userRole }: Props) {
               )}
 
               <div className="pt-2 border-t border-slate-800 flex items-center justify-between px-3 py-2.5">
-                <span className="text-sm text-slate-400">{userName ?? 'User'}</span>
+                <span className="text-sm text-slate-400">{name}</span>
                 <button
-                  onClick={() => signOut({ callbackUrl: '/login' })}
+                  onClick={() => signOut({ callbackUrl: signOutUrl })}
                   className="flex items-center gap-2 text-sm text-slate-400 hover:text-red-400 transition"
                 >
                   <LogOut className="w-4 h-4" />
