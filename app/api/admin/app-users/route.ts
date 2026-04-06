@@ -23,6 +23,45 @@ export async function GET() {
   }
 }
 
+// PUT /api/admin/app-users — upsert an OTP user by email (create or update display_name/roles)
+export async function PUT(req: NextRequest) {
+  const session = await auth();
+  if (!session?.user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  if (session.user.role !== 'admin') return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+
+  const body = await req.json() as {
+    email?: string;
+    display_name?: string;
+    roles?: string[];
+  };
+
+  const email = (body.email ?? '').trim().toLowerCase();
+  if (!email || !email.includes('@')) {
+    return NextResponse.json({ error: 'Valid email is required.' }, { status: 400 });
+  }
+
+  const name = body.display_name?.trim() || null;
+  const roles = Array.isArray(body.roles) ? body.roles : [];
+
+  try {
+    const sql = getErpSql();
+    const [row] = await sql`
+      INSERT INTO app_users (email, display_name, roles, branch, is_active)
+      VALUES (${email}, ${name}, ${JSON.stringify(roles)}, null, true)
+      ON CONFLICT (email) DO UPDATE SET
+        display_name = EXCLUDED.display_name,
+        roles = EXCLUDED.roles,
+        is_active = true
+      RETURNING id, email, display_name, user_id, phone, roles, branch, is_active,
+                created_at::text, last_login_at::text
+    `;
+    return NextResponse.json(row);
+  } catch (err) {
+    console.error('[admin/app-users PUT]', err);
+    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
+  }
+}
+
 // POST /api/admin/app-users — create a new OTP user
 export async function POST(req: NextRequest) {
   const session = await auth();
