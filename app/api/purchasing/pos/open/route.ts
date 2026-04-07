@@ -11,9 +11,11 @@ export async function GET(req: NextRequest) {
   const isAdmin = session.user.role === 'admin' ||
     (session.user.roles ?? []).some((r) => ['supervisor', 'admin'].includes(r));
 
-  // Admins can pass ?branch= to filter; others are scoped to their own branch
-  const branchParam = req.nextUrl.searchParams.get('branch') ?? '';
-  const branch = isAdmin ? branchParam || null : (session.user.branch ?? null);
+  // Admins can pass ?branch= and ?supplier_code= to filter; others are scoped to their own branch
+  const branchParam   = req.nextUrl.searchParams.get('branch') ?? '';
+  const supplierParam = req.nextUrl.searchParams.get('supplier_code') ?? '';
+  const branch   = isAdmin ? branchParam || null : (session.user.branch ?? null);
+  const supplier = supplierParam || null;
 
   try {
     const sql = getErpSql();
@@ -45,9 +47,10 @@ export async function GET(req: NextRequest) {
       ) rh ON rh.system_id = ph.system_id AND rh.po_id = ph.po_id
       WHERE ph.is_deleted = false
         AND UPPER(COALESCE(ph.po_status, '')) NOT IN ${sql.unsafe(CLOSED_STATUSES)}
-        ${branch ? sql`AND ph.system_id = ${branch}` : sql``}
+        ${branch   ? sql`AND ph.system_id    = ${branch}`   : sql``}
+        ${supplier ? sql`AND ph.supplier_code = ${supplier}` : sql``}
       ORDER BY ph.expect_date ASC NULLS LAST
-      LIMIT 500
+      LIMIT 1000
     `;
     return NextResponse.json(rows);
   } catch (err) {

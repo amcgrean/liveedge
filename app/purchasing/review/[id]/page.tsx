@@ -1,5 +1,6 @@
 import { auth } from '../../../../auth';
 import { redirect } from 'next/navigation';
+import { TopNav } from '../../../../src/components/nav/TopNav';
 import ReviewDetailClient from './ReviewDetailClient';
 
 export default async function ReviewDetailPage({ params }: { params: Promise<{ id: string }> }) {
@@ -14,5 +15,10 @@ export default async function ReviewDetailPage({ params }: { params: Promise<{ i
 
   const { id } = await params;
 
-  return <ReviewDetailClient id={id} />;
+  return (
+    <div className="min-h-screen bg-gray-950">
+      <TopNav userName={session.user.name} userRole={session.user.role} />
+      <ReviewDetailClient id={id} />
+    </div>
+  );
 }

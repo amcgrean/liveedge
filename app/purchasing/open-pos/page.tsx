@@ -1,6 +1,10 @@
 import { auth } from '../../../auth';
 import { redirect } from 'next/navigation';
+import { TopNav } from '../../../src/components/nav/TopNav';
+import { getSelectedBranchCode } from '../../../src/lib/branch-context';
 import OpenPosClient from './OpenPosClient';
+
+export const metadata = { title: 'Open Purchase Orders' };
 
 export default async function OpenPosPage() {
   const session = await auth();
@@ -14,10 +18,17 @@ export default async function OpenPosPage() {
     redirect('/purchasing');
   }
 
+  // Use branch cookie for admins so TopNav switcher auto-filters the list
+  const cookieBranch = isAdmin ? (await getSelectedBranchCode()) : null;
+  const initialBranch = session.user.branch ?? cookieBranch ?? '';
+
   return (
-    <OpenPosClient
-      isAdmin={isAdmin}
-      userBranch={session.user.branch ?? null}
-    />
+    <div className="min-h-screen bg-gray-950">
+      <TopNav userName={session.user.name} userRole={session.user.role} />
+      <OpenPosClient
+        isAdmin={isAdmin}
+        userBranch={initialBranch}
+      />
+    </div>
   );
 }
