@@ -1,8 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '../../../../../auth';
 import { getErpSql } from '../../../../../db/supabase';
-
-const CLOSED_STATUSES = `('CLOSED','COMPLETE','CANCELLED','CANCELED','VOID','RECEIVED')`;
+import { type OpenPO, RECEIPT_COUNT_SUBQUERY, CLOSED_PO_STATUSES } from '../../../../../src/lib/purchasing';
 
 export async function GET(req: NextRequest) {
   const session = await auth();
@@ -19,16 +18,7 @@ export async function GET(req: NextRequest) {
 
   try {
     const sql = getErpSql();
-    const rows = await sql<{
-      po_number: string;
-      supplier_name: string | null;
-      supplier_code: string | null;
-      system_id: string | null;
-      expect_date: string | null;
-      order_date: string | null;
-      po_status: string | null;
-      receipt_count: number | null;
-    }[]>`
+    const rows = await sql<OpenPO[]>`
       SELECT
         ph.po_id AS po_number,
         ph.supplier_name,
@@ -39,15 +29,11 @@ export async function GET(req: NextRequest) {
         ph.po_status,
         COALESCE(rh.receipt_count, 0)::int AS receipt_count
       FROM agility_po_header ph
-      LEFT JOIN (
-        SELECT system_id, po_id, COUNT(*)::int AS receipt_count
-        FROM agility_receiving_header
-        WHERE is_deleted = false
-        GROUP BY system_id, po_id
-      ) rh ON rh.system_id = ph.system_id AND rh.po_id = ph.po_id
+      LEFT JOIN ${sql.unsafe(RECEIPT_COUNT_SUBQUERY)} rh
+        ON rh.system_id = ph.system_id AND rh.po_id = ph.po_id
       WHERE ph.is_deleted = false
-        AND UPPER(COALESCE(ph.po_status, '')) NOT IN ${sql.unsafe(CLOSED_STATUSES)}
-        ${branch   ? sql`AND ph.system_id    = ${branch}`   : sql``}
+        AND UPPER(COALESCE(ph.po_status, '')) NOT IN ${sql.unsafe(CLOSED_PO_STATUSES)}
+        ${branch   ? sql`AND ph.system_id     = ${branch}`   : sql``}
         ${supplier ? sql`AND ph.supplier_code = ${supplier}` : sql``}
       ORDER BY ph.expect_date ASC NULLS LAST
       LIMIT 1000

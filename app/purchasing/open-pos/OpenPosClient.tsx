@@ -4,6 +4,7 @@ import React, { useEffect, useState, useCallback, useMemo } from 'react';
 import Link from 'next/link';
 import { RefreshCw, Package, AlertCircle, ChevronDown, ChevronUp } from 'lucide-react';
 import { usePageTracking } from '@/hooks/usePageTracking';
+import type { OpenPO } from '@/lib/purchasing';
 
 const BRANCH_OPTIONS = [
   { code: '',     label: 'All Branches' },
@@ -16,17 +17,6 @@ const BRANCH_OPTIONS = [
 const PAGE_SIZE = 50;
 
 type DateFilter = 'all' | 'overdue' | 'today' | 'next5';
-
-interface OpenPO {
-  po_number: string;
-  supplier_name: string | null;
-  supplier_code: string | null;
-  system_id: string | null;
-  expect_date: string | null;
-  order_date: string | null;
-  po_status: string | null;
-  receipt_count: number | null;
-}
 
 const STATUS_COLORS: Record<string, string> = {
   OPEN:    'bg-blue-500/20 text-blue-300',
