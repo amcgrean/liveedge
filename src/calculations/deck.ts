@@ -97,6 +97,30 @@ export function calculateDeck(
         });
     }
 
+    // ── Glulam / LVL beam ────────────────────────────────────────────────────
+    if ((section.glulamBeamLF ?? 0) > 0) {
+        items.push({
+            qty: section.glulamBeamLF,
+            uom: 'LF',
+            sku: 'DECK-GLULAM',
+            description: 'Deck Glulam/LVL Beam',
+            group: GROUP,
+            is_dynamic_sku: true,
+        });
+    }
+
+    // ── Hurricane ties ────────────────────────────────────────────────────────
+    if ((section.hurricaneTieCount ?? 0) > 0) {
+        items.push({
+            qty: section.hurricaneTieCount,
+            uom: 'EA',
+            sku: 'h25az',
+            description: 'H2.5AZ Hurricane Tie',
+            group: GROUP,
+            is_dynamic_sku: false,
+        });
+    }
+
     // ── Facemount hangers ─────────────────────────────────────────────────────
     if ((section.facemountQty ?? 0) > 0) {
         const jSize  = section.joistSize ?? '2x10';

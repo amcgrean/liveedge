@@ -184,6 +184,8 @@ export interface ExteriorDeckSection {
     joistSpacing: 12 | 16 | 24;   // OC spacing in inches
     beamSize: '2x8' | '2x10' | '2x12';
     beamSpan: number;         // ft between posts/beam supports
+    glulamBeamLF: number;     // glulam/LVL beam LF (dynamic SKU)
+    hurricaneTieCount: number; // H2.5A or similar tie qty
     deckingType: string;
     deckingLengths: number[];
     railingStyle: string;

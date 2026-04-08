@@ -70,6 +70,12 @@ export function ExteriorDeckSectionComp({ data, onChange }: Props) {
                     <InputGroup label="Post Height (ft)">
                         <input type="number" name="postHeight" value={data.postHeight || ''} onChange={handleChange} className="input-field" min="0" placeholder="ft" />
                     </InputGroup>
+                    <InputGroup label="Glulam Beam LF" hint="LVL/glulam deck beam">
+                        <input type="number" name="glulamBeamLF" value={(data.glulamBeamLF ?? 0) || ''} onChange={handleChange} className="input-field" min="0" />
+                    </InputGroup>
+                    <InputGroup label="Hurricane Ties" hint="H2.5A qty">
+                        <input type="number" name="hurricaneTieCount" value={(data.hurricaneTieCount ?? 0) || ''} onChange={handleChange} className="input-field" min="0" placeholder="Qty" />
+                    </InputGroup>
                     <InputGroup label="Ledger LF" hint="Deck attachment to house">
                         <input type="number" name="ledgerLF" value={data.ledgerLF || ''} onChange={handleChange} className="input-field" min="0" />
                     </InputGroup>
