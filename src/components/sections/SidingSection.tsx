@@ -113,6 +113,40 @@ export function SidingSectionComp({ data, onChange }: Props) {
                     </InputGroup>
                 </div>
             </SubSection>
+
+            <SubSection title="LP/Hardie Trim Profiles (LF each)">
+                <div className="grid grid-cols-3 sm:grid-cols-5 lg:grid-cols-9 gap-3">
+                    {([
+                        { name: 'trim1x2LF',    label: '1×2' },
+                        { name: 'trim1x4LF',    label: '1×4' },
+                        { name: 'trim1x6LF',    label: '1×6' },
+                        { name: 'trim1x8LF',    label: '1×8' },
+                        { name: 'trim1x12LF',   label: '1×12' },
+                        { name: 'trim5_4x4LF',  label: '5/4×4' },
+                        { name: 'trim5_4x6LF',  label: '5/4×6' },
+                        { name: 'trim5_4x8LF',  label: '5/4×8' },
+                        { name: 'trim5_4x12LF', label: '5/4×12' },
+                    ] as const).map(({ name, label }) => (
+                        <InputGroup key={name} label={label}>
+                            <input type="number" name={name} value={(data[name] ?? 0) || ''} onChange={handleChange} className="input-field" min="0" placeholder="LF" />
+                        </InputGroup>
+                    ))}
+                </div>
+            </SubSection>
+
+            <SubSection title="Vinyl Accessories">
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
+                    <InputGroup label="J-Channel LF">
+                        <input type="number" name="jChannelLF" value={(data.jChannelLF ?? 0) || ''} onChange={handleChange} className="input-field" min="0" />
+                    </InputGroup>
+                    <InputGroup label="Undersill LF">
+                        <input type="number" name="undersillLF" value={(data.undersillLF ?? 0) || ''} onChange={handleChange} className="input-field" min="0" />
+                    </InputGroup>
+                    <InputGroup label="Metal Start LF">
+                        <input type="number" name="metalStartLF" value={(data.metalStartLF ?? 0) || ''} onChange={handleChange} className="input-field" min="0" />
+                    </InputGroup>
+                </div>
+            </SubSection>
         </SectionCard>
     );
 }

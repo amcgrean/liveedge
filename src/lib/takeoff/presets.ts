@@ -81,12 +81,20 @@ export const STANDARD_PRESETS: MeasurementPreset[] = [
   ...wallPresets,
 
   // ── Roof ──
-  { id: 'roof-sheeting', name: 'Roof Sheeting', category: 'Roof', color: COLORS.roof, toolType: 'polygon', targetField: 'roof.sheetingSF', unit: 'SF' },
+  { id: 'roof-sheeting',  name: 'Roof Sheeting',   category: 'Roof', color: COLORS.roof,    toolType: 'polygon',  targetField: 'roof.sheetingSF',        unit: 'SF' },
+  { id: 'roof-gable',     name: 'Gable Sheathing', category: 'Roof', color: '#f87171',      toolType: 'polygon',  targetField: 'roof.gableSF',           unit: 'SF' },
+  { id: 'roof-rake',      name: 'Rake Edge',        category: 'Roof', color: '#fca5a5',      toolType: 'polyline', targetField: 'roof.rakeLF',            unit: 'LF' },
+  { id: 'roof-soffit-lf', name: 'Soffit LF',        category: 'Roof', color: '#fecaca',      toolType: 'polyline', targetField: 'roof.soffitLF',          unit: 'LF' },
+  { id: 'roof-valleys',   name: 'Valley Count',     category: 'Roof', color: '#fee2e2',      toolType: 'count',    targetField: 'roof.valleyCount',       unit: 'EA' },
 
   // ── Shingles ──
-  { id: 'shingles-area', name: 'Shingles Area', category: 'Shingles', color: COLORS.shingles, toolType: 'polygon', targetField: 'shingles.sf', unit: 'SF' },
-  { id: 'shingles-ridge', name: 'Ridge Cap', category: 'Shingles', color: '#fb923c', toolType: 'polyline', targetField: 'shingles.ridgeLF', unit: 'LF' },
-  { id: 'shingles-hip', name: 'Hip Cap', category: 'Shingles', color: '#fdba74', toolType: 'polyline', targetField: 'shingles.hipLF', unit: 'LF' },
+  { id: 'shingles-area',     name: 'Shingles Area',  category: 'Shingles', color: COLORS.shingles, toolType: 'polygon',  targetField: 'shingles.sf',           unit: 'SF' },
+  { id: 'shingles-ridge',    name: 'Ridge Cap',      category: 'Shingles', color: '#fb923c',       toolType: 'polyline', targetField: 'shingles.ridgeLF',      unit: 'LF' },
+  { id: 'shingles-hip',      name: 'Hip Cap',        category: 'Shingles', color: '#fdba74',       toolType: 'polyline', targetField: 'shingles.hipLF',        unit: 'LF' },
+  { id: 'shingles-ridgecat', name: 'Ridgecat',       category: 'Shingles', color: '#fed7aa',       toolType: 'polyline', targetField: 'shingles.ridgecatLF',   unit: 'LF' },
+  { id: 'shingles-starter',  name: 'Starter Strip',  category: 'Shingles', color: '#ffedd5',       toolType: 'polyline', targetField: 'shingles.starterLF',    unit: 'LF' },
+  { id: 'shingles-icewater', name: 'Ice & Water',    category: 'Shingles', color: '#fef3c7',       toolType: 'polyline', targetField: 'shingles.iceWaterLF',   unit: 'LF' },
+  { id: 'shingles-vents',    name: 'Roof Vents',     category: 'Shingles', color: '#fde68a',       toolType: 'count',    targetField: 'shingles.roofVentCount', unit: 'EA' },
 
   // ── Siding ──
   { id: 'siding-lap', name: 'Lap Siding', category: 'Siding', color: COLORS.siding, toolType: 'polygon', targetField: 'siding.lapSF', unit: 'SF' },

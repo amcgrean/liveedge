@@ -77,7 +77,13 @@ export interface RoofSection {
     postSize: string;
     headerSize: string;
     headerCount: number;
-    soffitOverhang: number;
+    soffitOverhang: number;   // inches
+    // Additional roof geometry
+    valleyCount: number;       // # of valleys (drives valley flash roll qty)
+    rakeLF: number;            // rake edge LF (drives rake fascia boards)
+    soffitLF: number;          // total soffit perimeter LF (drives sub-fascia)
+    gableSF: number;           // gable end SF (for OSB gable sheathing)
+    valley_flash_rolls: number; // manual override — 0 = auto-derive from valleyCount
 }
 
 export interface SidingSection {
@@ -95,6 +101,20 @@ export interface SidingSection {
     cornerType: string;
     cornerCount: number;
     splicers: boolean;
+    // LP/Hardie trim profiles (LF each) — separate from trimBoardType/trimBoardLF generic
+    trim1x2LF: number;
+    trim1x4LF: number;
+    trim1x6LF: number;
+    trim1x8LF: number;
+    trim1x12LF: number;
+    trim5_4x4LF: number;
+    trim5_4x6LF: number;
+    trim5_4x8LF: number;
+    trim5_4x12LF: number;
+    // Vinyl siding accessories
+    jChannelLF: number;
+    undersillLF: number;
+    metalStartLF: number;
 }
 
 export interface TrimSection {
@@ -175,7 +195,7 @@ export interface JobInputs {
     firstFloor: FloorSection;
     secondFloor: FloorSection;
     roof: RoofSection;
-    shingles: { sf: number; ridgeLF: number; hipLF: number };
+    shingles: { sf: number; ridgeLF: number; hipLF: number; ridgecatLF: number; starterLF: number; roofVentCount: number; iceWaterLF: number };
     siding: SidingSection;
     trim: TrimSection;
     hardware: HardwareSection;

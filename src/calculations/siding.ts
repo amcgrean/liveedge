@@ -108,5 +108,63 @@ export function calculateSiding(
         });
     }
 
+    // LP/Hardie trim profiles — each size as separate LF line items (16ft sticks)
+    const trimProfiles: Array<{ field: keyof SidingSection; label: string; sku: string }> = [
+        { field: 'trim1x2LF',    label: '1×2 Trim',    sku: 'TRIM-1X2' },
+        { field: 'trim1x4LF',    label: '1×4 Trim',    sku: 'TRIM-1X4' },
+        { field: 'trim1x6LF',    label: '1×6 Trim',    sku: 'TRIM-1X6' },
+        { field: 'trim1x8LF',    label: '1×8 Trim',    sku: 'TRIM-1X8' },
+        { field: 'trim1x12LF',   label: '1×12 Trim',   sku: 'TRIM-1X12' },
+        { field: 'trim5_4x4LF',  label: '5/4×4 Trim',  sku: 'TRIM-5_4X4' },
+        { field: 'trim5_4x6LF',  label: '5/4×6 Trim',  sku: 'TRIM-5_4X6' },
+        { field: 'trim5_4x8LF',  label: '5/4×8 Trim',  sku: 'TRIM-5_4X8' },
+        { field: 'trim5_4x12LF', label: '5/4×12 Trim', sku: 'TRIM-5_4X12' },
+    ];
+    for (const { field, label, sku } of trimProfiles) {
+        const lf = (section[field] as number) ?? 0;
+        if (lf > 0) {
+            items.push({
+                qty: Math.ceil(lf / 16),
+                uom: 'EA',
+                sku,
+                description: `${label} 16ft`,
+                group: 'Siding',
+                is_dynamic_sku: true
+            });
+        }
+    }
+
+    // Vinyl accessories (LF inputs, sold per roll or per piece)
+    if ((section.jChannelLF ?? 0) > 0) {
+        items.push({
+            qty: Math.ceil((section.jChannelLF ?? 0) / 12),
+            uom: 'EA',
+            sku: 'VINYL-J-CHANNEL',
+            description: 'J-Channel 12ft',
+            group: 'Siding',
+            is_dynamic_sku: false
+        });
+    }
+    if ((section.undersillLF ?? 0) > 0) {
+        items.push({
+            qty: Math.ceil((section.undersillLF ?? 0) / 12),
+            uom: 'EA',
+            sku: 'VINYL-UNDERSILL',
+            description: 'Undersill Trim 12ft',
+            group: 'Siding',
+            is_dynamic_sku: false
+        });
+    }
+    if ((section.metalStartLF ?? 0) > 0) {
+        items.push({
+            qty: Math.ceil((section.metalStartLF ?? 0) / 10),
+            uom: 'EA',
+            sku: 'VINYL-METAL-START',
+            description: 'Metal Starter Strip 10ft',
+            group: 'Siding',
+            is_dynamic_sku: false
+        });
+    }
+
     return items;
 }

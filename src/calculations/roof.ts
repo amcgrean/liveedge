@@ -27,6 +27,18 @@ export function calculateRoof(
         is_dynamic_sku: false
     });
 
+    // Gable sheathing (OSB)
+    if ((section.gableSF ?? 0) > 0) {
+        items.push({
+            qty: Math.ceil((section.gableSF ?? 0) / sfPerPanel),
+            uom: 'EA',
+            sku: osbSku,
+            description: `Gable Sheathing ${inputs.materials.roofSheetingSize}`,
+            group: 'Roof',
+            is_dynamic_sku: false
+        });
+    }
+
     // Posts
     if (section.postCount > 0) {
         items.push({
@@ -51,11 +63,50 @@ export function calculateRoof(
         });
     }
 
+    // Rake fascia (1×6 boards, 16ft pieces)
+    if ((section.rakeLF ?? 0) > 0) {
+        items.push({
+            qty: Math.ceil((section.rakeLF ?? 0) / 16),
+            uom: 'EA',
+            sku: 'rake-fascia-1x6',
+            description: 'Rake Fascia 1×6×16',
+            group: 'Roof',
+            is_dynamic_sku: false
+        });
+    }
+
+    // Sub-fascia / soffit backing (2×6 boards, 16ft pieces)
+    if ((section.soffitLF ?? 0) > 0) {
+        items.push({
+            qty: Math.ceil((section.soffitLF ?? 0) / 16),
+            uom: 'EA',
+            sku: 'subfascia-2x6',
+            description: 'Sub-Fascia 2×6×16',
+            group: 'Roof',
+            is_dynamic_sku: false
+        });
+    }
+
+    // Valley flashing — manual override takes precedence; auto-derive from valley count otherwise
+    const valleyRolls = (section.valley_flash_rolls ?? 0) > 0
+        ? (section.valley_flash_rolls ?? 0)
+        : (section.valleyCount ?? 0);
+    if (valleyRolls > 0) {
+        items.push({
+            qty: valleyRolls,
+            uom: 'RL',
+            sku: 'valleyflash',
+            description: 'Valley Flash Roll',
+            group: 'Roof',
+            is_dynamic_sku: false
+        });
+    }
+
     return items;
 }
 
 export function calculateShingles(
-    shingles: { sf: number; ridgeLF: number; hipLF: number },
+    shingles: { sf: number; ridgeLF: number; hipLF: number; ridgecatLF: number; starterLF: number; roofVentCount: number; iceWaterLF: number },
     _inputs: JobInputs
 ): LineItem[] {
     const items: LineItem[] = [];
@@ -94,6 +145,56 @@ export function calculateShingles(
             uom: 'BDL',
             sku: 'hip-cap',
             description: 'Hip Cap Shingles',
+            group: 'Roofing',
+            is_dynamic_sku: false
+        });
+    }
+
+    // Ridgecat (ventilated ridge cap) — sold in LF rolls ~20ft each
+    if ((shingles.ridgecatLF ?? 0) > 0) {
+        items.push({
+            qty: Math.ceil((shingles.ridgecatLF ?? 0) / 20),
+            uom: 'EA',
+            sku: 'ridgecat',
+            description: 'Ridgecat Ventilated Ridge Cap',
+            group: 'Roofing',
+            is_dynamic_sku: false
+        });
+    }
+
+    // Starter strip — ~105 LF per roll
+    if ((shingles.starterLF ?? 0) > 0) {
+        items.push({
+            qty: Math.ceil((shingles.starterLF ?? 0) / 105),
+            uom: 'RL',
+            sku: 'starter-strip',
+            description: 'Starter Strip',
+            group: 'Roofing',
+            is_dynamic_sku: false
+        });
+    }
+
+    // Ice & water shield — sold in rolls (2sq / 200 SF each)
+    if ((shingles.iceWaterLF ?? 0) > 0) {
+        // assume 3ft wide roll → SF = LF × 3
+        const iceWaterSF = (shingles.iceWaterLF ?? 0) * 3;
+        items.push({
+            qty: Math.ceil(iceWaterSF / 200),
+            uom: 'RL',
+            sku: 'ice-water-shield',
+            description: 'Ice & Water Shield',
+            group: 'Roofing',
+            is_dynamic_sku: false
+        });
+    }
+
+    // Roof vents
+    if ((shingles.roofVentCount ?? 0) > 0) {
+        items.push({
+            qty: shingles.roofVentCount ?? 0,
+            uom: 'EA',
+            sku: 'roof-vent',
+            description: 'Roof Vent',
             group: 'Roofing',
             is_dynamic_sku: false
         });

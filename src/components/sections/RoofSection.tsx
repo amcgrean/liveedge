@@ -1,6 +1,6 @@
 import React from 'react';
 import { RoofSection } from '../../types/estimate';
-import { SectionCard, InputGroup } from '../ui/SectionCard';
+import { SectionCard, InputGroup, SubSection } from '../ui/SectionCard';
 
 interface Props {
     data: RoofSection;
@@ -19,30 +19,52 @@ export function RoofSectionComp({ data, onChange }: Props) {
 
     return (
         <SectionCard title="6. Roof" accent="violet">
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 mt-3">
-                <InputGroup label="Sheeting SF">
-                    <input type="number" name="sheetingSF" value={data.sheetingSF || ''} onChange={handleChange} className="input-field" min="0" />
-                </InputGroup>
-                <InputGroup label="Soffit Overhang (in)">
-                    <input type="number" name="soffitOverhang" value={data.soffitOverhang || ''} onChange={handleChange} className="input-field" min="0" />
-                </InputGroup>
-                <InputGroup label="Post Count">
-                    <input type="number" name="postCount" value={data.postCount || ''} onChange={handleChange} className="input-field" min="0" />
-                </InputGroup>
-                <InputGroup label="Post Size">
-                    <select name="postSize" value={data.postSize} onChange={handleChange} className="input-field">
-                        {POST_SIZES.map(s => <option key={s} value={s}>{s}</option>)}
-                    </select>
-                </InputGroup>
-                <InputGroup label="Header Size">
-                    <select name="headerSize" value={data.headerSize} onChange={handleChange} className="input-field">
-                        {HEADER_SIZES.map(s => <option key={s} value={s}>{s}</option>)}
-                    </select>
-                </InputGroup>
-                <InputGroup label="Header Count">
-                    <input type="number" name="headerCount" value={data.headerCount || ''} onChange={handleChange} className="input-field" min="0" />
-                </InputGroup>
-            </div>
+            <SubSection title="Sheeting & Geometry">
+                <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4">
+                    <InputGroup label="Sheeting SF">
+                        <input type="number" name="sheetingSF" value={data.sheetingSF || ''} onChange={handleChange} className="input-field" min="0" />
+                    </InputGroup>
+                    <InputGroup label="Gable SF" hint="OSB gable sheathing">
+                        <input type="number" name="gableSF" value={(data.gableSF ?? 0) || ''} onChange={handleChange} className="input-field" min="0" />
+                    </InputGroup>
+                    <InputGroup label="Valley Count" hint="# of roof valleys">
+                        <input type="number" name="valleyCount" value={(data.valleyCount ?? 0) || ''} onChange={handleChange} className="input-field" min="0" />
+                    </InputGroup>
+                    <InputGroup label="Valley Flash Rolls" hint="0 = auto from valley count">
+                        <input type="number" name="valley_flash_rolls" value={(data.valley_flash_rolls ?? 0) || ''} onChange={handleChange} className="input-field" min="0" />
+                    </InputGroup>
+                    <InputGroup label="Rake LF" hint="Rake edge linear feet">
+                        <input type="number" name="rakeLF" value={(data.rakeLF ?? 0) || ''} onChange={handleChange} className="input-field" min="0" />
+                    </InputGroup>
+                    <InputGroup label="Soffit LF" hint="Total soffit perimeter LF">
+                        <input type="number" name="soffitLF" value={(data.soffitLF ?? 0) || ''} onChange={handleChange} className="input-field" min="0" />
+                    </InputGroup>
+                    <InputGroup label="Soffit Overhang (in)">
+                        <input type="number" name="soffitOverhang" value={data.soffitOverhang || ''} onChange={handleChange} className="input-field" min="0" />
+                    </InputGroup>
+                </div>
+            </SubSection>
+
+            <SubSection title="Posts & Headers">
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
+                    <InputGroup label="Post Count">
+                        <input type="number" name="postCount" value={data.postCount || ''} onChange={handleChange} className="input-field" min="0" />
+                    </InputGroup>
+                    <InputGroup label="Post Size">
+                        <select name="postSize" value={data.postSize} onChange={handleChange} className="input-field">
+                            {POST_SIZES.map(s => <option key={s} value={s}>{s}</option>)}
+                        </select>
+                    </InputGroup>
+                    <InputGroup label="Header Size">
+                        <select name="headerSize" value={data.headerSize} onChange={handleChange} className="input-field">
+                            {HEADER_SIZES.map(s => <option key={s} value={s}>{s}</option>)}
+                        </select>
+                    </InputGroup>
+                    <InputGroup label="Header Count">
+                        <input type="number" name="headerCount" value={data.headerCount || ''} onChange={handleChange} className="input-field" min="0" />
+                    </InputGroup>
+                </div>
+            </SubSection>
         </SectionCard>
     );
 }
