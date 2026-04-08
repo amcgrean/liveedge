@@ -125,9 +125,23 @@ export const STANDARD_PRESETS: MeasurementPreset[] = [
   { id: 'sf-gypsum', name: '2nd Floor Gypsum Ceiling', category: '2nd Floor', color: '#bbf7d0', toolType: 'polygon', targetField: 'secondFloor.gypsumSF', unit: 'SF' },
 
   // ── Trim extras ──
-  { id: 'trim-crown', name: 'Crown Moulding', category: 'Trim', color: '#fcd34d', toolType: 'polyline', targetField: 'trim.crownLF', unit: 'LF' },
-  { id: 'count-hr-brackets', name: 'Handrail Brackets', category: 'Counts', color: '#fbbf24', toolType: 'count', targetField: 'trim.handrailBracketCount', unit: 'EA' },
-  { id: 'count-pocket-doors', name: 'Pocket Doors', category: 'Counts', color: '#f59e0b', toolType: 'count', targetField: 'trim.doorCounts.pocket30', unit: 'EA' },
+  { id: 'trim-crown',          name: 'Crown Moulding',    category: 'Trim',   color: '#fcd34d', toolType: 'polyline', targetField: 'trim.crownLF',                 unit: 'LF' },
+  { id: 'trim-skirt',          name: 'Stair Skirt Board', category: 'Trim',   color: '#fde68a', toolType: 'polyline', targetField: 'trim.skirtBoardLF',            unit: 'LF' },
+  { id: 'count-hr-brackets',   name: 'Handrail Brackets', category: 'Counts', color: '#fbbf24', toolType: 'count',    targetField: 'trim.handrailBracketCount',    unit: 'EA' },
+  { id: 'count-pocket-doors',  name: 'Pocket Doors',      category: 'Counts', color: '#f59e0b', toolType: 'count',    targetField: 'trim.doorCounts.pocket30',     unit: 'EA' },
+  { id: 'count-balusters',     name: 'Balusters',         category: 'Counts', color: '#d97706', toolType: 'count',    targetField: 'trim.balusterCount',           unit: 'EA' },
+  { id: 'count-newels',        name: 'Newel Posts',       category: 'Counts', color: '#b45309', toolType: 'count',    targetField: 'trim.newelCount',              unit: 'EA' },
+
+  // ── Party Wall ──
+  { id: 'party-wall-lf', name: 'Party Wall', category: 'Party Wall', color: '#f43f5e', toolType: 'polyline', targetField: 'partyWall.lf', unit: 'LF' },
+
+  // ── Beams (per floor) ──
+  { id: 'bsmt-beam-2x10',  name: 'Basement Beam 2×10', category: 'Basement',  color: COLORS.basementOther,  toolType: 'polyline', targetField: 'basement.beam2x10LF',   unit: 'LF' },
+  { id: 'bsmt-beam-2x12',  name: 'Basement Beam 2×12', category: 'Basement',  color: COLORS.basementOther,  toolType: 'polyline', targetField: 'basement.beam2x12LF',   unit: 'LF' },
+  { id: 'ff-beam-2x10',    name: '1st Fl Beam 2×10',   category: '1st Floor', color: COLORS.firstFloorOther, toolType: 'polyline', targetField: 'firstFloor.beam2x10LF',  unit: 'LF' },
+  { id: 'ff-beam-2x12',    name: '1st Fl Beam 2×12',   category: '1st Floor', color: COLORS.firstFloorOther, toolType: 'polyline', targetField: 'firstFloor.beam2x12LF',  unit: 'LF' },
+  { id: 'sf-beam-2x10',    name: '2nd Fl Beam 2×10',   category: '2nd Floor', color: COLORS.secondFloorOther, toolType: 'polyline', targetField: 'secondFloor.beam2x10LF', unit: 'LF' },
+  { id: 'sf-beam-2x12',    name: '2nd Fl Beam 2×12',   category: '2nd Floor', color: COLORS.secondFloorOther, toolType: 'polyline', targetField: 'secondFloor.beam2x12LF', unit: 'LF' },
 ];
 
 /** Get all unique preset categories in display order */
