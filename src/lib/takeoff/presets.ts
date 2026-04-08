@@ -86,6 +86,8 @@ export const STANDARD_PRESETS: MeasurementPreset[] = [
   { id: 'roof-rake',      name: 'Rake Edge',        category: 'Roof', color: '#fca5a5',      toolType: 'polyline', targetField: 'roof.rakeLF',            unit: 'LF' },
   { id: 'roof-soffit-lf', name: 'Soffit LF',        category: 'Roof', color: '#fecaca',      toolType: 'polyline', targetField: 'roof.soffitLF',          unit: 'LF' },
   { id: 'roof-valleys',   name: 'Valley Count',     category: 'Roof', color: '#fee2e2',      toolType: 'count',    targetField: 'roof.valleyCount',       unit: 'EA' },
+  { id: 'roof-hucq',     name: 'HUCQ Ties',        category: 'Roof', color: '#fda4af',      toolType: 'count',    targetField: 'roof.hucqCount',         unit: 'EA' },
+  { id: 'roof-vycor',    name: 'Vycor Flashing',   category: 'Roof', color: '#fecdd3',      toolType: 'polyline', targetField: 'roof.vycorLF',           unit: 'LF' },
 
   // ── Shingles ──
   { id: 'shingles-area',     name: 'Shingles Area',  category: 'Shingles', color: COLORS.shingles, toolType: 'polygon',  targetField: 'shingles.sf',           unit: 'SF' },
@@ -125,8 +127,10 @@ export const STANDARD_PRESETS: MeasurementPreset[] = [
   { id: 'sf-gypsum', name: '2nd Floor Gypsum Ceiling', category: '2nd Floor', color: '#bbf7d0', toolType: 'polygon', targetField: 'secondFloor.gypsumSF', unit: 'SF' },
 
   // ── Trim extras ──
-  { id: 'trim-crown',          name: 'Crown Moulding',    category: 'Trim',   color: '#fcd34d', toolType: 'polyline', targetField: 'trim.crownLF',                 unit: 'LF' },
-  { id: 'trim-skirt',          name: 'Stair Skirt Board', category: 'Trim',   color: '#fde68a', toolType: 'polyline', targetField: 'trim.skirtBoardLF',            unit: 'LF' },
+  { id: 'trim-crown',      name: 'Crown Moulding',    category: 'Trim', color: '#fcd34d', toolType: 'polyline', targetField: 'trim.crownLF',        unit: 'LF' },
+  { id: 'trim-skirt',      name: 'Stair Skirt Board', category: 'Trim', color: '#fde68a', toolType: 'polyline', targetField: 'trim.skirtBoardLF',   unit: 'LF' },
+  { id: 'trim-chair-rail', name: 'Chair Rail',        category: 'Trim', color: '#fef08a', toolType: 'polyline', targetField: 'trim.chairRailLF',    unit: 'LF' },
+  { id: 'trim-shoe',       name: 'Shoe Moulding',     category: 'Trim', color: '#fef9c3', toolType: 'polyline', targetField: 'trim.shoeLF',         unit: 'LF' },
   { id: 'count-hr-brackets',   name: 'Handrail Brackets', category: 'Counts', color: '#fbbf24', toolType: 'count',    targetField: 'trim.handrailBracketCount',    unit: 'EA' },
   { id: 'count-pocket-doors',  name: 'Pocket Doors',      category: 'Counts', color: '#f59e0b', toolType: 'count',    targetField: 'trim.doorCounts.pocket30',     unit: 'EA' },
   { id: 'count-balusters',     name: 'Balusters',         category: 'Counts', color: '#d97706', toolType: 'count',    targetField: 'trim.balusterCount',           unit: 'EA' },
