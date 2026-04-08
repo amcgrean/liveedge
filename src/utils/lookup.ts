@@ -33,6 +33,7 @@ export const dataCache = {
     osbSheeting: null as any,
     branches: null as any,
     customerOverrides: null as any,
+    customerProfiles: null as any,
     knownIssues: null as any,
     customers: null as any,
 };
@@ -50,6 +51,7 @@ export async function initializeData() {
         osbSheeting,
         branches,
         customerOverrides,
+        customerProfiles,
         knownIssues,
         customers,
     ] = await Promise.all([
@@ -64,6 +66,7 @@ export async function initializeData() {
         loadJson('osb_sheeting.json'),
         loadJson('branches.json'),
         loadJson('customer_overrides.json'),
+        loadJson('customer_profiles.json'),
         loadJson('known_issues.json'),
         loadCsv('customers.csv'),
     ]);
@@ -79,6 +82,7 @@ export async function initializeData() {
     dataCache.osbSheeting = osbSheeting;
     dataCache.branches = branches;
     dataCache.customerOverrides = customerOverrides;
+    dataCache.customerProfiles = customerProfiles;
     dataCache.knownIssues = knownIssues;
     dataCache.customers = customers;
 

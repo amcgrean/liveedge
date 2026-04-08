@@ -1,0 +1,28 @@
+{
+  "profiles": [
+    {
+      "customer_name": "Oakstone Homes",
+      "label": "Oakstone Homes",
+      "materials": {
+        "tyvekType": "Standard 9ft",
+        "wallSize": "2x6",
+        "plateType": "Treated"
+      },
+      "floorDefaults": {
+        "deckType": "Advantech"
+      }
+    },
+    {
+      "customer_name": "Sage Homes",
+      "label": "Sage Homes",
+      "materials": {
+        "tyvekType": "Standard 10ft",
+        "wallSize": "2x4",
+        "plateType": "Treated"
+      },
+      "floorDefaults": {
+        "deckType": "Edge T&G"
+      }
+    }
+  ]
+}

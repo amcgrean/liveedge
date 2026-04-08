@@ -71,6 +71,8 @@ export default function TakeoffApp({ session, initialBidId }: Props) {
   const [showOpenModal, setShowOpenModal] = useState(false);
   const [showSaveModal, setShowSaveModal] = useState(false);
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
+  const [pendingProfile, setPendingProfile] = useState<any>(null);
+  const [dismissedForCustomer, setDismissedForCustomer] = useState('');
 
   const userRole = (session.user as { role?: string }).role ?? 'estimator';
 
@@ -155,6 +157,26 @@ export default function TakeoffApp({ session, initialBidId }: Props) {
     }
     setShowValidation(false);
     downloadCsv(lineItems, inputs.setup);
+  };
+
+  useEffect(() => {
+    const name = inputs.setup.customerName.trim().toLowerCase();
+    if (!name || name === dismissedForCustomer) { setPendingProfile(null); return; }
+    const profiles: any[] = dataCache.customerProfiles?.profiles ?? [];
+    const match = profiles.find((p: any) => p.customer_name.toLowerCase() === name);
+    setPendingProfile(match ?? null);
+  }, [inputs.setup.customerName, dismissedForCustomer]);
+
+  const applyCustomerProfile = () => {
+    if (!pendingProfile) return;
+    handleInputChange((prev) => ({
+      ...prev,
+      materials: { ...prev.materials, ...pendingProfile.materials },
+      firstFloor: { ...prev.firstFloor, deckType: pendingProfile.floorDefaults?.deckType ?? prev.firstFloor.deckType },
+      secondFloor: { ...prev.secondFloor, deckType: pendingProfile.floorDefaults?.deckType ?? prev.secondFloor.deckType },
+    }));
+    setDismissedForCustomer(inputs.setup.customerName.trim().toLowerCase());
+    setPendingProfile(null);
   };
 
   const warnCount = lineItems.filter((i) => i.warning).length;
@@ -279,6 +301,18 @@ export default function TakeoffApp({ session, initialBidId }: Props) {
                 <li key={i} className="text-red-300 text-sm">{e}</li>
               ))}
             </ul>
+          </div>
+        )}
+
+        {pendingProfile && (
+          <div className="mb-4 rounded-xl border border-cyan-500/30 bg-cyan-500/10 px-4 py-3 flex items-center justify-between gap-4">
+            <p className={`text-sm font-semibold ${darkMode ? 'text-cyan-200' : 'text-cyan-900'}`}>
+              Apply <span className="font-extrabold">{pendingProfile.label}</span> defaults? (wall size, plate type, Tyvek, deck type)
+            </p>
+            <div className="flex gap-2 flex-shrink-0">
+              <button onClick={applyCustomerProfile} className="px-3 py-1.5 rounded-lg bg-cyan-500 text-slate-950 text-xs font-bold hover:bg-cyan-400 transition">Apply</button>
+              <button onClick={() => { setDismissedForCustomer(inputs.setup.customerName.trim().toLowerCase()); setPendingProfile(null); }} className="px-3 py-1.5 rounded-lg border border-cyan-500/30 text-cyan-300 text-xs font-semibold hover:bg-cyan-500/10 transition">Dismiss</button>
+            </div>
           </div>
         )}
 

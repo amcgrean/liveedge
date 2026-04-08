@@ -78,6 +78,8 @@ export default function App() {
     const [view, setView] = useState<'takeoff' | 'summary' | 'admin'>('takeoff');
     const [showBackToTop, setShowBackToTop] = useState(false);
     const [itemFilter, setItemFilter] = useState('');
+    const [pendingProfile, setPendingProfile] = useState<any>(null);
+    const [dismissedForCustomer, setDismissedForCustomer] = useState('');
     const [lastSavedAt, setLastSavedAt] = useState<Date | null>(null);
 
     const requiredChecks = useMemo(() => {
@@ -170,6 +172,26 @@ export default function App() {
         window.addEventListener('scroll', onScroll, { passive: true });
         return () => window.removeEventListener('scroll', onScroll);
     }, []);
+
+    useEffect(() => {
+        const name = inputs.setup.customerName.trim().toLowerCase();
+        if (!name || name === dismissedForCustomer) { setPendingProfile(null); return; }
+        const profiles: any[] = dataCache.customerProfiles?.profiles ?? [];
+        const match = profiles.find((p: any) => p.customer_name.toLowerCase() === name);
+        setPendingProfile(match ?? null);
+    }, [inputs.setup.customerName, dismissedForCustomer]);
+
+    const applyCustomerProfile = () => {
+        if (!pendingProfile) return;
+        setInputs((prev) => ({
+            ...prev,
+            materials: { ...prev.materials, ...pendingProfile.materials },
+            firstFloor: { ...prev.firstFloor, deckType: pendingProfile.floorDefaults?.deckType ?? prev.firstFloor.deckType },
+            secondFloor: { ...prev.secondFloor, deckType: pendingProfile.floorDefaults?.deckType ?? prev.secondFloor.deckType },
+        }));
+        setDismissedForCustomer(inputs.setup.customerName.trim().toLowerCase());
+        setPendingProfile(null);
+    };
 
     useEffect(() => {
         const onKeyDown = (event: KeyboardEvent) => {
@@ -283,6 +305,18 @@ export default function App() {
                                     <CircleAlert size={16} /> Complete required fields before export ({requiredChecks.length} missing)
                                 </p>
                                 <p className="text-xs mt-1">Missing: {requiredChecks.join(', ')}</p>
+                            </div>
+                        )}
+
+                        {pendingProfile && (
+                            <div className="mb-5 rounded-2xl border border-cyan-200 bg-cyan-50/80 px-4 py-3 flex items-center justify-between gap-4">
+                                <p className="text-sm font-semibold text-cyan-900">
+                                    Apply <span className="font-extrabold">{pendingProfile.label}</span> defaults? (wall size, plate type, Tyvek, deck type)
+                                </p>
+                                <div className="flex gap-2 flex-shrink-0">
+                                    <button onClick={applyCustomerProfile} className="px-3 py-1.5 rounded-lg bg-cyan-600 text-white text-xs font-bold hover:bg-cyan-700 transition">Apply</button>
+                                    <button onClick={() => { setDismissedForCustomer(inputs.setup.customerName.trim().toLowerCase()); setPendingProfile(null); }} className="px-3 py-1.5 rounded-lg bg-white border border-cyan-200 text-cyan-800 text-xs font-semibold hover:bg-cyan-50 transition">Dismiss</button>
+                                </div>
                             </div>
                         )}
 
