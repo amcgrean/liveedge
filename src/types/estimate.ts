@@ -146,6 +146,8 @@ export interface TrimSection {
         slab30: number;
         pocket28: number;
         pocket30: number;
+        barnDoor28: number;
+        barnDoor30: number;
     };
     windowCount: number;
     windowLF: number;

@@ -52,6 +52,16 @@ export function calculateTrim(
         }
     }
 
+    // Barn door hardware kits
+    const barnTotal28 = section.doorCounts.barnDoor28 ?? 0;
+    const barnTotal30 = section.doorCounts.barnDoor30 ?? 0;
+    if (barnTotal28 > 0) {
+        items.push({ qty: barnTotal28, uom: 'EA', sku: 'barndoor-hdwr-28', description: 'Barn Door Hardware Kit 2\'8"', group: 'Trim', is_dynamic_sku: true });
+    }
+    if (barnTotal30 > 0) {
+        items.push({ qty: barnTotal30, uom: 'EA', sku: 'barndoor-hdwr-30', description: 'Barn Door Hardware Kit 3\'0"', group: 'Trim', is_dynamic_sku: true });
+    }
+
     // Pocket door frames
     const pocketTotal = (section.doorCounts.pocket28 ?? 0) + (section.doorCounts.pocket30 ?? 0);
     if (pocketTotal > 0) {

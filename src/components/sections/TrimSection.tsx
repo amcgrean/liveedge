@@ -67,6 +67,12 @@ export function TrimSectionComp({ data, onChange }: Props) {
                     <InputGroup label="Pocket 3-0">
                         <input type="number" value={(data.doorCounts.pocket30 ?? 0) || ''} onChange={e => handleDoorCount('pocket30', e.target.value)} className="input-field" min="0" />
                     </InputGroup>
+                    <InputGroup label="Barn Door 2-8" hint="Slab + hardware kit">
+                        <input type="number" value={(data.doorCounts.barnDoor28 ?? 0) || ''} onChange={e => handleDoorCount('barnDoor28', e.target.value)} className="input-field" min="0" />
+                    </InputGroup>
+                    <InputGroup label="Barn Door 3-0" hint="Slab + hardware kit">
+                        <input type="number" value={(data.doorCounts.barnDoor30 ?? 0) || ''} onChange={e => handleDoorCount('barnDoor30', e.target.value)} className="input-field" min="0" />
+                    </InputGroup>
                     <InputGroup label="Double 3-0">
                         <input type="number" value={data.doorCounts.double30 || ''} onChange={e => handleDoorCount('double30', e.target.value)} className="input-field" min="0" />
                     </InputGroup>
