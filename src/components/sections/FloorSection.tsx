@@ -9,8 +9,9 @@ interface Props {
     onChange: (data: FloorSection) => void;
 }
 
-const DECK_TYPES   = ['Edge T&G','Gold Edge','Advantech','Diamond'] as const;
-const TJI_SIZES    = ['9-1/2','11-7/8','14','16','18','20'];
+const DECK_TYPES     = ['Edge T&G','Gold Edge','Advantech','Diamond'] as const;
+const TJI_SIZES      = ['9-1/2','11-7/8','14','16','18','20'];
+const CONV_JOIST_SZS = ['2x8','2x10','2x12'];
 const HEADER_SIZES = ['2x8','2x10','2x12','1.75x7.25','1.75x9.5','1.75x11.78','1.75x14','1.75x16','1.75x18','3.5x9','3.5x11'];
 
 function lengthsFor(size: string): number[] {
@@ -51,8 +52,22 @@ export function FloorSectionComp({ sectionNumber, title, data, onChange }: Props
                             {TJI_SIZES.map(s => <option key={s} value={s}>{s}"</option>)}
                         </select>
                     </InputGroup>
-                    <InputGroup label="TJI Count">
+                    <InputGroup label="TJI Count" hint="0 = use conventional joist below">
                         <input type="number" name="tjiCount" value={data.tjiCount || ''} onChange={handleChange} className="input-field" min="0" placeholder="Qty" />
+                    </InputGroup>
+                    <InputGroup label="Conv. Joist Size" hint="Used when TJI count = 0">
+                        <select name="joistSize" value={data.joistSize ?? '2x10'} onChange={handleChange} className="input-field">
+                            {CONV_JOIST_SZS.map(s => <option key={s} value={s}>{s}</option>)}
+                        </select>
+                    </InputGroup>
+                    <InputGroup label="Conv. Joist Count">
+                        <input type="number" name="joistCount" value={(data.joistCount ?? 0) || ''} onChange={handleChange} className="input-field" min="0" placeholder="Qty" />
+                    </InputGroup>
+                    <InputGroup label="Facemount Hangers" hint="IUS/LUS qty">
+                        <input type="number" name="facemountQty" value={(data.facemountQty ?? 0) || ''} onChange={handleChange} className="input-field" min="0" placeholder="Qty" />
+                    </InputGroup>
+                    <InputGroup label="Gypsum Ceiling SF" hint="Below-floor gypsum">
+                        <input type="number" name="gypsumSF" value={(data.gypsumSF ?? 0) || ''} onChange={handleChange} className="input-field" min="0" />
                     </InputGroup>
                 </div>
             </SubSection>

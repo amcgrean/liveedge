@@ -10,6 +10,7 @@ interface Props {
 
 const JOIST_SIZES: ('2x8' | '2x10' | '2x12')[] = ['2x8', '2x10', '2x12'];
 const BEAM_SIZES: ('2x8' | '2x10' | '2x12')[] = ['2x8', '2x10', '2x12'];
+const JOIST_SPACINGS: (12 | 16 | 24)[] = [12, 16, 24];
 const DECKING_TYPES = ['Cedar', 'Treated', 'Trex', 'TimberTech', 'Azek', 'Deckorators'];
 const RAILING_STYLES = ['Treated', 'Treated_w_DekPro', 'Cedar', 'Cedar_w_DekPro', 'Westbury_Black', 'Westbury_White'];
 const RAILING_DISPLAY: Record<string, string> = {
@@ -50,13 +51,30 @@ export function ExteriorDeckSectionComp({ data, onChange }: Props) {
                             {JOIST_SIZES.map(s => <option key={s} value={s}>{s}</option>)}
                         </select>
                     </InputGroup>
+                    <InputGroup label="Joist Spacing (in)">
+                        <select name="joistSpacing" value={data.joistSpacing ?? 16} onChange={handleChange} className="input-field">
+                            {JOIST_SPACINGS.map(s => <option key={s} value={s}>{s}"</option>)}
+                        </select>
+                    </InputGroup>
                     <InputGroup label="Beam Size">
                         <select name="beamSize" value={data.beamSize} onChange={handleChange} className="input-field">
                             {BEAM_SIZES.map(s => <option key={s} value={s}>{s}</option>)}
                         </select>
                     </InputGroup>
+                    <InputGroup label="Beam Span (ft)" hint="ft between post supports">
+                        <input type="number" name="beamSpan" value={data.beamSpan || ''} onChange={handleChange} className="input-field" min="0" placeholder="ft" />
+                    </InputGroup>
                     <InputGroup label="Post Count">
                         <input type="number" name="postCount" value={data.postCount || ''} onChange={handleChange} className="input-field" min="0" />
+                    </InputGroup>
+                    <InputGroup label="Post Height (ft)">
+                        <input type="number" name="postHeight" value={data.postHeight || ''} onChange={handleChange} className="input-field" min="0" placeholder="ft" />
+                    </InputGroup>
+                    <InputGroup label="Ledger LF" hint="Deck attachment to house">
+                        <input type="number" name="ledgerLF" value={data.ledgerLF || ''} onChange={handleChange} className="input-field" min="0" />
+                    </InputGroup>
+                    <InputGroup label="Facemount Hangers">
+                        <input type="number" name="facemountQty" value={data.facemountQty || ''} onChange={handleChange} className="input-field" min="0" />
                     </InputGroup>
                     <InputGroup label="Stair Count">
                         <input type="number" name="stairCount" value={data.stairCount || ''} onChange={handleChange} className="input-field" min="0" />

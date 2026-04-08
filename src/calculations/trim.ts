@@ -29,13 +29,15 @@ export function calculateTrim(
         const caseEntry = trimSwitches?.case_types?.find((t: any) => t.switch_key === section.caseType);
         if (caseEntry) {
             // Single-hung/slab door case: 36 LF equivalent per door
-            // Double/bifold: 42 LF equivalent per door
-            const singleDoors = section.doorCounts.single68 + section.doorCounts.single80;
-            const doubleDoors = section.doorCounts.double30 + section.doorCounts.double40 + section.doorCounts.double50;
-            const bifoldDoors = section.doorCounts.bifold40 + section.doorCounts.bifold50 + section.doorCounts.bifold30;
-            const doorCaseLF = (singleDoors * 36) + (doubleDoors * 42) + (bifoldDoors * 42);
+            // Double/bifold/pocket: 42 LF equivalent per door
+            const singleDoors = (section.doorCounts.single68 ?? 0) + (section.doorCounts.single80 ?? 0)
+                              + (section.doorCounts.slab28 ?? 0) + (section.doorCounts.slab30 ?? 0);
+            const doubleDoors = (section.doorCounts.double30 ?? 0) + (section.doorCounts.double40 ?? 0) + (section.doorCounts.double50 ?? 0);
+            const bifoldDoors = (section.doorCounts.bifold40 ?? 0) + (section.doorCounts.bifold50 ?? 0) + (section.doorCounts.bifold30 ?? 0);
+            const pocketDoors = (section.doorCounts.pocket28 ?? 0) + (section.doorCounts.pocket30 ?? 0);
+            const doorCaseLF  = (singleDoors * 36) + (doubleDoors * 42) + (bifoldDoors * 42) + (pocketDoors * 42);
             const windowCaseLF = section.windowLF || (section.windowCount * 12);
-            const totalCaseLF = doorCaseLF + windowCaseLF;
+            const totalCaseLF  = doorCaseLF + windowCaseLF;
 
             if (totalCaseLF > 0) {
                 items.push({
@@ -50,6 +52,34 @@ export function calculateTrim(
         }
     }
 
+    // Pocket door frames
+    const pocketTotal = (section.doorCounts.pocket28 ?? 0) + (section.doorCounts.pocket30 ?? 0);
+    if (pocketTotal > 0) {
+        items.push({
+            qty: pocketTotal,
+            uom: 'EA',
+            sku: 'pocketframe',  // TODO: verify SKU — typically sold per unit
+            description: 'Pocket Door Frame Kit',
+            group: 'Trim',
+            is_dynamic_sku: false
+        });
+    }
+
+    // Crown moulding
+    if (section.crownType && (section.crownLF ?? 0) > 0) {
+        const crownEntry = trimSwitches?.crown_types?.find((t: any) => t.switch_key === section.crownType);
+        const stickCount = Math.ceil((section.crownLF * 1.10) / 16);
+        items.push({
+            qty: stickCount,
+            uom: 'EA',
+            sku: `CROWN-${section.crownType}`,
+            description: crownEntry ? `${crownEntry.display} Crown Moulding × 16ft` : `Crown Moulding × 16ft`,
+            group: 'Trim',
+            is_dynamic_sku: false,
+            tally: `${stickCount}/16ft`,
+        });
+    }
+
     // Handrail
     if (section.handrailType && section.handrailLF > 0) {
         const hrEntry = trimSwitches?.handrail_types?.find((t: any) => t.switch_key === section.handrailType);
@@ -57,7 +87,19 @@ export function calculateTrim(
             qty: section.handrailLF,
             uom: 'LF',
             sku: `HR-${section.handrailType}`,
-            description: hrEntry ? `${hrEntry.display} Handrail` : `Handrail`,
+            description: hrEntry ? `${hrEntry.display} Handrail` : 'Handrail',
+            group: 'Trim',
+            is_dynamic_sku: false
+        });
+    }
+
+    // Handrail brackets
+    if ((section.handrailBracketCount ?? 0) > 0) {
+        items.push({
+            qty: section.handrailBracketCount,
+            uom: 'EA',
+            sku: 'hrwallbracket',  // TODO: verify SKU
+            description: 'Handrail Wall Bracket',
             group: 'Trim',
             is_dynamic_sku: false
         });

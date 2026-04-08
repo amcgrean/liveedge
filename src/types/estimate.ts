@@ -44,7 +44,11 @@ export interface FloorSection extends WallSection {
     deckSF: number;
     deckType: 'Edge T&G' | 'Gold Edge' | 'Advantech' | 'Diamond';
     tjiSize: string;
-    tjiCount: number;   // user-entered count of I-joists
+    tjiCount: number;       // user-entered count of I-joists (0 = use conventional joist)
+    joistSize: string;      // conventional joist size e.g. '2x10' — used when tjiCount=0
+    joistCount: number;     // user-entered count of conventional joists
+    facemountQty: number;   // IUS/LUS facemount hangers
+    gypsumSF: number;       // gypsum ceiling SF for this floor level
     garageWallLF: number;
 }
 
@@ -87,11 +91,18 @@ export interface TrimSection {
         bifold40: number;
         bifold50: number;
         bifold30: number;
+        slab28: number;
+        slab30: number;
+        pocket28: number;
+        pocket30: number;
     };
     windowCount: number;
     windowLF: number;
     handrailType: string;
     handrailLF: number;
+    handrailBracketCount: number;   // post-to-wall bracket qty
+    crownType: string;
+    crownLF: number;
 }
 
 export interface HardwareSection {
@@ -115,12 +126,17 @@ export interface HardwareSection {
 export interface ExteriorDeckSection {
     deckSF: number;           // deck square footage → drives decking board quantity
     joistSize: '2x8' | '2x10' | '2x12';
+    joistSpacing: 12 | 16 | 24;   // OC spacing in inches
     beamSize: '2x8' | '2x10' | '2x12';
+    beamSpan: number;         // ft between posts/beam supports
     deckingType: string;
     deckingLengths: number[];
     railingStyle: string;
     railingLF: number;
     postCount: number;
+    postHeight: number;       // ft — drives post length SKU
+    ledgerLF: number;         // LF of ledger board (house attachment)
+    facemountQty: number;     // joist hanger qty (IUS/LUS)
     stairCount: number;
     landing: boolean;
 }

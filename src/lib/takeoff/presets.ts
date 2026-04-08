@@ -84,6 +84,9 @@ export const STANDARD_PRESETS: MeasurementPreset[] = [
   // ── Exterior Deck ──
   { id: 'deck-area', name: 'Deck Area', category: 'Ext. Deck', color: COLORS.deck, toolType: 'polygon', targetField: 'exteriorDeck.deckSF', unit: 'SF' },
   { id: 'deck-railing', name: 'Deck Railing', category: 'Ext. Deck', color: '#67e8f9', toolType: 'polyline', targetField: 'exteriorDeck.railingLF', unit: 'LF' },
+  { id: 'deck-ledger', name: 'Deck Ledger', category: 'Ext. Deck', color: '#22d3ee', toolType: 'polyline', targetField: 'exteriorDeck.ledgerLF', unit: 'LF' },
+  { id: 'deck-posts', name: 'Deck Posts', category: 'Ext. Deck', color: '#0e7490', toolType: 'count', targetField: 'exteriorDeck.postCount', unit: 'EA' },
+  { id: 'deck-facemount', name: 'Deck Hangers', category: 'Ext. Deck', color: '#0891b2', toolType: 'count', targetField: 'exteriorDeck.facemountQty', unit: 'EA' },
 
   // ── Counts ──
   { id: 'count-windows', name: 'Windows', category: 'Counts', color: COLORS.counts, toolType: 'count', targetField: 'windowsDoors.windowCount', unit: 'EA' },
@@ -91,6 +94,17 @@ export const STANDARD_PRESETS: MeasurementPreset[] = [
   { id: 'count-deck-posts', name: 'Deck Posts', category: 'Counts', color: '#6d28d9', toolType: 'count', targetField: 'exteriorDeck.postCount', unit: 'EA' },
   { id: 'count-deck-stairs', name: 'Deck Stairs', category: 'Counts', color: '#5b21b6', toolType: 'count', targetField: 'exteriorDeck.stairCount', unit: 'EA' },
   { id: 'count-fha-posts', name: 'FHA Posts', category: 'Counts', color: '#4c1d95', toolType: 'count', targetField: 'basement.fhaPostCount', unit: 'EA' },
+
+  // ── Floor System ──
+  { id: 'ff-facemount', name: '1st Floor Hangers', category: '1st Floor', color: '#c084fc', toolType: 'count', targetField: 'firstFloor.facemountQty', unit: 'EA' },
+  { id: 'ff-gypsum', name: '1st Floor Gypsum Ceiling', category: '1st Floor', color: '#e9d5ff', toolType: 'polygon', targetField: 'firstFloor.gypsumSF', unit: 'SF' },
+  { id: 'sf-facemount', name: '2nd Floor Hangers', category: '2nd Floor', color: '#86efac', toolType: 'count', targetField: 'secondFloor.facemountQty', unit: 'EA' },
+  { id: 'sf-gypsum', name: '2nd Floor Gypsum Ceiling', category: '2nd Floor', color: '#bbf7d0', toolType: 'polygon', targetField: 'secondFloor.gypsumSF', unit: 'SF' },
+
+  // ── Trim extras ──
+  { id: 'trim-crown', name: 'Crown Moulding', category: 'Trim', color: '#fcd34d', toolType: 'polyline', targetField: 'trim.crownLF', unit: 'LF' },
+  { id: 'count-hr-brackets', name: 'Handrail Brackets', category: 'Counts', color: '#fbbf24', toolType: 'count', targetField: 'trim.handrailBracketCount', unit: 'EA' },
+  { id: 'count-pocket-doors', name: 'Pocket Doors', category: 'Counts', color: '#f59e0b', toolType: 'count', targetField: 'trim.doorCounts.pocket30', unit: 'EA' },
 ];
 
 /** Get all unique preset categories in display order */

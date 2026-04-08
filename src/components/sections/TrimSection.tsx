@@ -9,7 +9,7 @@ interface Props {
 }
 
 export function TrimSectionComp({ data, onChange }: Props) {
-    const trimSwitches = dataCache.trimSwitches || { base_types: [], case_types: [], handrail_types: [] };
+    const trimSwitches = dataCache.trimSwitches || { base_types: [], case_types: [], handrail_types: [], crown_types: [] };
 
     const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
         const { name, value } = e.target as HTMLInputElement;
@@ -55,6 +55,18 @@ export function TrimSectionComp({ data, onChange }: Props) {
                     <InputGroup label="Single 8/0">
                         <input type="number" value={data.doorCounts.single80 || ''} onChange={e => handleDoorCount('single80', e.target.value)} className="input-field" min="0" />
                     </InputGroup>
+                    <InputGroup label="Slab 2-8">
+                        <input type="number" value={(data.doorCounts.slab28 ?? 0) || ''} onChange={e => handleDoorCount('slab28', e.target.value)} className="input-field" min="0" />
+                    </InputGroup>
+                    <InputGroup label="Slab 3-0">
+                        <input type="number" value={(data.doorCounts.slab30 ?? 0) || ''} onChange={e => handleDoorCount('slab30', e.target.value)} className="input-field" min="0" />
+                    </InputGroup>
+                    <InputGroup label="Pocket 2-8">
+                        <input type="number" value={(data.doorCounts.pocket28 ?? 0) || ''} onChange={e => handleDoorCount('pocket28', e.target.value)} className="input-field" min="0" />
+                    </InputGroup>
+                    <InputGroup label="Pocket 3-0">
+                        <input type="number" value={(data.doorCounts.pocket30 ?? 0) || ''} onChange={e => handleDoorCount('pocket30', e.target.value)} className="input-field" min="0" />
+                    </InputGroup>
                     <InputGroup label="Double 3-0">
                         <input type="number" value={data.doorCounts.double30 || ''} onChange={e => handleDoorCount('double30', e.target.value)} className="input-field" min="0" />
                     </InputGroup>
@@ -76,13 +88,24 @@ export function TrimSectionComp({ data, onChange }: Props) {
                 </div>
             </SubSection>
 
-            <SubSection title="Windows & Handrail">
+            <SubSection title="Windows, Crown & Handrail">
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
                     <InputGroup label="Window Count">
                         <input type="number" name="windowCount" value={data.windowCount || ''} onChange={handleChange} className="input-field" min="0" />
                     </InputGroup>
                     <InputGroup label="Window Case LF">
                         <input type="number" name="windowLF" value={data.windowLF || ''} onChange={handleChange} className="input-field" min="0" />
+                    </InputGroup>
+                    <InputGroup label="Crown Moulding Type">
+                        <select name="crownType" value={data.crownType ?? ''} onChange={handleChange} className="input-field">
+                            <option value="">None</option>
+                            {(trimSwitches.crown_types ?? []).map((t: any) => (
+                                <option key={t.id} value={t.switch_key}>{t.display}</option>
+                            ))}
+                        </select>
+                    </InputGroup>
+                    <InputGroup label="Crown LF">
+                        <input type="number" name="crownLF" value={(data.crownLF ?? 0) || ''} onChange={handleChange} className="input-field" min="0" />
                     </InputGroup>
                     <InputGroup label="Handrail Type">
                         <select name="handrailType" value={data.handrailType} onChange={handleChange} className="input-field">
@@ -94,6 +117,9 @@ export function TrimSectionComp({ data, onChange }: Props) {
                     </InputGroup>
                     <InputGroup label="Handrail LF">
                         <input type="number" name="handrailLF" value={data.handrailLF || ''} onChange={handleChange} className="input-field" min="0" />
+                    </InputGroup>
+                    <InputGroup label="Handrail Brackets" hint="Wall-mounted bracket count">
+                        <input type="number" name="handrailBracketCount" value={(data.handrailBracketCount ?? 0) || ''} onChange={handleChange} className="input-field" min="0" />
                     </InputGroup>
                 </div>
             </SubSection>

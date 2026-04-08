@@ -95,7 +95,51 @@ function tjiItems(tjiCount: number, tjiSize: string, group: string): LineItem[] 
         qty: tjiCount,
         uom: 'EA',
         sku: `TJI-${safeName}`,
-        description: `${tjiSize}" TJI / I-Joist`,
+        description: `${tjiSize} TJI / I-Joist`,
+        group,
+        is_dynamic_sku: false,
+    }];
+}
+
+// ── Conventional joist helper ─────────────────────────────────────────────────
+function conventionalJoistItems(joistCount: number, joistSize: string, group: string): LineItem[] {
+    if (joistCount <= 0 || !joistSize) return [];
+    // Build SKU: e.g. '2x10' 16ft → '021016'
+    const safeName = joistSize.replace(/[^a-z0-9]/gi, '').toLowerCase();
+    return [{
+        qty: joistCount,
+        uom: 'EA',
+        sku: `${safeName}16`,   // TODO: verify length/SKU against catalog
+        description: `${joistSize} × 16ft Joist`,
+        group,
+        is_dynamic_sku: false,
+        tally: `${joistCount}/16ft`,
+    }];
+}
+
+// ── Facemount hanger helper ───────────────────────────────────────────────────
+function facemountItems(qty: number, joistSize: string, group: string): LineItem[] {
+    if (qty <= 0) return [];
+    // IUS series for TJI, LUS series for conventional lumber
+    const sku = `lus${joistSize.replace(/[^0-9]/g, '')}`;  // e.g. lus210 for 2x10
+    return [{
+        qty,
+        uom: 'EA',
+        sku,    // TODO: verify IUS vs LUS based on joist type
+        description: `Facemount Hanger ${joistSize}`,
+        group,
+        is_dynamic_sku: false,
+    }];
+}
+
+// ── Gypsum ceiling helper ─────────────────────────────────────────────────────
+function gypsumCeilingItems(sf: number, group: string): LineItem[] {
+    if (sf <= 0) return [];
+    return [{
+        qty: Math.ceil(sf / 32),
+        uom: 'EA',
+        sku: 'gypsum12',    // 1/2" drywall 4x8 panel
+        description: `1/2" Gypsum Ceiling`,
         group,
         is_dynamic_sku: false,
     }];
@@ -277,10 +321,17 @@ export function calculateFraming(
     // ── Stair framing ─────────────────────────────────────────────────────────
     items.push(...stairItems(section.stairCount, groupLabel));
 
-    // ── TJI / I-Joists (floor sections) ──────────────────────────────────────
+    // ── Floor joists (floor sections) ────────────────────────────────────────
     if (!isBasement) {
         const floorSection = section as FloorSection;
-        items.push(...tjiItems(floorSection.tjiCount ?? 0, floorSection.tjiSize ?? '', groupLabel.replace('Walls', 'I-Joist')));
+        const joistGroup = groupLabel.replace('Walls', 'Framing');
+        if ((floorSection.tjiCount ?? 0) > 0) {
+            items.push(...tjiItems(floorSection.tjiCount, floorSection.tjiSize ?? '', joistGroup));
+        } else if ((floorSection.joistCount ?? 0) > 0) {
+            items.push(...conventionalJoistItems(floorSection.joistCount, floorSection.joistSize ?? '', joistGroup));
+        }
+        items.push(...facemountItems(floorSection.facemountQty ?? 0, floorSection.tjiSize || floorSection.joistSize || '2x10', joistGroup));
+        items.push(...gypsumCeilingItems(floorSection.gypsumSF ?? 0, joistGroup));
     }
 
     // ── Basement-only: FHA posts + stoop ─────────────────────────────────────
