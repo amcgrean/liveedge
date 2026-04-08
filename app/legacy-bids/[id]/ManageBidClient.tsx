@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import type { Session } from 'next-auth';
-import { useParams, useRouter } from 'next/navigation';
+import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import { TopNav } from '../../../src/components/nav/TopNav';
 import {
   ArrowLeft,
@@ -15,6 +15,8 @@ import {
   Upload,
   X,
   ExternalLink,
+  Send,
+  FileCheck,
 } from 'lucide-react';
 import Link from 'next/link';
 
@@ -71,6 +73,7 @@ interface Props {
 export default function ManageBidClient({ session }: Props) {
   const params = useParams();
   const router = useRouter();
+  const searchParams = useSearchParams();
   const bidId = params.id as string;
 
   const [bid, setBid] = useState<BidDetail | null>(null);
@@ -82,6 +85,7 @@ export default function ManageBidClient({ session }: Props) {
   const [startingTakeoff, setStartingTakeoff] = useState(false);
   const [uploadingFile, setUploadingFile] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const pdfFileInputRef = useRef<HTMLInputElement>(null);
 
   // Editable form state
   const [form, setForm] = useState<Record<string, unknown>>({});
@@ -130,6 +134,16 @@ export default function ManageBidClient({ session }: Props) {
   useEffect(() => {
     fetchBid();
   }, [fetchBid]);
+
+  // Show success toast when redirected back after "Send to Estimate"
+  useEffect(() => {
+    const sent = searchParams.get('sent');
+    if (sent !== null) {
+      setSuccess(`Measurements sent — ${sent} field${sent === '1' ? '' : 's'} updated on the estimate.`);
+      // Clean up the query param without re-navigating
+      router.replace(`/legacy-bids/${bidId}`);
+    }
+  }, [searchParams, bidId, router]);
 
   const handleSave = async () => {
     setSaving(true);
@@ -194,6 +208,7 @@ export default function ManageBidClient({ session }: Props) {
       });
       const data = await res.json();
       if (!res.ok) { setError(data.error ?? 'Failed to start takeoff'); return; }
+      // data.pdfPreloaded tells us if the bid's PDF was auto-loaded into the session
       router.push(`/takeoff/${data.sessionId}`);
     } catch {
       setError('Network error');
@@ -296,25 +311,6 @@ export default function ManageBidClient({ session }: Props) {
             </div>
           </div>
           <div className="flex items-center gap-2">
-            {/* Takeoff button */}
-            {takeoffSessionId ? (
-              <Link
-                href={`/takeoff/${takeoffSessionId}`}
-                className="flex items-center gap-1 px-3 py-1.5 bg-cyan-700 hover:bg-cyan-600 text-white rounded-lg text-sm"
-              >
-                <ExternalLink className="w-4 h-4" />
-                Open Takeoff
-              </Link>
-            ) : (
-              <button
-                onClick={handleStartTakeoff}
-                disabled={startingTakeoff}
-                className="flex items-center gap-1 px-3 py-1.5 bg-cyan-800 hover:bg-cyan-700 disabled:opacity-50 text-white rounded-lg text-sm"
-              >
-                <Ruler className="w-4 h-4" />
-                {startingTakeoff ? 'Starting...' : 'Start Takeoff'}
-              </button>
-            )}
             {bid.status !== 'Complete' && (
               <button
                 onClick={handleComplete}
@@ -460,55 +456,101 @@ export default function ManageBidClient({ session }: Props) {
 
           {/* Sidebar */}
           <div className="space-y-4">
-            {/* Takeoff Measurements */}
-            {bid.takeoffSession && (
-              <div className="bg-gray-900 border border-cyan-900/50 rounded-lg p-4">
-                <div className="flex items-center justify-between mb-3">
-                  <h3 className="font-semibold text-sm flex items-center gap-1.5">
-                    <Ruler className="w-3.5 h-3.5 text-cyan-400" />
-                    Takeoff Measurements
-                  </h3>
-                  <Link
-                    href={`/takeoff/${bid.takeoffSession.id}`}
-                    className="text-xs text-cyan-400 hover:text-cyan-300 flex items-center gap-0.5"
-                  >
-                    Open <ExternalLink className="w-3 h-3" />
-                  </Link>
-                </div>
-                {bid.takeoffSession.measurements && Object.keys(bid.takeoffSession.measurements).length > 0 ? (
-                  <div className="space-y-1">
-                    {Object.entries(bid.takeoffSession.measurements).map(([key, val]) => {
-                      const labels: Record<string, string> = {
-                        basementExtLF: 'Basement Ext LF',
-                        firstFloorExtLF: '1st Floor Ext LF',
-                        secondFloorExtLF: '2nd Floor Ext LF',
-                        roofSF: 'Roof SF',
-                        sidingSF: 'Siding SF',
-                        deckSF: 'Deck SF',
-                        windowCount: 'Windows',
-                        doorCount: 'Doors',
-                      };
-                      const isCount = key === 'windowCount' || key === 'doorCount';
-                      return (
-                        <div key={key} className="flex justify-between text-xs">
-                          <span className="text-gray-400">{labels[key] ?? key}</span>
-                          <span className="text-gray-200 font-medium tabular-nums">
-                            {isCount ? val : val.toLocaleString()} {isCount ? '' : key.endsWith('SF') ? 'sf' : 'lf'}
-                          </span>
-                        </div>
-                      );
-                    })}
-                  </div>
+            {/* Takeoff Panel */}
+            <div className="bg-gray-900 border border-cyan-900/40 rounded-lg p-4 space-y-3">
+              <h3 className="font-semibold text-sm flex items-center gap-1.5">
+                <Ruler className="w-3.5 h-3.5 text-cyan-400" />
+                PDF Takeoff
+              </h3>
+
+              {/* Plan PDF status */}
+              <div className="flex items-center justify-between text-xs">
+                <span className="text-gray-400">Plan PDF</span>
+                {bid.files.some(f => f.filename.toLowerCase().endsWith('.pdf')) ? (
+                  <span className="flex items-center gap-1 text-green-400">
+                    <FileCheck className="w-3.5 h-3.5" />
+                    {bid.files.find(f => f.filename.toLowerCase().endsWith('.pdf'))?.filename}
+                  </span>
                 ) : (
-                  <p className="text-xs text-gray-500">No measurements recorded yet.</p>
-                )}
-                {bid.takeoffSession.updatedAt && (
-                  <p className="text-xs text-gray-600 mt-2">
-                    Updated {new Date(bid.takeoffSession.updatedAt).toLocaleDateString()}
-                  </p>
+                  <span className="text-gray-500 italic">No PDF attached</span>
                 )}
               </div>
-            )}
+
+              {/* CTA buttons */}
+              {takeoffSessionId ? (
+                <div className="space-y-2">
+                  <Link
+                    href={`/takeoff/${takeoffSessionId}`}
+                    className="flex items-center justify-center gap-2 w-full px-3 py-2 bg-cyan-700 hover:bg-cyan-600 text-white rounded-lg text-sm font-medium transition-colors"
+                  >
+                    <ExternalLink className="w-4 h-4" />
+                    Open Takeoff
+                  </Link>
+                  <button
+                    onClick={async () => {
+                      if (!window.confirm('Push all measurement totals to the estimate?')) return;
+                      const res = await fetch(`/api/takeoff/sessions/${takeoffSessionId}/send-to-estimate`, { method: 'POST' });
+                      const data = await res.json();
+                      if (res.ok) {
+                        setSuccess(`Measurements sent — ${data.updatedFields?.length ?? 0} fields updated.`);
+                        fetchBid();
+                      } else {
+                        setError(data.error ?? 'Failed to send');
+                      }
+                    }}
+                    className="flex items-center justify-center gap-2 w-full px-3 py-2 bg-gray-800 hover:bg-gray-700 text-cyan-300 rounded-lg text-sm transition-colors"
+                  >
+                    <Send className="w-4 h-4" />
+                    Send to Estimate
+                  </button>
+                </div>
+              ) : (
+                <button
+                  onClick={handleStartTakeoff}
+                  disabled={startingTakeoff}
+                  className="flex items-center justify-center gap-2 w-full px-3 py-2 bg-cyan-800 hover:bg-cyan-700 disabled:opacity-50 text-white rounded-lg text-sm font-medium transition-colors"
+                >
+                  <Ruler className="w-4 h-4" />
+                  {startingTakeoff ? 'Starting…' : 'Start Takeoff'}
+                </button>
+              )}
+
+              {/* Measurements summary */}
+              {bid.takeoffSession?.measurements && Object.keys(bid.takeoffSession.measurements).length > 0 && (
+                <div className="pt-2 border-t border-gray-800 space-y-1">
+                  {Object.entries(bid.takeoffSession.measurements).map(([key, val]) => {
+                    const labels: Record<string, string> = {
+                      basementExtLF: 'Basement Ext LF',
+                      firstFloorExtLF: '1st Floor Ext LF',
+                      secondFloorExtLF: '2nd Floor Ext LF',
+                      roofSF: 'Roof SF',
+                      sidingSF: 'Siding SF',
+                      deckSF: 'Deck SF',
+                      windowCount: 'Windows',
+                      doorCount: 'Doors',
+                    };
+                    const isCount = key === 'windowCount' || key === 'doorCount';
+                    return (
+                      <div key={key} className="flex justify-between text-xs">
+                        <span className="text-gray-400">{labels[key] ?? key}</span>
+                        <span className="text-gray-200 font-medium tabular-nums">
+                          {val.toLocaleString()} {isCount ? '' : key.endsWith('SF') ? 'sf' : 'lf'}
+                        </span>
+                      </div>
+                    );
+                  })}
+                  {bid.takeoffSession.updatedAt && (
+                    <p className="text-xs text-gray-600 pt-1">
+                      Updated {new Date(bid.takeoffSession.updatedAt).toLocaleDateString()}
+                    </p>
+                  )}
+                </div>
+              )}
+
+              {bid.takeoffSession && (!bid.takeoffSession.measurements || Object.keys(bid.takeoffSession.measurements).length === 0) && (
+                <p className="text-xs text-gray-500">No measurements yet — open takeoff to begin.</p>
+              )}
+            </div>
 
             {/* Files */}
             <div className="bg-gray-900 border border-gray-800 rounded-lg p-4">

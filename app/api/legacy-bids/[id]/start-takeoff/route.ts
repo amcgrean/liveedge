@@ -18,8 +18,9 @@ import {
   legacyBranch,
   legacyEstimator,
 } from '../../../../../db/schema-legacy';
-import { eq, and } from 'drizzle-orm';
+import { eq, and, desc } from 'drizzle-orm';
 import { STANDARD_PRESETS } from '@/lib/takeoff/presets';
+import { legacyBidFile } from '../../../../../db/schema-legacy';
 
 type RouteContext = { params: Promise<{ id: string }> };
 
@@ -123,13 +124,27 @@ export async function POST(req: NextRequest, context: RouteContext) {
       body.sessionName?.trim() ||
       `${bid.projectName} — ${customerName ?? 'Customer'} (Bid #${legacyBidId})`;
 
+    // Look up the most recent PDF file attached to this bid in R2
+    const pdfFiles = await db
+      .select()
+      .from(legacyBidFile)
+      .where(eq(legacyBidFile.bidId, legacyBidId))
+      .orderBy(desc(legacyBidFile.uploadedAt));
+
+    const planFile = pdfFiles.find(
+      (f) =>
+        f.fileType?.includes('pdf') ||
+        f.filename.toLowerCase().endsWith('.pdf')
+    ) ?? null;
+
     const [takeoffSession] = await db
       .insert(schema.takeoffSessions)
       .values({
         bidId: uuidBid.id,
         legacyBidId,
         name: sessionName,
-        pdfFileName: bid.planFilename ?? '',
+        pdfFileName: planFile?.filename ?? bid.planFilename ?? '',
+        pdfStorageKey: planFile?.fileKey ?? null,
         pageCount: 0,
       })
       .returning();
@@ -171,7 +186,10 @@ export async function POST(req: NextRequest, context: RouteContext) {
       );
     }
 
-    return NextResponse.json({ sessionId: takeoffSession.id }, { status: 201 });
+    return NextResponse.json({
+      sessionId: takeoffSession.id,
+      pdfPreloaded: !!planFile,
+    }, { status: 201 });
   } catch (err) {
     console.error('[start-takeoff]', err);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });

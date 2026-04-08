@@ -1,16 +1,18 @@
 'use client';
 
 import React from 'react';
+import Link from 'next/link';
 import {
   MousePointer2, Square, Minus, Pentagon, Hash,
   Type, ArrowRight, RectangleHorizontal, Cloud, Stamp,
-  Pencil, Crosshair, Save, Download, Send, Undo2, Redo2,
+  Pencil, Crosshair, Save, Download, Send, Undo2, Redo2, ArrowLeft,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import type { ToolType } from '@/hooks/useMeasurementReducer';
 
 interface TakeoffToolbarProps {
   sessionName: string;
+  legacyBidId: number | null;
   activeTool: ToolType;
   activeViewportScale: string | null;
   isDirty: boolean;
@@ -52,6 +54,7 @@ function ToolButton({ icon, label, tool, activeTool, onClick }: ToolButtonProps)
 
 export function TakeoffToolbar({
   sessionName,
+  legacyBidId,
   activeTool,
   activeViewportScale,
   isDirty,
@@ -69,6 +72,17 @@ export function TakeoffToolbar({
       {/* Top info bar */}
       <div className="flex items-center justify-between px-4 h-10 border-b border-white/5">
         <div className="flex items-center gap-3">
+          {legacyBidId && (
+            <Link
+              href={`/legacy-bids/${legacyBidId}`}
+              className="flex items-center gap-1 text-xs text-slate-400 hover:text-white transition"
+              title="Back to Bid"
+            >
+              <ArrowLeft className="w-3.5 h-3.5" />
+              <span className="hidden sm:inline">Bid</span>
+            </Link>
+          )}
+          {legacyBidId && <div className="w-px h-4 bg-slate-700" />}
           <span className="text-sm font-medium text-white truncate max-w-[260px]">
             {sessionName || 'Untitled Session'}
           </span>
@@ -116,11 +130,11 @@ export function TakeoffToolbar({
           </button>
           <button
             onClick={onSendToEstimate}
-            className="flex items-center gap-1.5 px-2.5 py-1.5 rounded text-xs font-medium bg-cyan-500/20 text-cyan-400 hover:bg-cyan-500/30 transition"
-            title="Send to Estimate"
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded text-xs font-semibold bg-cyan-600 text-white hover:bg-cyan-500 transition"
+            title="Push measurements to estimate"
           >
             <Send className="w-3.5 h-3.5" />
-            <span className="hidden sm:inline">Send to Estimate</span>
+            Send to Estimate
           </button>
         </div>
       </div>

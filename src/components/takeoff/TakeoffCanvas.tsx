@@ -138,6 +138,7 @@ export function TakeoffCanvas({
       sessionId: s.sessionId ?? '',
       sessionName: s.sessionName,
       bidId: s.bidId,
+      legacyBidId: s.legacyBidId,
       pdfFileName: s.pdfFileName,
       pageCount: s.pageCount,
     };

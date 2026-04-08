@@ -1,10 +1,37 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '../../../../../../auth';
 import { getDb, schema } from '../../../../../../db/index';
+import { legacyBid, legacyBidFile } from '../../../../../../db/schema-legacy';
 import { eq } from 'drizzle-orm';
 import { uploadPdf, getPresignedUploadUrl, ensureBucketCors } from '@/lib/r2';
 
 const MAX_FILE_SIZE = 50 * 1024 * 1024; // 50 MB
+
+/** If this session links to a legacy bid, upsert the file record and sync planFilename. */
+async function syncPdfToBid(legacyBidId: number | null, storageKey: string, fileName: string) {
+  if (!legacyBidId) return;
+  const db = getDb();
+
+  const existing = await db
+    .select({ id: legacyBidFile.id })
+    .from(legacyBidFile)
+    .where(eq(legacyBidFile.fileKey, storageKey))
+    .limit(1);
+
+  if (existing.length === 0) {
+    await db.insert(legacyBidFile).values({
+      bidId:    legacyBidId,
+      fileKey:  storageKey,
+      filename: fileName,
+      fileType: 'application/pdf',
+    });
+  }
+
+  await db
+    .update(legacyBid)
+    .set({ planFilename: fileName })
+    .where(eq(legacyBid.id, legacyBidId));
+}
 
 function dbError(err: unknown) {
   if (err instanceof Error && err.message.includes('DATABASE_URL')) {
@@ -138,6 +165,8 @@ export async function POST(
       .where(eq(schema.takeoffSessions.id, sessionId))
       .returning();
 
+    await syncPdfToBid(updated.legacyBidId, storageKey, file.name);
+
     return NextResponse.json({
       storageKey: updated.pdfStorageKey,
       fileName: updated.pdfFileName,
@@ -187,6 +216,8 @@ export async function PUT(
     if (!updated) {
       return NextResponse.json({ error: 'Session not found' }, { status: 404 });
     }
+
+    await syncPdfToBid(updated.legacyBidId, body.storageKey, body.fileName);
 
     return NextResponse.json({
       storageKey: updated.pdfStorageKey,

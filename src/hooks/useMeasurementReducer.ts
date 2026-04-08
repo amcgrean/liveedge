@@ -60,6 +60,7 @@ export interface TakeoffState {
   sessionId: string | null;
   sessionName: string;
   bidId: string | null;
+  legacyBidId: number | null;
   pdfFileName: string | null;
   pageCount: number;
   currentPage: number;
@@ -79,7 +80,7 @@ export interface TakeoffState {
 // ── Actions ──
 
 export type TakeoffAction =
-  | { type: 'INIT_SESSION'; payload: { sessionId: string; sessionName: string; bidId: string | null; pdfFileName: string | null; pageCount: number } }
+  | { type: 'INIT_SESSION'; payload: { sessionId: string; sessionName: string; bidId: string | null; legacyBidId: number | null; pdfFileName: string | null; pageCount: number } }
   | { type: 'SET_PAGE'; payload: number }
   | { type: 'SET_TOOL'; payload: ToolType }
   | { type: 'SET_ACTIVE_PRESET'; payload: string | null }
@@ -115,6 +116,7 @@ const initialState: TakeoffState = {
   sessionId: null,
   sessionName: '',
   bidId: null,
+  legacyBidId: null,
   pdfFileName: null,
   pageCount: 0,
   currentPage: 1,

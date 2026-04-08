@@ -25,6 +25,7 @@ export function useTakeoffSession({ state, dispatch }: UseTakeoffSessionOpts) {
             sessionId: data.session.id,
             sessionName: data.session.name,
             bidId: data.session.bidId,
+            legacyBidId: data.session.legacyBidId ?? null,
             pdfFileName: data.session.pdfFileName,
             pageCount: data.session.pageCount,
           },

@@ -14,12 +14,14 @@ import { useUndoRedo } from '@/hooks/useUndoRedo';
 import { exportMeasurementsCsv } from '@/lib/takeoff/exportCsv';
 import { BottomBar } from '@/components/takeoff/BottomBar';
 import type { PDFDocumentProxy } from 'pdfjs-dist';
+import { useRouter } from 'next/navigation';
 
 interface Props {
   sessionId: string;
 }
 
 export function TakeoffWorkspace({ sessionId }: Props) {
+  const router = useRouter();
   const [state, dispatch] = useMeasurementReducer();
   const { loadSession, saveSession, triggerAutoSave } = useTakeoffSession({ state, dispatch });
   const { push: pushUndo, undo, redo, canUndo, canRedo } = useUndoRedo();
@@ -99,6 +101,7 @@ export function TakeoffWorkspace({ sessionId }: Props) {
         sessionId,
         sessionName: state.sessionName || file.name.replace('.pdf', ''),
         bidId: state.bidId,
+        legacyBidId: state.legacyBidId,
         pdfFileName: file.name,
         pageCount: 0, // Will be updated by TakeoffCanvas
       },
@@ -250,10 +253,7 @@ export function TakeoffWorkspace({ sessionId }: Props) {
   // Send to estimate
   const handleSendToEstimate = useCallback(async () => {
     if (!state.sessionId) return;
-    const confirm = window.confirm(
-      'This will update the linked bid with all measurement totals. Continue?'
-    );
-    if (!confirm) return;
+    if (!window.confirm('Push all measurement totals to the linked estimate? This overwrites any manually entered values.')) return;
 
     try {
       const res = await fetch(`/api/takeoff/sessions/${state.sessionId}/send-to-estimate`, {
@@ -261,12 +261,18 @@ export function TakeoffWorkspace({ sessionId }: Props) {
       });
       if (!res.ok) throw new Error('Failed to send to estimate');
       const data = await res.json();
-      window.alert(`Updated ${data.updatedFields?.length ?? 0} fields on the estimate.`);
+      const count = data.updatedFields?.length ?? 0;
+      // If linked to a bid, navigate back to the bid after sending
+      if (state.legacyBidId) {
+        router.push(`/legacy-bids/${state.legacyBidId}?sent=${count}`);
+      } else {
+        window.alert(`Updated ${count} fields on the estimate.`);
+      }
     } catch (err) {
       console.error('Send to estimate failed:', err);
       window.alert('Failed to send to estimate. See console for details.');
     }
-  }, [state.sessionId]);
+  }, [state.sessionId, state.legacyBidId, router]);
 
   // Resize handles (sidebar + page strip)
   useEffect(() => {
@@ -336,6 +342,7 @@ export function TakeoffWorkspace({ sessionId }: Props) {
       {/* Toolbar */}
       <TakeoffToolbar
         sessionName={state.sessionName}
+        legacyBidId={state.legacyBidId}
         activeTool={state.activeTool}
         activeViewportScale={activeVp?.scaleName ?? null}
         isDirty={state.isDirty}

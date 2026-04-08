@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '../../../../../auth';
 import { getDb, schema } from '../../../../../db/index';
+import { legacyBid, legacyBidFile } from '../../../../../db/schema-legacy';
 import { eq } from 'drizzle-orm';
 
 function dbError(err: unknown) {
@@ -122,6 +123,37 @@ export async function PUT(
       .set(updateData)
       .where(eq(schema.takeoffSessions.id, sessionId))
       .returning();
+
+    // Write-back: if PDF changed and session is linked to a legacy bid,
+    // upsert the file record and update the bid's planFilename.
+    if (body.pdfStorageKey !== undefined && updated.legacyBidId) {
+      const newKey  = body.pdfStorageKey;
+      const newName = body.pdfFileName ?? updated.pdfFileName ?? '';
+
+      if (newKey) {
+        // Upsert legacyBidFile so the file appears in the bid's attachment list
+        const existing = await db
+          .select({ id: legacyBidFile.id })
+          .from(legacyBidFile)
+          .where(eq(legacyBidFile.fileKey, newKey))
+          .limit(1);
+
+        if (existing.length === 0) {
+          await db.insert(legacyBidFile).values({
+            bidId:    updated.legacyBidId,
+            fileKey:  newKey,
+            filename: newName,
+            fileType: 'application/pdf',
+          });
+        }
+      }
+
+      // Keep legacyBid.planFilename in sync with the takeoff's active PDF
+      await db
+        .update(legacyBid)
+        .set({ planFilename: newName })
+        .where(eq(legacyBid.id, updated.legacyBidId));
+    }
 
     return NextResponse.json({ session: updated });
   } catch (err) {
