@@ -330,6 +330,29 @@ export function calculateFraming(
         }
     }
 
+    // ── Beams by size (16ft pieces each) ─────────────────────────────────────
+    const beamDefs: Array<{ field: keyof WallSection; sku: string; label: string }> = [
+        { field: 'beam2x8LF',   sku: '020816', label: '2×8 Beam' },
+        { field: 'beam2x10LF',  sku: '021016', label: '2×10 Beam' },
+        { field: 'beam2x12LF',  sku: '021216', label: '2×12 Beam' },
+        { field: 'beamSteelLF', sku: 'steel-beam', label: 'Steel Beam' },
+    ];
+    for (const { field, sku, label } of beamDefs) {
+        const lf = (section[field] as number) ?? 0;
+        if (lf > 0) {
+            items.push({ qty: Math.ceil(lf / 16), uom: 'EA', sku, description: `${label} 16ft — ${name}`, group: groupLabel, is_dynamic_sku: false });
+        }
+    }
+    // LVL beam — handled via engineered lumber lookup (same as headers but no length variant)
+    if ((section.beamLVLLF ?? 0) > 0) {
+        items.push({ qty: Math.ceil((section.beamLVLLF ?? 0) / 16), uom: 'EA', sku: 'lvl-beam', description: `LVL Beam — ${name}`, group: groupLabel, is_dynamic_sku: true });
+    }
+    // Generic fallback: if only beamLF is set (legacy data) and no per-size LF
+    const perSizeTotal = (section.beam2x8LF ?? 0) + (section.beam2x10LF ?? 0) + (section.beam2x12LF ?? 0) + (section.beamLVLLF ?? 0) + (section.beamSteelLF ?? 0);
+    if (perSizeTotal === 0 && (section.beamLF ?? 0) > 0) {
+        items.push({ qty: Math.ceil((section.beamLF ?? 0) / 16), uom: 'EA', sku: '021016', description: `Beam (generic) 16ft — ${name}`, group: groupLabel, is_dynamic_sku: false });
+    }
+
     // ── Sill seal (basement exterior perimeter) ───────────────────────────────
     if (isBasement) {
         const extPerimLF = Object.values(extByHeight).reduce((s, v) => s + v, 0);

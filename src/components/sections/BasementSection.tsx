@@ -84,9 +84,6 @@ export function BasementSectionComp({ data, onChange }: Props) {
                     <InputGroup label="Rim LF">
                         <input type="number" name="rimLF" value={(data.rimLF ?? 0) || ''} onChange={handleChange} className="input-field" min="0" />
                     </InputGroup>
-                    <InputGroup label="Beam LF">
-                        <input type="number" name="beamLF" value={data.beamLF || ''} onChange={handleChange} className="input-field" min="0" />
-                    </InputGroup>
                     <InputGroup label="Stair Count">
                         <input type="number" name="stairCount" value={data.stairCount || ''} onChange={handleChange} className="input-field" min="0" />
                     </InputGroup>
@@ -95,6 +92,27 @@ export function BasementSectionComp({ data, onChange }: Props) {
                     </InputGroup>
                     <InputGroup label="FHA Post Count">
                         <input type="number" name="fhaPostCount" value={data.fhaPostCount || ''} onChange={handleChange} className="input-field" min="0" placeholder="# of posts" />
+                    </InputGroup>
+                </div>
+            </SubSection>
+
+            {/* Beams by size */}
+            <SubSection title="Beams (LF by size)">
+                <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
+                    <InputGroup label="2×8 Beam LF">
+                        <input type="number" name="beam2x8LF" value={(data.beam2x8LF ?? 0) || ''} onChange={handleChange} className="input-field" min="0" />
+                    </InputGroup>
+                    <InputGroup label="2×10 Beam LF">
+                        <input type="number" name="beam2x10LF" value={(data.beam2x10LF ?? 0) || ''} onChange={handleChange} className="input-field" min="0" />
+                    </InputGroup>
+                    <InputGroup label="2×12 Beam LF">
+                        <input type="number" name="beam2x12LF" value={(data.beam2x12LF ?? 0) || ''} onChange={handleChange} className="input-field" min="0" />
+                    </InputGroup>
+                    <InputGroup label="LVL Beam LF" hint="Glulam/LVL">
+                        <input type="number" name="beamLVLLF" value={(data.beamLVLLF ?? 0) || ''} onChange={handleChange} className="input-field" min="0" />
+                    </InputGroup>
+                    <InputGroup label="Steel Beam LF">
+                        <input type="number" name="beamSteelLF" value={(data.beamSteelLF ?? 0) || ''} onChange={handleChange} className="input-field" min="0" />
                     </InputGroup>
                 </div>
             </SubSection>

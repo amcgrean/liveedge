@@ -98,11 +98,32 @@ export function calculateTrim(
         items.push({
             qty: section.handrailBracketCount,
             uom: 'EA',
-            sku: 'hrwallbracket',  // TODO: verify SKU
+            sku: 'hrwallbracket',
             description: 'Handrail Wall Bracket',
             group: 'Trim',
             is_dynamic_sku: false
         });
+    }
+
+    // Stair accessories
+    if ((section.balusterCount ?? 0) > 0) {
+        items.push({ qty: section.balusterCount ?? 0, uom: 'EA', sku: 'baluster', description: 'Baluster', group: 'Trim', is_dynamic_sku: true });
+    }
+    if ((section.newelCount ?? 0) > 0) {
+        items.push({ qty: section.newelCount ?? 0, uom: 'EA', sku: 'newelpost', description: 'Newel Post', group: 'Trim', is_dynamic_sku: true });
+    }
+    if ((section.rosetteCount ?? 0) > 0) {
+        items.push({ qty: section.rosetteCount ?? 0, uom: 'EA', sku: 'rosette', description: 'Wall Rosette', group: 'Trim', is_dynamic_sku: false });
+    }
+    if ((section.skirtBoardLF ?? 0) > 0) {
+        // 1×12 stair skirt — 16ft boards
+        items.push({ qty: Math.ceil((section.skirtBoardLF ?? 0) / 16), uom: 'EA', sku: 'skirtboard1x12', description: '1×12 Stair Skirt Board 16ft', group: 'Trim', is_dynamic_sku: false });
+    }
+    if ((section.falseTreadCount ?? 0) > 0) {
+        items.push({ qty: section.falseTreadCount ?? 0, uom: 'EA', sku: 'falsetread', description: 'False Tread Cap', group: 'Trim', is_dynamic_sku: true });
+    }
+    if ((section.stairSetCount ?? 0) > 0) {
+        items.push({ qty: section.stairSetCount ?? 0, uom: 'EA', sku: 'stairset', description: 'Pre-Built Stair Set', group: 'Trim', is_dynamic_sku: true });
     }
 
     return items;

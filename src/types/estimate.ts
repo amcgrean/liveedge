@@ -47,7 +47,12 @@ export interface WallSection {
     bearingWallLF: number;
     finishWallLF: number;
     rimLF: number;
-    beamLF: number;
+    beamLF: number;        // generic fallback if per-size not specified
+    beam2x8LF: number;
+    beam2x10LF: number;
+    beam2x12LF: number;
+    beamLVLLF: number;     // LVL/glulam beam LF
+    beamSteelLF: number;   // steel beam LF
     stairCount: number;
     headers: HeaderEntry[];
 }
@@ -145,6 +150,13 @@ export interface TrimSection {
     handrailBracketCount: number;   // post-to-wall bracket qty
     crownType: string;
     crownLF: number;
+    // Stair accessories
+    balusterCount: number;          // individual spindles (wood or metal)
+    newelCount: number;             // newel posts (landing/floor-mount)
+    rosetteCount: number;           // wall rosettes at top/bottom of run
+    skirtBoardLF: number;           // stair skirt board (1×12) LF
+    falseTreadCount: number;        // false tread caps over existing stairs
+    stairSetCount: number;          // full stair sets (pre-built box stairs)
 }
 
 export interface HardwareSection {

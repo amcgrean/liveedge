@@ -123,6 +123,29 @@ export function TrimSectionComp({ data, onChange }: Props) {
                     </InputGroup>
                 </div>
             </SubSection>
+
+            <SubSection title="Stair Accessories">
+                <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-4">
+                    <InputGroup label="Balusters" hint="Individual spindles (EA)">
+                        <input type="number" name="balusterCount" value={(data.balusterCount ?? 0) || ''} onChange={handleChange} className="input-field" min="0" />
+                    </InputGroup>
+                    <InputGroup label="Newel Posts">
+                        <input type="number" name="newelCount" value={(data.newelCount ?? 0) || ''} onChange={handleChange} className="input-field" min="0" />
+                    </InputGroup>
+                    <InputGroup label="Rosettes" hint="Wall rosettes at top/bottom">
+                        <input type="number" name="rosetteCount" value={(data.rosetteCount ?? 0) || ''} onChange={handleChange} className="input-field" min="0" />
+                    </InputGroup>
+                    <InputGroup label="Skirt Board LF" hint="1×12 stair skirt LF">
+                        <input type="number" name="skirtBoardLF" value={(data.skirtBoardLF ?? 0) || ''} onChange={handleChange} className="input-field" min="0" />
+                    </InputGroup>
+                    <InputGroup label="False Treads" hint="Tread caps over existing stairs">
+                        <input type="number" name="falseTreadCount" value={(data.falseTreadCount ?? 0) || ''} onChange={handleChange} className="input-field" min="0" />
+                    </InputGroup>
+                    <InputGroup label="Stair Sets" hint="Pre-built box stair sets">
+                        <input type="number" name="stairSetCount" value={(data.stairSetCount ?? 0) || ''} onChange={handleChange} className="input-field" min="0" />
+                    </InputGroup>
+                </div>
+            </SubSection>
         </SectionCard>
     );
 }
