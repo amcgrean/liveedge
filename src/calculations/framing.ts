@@ -51,40 +51,78 @@ function fhaPostItems(postCount: number, fhaCeilingHeight: number): LineItem[] {
 // ── Stoop helper ──────────────────────────────────────────────────────────────
 // stoopSF drives: treated joists (user-selected size) + treated plywood panels
 // Assumes 4ft-deep stoop, joists at 16" OC running the short direction
-function stoopItems(stoopSF: number, joistSize: string, engineeredLumber: any): LineItem[] {
+function stoopItems(bsmt: BasementSection, engineeredLumber: any): LineItem[] {
+    const { stoopSF, stoopJoistSize, stoopRimLF, stoopDowSF, stoopHangerCount } = bsmt;
     if (stoopSF <= 0) return [];
+
+    const items: LineItem[] = [];
 
     // Joist count: assume stoop is ~4ft deep; width = SF/4; 16" OC = 0.75 joist/LF
     const stoopWidth  = stoopSF / 4;
     const joistCount  = Math.ceil(stoopWidth * 0.75);
-    const joistLength = 8; // 8ft treated joists cover the 4ft depth with overhang
 
     // Build joist SKU — treated versions of the framing lumber
-    const sizeMap: Record<string, string> = { '2x8': 'treat0208x08', '2x10': 'treat0210x08', '2x12': 'treat0212x08' };
-    const joistSku = sizeMap[joistSize] ?? `treat${joistSize.replace('x','0')}x08`;
+    const sizeMap: Record<string, string> = { '2x8': 'treat0208x08', '2x10': 'treat0210x08', '2x12': 'treat0212x08', '2x14': 'treat0214x08', '2x16': 'treat0216x08' };
+    const joistSku = sizeMap[stoopJoistSize] ?? `treat${stoopJoistSize.replace('x','0')}x08`;
+
+    items.push({
+        qty: joistCount,
+        uom: 'EA',
+        sku: joistSku,
+        description: `Treated ${stoopJoistSize} × 8ft Stoop Joist`,
+        group: 'Basement',
+        is_dynamic_sku: false,
+        tally: `${joistCount}/8ft`,
+    });
 
     // Treated plywood: 3/4" pressure-treated ply panels
-    const plyPanels = Math.ceil(stoopSF / 32);
+    items.push({
+        qty: Math.ceil(stoopSF / 32),
+        uom: 'EA',
+        sku: 'treatply34',
+        description: 'Treated 3/4" Plywood — Stoop',
+        group: 'Basement',
+        is_dynamic_sku: false,
+    });
 
-    return [
-        {
-            qty: joistCount,
+    // Stoop rim board (treated 2× boards at 16ft)
+    if ((stoopRimLF ?? 0) > 0) {
+        const rimSku = sizeMap[stoopJoistSize] ?? 'treat0210x16';
+        items.push({
+            qty: Math.ceil((stoopRimLF ?? 0) / 16),
             uom: 'EA',
-            sku: joistSku,
-            description: `Treated ${joistSize} × 8ft Stoop Joist`,
+            sku: rimSku.replace('x08', 'x16'),
+            description: `Treated ${stoopJoistSize} × 16ft Stoop Rim`,
             group: 'Basement',
             is_dynamic_sku: false,
-            tally: `${joistCount}/8ft`,
-        },
-        {
-            qty: plyPanels,
+        });
+    }
+
+    // 2" Dow rigid insulation (4×8 sheets = 32 SF each)
+    if ((stoopDowSF ?? 0) > 0) {
+        items.push({
+            qty: Math.ceil((stoopDowSF ?? 0) / 32),
             uom: 'EA',
-            sku: 'treatply34',
-            description: 'Treated 3/4" Plywood — Stoop',
+            sku: 'dow2x4x8',
+            description: '2" Dow Rigid Insulation 4×8',
             group: 'Basement',
             is_dynamic_sku: false,
-        },
-    ];
+        });
+    }
+
+    // Joist hangers
+    if ((stoopHangerCount ?? 0) > 0) {
+        items.push({
+            qty: stoopHangerCount ?? 0,
+            uom: 'EA',
+            sku: 'LUS28',
+            description: 'Stoop Joist Hanger (LUS)',
+            group: 'Basement',
+            is_dynamic_sku: true,
+        });
+    }
+
+    return items;
 }
 
 // ── TJI / I-Joist helper ─────────────────────────────────────────────────────
@@ -363,7 +401,7 @@ export function calculateFraming(
     if (isBasement) {
         const bsmt = section as BasementSection;
         items.push(...fhaPostItems(bsmt.fhaPostCount ?? 0, bsmt.fhaCeilingHeight));
-        items.push(...stoopItems(bsmt.stoopSF ?? 0, bsmt.stoopJoistSize, engineeredLumber));
+        items.push(...stoopItems(bsmt, engineeredLumber));
     }
 
     return items;

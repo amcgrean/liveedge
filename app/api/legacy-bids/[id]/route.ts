@@ -22,7 +22,9 @@ function computeMeasurementSummary(inputs: unknown): Record<string, number> | nu
     const s = section as Record<string, number>;
     return (
       (s.ext2x4_8ft ?? 0) + (s.ext2x4_9ft ?? 0) + (s.ext2x4_10ft ?? 0) +
-      (s.ext2x6_8ft ?? 0) + (s.ext2x6_9ft ?? 0) + (s.ext2x6_10ft ?? 0)
+      (s.ext2x4_12ft ?? 0) + (s.ext2x4_14ft ?? 0) + (s.ext2x4_16ft ?? 0) + (s.ext2x4_20ft ?? 0) +
+      (s.ext2x6_8ft ?? 0) + (s.ext2x6_9ft ?? 0) + (s.ext2x6_10ft ?? 0) +
+      (s.ext2x6_12ft ?? 0) + (s.ext2x6_14ft ?? 0) + (s.ext2x6_16ft ?? 0) + (s.ext2x6_20ft ?? 0)
     );
   }
 

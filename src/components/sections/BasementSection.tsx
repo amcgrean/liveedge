@@ -8,7 +8,7 @@ interface Props {
 }
 
 const HEADER_SIZES = ['2x8','2x10','2x12','1.75x7.25','1.75x9.5','1.75x11.78','1.75x14','1.75x16','1.75x18','3.5x9','3.5x11'];
-const JOIST_SIZES  = ['2x8','2x10','2x12'];
+const JOIST_SIZES  = ['2x8','2x10','2x12','2x14','2x16'];
 
 function lengthsFor(size: string): number[] {
     if (size.startsWith('2x')) return [8,10,12,14,16,18,20];
@@ -101,14 +101,23 @@ export function BasementSectionComp({ data, onChange }: Props) {
 
             {/* Stoop */}
             <SubSection title="Stoop">
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-4">
                     <InputGroup label="Stoop Joist Size">
                         <select name="stoopJoistSize" value={data.stoopJoistSize} onChange={handleChange} className="input-field">
                             {JOIST_SIZES.map(s => <option key={s} value={s}>{s}</option>)}
                         </select>
                     </InputGroup>
                     <InputGroup label="Stoop SF">
-                        <input type="number" name="stoopSF" value={data.stoopSF || ''} onChange={handleChange} className="input-field" min="0" placeholder="Square footage" />
+                        <input type="number" name="stoopSF" value={data.stoopSF || ''} onChange={handleChange} className="input-field" min="0" placeholder="Sq ft" />
+                    </InputGroup>
+                    <InputGroup label="Stoop Rim LF">
+                        <input type="number" name="stoopRimLF" value={(data.stoopRimLF ?? 0) || ''} onChange={handleChange} className="input-field" min="0" />
+                    </InputGroup>
+                    <InputGroup label='2" Dow Insul. SF' hint="Rigid insulation under stoop">
+                        <input type="number" name="stoopDowSF" value={(data.stoopDowSF ?? 0) || ''} onChange={handleChange} className="input-field" min="0" />
+                    </InputGroup>
+                    <InputGroup label="Stoop Hangers" hint="Joist hanger count">
+                        <input type="number" name="stoopHangerCount" value={(data.stoopHangerCount ?? 0) || ''} onChange={handleChange} className="input-field" min="0" />
                     </InputGroup>
                 </div>
             </SubSection>
