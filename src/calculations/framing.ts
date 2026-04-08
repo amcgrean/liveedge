@@ -215,15 +215,20 @@ export function calculateFraming(
         '20ft': (section.ext2x4_20ft ?? 0) + (section.ext2x6_20ft ?? 0),
     };
 
-    // LSL stud totals (lumped by height; separate SKU prefix)
-    const lslByHeight: Record<string, number> = {
-        '8ft':  (section.ext2x4_lsl_8ft  ?? 0) + (section.ext2x6_lsl_8ft  ?? 0),
-        '9ft':  (section.ext2x4_lsl_9ft  ?? 0) + (section.ext2x6_lsl_9ft  ?? 0),
-        '10ft': (section.ext2x4_lsl_10ft ?? 0) + (section.ext2x6_lsl_10ft ?? 0),
+    // LSL stud totals — tracked per size so SKUs are correct regardless of project wallSize
+    const lsl2x4ByHeight: Record<string, number> = {
+        '8ft':  section.ext2x4_lsl_8ft  ?? 0,
+        '9ft':  section.ext2x4_lsl_9ft  ?? 0,
+        '10ft': section.ext2x4_lsl_10ft ?? 0,
     };
+    const lsl2x6ByHeight: Record<string, number> = {
+        '8ft':  section.ext2x6_lsl_8ft  ?? 0,
+        '9ft':  section.ext2x6_lsl_9ft  ?? 0,
+        '10ft': section.ext2x6_lsl_10ft ?? 0,
+    };
+    const lslLFTotal = [...Object.values(lsl2x4ByHeight), ...Object.values(lsl2x6ByHeight)].reduce((s, v) => s + v, 0);
 
-    const extLF  = Object.values(extByHeight).reduce((s, v) => s + v, 0)
-                 + Object.values(lslByHeight).reduce((s, v) => s + v, 0);
+    const extLF  = Object.values(extByHeight).reduce((s, v) => s + v, 0) + lslLFTotal;
     const totalLF = extLF + section.intWallLF + (section.bearingWallLF ?? 0) + (section.finishWallLF ?? 0);
 
     if (totalLF <= 0) return items;
@@ -237,11 +242,8 @@ export function calculateFraming(
         '2x6': { '8ft': '0206studfir08', '9ft': '0206studfir09', '10ft': '0206studfir10', '12ft': '0206studfir12', '14ft': '0206studfir14', '16ft': '0206studfir16', '20ft': '0206studfir20' },
     };
 
-    const lslStudSkus: Record<string, string> = {
-        '8ft': `0${wallSize.replace('x','0')}lsl08`,
-        '9ft': `0${wallSize.replace('x','0')}lsl09`,
-        '10ft': `0${wallSize.replace('x','0')}lsl10`,
-    };
+    const lslSkuPrefix = (sz: string) => `0${sz.replace('x', '0')}`;
+    const lslHeightCode: Record<string, string> = { '8ft': '08', '9ft': '09', '10ft': '10' };
 
     const branchData = branches?.find((b: any) => b.branch_id === inputs.setup.branch);
     const branchStudSku8ft = branchData?.stud_sku;
@@ -272,21 +274,23 @@ export function calculateFraming(
         });
     });
 
-    // ── LSL studs (by height) ────────────────────────────────────────────────
-    Object.entries(lslByHeight).forEach(([height, wallLF]) => {
-        if (wallLF <= 0) return;
-        const studQty = Math.ceil(wallLF * studMultiplier * multipliers.framing.twenty_percent_waste.value);
-        if (studQty <= 0) return;
-        const sku = lslStudSkus[height] ?? `0${wallSize.replace('x','0')}lsl08`;
-        items.push({
-            qty: studQty,
-            uom: 'EA',
-            sku,
-            description: `${wallSize} LSL ${height} Studs - ${name}`,
-            group: name,
-            is_dynamic_sku: false
+    // ── LSL studs (by size × height) ─────────────────────────────────────────
+    for (const [sz, byHt] of [['2x4', lsl2x4ByHeight], ['2x6', lsl2x6ByHeight]] as [string, Record<string, number>][]) {
+        Object.entries(byHt).forEach(([height, wallLF]) => {
+            if (wallLF <= 0) return;
+            const studQty = Math.ceil(wallLF * studMultiplier * multipliers.framing.twenty_percent_waste.value);
+            if (studQty <= 0) return;
+            const sku = `${lslSkuPrefix(sz)}lsl${lslHeightCode[height] ?? '08'}`;
+            items.push({
+                qty: studQty,
+                uom: 'EA',
+                sku,
+                description: `${sz} LSL ${height} Studs - ${name}`,
+                group: name,
+                is_dynamic_sku: false
+            });
         });
-    });
+    }
 
     // Interior studs (default to 9ft studs)
     if (section.intWallLF > 0) {
@@ -406,6 +410,12 @@ export function calculateFraming(
 
     // ── Stair framing ─────────────────────────────────────────────────────────
     items.push(...stairItems(section.stairCount, groupLabel));
+
+    // ── Pocket door frames ────────────────────────────────────────────────────
+    const pocketQty = section.pocketFrameCount ?? 0;
+    if (pocketQty > 0) {
+        items.push({ qty: pocketQty, uom: 'EA', sku: 'pocket-frame', description: `Pocket Door Frame Kit - ${groupLabel}`, group: groupLabel, is_dynamic_sku: true });
+    }
 
     // ── Floor joists (floor sections) ────────────────────────────────────────
     if (!isBasement) {

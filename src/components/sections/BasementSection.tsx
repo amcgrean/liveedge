@@ -87,6 +87,9 @@ export function BasementSectionComp({ data, onChange }: Props) {
                     <InputGroup label="Stair Count">
                         <input type="number" name="stairCount" value={data.stairCount || ''} onChange={handleChange} className="input-field" min="0" />
                     </InputGroup>
+                    <InputGroup label="Pocket Frame Count" hint="Pocket door rough openings">
+                        <input type="number" name="pocketFrameCount" value={(data.pocketFrameCount ?? 0) || ''} onChange={handleChange} className="input-field" min="0" placeholder="Qty" />
+                    </InputGroup>
                     <InputGroup label="FHA Ceiling Height (ft)">
                         <input type="number" name="fhaCeilingHeight" value={data.fhaCeilingHeight || ''} onChange={handleChange} className="input-field" min="0" />
                     </InputGroup>

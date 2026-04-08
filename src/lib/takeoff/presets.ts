@@ -142,6 +142,11 @@ export const STANDARD_PRESETS: MeasurementPreset[] = [
   { id: 'ff-beam-2x12',    name: '1st Fl Beam 2×12',   category: '1st Floor', color: COLORS.firstFloorOther, toolType: 'polyline', targetField: 'firstFloor.beam2x12LF',  unit: 'LF' },
   { id: 'sf-beam-2x10',    name: '2nd Fl Beam 2×10',   category: '2nd Floor', color: COLORS.secondFloorOther, toolType: 'polyline', targetField: 'secondFloor.beam2x10LF', unit: 'LF' },
   { id: 'sf-beam-2x12',    name: '2nd Fl Beam 2×12',   category: '2nd Floor', color: COLORS.secondFloorOther, toolType: 'polyline', targetField: 'secondFloor.beam2x12LF', unit: 'LF' },
+
+  // ── Pocket Frames (per floor) ──
+  { id: 'count-pocket-bsmt', name: 'Basement Pocket Frames', category: 'Basement',  color: COLORS.basementOther,   toolType: 'count', targetField: 'basement.pocketFrameCount',    unit: 'EA' },
+  { id: 'count-pocket-ff',   name: '1st Fl Pocket Frames',   category: '1st Floor', color: COLORS.firstFloorOther,  toolType: 'count', targetField: 'firstFloor.pocketFrameCount',  unit: 'EA' },
+  { id: 'count-pocket-sf',   name: '2nd Fl Pocket Frames',   category: '2nd Floor', color: COLORS.secondFloorOther, toolType: 'count', targetField: 'secondFloor.pocketFrameCount', unit: 'EA' },
 ];
 
 /** Get all unique preset categories in display order */

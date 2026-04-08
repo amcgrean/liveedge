@@ -54,6 +54,7 @@ export interface WallSection {
     beamLVLLF: number;     // LVL/glulam beam LF
     beamSteelLF: number;   // steel beam LF
     stairCount: number;
+    pocketFrameCount: number;  // pocket door rough openings — drives pocket frame kit SKU
     headers: HeaderEntry[];
 }
 
