@@ -31,7 +31,8 @@ export function calculateTrim(
             // Single-hung/slab door case: 36 LF equivalent per door
             // Double/bifold/pocket: 42 LF equivalent per door
             const singleDoors = (section.doorCounts.single68 ?? 0) + (section.doorCounts.single80 ?? 0)
-                              + (section.doorCounts.slab28 ?? 0) + (section.doorCounts.slab30 ?? 0);
+                              + (section.doorCounts.slab28 ?? 0) + (section.doorCounts.slab30 ?? 0)
+                              + (section.doorCounts.barnDoor28 ?? 0) + (section.doorCounts.barnDoor30 ?? 0);
             const doubleDoors = (section.doorCounts.double30 ?? 0) + (section.doorCounts.double40 ?? 0) + (section.doorCounts.double50 ?? 0);
             const bifoldDoors = (section.doorCounts.bifold40 ?? 0) + (section.doorCounts.bifold50 ?? 0) + (section.doorCounts.bifold30 ?? 0);
             const pocketDoors = (section.doorCounts.pocket28 ?? 0) + (section.doorCounts.pocket30 ?? 0);
