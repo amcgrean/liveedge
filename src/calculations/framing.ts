@@ -1,4 +1,4 @@
-import { WallSection, BasementSection, FloorSection, LineItem, JobInputs, Multipliers } from '../types/estimate';
+import { WallSection, BasementSection, FloorSection, PartyWallSection, LineItem, JobInputs, Multipliers } from '../types/estimate';
 
 export function getLVLCode(size: string, length_ft: number, engineeredLumber: any): string {
     const entry = engineeredLumber?.size_to_prefix?.find((e: any) => e.size === size);
@@ -365,6 +365,39 @@ export function calculateFraming(
         items.push(...fhaPostItems(bsmt.fhaPostCount ?? 0, bsmt.fhaCeilingHeight));
         items.push(...stoopItems(bsmt.stoopSF ?? 0, bsmt.stoopJoistSize, engineeredLumber));
     }
+
+    return items;
+}
+
+// ── Party Wall ────────────────────────────────────────────────────────────────
+// Party wall between units: studs (16" OC), double top/bottom plates, gypsum both sides
+export function calculatePartyWall(
+    section: PartyWallSection,
+    multipliers: Multipliers
+): LineItem[] {
+    const items: LineItem[] = [];
+    if (section.lf <= 0) return items;
+
+    const lf     = section.lf;
+    const height = section.height;
+    const dim    = section.framingSize; // '2x4' | '2x6'
+
+    // Studs at 16" OC + 10% waste
+    const studCode = height <= 8  ? `0${dim.replace('x','0')}ww${String(height * 12).padStart(2,'0')}` :
+                     height === 9  ? `0${dim.replace('x','0')}ww0${height}` :
+                     `0${dim.replace('x','0')}ww${height}`;
+    const studQty = Math.ceil((lf / (16 / 12)) * 1.10);
+    items.push({ qty: studQty, uom: 'EA', sku: studCode, description: `${dim} × ${height}ft Party Wall Stud`, group: 'Party Wall', is_dynamic_sku: false });
+
+    // Plates: bottom × 1 + top × 2 (double top plate), both faces
+    const plateQty = Math.ceil(lf / 16) * 3; // 3 plates (1 bottom + 2 top)
+    const plateSku = dim === '2x6' ? '020616' : '020416';
+    items.push({ qty: plateQty, uom: 'EA', sku: plateSku, description: `${dim} × 16ft Party Wall Plate`, group: 'Party Wall', is_dynamic_sku: false });
+
+    // Gypsum — both sides, multiple layers
+    const gypsumSF = lf * height * 2 * section.gypsumLayers; // 2 sides
+    const sheetQty = Math.ceil(gypsumSF / 32); // 4×8 sheet = 32 SF
+    items.push({ qty: sheetQty, uom: 'EA', sku: 'gyp5812', description: `5/8" Type-X Gypsum (Party Wall)`, group: 'Party Wall', is_dynamic_sku: false });
 
     return items;
 }

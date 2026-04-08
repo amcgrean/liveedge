@@ -47,7 +47,7 @@ export function calculateSiding(
 
     // Soffit
     if (section.soffitSF > 0) {
-        const lf_per_piece = (multipliers.siding as any).soffit_lf_per_piece?.[section.soffitType.toLowerCase()] || 12;
+        const lf_per_piece = multipliers.siding.soffit_lf_per_piece?.[section.soffitType.toLowerCase()] ?? 12;
         const pieces = Math.ceil(section.soffitSF / lf_per_piece);
         items.push({
             qty: pieces,

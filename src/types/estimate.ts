@@ -180,6 +180,13 @@ export interface ExteriorDeckSection {
     landing: boolean;
 }
 
+export interface PartyWallSection {
+    lf: number;           // total party wall LF
+    height: number;       // wall height in ft
+    gypsumLayers: number; // layers of gypsum per side (typically 1–2)
+    framingSize: '2x4' | '2x6';
+}
+
 // Door entry for Windows & Doors section — resolves to door_styles.json SKU
 export interface DoorEntry {
     style: string;      // 'Madison' | 'Cambridge' | 'Continental' | 'Craftsman'
@@ -200,6 +207,7 @@ export interface JobInputs {
     trim: TrimSection;
     hardware: HardwareSection;
     exteriorDeck: ExteriorDeckSection;
+    partyWall: PartyWallSection;
     windowsDoors: { windowCount: number; doors: DoorEntry[] };
     options: { description: string; price: number }[];
 }
@@ -238,6 +246,7 @@ export interface Multipliers {
         lp: Record<string, { pieces_per_100sf: number }>;
         hardie: Record<string, { pieces_per_100sf: number }>;
         vinyl: { default: { pieces_per_100sf: number } };
+        soffit_lf_per_piece?: Record<string, number>;
     };
 }
 
