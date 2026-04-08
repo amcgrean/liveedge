@@ -392,6 +392,12 @@ export function calculateFraming(
                 const qty = Math.ceil(extWallSF / 32);
                 if (qty > 0) items.push({ qty, uom: 'EA', sku: 'zippanel48', description: `Zip System Panel — ${name}`, group: groupLabel, is_dynamic_sku: false });
             }
+
+            // OSB wall sheathing (7/16" 4×8) — only for non-Zip assemblies
+            if (inputs.materials.tyvekType !== 'Zip Panels') {
+                const sheetQty = Math.ceil(extWallSF / 32);
+                if (sheetQty > 0) items.push({ qty: sheetQty, uom: 'EA', sku: 'osb4843', description: `7/16" OSB Wall Sheathing — ${name}`, group: groupLabel, is_dynamic_sku: false });
+            }
         }
     }
 
