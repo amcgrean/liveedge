@@ -73,14 +73,38 @@ export function FloorSectionComp({ sectionNumber, title, data, onChange }: Props
             </SubSection>
 
             {/* Exterior Walls */}
-            <SubSection title="Exterior Walls (LF by height)">
+            <SubSection title="Exterior Walls — 2x4 (LF by height)">
+                <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-3">
+                    {(['8ft','9ft','10ft','12ft','14ft','16ft','20ft'] as const).map(ht => (
+                        <InputGroup key={ht} label={`2x4 @ ${ht}`}>
+                            <input type="number" name={`ext2x4_${ht}`} value={(data as any)[`ext2x4_${ht}`] || ''} onChange={handleChange} className="input-field" min="0" />
+                        </InputGroup>
+                    ))}
+                </div>
+            </SubSection>
+
+            <SubSection title="Exterior Walls — 2x6 (LF by height)">
+                <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-3">
+                    {(['8ft','9ft','10ft','12ft','14ft','16ft','20ft'] as const).map(ht => (
+                        <InputGroup key={ht} label={`2x6 @ ${ht}`}>
+                            <input type="number" name={`ext2x6_${ht}`} value={(data as any)[`ext2x6_${ht}`] || ''} onChange={handleChange} className="input-field" min="0" />
+                        </InputGroup>
+                    ))}
+                </div>
+            </SubSection>
+
+            <SubSection title="LSL Studs (Timberstrand — LF by height)">
                 <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
-                    <InputGroup label="2x4 @ 8ft"><input type="number" name="ext2x4_8ft"  value={data.ext2x4_8ft  || ''} onChange={handleChange} className="input-field" min="0" /></InputGroup>
-                    <InputGroup label="2x4 @ 9ft"><input type="number" name="ext2x4_9ft"  value={data.ext2x4_9ft  || ''} onChange={handleChange} className="input-field" min="0" /></InputGroup>
-                    <InputGroup label="2x4 @ 10ft"><input type="number" name="ext2x4_10ft" value={data.ext2x4_10ft || ''} onChange={handleChange} className="input-field" min="0" /></InputGroup>
-                    <InputGroup label="2x6 @ 8ft"><input type="number" name="ext2x6_8ft"  value={data.ext2x6_8ft  || ''} onChange={handleChange} className="input-field" min="0" /></InputGroup>
-                    <InputGroup label="2x6 @ 9ft"><input type="number" name="ext2x6_9ft"  value={data.ext2x6_9ft  || ''} onChange={handleChange} className="input-field" min="0" /></InputGroup>
-                    <InputGroup label="2x6 @ 10ft"><input type="number" name="ext2x6_10ft" value={data.ext2x6_10ft || ''} onChange={handleChange} className="input-field" min="0" /></InputGroup>
+                    {(['8ft','9ft','10ft'] as const).map(ht => (
+                        <React.Fragment key={ht}>
+                            <InputGroup label={`2x4 LSL @ ${ht}`}>
+                                <input type="number" name={`ext2x4_lsl_${ht}`} value={(data as any)[`ext2x4_lsl_${ht}`] || ''} onChange={handleChange} className="input-field" min="0" />
+                            </InputGroup>
+                            <InputGroup label={`2x6 LSL @ ${ht}`}>
+                                <input type="number" name={`ext2x6_lsl_${ht}`} value={(data as any)[`ext2x6_lsl_${ht}`] || ''} onChange={handleChange} className="input-field" min="0" />
+                            </InputGroup>
+                        </React.Fragment>
+                    ))}
                 </div>
             </SubSection>
 
@@ -89,6 +113,15 @@ export function FloorSectionComp({ sectionNumber, title, data, onChange }: Props
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
                     <InputGroup label="Int Wall LF">
                         <input type="number" name="intWallLF" value={data.intWallLF || ''} onChange={handleChange} className="input-field" min="0" />
+                    </InputGroup>
+                    <InputGroup label="Bearing Wall LF">
+                        <input type="number" name="bearingWallLF" value={(data.bearingWallLF ?? 0) || ''} onChange={handleChange} className="input-field" min="0" />
+                    </InputGroup>
+                    <InputGroup label="Finish Wall LF">
+                        <input type="number" name="finishWallLF" value={(data.finishWallLF ?? 0) || ''} onChange={handleChange} className="input-field" min="0" />
+                    </InputGroup>
+                    <InputGroup label="Rim LF">
+                        <input type="number" name="rimLF" value={(data.rimLF ?? 0) || ''} onChange={handleChange} className="input-field" min="0" />
                     </InputGroup>
                     <InputGroup label="Garage Wall LF">
                         <input type="number" name="garageWallLF" value={data.garageWallLF || ''} onChange={handleChange} className="input-field" min="0" />

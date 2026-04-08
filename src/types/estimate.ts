@@ -21,13 +21,32 @@ export interface HeaderEntry {
 }
 
 export interface WallSection {
+    // Standard framing stud heights
     ext2x4_8ft: number;
     ext2x4_9ft: number;
     ext2x4_10ft: number;
+    ext2x4_12ft: number;
+    ext2x4_14ft: number;
+    ext2x4_16ft: number;
+    ext2x4_20ft: number;
     ext2x6_8ft: number;
     ext2x6_9ft: number;
     ext2x6_10ft: number;
+    ext2x6_12ft: number;
+    ext2x6_14ft: number;
+    ext2x6_16ft: number;
+    ext2x6_20ft: number;
+    // LSL stud variants (Timberstrand)
+    ext2x4_lsl_8ft: number;
+    ext2x4_lsl_9ft: number;
+    ext2x4_lsl_10ft: number;
+    ext2x6_lsl_8ft: number;
+    ext2x6_lsl_9ft: number;
+    ext2x6_lsl_10ft: number;
     intWallLF: number;
+    bearingWallLF: number;
+    finishWallLF: number;
+    rimLF: number;
     beamLF: number;
     stairCount: number;
     headers: HeaderEntry[];

@@ -26,44 +26,59 @@ const COLORS = {
   counts: '#8b5cf6',         // violet
 };
 
+// Generate wall presets for all heights and LSL variants per floor
+type FloorKey = 'basement' | 'firstFloor' | 'secondFloor';
+const FLOOR_DEFS: Array<{
+  key: string; field: FloorKey; category: string;
+  c4: string; c6: string; cInt: string; cOther: string;
+}> = [
+  { key: 'bsmt', field: 'basement',    category: 'Basement', c4: COLORS.basementExt,    c6: '#60a5fa', cInt: COLORS.basementInt,    cOther: COLORS.basementOther },
+  { key: 'ff',   field: 'firstFloor',  category: '1st Floor', c4: COLORS.firstFloorExt, c6: '#e879f9', cInt: COLORS.firstFloorInt,  cOther: COLORS.firstFloorOther },
+  { key: 'sf',   field: 'secondFloor', category: '2nd Floor', c4: COLORS.secondFloorExt, c6: '#4ade80', cInt: COLORS.secondFloorInt, cOther: COLORS.secondFloorOther },
+];
+
+const WALL_HEIGHTS = ['8ft','9ft','10ft','12ft','14ft','16ft','20ft'] as const;
+const LSL_HEIGHTS  = ['8ft','9ft','10ft'] as const;
+
+const wallPresets: MeasurementPreset[] = FLOOR_DEFS.flatMap((f) => [
+  ...WALL_HEIGHTS.map(ht => ({
+    id: `${f.key}-ext-2x4-${ht}`, name: `${f.category} Ext 2x4 ${ht.replace('ft','\'​')}`,
+    category: f.category, color: f.c4, toolType: 'polyline' as const,
+    targetField: `${f.field}.ext2x4_${ht}`, unit: 'LF',
+  })),
+  ...WALL_HEIGHTS.map(ht => ({
+    id: `${f.key}-ext-2x6-${ht}`, name: `${f.category} Ext 2x6 ${ht.replace('ft','\'​')}`,
+    category: f.category, color: f.c6, toolType: 'polyline' as const,
+    targetField: `${f.field}.ext2x6_${ht}`, unit: 'LF',
+  })),
+  ...LSL_HEIGHTS.map(ht => ({
+    id: `${f.key}-lsl-2x4-${ht}`, name: `${f.category} LSL 2x4 ${ht.replace('ft','\'​')}`,
+    category: f.category, color: f.c4, toolType: 'polyline' as const,
+    targetField: `${f.field}.ext2x4_lsl_${ht}`, unit: 'LF',
+  })),
+  ...LSL_HEIGHTS.map(ht => ({
+    id: `${f.key}-lsl-2x6-${ht}`, name: `${f.category} LSL 2x6 ${ht.replace('ft','\'​')}`,
+    category: f.category, color: f.c6, toolType: 'polyline' as const,
+    targetField: `${f.field}.ext2x6_lsl_${ht}`, unit: 'LF',
+  })),
+  { id: `${f.key}-int`,     name: `${f.category} Int Walls`,     category: f.category, color: f.cInt,   toolType: 'polyline', targetField: `${f.field}.intWallLF`,     unit: 'LF' },
+  { id: `${f.key}-bearing`, name: `${f.category} Bearing Walls`, category: f.category, color: f.cOther, toolType: 'polyline', targetField: `${f.field}.bearingWallLF`,  unit: 'LF' },
+  { id: `${f.key}-finish`,  name: `${f.category} Finish Walls`,  category: f.category, color: f.cInt,   toolType: 'polyline', targetField: `${f.field}.finishWallLF`,   unit: 'LF' },
+  { id: `${f.key}-rim`,     name: `${f.category} Rim Board`,     category: f.category, color: '#6366f1', toolType: 'polyline', targetField: `${f.field}.rimLF`,         unit: 'LF' },
+  ...(f.field === 'basement' ? [
+    { id: 'bsmt-beam',   name: 'Basement Beam',   category: 'Basement', color: COLORS.basementOther, toolType: 'polyline' as const, targetField: 'basement.beamLF',    unit: 'LF' },
+    { id: 'bsmt-stoop',  name: 'Basement Stoop',  category: 'Basement', color: COLORS.basementOther, toolType: 'polygon'  as const, targetField: 'basement.stoopSF',   unit: 'SF' },
+    { id: 'bsmt-stairs', name: 'Basement Stairs', category: 'Basement', color: COLORS.basementOther, toolType: 'count'    as const, targetField: 'basement.stairCount', unit: 'EA' },
+  ] : [
+    { id: `${f.key}-garage`, name: `${f.category} Garage Walls`, category: f.category, color: f.cOther, toolType: 'polyline' as const, targetField: `${f.field}.garageWallLF`, unit: 'LF' },
+    { id: `${f.key}-beam`,   name: `${f.category} Beam`,         category: f.category, color: f.cOther, toolType: 'polyline' as const, targetField: `${f.field}.beamLF`,       unit: 'LF' },
+    { id: `${f.key}-deck`,   name: `${f.category} Deck`,         category: f.category, color: f.cOther, toolType: 'polygon'  as const, targetField: `${f.field}.deckSF`,       unit: 'SF' },
+    { id: `${f.key}-stairs`, name: `${f.category} Stairs`,       category: f.category, color: f.cOther, toolType: 'count'    as const, targetField: `${f.field}.stairCount`,   unit: 'EA' },
+  ]),
+]);
+
 export const STANDARD_PRESETS: MeasurementPreset[] = [
-  // ── Basement ──
-  { id: 'bsmt-ext-2x4-8', name: 'Basement Ext 2x4 8\'', category: 'Basement', color: COLORS.basementExt, toolType: 'polyline', targetField: 'basement.ext2x4_8ft', unit: 'LF' },
-  { id: 'bsmt-ext-2x4-9', name: 'Basement Ext 2x4 9\'', category: 'Basement', color: COLORS.basementExt, toolType: 'polyline', targetField: 'basement.ext2x4_9ft', unit: 'LF' },
-  { id: 'bsmt-ext-2x4-10', name: 'Basement Ext 2x4 10\'', category: 'Basement', color: COLORS.basementExt, toolType: 'polyline', targetField: 'basement.ext2x4_10ft', unit: 'LF' },
-  { id: 'bsmt-ext-2x6-8', name: 'Basement Ext 2x6 8\'', category: 'Basement', color: '#60a5fa', toolType: 'polyline', targetField: 'basement.ext2x6_8ft', unit: 'LF' },
-  { id: 'bsmt-ext-2x6-9', name: 'Basement Ext 2x6 9\'', category: 'Basement', color: '#60a5fa', toolType: 'polyline', targetField: 'basement.ext2x6_9ft', unit: 'LF' },
-  { id: 'bsmt-ext-2x6-10', name: 'Basement Ext 2x6 10\'', category: 'Basement', color: '#60a5fa', toolType: 'polyline', targetField: 'basement.ext2x6_10ft', unit: 'LF' },
-  { id: 'bsmt-int', name: 'Basement Int Walls', category: 'Basement', color: COLORS.basementInt, toolType: 'polyline', targetField: 'basement.intWallLF', unit: 'LF' },
-  { id: 'bsmt-beam', name: 'Basement Beam', category: 'Basement', color: COLORS.basementOther, toolType: 'polyline', targetField: 'basement.beamLF', unit: 'LF' },
-  { id: 'bsmt-stoop', name: 'Basement Stoop', category: 'Basement', color: COLORS.basementOther, toolType: 'polygon', targetField: 'basement.stoopSF', unit: 'SF' },
-  { id: 'bsmt-stairs', name: 'Basement Stairs', category: 'Basement', color: COLORS.basementOther, toolType: 'count', targetField: 'basement.stairCount', unit: 'EA' },
-
-  // ── 1st Floor ──
-  { id: 'ff-ext-2x4-8', name: '1st Floor Ext 2x4 8\'', category: '1st Floor', color: COLORS.firstFloorExt, toolType: 'polyline', targetField: 'firstFloor.ext2x4_8ft', unit: 'LF' },
-  { id: 'ff-ext-2x4-9', name: '1st Floor Ext 2x4 9\'', category: '1st Floor', color: COLORS.firstFloorExt, toolType: 'polyline', targetField: 'firstFloor.ext2x4_9ft', unit: 'LF' },
-  { id: 'ff-ext-2x4-10', name: '1st Floor Ext 2x4 10\'', category: '1st Floor', color: COLORS.firstFloorExt, toolType: 'polyline', targetField: 'firstFloor.ext2x4_10ft', unit: 'LF' },
-  { id: 'ff-ext-2x6-8', name: '1st Floor Ext 2x6 8\'', category: '1st Floor', color: '#e879f9', toolType: 'polyline', targetField: 'firstFloor.ext2x6_8ft', unit: 'LF' },
-  { id: 'ff-ext-2x6-9', name: '1st Floor Ext 2x6 9\'', category: '1st Floor', color: '#e879f9', toolType: 'polyline', targetField: 'firstFloor.ext2x6_9ft', unit: 'LF' },
-  { id: 'ff-ext-2x6-10', name: '1st Floor Ext 2x6 10\'', category: '1st Floor', color: '#e879f9', toolType: 'polyline', targetField: 'firstFloor.ext2x6_10ft', unit: 'LF' },
-  { id: 'ff-int', name: '1st Floor Int Walls', category: '1st Floor', color: COLORS.firstFloorInt, toolType: 'polyline', targetField: 'firstFloor.intWallLF', unit: 'LF' },
-  { id: 'ff-garage', name: '1st Floor Garage Walls', category: '1st Floor', color: COLORS.firstFloorOther, toolType: 'polyline', targetField: 'firstFloor.garageWallLF', unit: 'LF' },
-  { id: 'ff-beam', name: '1st Floor Beam', category: '1st Floor', color: COLORS.firstFloorOther, toolType: 'polyline', targetField: 'firstFloor.beamLF', unit: 'LF' },
-  { id: 'ff-deck', name: '1st Floor Deck', category: '1st Floor', color: COLORS.firstFloorOther, toolType: 'polygon', targetField: 'firstFloor.deckSF', unit: 'SF' },
-  { id: 'ff-stairs', name: '1st Floor Stairs', category: '1st Floor', color: COLORS.firstFloorOther, toolType: 'count', targetField: 'firstFloor.stairCount', unit: 'EA' },
-
-  // ── 2nd Floor ──
-  { id: 'sf-ext-2x4-8', name: '2nd Floor Ext 2x4 8\'', category: '2nd Floor', color: COLORS.secondFloorExt, toolType: 'polyline', targetField: 'secondFloor.ext2x4_8ft', unit: 'LF' },
-  { id: 'sf-ext-2x4-9', name: '2nd Floor Ext 2x4 9\'', category: '2nd Floor', color: COLORS.secondFloorExt, toolType: 'polyline', targetField: 'secondFloor.ext2x4_9ft', unit: 'LF' },
-  { id: 'sf-ext-2x4-10', name: '2nd Floor Ext 2x4 10\'', category: '2nd Floor', color: COLORS.secondFloorExt, toolType: 'polyline', targetField: 'secondFloor.ext2x4_10ft', unit: 'LF' },
-  { id: 'sf-ext-2x6-8', name: '2nd Floor Ext 2x6 8\'', category: '2nd Floor', color: '#4ade80', toolType: 'polyline', targetField: 'secondFloor.ext2x6_8ft', unit: 'LF' },
-  { id: 'sf-ext-2x6-9', name: '2nd Floor Ext 2x6 9\'', category: '2nd Floor', color: '#4ade80', toolType: 'polyline', targetField: 'secondFloor.ext2x6_9ft', unit: 'LF' },
-  { id: 'sf-ext-2x6-10', name: '2nd Floor Ext 2x6 10\'', category: '2nd Floor', color: '#4ade80', toolType: 'polyline', targetField: 'secondFloor.ext2x6_10ft', unit: 'LF' },
-  { id: 'sf-int', name: '2nd Floor Int Walls', category: '2nd Floor', color: COLORS.secondFloorInt, toolType: 'polyline', targetField: 'secondFloor.intWallLF', unit: 'LF' },
-  { id: 'sf-garage', name: '2nd Floor Garage Walls', category: '2nd Floor', color: COLORS.secondFloorOther, toolType: 'polyline', targetField: 'secondFloor.garageWallLF', unit: 'LF' },
-  { id: 'sf-beam', name: '2nd Floor Beam', category: '2nd Floor', color: COLORS.secondFloorOther, toolType: 'polyline', targetField: 'secondFloor.beamLF', unit: 'LF' },
-  { id: 'sf-deck', name: '2nd Floor Deck', category: '2nd Floor', color: COLORS.secondFloorOther, toolType: 'polygon', targetField: 'secondFloor.deckSF', unit: 'SF' },
-  { id: 'sf-stairs', name: '2nd Floor Stairs', category: '2nd Floor', color: COLORS.secondFloorOther, toolType: 'count', targetField: 'secondFloor.stairCount', unit: 'EA' },
+  ...wallPresets,
 
   // ── Roof ──
   { id: 'roof-sheeting', name: 'Roof Sheeting', category: 'Roof', color: COLORS.roof, toolType: 'polygon', targetField: 'roof.sheetingSF', unit: 'SF' },

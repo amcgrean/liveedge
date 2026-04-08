@@ -165,53 +165,63 @@ export function calculateFraming(
         : multipliers.framing.stud_multiplier_main.value;
 
     const garageWallLF = (section as Partial<{ garageWallLF: number }>).garageWallLF || 0;
-    const extByHeight = {
-        '8ft': section.ext2x4_8ft + section.ext2x6_8ft + garageWallLF,
-        '9ft': section.ext2x4_9ft + section.ext2x6_9ft,
-        '10ft': section.ext2x4_10ft + section.ext2x6_10ft
+
+    // All standard + extended heights (garage LF added to 8ft bucket)
+    const extByHeight: Record<string, number> = {
+        '8ft':  section.ext2x4_8ft  + section.ext2x6_8ft  + garageWallLF,
+        '9ft':  section.ext2x4_9ft  + section.ext2x6_9ft,
+        '10ft': section.ext2x4_10ft + section.ext2x6_10ft,
+        '12ft': (section.ext2x4_12ft ?? 0) + (section.ext2x6_12ft ?? 0),
+        '14ft': (section.ext2x4_14ft ?? 0) + (section.ext2x6_14ft ?? 0),
+        '16ft': (section.ext2x4_16ft ?? 0) + (section.ext2x6_16ft ?? 0),
+        '20ft': (section.ext2x4_20ft ?? 0) + (section.ext2x6_20ft ?? 0),
     };
-    const extLF = extByHeight['8ft'] + extByHeight['9ft'] + extByHeight['10ft'];
-    const totalLF = extLF + section.intWallLF;
+
+    // LSL stud totals (lumped by height; separate SKU prefix)
+    const lslByHeight: Record<string, number> = {
+        '8ft':  (section.ext2x4_lsl_8ft  ?? 0) + (section.ext2x6_lsl_8ft  ?? 0),
+        '9ft':  (section.ext2x4_lsl_9ft  ?? 0) + (section.ext2x6_lsl_9ft  ?? 0),
+        '10ft': (section.ext2x4_lsl_10ft ?? 0) + (section.ext2x6_lsl_10ft ?? 0),
+    };
+
+    const extLF  = Object.values(extByHeight).reduce((s, v) => s + v, 0)
+                 + Object.values(lslByHeight).reduce((s, v) => s + v, 0);
+    const totalLF = extLF + section.intWallLF + (section.bearingWallLF ?? 0) + (section.finishWallLF ?? 0);
 
     if (totalLF <= 0) return items;
 
-    const studLengthToCode: Record<'8ft' | '9ft' | '10ft', string> = {
-        '8ft': '08',
-        '9ft': '09',
-        '10ft': '10'
+    const heightToCode: Record<string, string> = {
+        '8ft': '08', '9ft': '09', '10ft': '10', '12ft': '12', '14ft': '14', '16ft': '16', '20ft': '20',
     };
 
-    const defaultStudSkus = {
-        '2x4': {
-            '8ft': '0204studfir08',
-            '9ft': '0204studfir09',
-            '10ft': '0204studfir10'
-        },
-        '2x6': {
-            '8ft': '0206studfir08',
-            '9ft': '0206studfir09',
-            '10ft': '0206studfir10'
-        }
-    } as const;
+    const defaultStudSkus: Record<string, Record<string, string>> = {
+        '2x4': { '8ft': '0204studfir08', '9ft': '0204studfir09', '10ft': '0204studfir10', '12ft': '0204studfir12', '14ft': '0204studfir14', '16ft': '0204studfir16', '20ft': '0204studfir20' },
+        '2x6': { '8ft': '0206studfir08', '9ft': '0206studfir09', '10ft': '0206studfir10', '12ft': '0206studfir12', '14ft': '0206studfir14', '16ft': '0206studfir16', '20ft': '0206studfir20' },
+    };
+
+    const lslStudSkus: Record<string, string> = {
+        '8ft': `0${wallSize.replace('x','0')}lsl08`,
+        '9ft': `0${wallSize.replace('x','0')}lsl09`,
+        '10ft': `0${wallSize.replace('x','0')}lsl10`,
+    };
 
     const branchData = branches?.find((b: any) => b.branch_id === inputs.setup.branch);
     const branchStudSku8ft = branchData?.stud_sku;
 
-    // Studs (by wall height to match input sheet)
-    (Object.keys(extByHeight) as Array<keyof typeof extByHeight>).forEach((height) => {
-        const wallLF = extByHeight[height];
+    // ── Standard studs (by height) ────────────────────────────────────────────
+    Object.entries(extByHeight).forEach(([height, wallLF]) => {
         if (wallLF <= 0) return;
 
         const studQty = Math.ceil(wallLF * studMultiplier * multipliers.framing.twenty_percent_waste.value);
         if (studQty <= 0) return;
 
-        let studSku = defaultStudSkus[wallSize][height];
+        let studSku = (defaultStudSkus[wallSize] ?? {})[height] ?? `0${wallSize.replace('x','0')}studfir${heightToCode[height] ?? '08'}`;
         if (height === '8ft' && branchStudSku8ft) {
             studSku = branchStudSku8ft;
         } else if (height !== '8ft' && branchStudSku8ft?.includes('studfir08')) {
-            studSku = branchStudSku8ft.replace('08', studLengthToCode[height]);
+            studSku = branchStudSku8ft.replace('08', heightToCode[height] ?? height.replace('ft',''));
         } else if (height !== '8ft' && branchStudSku8ft?.includes('studprem08')) {
-            studSku = branchStudSku8ft.replace('08', studLengthToCode[height]);
+            studSku = branchStudSku8ft.replace('08', heightToCode[height] ?? height.replace('ft',''));
         }
 
         items.push({
@@ -219,6 +229,22 @@ export function calculateFraming(
             uom: 'EA',
             sku: studSku,
             description: `${wallSize} ${height} Studs - ${name}`,
+            group: name,
+            is_dynamic_sku: false
+        });
+    });
+
+    // ── LSL studs (by height) ────────────────────────────────────────────────
+    Object.entries(lslByHeight).forEach(([height, wallLF]) => {
+        if (wallLF <= 0) return;
+        const studQty = Math.ceil(wallLF * studMultiplier * multipliers.framing.twenty_percent_waste.value);
+        if (studQty <= 0) return;
+        const sku = lslStudSkus[height] ?? `0${wallSize.replace('x','0')}lsl08`;
+        items.push({
+            qty: studQty,
+            uom: 'EA',
+            sku,
+            description: `${wallSize} LSL ${height} Studs - ${name}`,
             group: name,
             is_dynamic_sku: false
         });
@@ -255,20 +281,20 @@ export function calculateFraming(
         if (qty > 0) items.push({ qty, uom: 'EA', sku: 'tmbrstnd116', description: `Triple Plate — ${name}`, group: groupLabel, is_dynamic_sku: false });
     }
 
-    // ── Rim board (floor sections only) ──────────────────────────────────────
+    // ── Rim board (floor sections only — use rimLF if present, else derive) ──
     if (!isBasement) {
-        const perimLF = section.ext2x4_8ft + section.ext2x4_9ft + section.ext2x4_10ft +
-                        section.ext2x6_8ft + section.ext2x6_9ft + section.ext2x6_10ft;
-        if (perimLF > 0) {
-            const qty = Math.ceil(perimLF * multipliers.framing.rim_multiplier.value);
+        const rimLF = (section.rimLF ?? 0) > 0
+            ? section.rimLF
+            : Object.values(extByHeight).reduce((s, v) => s + v, 0);
+        if (rimLF > 0) {
+            const qty = Math.ceil(rimLF * multipliers.framing.rim_multiplier.value);
             if (qty > 0) items.push({ qty, uom: 'EA', sku: 'rimboard', description: `Rim Board — ${name}`, group: groupLabel, is_dynamic_sku: false });
         }
     }
 
     // ── Sill seal (basement exterior perimeter) ───────────────────────────────
     if (isBasement) {
-        const extPerimLF = section.ext2x4_8ft + section.ext2x4_9ft + section.ext2x4_10ft +
-                           section.ext2x6_8ft + section.ext2x6_9ft + section.ext2x6_10ft;
+        const extPerimLF = Object.values(extByHeight).reduce((s, v) => s + v, 0);
         if (extPerimLF > 0) {
             const lfPerRoll = multipliers.moisture_barrier?.sill_seal_roll_lf?.value ?? 50;
             const qty = Math.ceil(extPerimLF / lfPerRoll);
@@ -277,11 +303,10 @@ export function calculateFraming(
     }
 
     // ── Tyvek / house wrap (non-basement) ────────────────────────────────────
+    // Sum all heights: ft * LF gives SF per height
+    const HEIGHT_FT: Record<string, number> = { '8ft': 8, '9ft': 9, '10ft': 10, '12ft': 12, '14ft': 14, '16ft': 16, '20ft': 20 };
     if (!isBasement && inputs.materials.tyvekType !== 'N/A' && inputs.materials.tyvekType !== 'Tape Only') {
-        const extWallSF =
-            (section.ext2x4_8ft + section.ext2x6_8ft) * 8 +
-            (section.ext2x4_9ft + section.ext2x6_9ft) * 9 +
-            (section.ext2x4_10ft + section.ext2x6_10ft) * 10;
+        const extWallSF = Object.entries(extByHeight).reduce((sum, [ht, lf]) => sum + lf * (HEIGHT_FT[ht] ?? 8), 0);
 
         if (extWallSF > 0) {
             const custOverride = customerOverrides?.tyvek_overrides?.find(
