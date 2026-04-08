@@ -80,6 +80,24 @@ export function calculateTrim(
         });
     }
 
+    // Chair rail moulding
+    if ((section.chairRailLF ?? 0) > 0) {
+        const stickCount = Math.ceil((section.chairRailLF * 1.10) / 16);
+        items.push({ qty: stickCount, uom: 'EA', sku: 'CHAIR-RAIL', description: `Chair Rail Moulding × 16ft`, group: 'Trim', is_dynamic_sku: true, tally: `${stickCount}/16ft` });
+    }
+
+    // Shoe moulding (alongside baseboard)
+    if ((section.shoeLF ?? 0) > 0) {
+        const stickCount = Math.ceil((section.shoeLF * 1.10) / 16);
+        items.push({ qty: stickCount, uom: 'EA', sku: 'SHOE-MOULD', description: `Shoe Moulding × 16ft`, group: 'Trim', is_dynamic_sku: true, tally: `${stickCount}/16ft` });
+    }
+
+    // Basement base trim
+    if (section.baseType && (section.baseLFBasement ?? 0) > 0) {
+        const stickCount = Math.ceil((section.baseLFBasement * 1.10) / 8);
+        items.push({ qty: stickCount, uom: 'EA', sku: section.baseType, description: `Base Trim (Basement): ${section.baseType} × 8ft`, group: 'Trim', is_dynamic_sku: false, tally: `${stickCount}/8ft` });
+    }
+
     // Handrail
     if (section.handrailType && section.handrailLF > 0) {
         const hrEntry = trimSwitches?.handrail_types?.find((t: any) => t.switch_key === section.handrailType);

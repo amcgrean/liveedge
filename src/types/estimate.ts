@@ -151,6 +151,9 @@ export interface TrimSection {
     handrailBracketCount: number;   // post-to-wall bracket qty
     crownType: string;
     crownLF: number;
+    chairRailLF: number;     // chair rail moulding LF (dynamic SKU — style varies)
+    shoeLF: number;          // shoe moulding LF (usually same as base type)
+    baseLFBasement: number;  // base trim LF for basement (separate run)
     // Stair accessories
     balusterCount: number;          // individual spindles (wood or metal)
     newelCount: number;             // newel posts (landing/floor-mount)

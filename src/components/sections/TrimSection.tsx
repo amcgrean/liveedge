@@ -107,6 +107,15 @@ export function TrimSectionComp({ data, onChange }: Props) {
                     <InputGroup label="Crown LF">
                         <input type="number" name="crownLF" value={(data.crownLF ?? 0) || ''} onChange={handleChange} className="input-field" min="0" />
                     </InputGroup>
+                    <InputGroup label="Chair Rail LF" hint="Chair rail moulding">
+                        <input type="number" name="chairRailLF" value={(data.chairRailLF ?? 0) || ''} onChange={handleChange} className="input-field" min="0" />
+                    </InputGroup>
+                    <InputGroup label="Shoe Moulding LF">
+                        <input type="number" name="shoeLF" value={(data.shoeLF ?? 0) || ''} onChange={handleChange} className="input-field" min="0" />
+                    </InputGroup>
+                    <InputGroup label="Base LF (Basement)" hint="Separate basement base run">
+                        <input type="number" name="baseLFBasement" value={(data.baseLFBasement ?? 0) || ''} onChange={handleChange} className="input-field" min="0" />
+                    </InputGroup>
                     <InputGroup label="Handrail Type">
                         <select name="handrailType" value={data.handrailType} onChange={handleChange} className="input-field">
                             <option value="">Select type...</option>
