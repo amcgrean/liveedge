@@ -66,26 +66,41 @@ export async function GET(req: NextRequest) {
     };
 
     const branchFilter = effectiveBranch
-      ? sql`AND sh.system_id = ${effectiveBranch}`
+      ? sql`AND soh.system_id = ${effectiveBranch}`
       : sql``;
 
-    // Main delivery query — no AR subquery so this never fails due to AR data issues
+    // Query by expect_date so open/staged orders show up even before ship_date is set.
+    // LEFT JOIN shipments to pull route/driver/loaded info when available.
+    // Use the most recent shipment per SO (MAX shipment_num) to avoid duplicate rows.
     const rows = await sql<RawRow[]>`
       SELECT
-        sh.so_id, sh.shipment_num, sh.system_id,
-        sh.ship_date::text, sh.status_flag, sh.route_id_char, sh.driver,
-        sh.ship_via, sh.loaded_date::text, sh.loaded_time,
-        soh.so_status, soh.reference, soh.sale_type,
+        soh.so_id::text, soh.system_id,
+        COALESCE(sh.shipment_num, 0)        AS shipment_num,
+        sh.ship_date::text,
+        COALESCE(sh.status_flag, soh.so_status) AS status_flag,
+        soh.so_status,
+        sh.route_id_char, sh.driver,
+        COALESCE(sh.ship_via, soh.ship_via) AS ship_via,
+        sh.loaded_date::text, sh.loaded_time,
+        soh.reference, soh.sale_type,
         soh.cust_name, soh.cust_code,
         soh.shipto_address_1 AS address_1, soh.shipto_city AS city,
         soh.expect_date::text
-      FROM agility_shipments sh
-      JOIN agility_so_header soh
-        ON soh.system_id = sh.system_id AND soh.so_id = sh.so_id AND soh.is_deleted = false
-      WHERE sh.is_deleted = false
+      FROM agility_so_header soh
+      LEFT JOIN LATERAL (
+        SELECT *
+        FROM agility_shipments s
+        WHERE s.system_id = soh.system_id
+          AND s.so_id = soh.so_id
+          AND s.is_deleted = false
+        ORDER BY s.shipment_num DESC
+        LIMIT 1
+      ) sh ON true
+      WHERE soh.is_deleted = false
         ${branchFilter}
-        AND sh.ship_date::date = ${deliveryDate}::date
-      ORDER BY sh.system_id, sh.route_id_char NULLS LAST, sh.so_id
+        AND soh.so_status NOT IN ('C', 'X')
+        AND soh.expect_date::date = ${deliveryDate}::date
+      ORDER BY soh.system_id, sh.route_id_char NULLS LAST, soh.so_id
     `;
 
     // AR balance — separate query so delivery board still loads if AR data is unavailable
