@@ -140,12 +140,19 @@ export const STANDARD_PRESETS: MeasurementPreset[] = [
   { id: 'party-wall-lf', name: 'Party Wall', category: 'Party Wall', color: '#f43f5e', toolType: 'polyline', targetField: 'partyWall.lf', unit: 'LF' },
 
   // ── Beams (per floor) ──
-  { id: 'bsmt-beam-2x10',  name: 'Basement Beam 2×10', category: 'Basement',  color: COLORS.basementOther,  toolType: 'polyline', targetField: 'basement.beam2x10LF',   unit: 'LF' },
-  { id: 'bsmt-beam-2x12',  name: 'Basement Beam 2×12', category: 'Basement',  color: COLORS.basementOther,  toolType: 'polyline', targetField: 'basement.beam2x12LF',   unit: 'LF' },
-  { id: 'ff-beam-2x10',    name: '1st Fl Beam 2×10',   category: '1st Floor', color: COLORS.firstFloorOther, toolType: 'polyline', targetField: 'firstFloor.beam2x10LF',  unit: 'LF' },
-  { id: 'ff-beam-2x12',    name: '1st Fl Beam 2×12',   category: '1st Floor', color: COLORS.firstFloorOther, toolType: 'polyline', targetField: 'firstFloor.beam2x12LF',  unit: 'LF' },
+  { id: 'bsmt-beam-2x10',  name: 'Basement Beam 2×10', category: 'Basement',  color: COLORS.basementOther,   toolType: 'polyline', targetField: 'basement.beam2x10LF',    unit: 'LF' },
+  { id: 'bsmt-beam-2x12',  name: 'Basement Beam 2×12', category: 'Basement',  color: COLORS.basementOther,   toolType: 'polyline', targetField: 'basement.beam2x12LF',    unit: 'LF' },
+  { id: 'bsmt-beam-lvl',   name: 'Basement LVL Beam',  category: 'Basement',  color: COLORS.basementOther,   toolType: 'polyline', targetField: 'basement.beamLVLLF',     unit: 'LF' },
+  { id: 'ff-beam-2x10',    name: '1st Fl Beam 2×10',   category: '1st Floor', color: COLORS.firstFloorOther, toolType: 'polyline', targetField: 'firstFloor.beam2x10LF',   unit: 'LF' },
+  { id: 'ff-beam-2x12',    name: '1st Fl Beam 2×12',   category: '1st Floor', color: COLORS.firstFloorOther, toolType: 'polyline', targetField: 'firstFloor.beam2x12LF',   unit: 'LF' },
+  { id: 'ff-beam-lvl',     name: '1st Fl LVL Beam',    category: '1st Floor', color: COLORS.firstFloorOther, toolType: 'polyline', targetField: 'firstFloor.beamLVLLF',    unit: 'LF' },
   { id: 'sf-beam-2x10',    name: '2nd Fl Beam 2×10',   category: '2nd Floor', color: COLORS.secondFloorOther, toolType: 'polyline', targetField: 'secondFloor.beam2x10LF', unit: 'LF' },
   { id: 'sf-beam-2x12',    name: '2nd Fl Beam 2×12',   category: '2nd Floor', color: COLORS.secondFloorOther, toolType: 'polyline', targetField: 'secondFloor.beam2x12LF', unit: 'LF' },
+  { id: 'sf-beam-lvl',     name: '2nd Fl LVL Beam',    category: '2nd Floor', color: COLORS.secondFloorOther, toolType: 'polyline', targetField: 'secondFloor.beamLVLLF',  unit: 'LF' },
+
+  // ── Deck extras ──
+  { id: 'deck-glulam',    name: 'Deck Glulam Beam',   category: 'Ext. Deck', color: COLORS.deck, toolType: 'polyline', targetField: 'exteriorDeck.glulamBeamLF',      unit: 'LF' },
+  { id: 'deck-hurricane', name: 'Hurricane Ties',     category: 'Ext. Deck', color: COLORS.deck, toolType: 'count',    targetField: 'exteriorDeck.hurricaneTieCount',  unit: 'EA' },
 
   // ── Pocket Frames (per floor) ──
   { id: 'count-pocket-bsmt', name: 'Basement Pocket Frames', category: 'Basement',  color: COLORS.basementOther,   toolType: 'count', targetField: 'basement.pocketFrameCount',    unit: 'EA' },
