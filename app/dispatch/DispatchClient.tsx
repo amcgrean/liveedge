@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { TopNav } from '../../src/components/nav/TopNav';
 import type { DeliveryStop } from '../api/dispatch/deliveries/route';
 import { usePageTracking } from '@/hooks/usePageTracking';
@@ -383,9 +383,8 @@ export default function DispatchClient({ isAdmin, userBranch, userName, userRole
                       const stopKey = `${d.system_id}|${d.so_id}|${d.shipment_num}`;
                       const isExpanded = expandedStop === stopKey;
                       return (
-                        <>
+                        <React.Fragment key={stopKey}>
                           <tr
-                            key={stopKey}
                             onClick={() => setExpandedStop(isExpanded ? null : stopKey)}
                             className="border-b border-gray-800 hover:bg-gray-800/40 transition-colors cursor-pointer"
                           >
@@ -422,13 +421,13 @@ export default function DispatchClient({ isAdmin, userBranch, userName, userRole
                             </td>
                           </tr>
                           {isExpanded && (
-                            <tr key={`${stopKey}-detail`} className="border-b border-gray-800 bg-gray-900/50">
+                            <tr className="border-b border-gray-800 bg-gray-900/50">
                               <td colSpan={isAdmin ? 9 : 8} className="p-0">
                                 <StopTimeline soNumber={d.so_id} />
                               </td>
                             </tr>
                           )}
-                        </>
+                        </React.Fragment>
                       );
                     })}
                   </tbody>
