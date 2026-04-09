@@ -72,8 +72,8 @@ export interface FloorSection extends WallSection {
     deckSF: number;
     deckType: 'Edge T&G' | 'Gold Edge' | 'Advantech' | 'Diamond';
     tjiSize: string;
-    tjiCount: number;       // user-entered count of I-joists (0 = use conventional joist)
-    joistSize: string;      // conventional joist size e.g. '2x10' — used when tjiCount=0
+    tjiLF: number;          // total linear feet of TJI I-joists (0 = use conventional joist)
+    joistSize: string;      // conventional joist size e.g. '2x10' — used when tjiLF=0
     joistCount: number;     // user-entered count of conventional joists
     facemountQty: number;   // IUS/LUS facemount hangers
     gypsumSF: number;       // gypsum ceiling SF for this floor level

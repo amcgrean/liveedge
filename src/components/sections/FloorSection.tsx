@@ -52,8 +52,8 @@ export function FloorSectionComp({ sectionNumber, title, data, onChange }: Props
                             {TJI_SIZES.map(s => <option key={s} value={s}>{s}"</option>)}
                         </select>
                     </InputGroup>
-                    <InputGroup label="TJI Count" hint="0 = use conventional joist below">
-                        <input type="number" name="tjiCount" value={data.tjiCount || ''} onChange={handleChange} className="input-field" min="0" placeholder="Qty" />
+                    <InputGroup label="TJI LF" hint="Total linear feet of I-joists (0 = use conventional joist)">
+                        <input type="number" name="tjiLF" value={(data.tjiLF ?? 0) || ''} onChange={handleChange} className="input-field" min="0" placeholder="Lin ft" />
                     </InputGroup>
                     <InputGroup label="Conv. Joist Size" hint="Used when TJI count = 0">
                         <select name="joistSize" value={data.joistSize ?? '2x10'} onChange={handleChange} className="input-field">

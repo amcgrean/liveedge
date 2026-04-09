@@ -126,16 +126,18 @@ function stoopItems(bsmt: BasementSection, engineeredLumber: any): LineItem[] {
 }
 
 // ── TJI / I-Joist helper ─────────────────────────────────────────────────────
-function tjiItems(tjiCount: number, tjiSize: string, group: string): LineItem[] {
-    if (tjiCount <= 0) return [];
+// tjiLF = total linear feet; each TJI stick is up to 40ft → ceil(LF/40) pieces
+function tjiItems(tjiLF: number, tjiSize: string, group: string): LineItem[] {
+    if (tjiLF <= 0) return [];
     const safeName = tjiSize.replace(/[^a-z0-9]/gi, '');
     return [{
-        qty: tjiCount,
+        qty: Math.ceil(tjiLF / 40),
         uom: 'EA',
         sku: `TJI-${safeName}`,
         description: `${tjiSize} TJI / I-Joist`,
         group,
         is_dynamic_sku: false,
+        tally: `${Math.ceil(tjiLF / 40)}/40ft`,
     }];
 }
 
@@ -434,8 +436,8 @@ export function calculateFraming(
     if (!isBasement) {
         const floorSection = section as FloorSection;
         const joistGroup = groupLabel.replace('Walls', 'Framing');
-        if ((floorSection.tjiCount ?? 0) > 0) {
-            items.push(...tjiItems(floorSection.tjiCount, floorSection.tjiSize ?? '', joistGroup));
+        if ((floorSection.tjiLF ?? 0) > 0) {
+            items.push(...tjiItems(floorSection.tjiLF, floorSection.tjiSize ?? '', joistGroup));
         } else if ((floorSection.joistCount ?? 0) > 0) {
             items.push(...conventionalJoistItems(floorSection.joistCount, floorSection.joistSize ?? '', joistGroup));
         }
