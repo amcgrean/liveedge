@@ -140,7 +140,7 @@ export default function KioskPickersClient({ branch }: { branch: string }) {
                   <button
                     key={p.id}
                     onClick={() => selectPicker(p)}
-                    className="aspect-square bg-gray-800 hover:bg-gray-700 border border-gray-600 rounded-xl text-base font-semibold text-white transition active:scale-95 flex items-center justify-center text-center px-2"
+                    className="h-16 bg-gray-800 hover:bg-gray-700 border border-gray-600 rounded-xl text-base font-semibold text-white transition active:scale-95 flex items-center justify-center text-center px-2"
                   >
                     {p.name}
                   </button>
