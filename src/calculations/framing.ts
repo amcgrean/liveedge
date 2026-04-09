@@ -325,15 +325,11 @@ export function calculateFraming(
         if (qty > 0) items.push({ qty, uom: 'EA', sku: 'tmbrstnd116', description: `Triple Plate — ${name}`, group: groupLabel, is_dynamic_sku: false });
     }
 
-    // ── Rim board (floor sections only — use rimLF if present, else derive) ──
-    if (!isBasement) {
-        const rimLF = (section.rimLF ?? 0) > 0
-            ? section.rimLF
-            : Object.values(extByHeight).reduce((s, v) => s + v, 0);
-        if (rimLF > 0) {
-            const qty = Math.ceil(rimLF * multipliers.framing.rim_multiplier.value);
-            if (qty > 0) items.push({ qty, uom: 'EA', sku: 'rimboard', description: `Rim Board — ${name}`, group: groupLabel, is_dynamic_sku: false });
-        }
+    // ── Rim board — only when rimLF is explicitly set (all sections) ──────────
+    // SKU is dynamic because rim board depth must match joist/floor depth (e.g. 1¼"×9½" LVL rim)
+    if ((section.rimLF ?? 0) > 0) {
+        const qty = Math.ceil((section.rimLF ?? 0) / 16);
+        if (qty > 0) items.push({ qty, uom: 'EA', sku: 'RIM-BOARD', description: `1¼" LVL Rim Board 16ft — ${name}`, group: groupLabel, is_dynamic_sku: true });
     }
 
     // ── Beams by size (16ft pieces each) ─────────────────────────────────────
