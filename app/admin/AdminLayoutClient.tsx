@@ -8,6 +8,7 @@ import { TopNav } from '../../src/components/nav/TopNav';
 import {
   LayoutDashboard,
   Users,
+  UserCog,
   Building2,
   Package,
   Calculator,
@@ -24,6 +25,7 @@ const NAV_ITEMS = [
   { href: '/admin/products', label: 'Products', icon: Package, exact: false },
   { href: '/admin/formulas', label: 'Formulas', icon: Calculator, exact: false },
   { href: '/admin/users', label: 'Users', icon: Users, exact: false },
+  { href: '/admin/app-users', label: 'Ops Users (OTP)', icon: UserCog, exact: false },
   { href: '/admin/bid-fields', label: 'Bid Fields', icon: FormInput, exact: false },
   { href: '/admin/notifications', label: 'Notifications', icon: Bell, exact: false },
   { href: '/admin/audit', label: 'Audit Log', icon: FileText, exact: false },

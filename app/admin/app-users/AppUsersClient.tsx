@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useEffect, useState, useCallback } from 'react';
-import { Plus, RefreshCw, Pencil, Trash2, X, Check, Shield, Truck, ShoppingCart,
+import { Plus, RefreshCw, Pencil, Trash2, X, Check, Shield, ShoppingCart,
          Package, AlertCircle, UserCheck, UserX, Info } from 'lucide-react';
 import Link from 'next/link';
 
@@ -163,8 +163,7 @@ export default function AppUsersClient() {
   });
 
   return (
-    <div className="min-h-screen bg-gray-950 text-white p-6">
-      <div className="max-w-5xl mx-auto space-y-5">
+    <div className="max-w-5xl space-y-5">
 
         {/* Context banner */}
         <div className="flex items-start gap-2.5 p-3.5 bg-amber-500/5 border border-amber-500/20 rounded-xl text-sm text-gray-400">
@@ -295,8 +294,6 @@ export default function AppUsersClient() {
             <div className="px-4 py-8 text-center text-sm text-gray-500">No users found.</div>
           )}
         </div>
-
-      </div>
 
       {/* Create/Edit Modal */}
       {showForm && (
