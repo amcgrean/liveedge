@@ -7,8 +7,8 @@ import type { DeliveryStop } from '../api/dispatch/deliveries/route';
 import type { DispatchKpis } from '../api/dispatch/kpis/route';
 import type { OrderLine } from '../api/dispatch/orders/[so_number]/lines/route';
 import {
-  X, ChevronDown, ChevronRight, ChevronUp, Truck, AlertCircle, Clock,
-  Package, MapPin, User, Plus, Trash2, RefreshCw, Search,
+  X, ChevronDown, ChevronRight, ChevronUp, Truck, AlertCircle,
+  MapPin, User, Plus, Trash2, RefreshCw, Search,
 } from 'lucide-react';
 
 // ── Types ──────────────────────────────────────────────────────────────────────
@@ -700,9 +700,9 @@ export default function DispatchClient({ isAdmin, userBranch, userName, userRole
     : stops;
 
   return (
-    <>
+    <div className="h-screen flex flex-col bg-gray-950 text-white overflow-hidden">
       <TopNav userName={userName} userRole={userRole} />
-      <div className="h-screen flex flex-col bg-gray-950 text-white overflow-hidden">
+      <div className="flex-1 flex flex-col overflow-hidden">
 
         {/* ── Command Bar ── */}
         <div className="shrink-0 px-4 py-3 border-b border-gray-800 bg-gray-900/80 backdrop-blur">
@@ -1037,6 +1037,6 @@ export default function DispatchClient({ isAdmin, userBranch, userName, userRole
           )}
         </div>
       </div>
-    </>
+    </div>
   );
 }
