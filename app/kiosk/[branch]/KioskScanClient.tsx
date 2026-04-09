@@ -15,6 +15,7 @@ interface ScanResult {
   pick_id?: number;
   barcode?: string;
   pick_type_name?: string;
+  cust_name?: string | null;
 }
 
 interface Props {
@@ -62,8 +63,9 @@ export default function KioskScanClient({ branch, picker, pickTypeId, pickTypeNa
         setLastResult(errResult);
         setHistory((h) => [errResult, ...h.slice(0, 19)]);
       } else {
-        setLastResult(data);
-        setHistory((h) => [data, ...h.slice(0, 19)]);
+        const result: ScanResult = { ...data, barcode: raw };
+        setLastResult(result);
+        setHistory((h) => [result, ...h.slice(0, 19)]);
       }
     } catch {
       const errResult: ScanResult = { action: 'completed', message: 'Network error', barcode: raw };
@@ -128,8 +130,11 @@ export default function KioskScanClient({ branch, picker, pickTypeId, pickTypeNa
         {lastResult && (
           <div className={`border rounded-xl p-4 space-y-1 ${resultColor(lastResult.action)}`}>
             <div className="font-semibold text-base">{lastResult.message}</div>
+            {lastResult.cust_name && (
+              <div className="text-sm opacity-90 font-medium">{lastResult.cust_name}</div>
+            )}
             {lastResult.barcode && (
-              <div className="font-mono text-sm opacity-80">{lastResult.barcode}</div>
+              <div className="font-mono text-sm opacity-70">SO {lastResult.barcode}</div>
             )}
           </div>
         )}

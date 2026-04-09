@@ -52,6 +52,12 @@ export default function KioskPickersClient({ branch }: { branch: string }) {
 
   useEffect(() => { loadPickers(); }, [loadPickers]);
 
+  // Auto-refresh every 120s so an idle kiosk doesn't go stale
+  useEffect(() => {
+    const timer = setInterval(() => { loadPickers(); }, 120_000);
+    return () => clearInterval(timer);
+  }, [loadPickers, branch]);
+
   const selectPicker = async (picker: Picker) => {
     setSelectedPicker(picker);
     // Load incomplete picks
