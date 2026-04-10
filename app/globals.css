@@ -5,7 +5,7 @@
 @layer base {
   body {
     @apply text-slate-100 antialiased;
-    background: radial-gradient(circle at top, #1e293b 0%, #0f172a 45%, #020617 100%);
+    background: radial-gradient(circle at top, #142b1c 0%, #0c1a12 45%, #040f07 100%);
     min-height: 100vh;
   }
 }
