@@ -7,6 +7,7 @@ import { signOut, useSession } from 'next-auth/react';
 import {
   Hammer, LogOut, ChevronDown, Menu, X, Settings,
   Truck, ShoppingCart, FileText, Wrench, PackageCheck, MapPin, Search,
+  Boxes, Inbox,
 } from 'lucide-react';
 import { cn } from '../../lib/utils';
 
@@ -185,112 +186,143 @@ interface Domain {
   href?: string;
 }
 
-const DOMAINS: Domain[] = [
-  {
-    id: 'dispatch',
-    label: 'Dispatch',
-    icon: <Truck className="w-4 h-4" />,
-    dropdown: true,
-    isActive: (p) =>
-      ['/warehouse', '/work-orders', '/dispatch', '/delivery', '/supervisor', '/tv', '/kiosk'].some(
-        (prefix) => p === prefix || p.startsWith(prefix + '/')
-      ),
-    links: [
-      { href: '/warehouse',              label: 'Picks Board' },
-      { href: '/warehouse/open-picks',   label: 'Open Picks' },
-      { href: '/warehouse/picker-stats', label: 'Picker Stats' },
-      { href: '/work-orders',            label: 'Work Orders' },
-      { href: '/supervisor',             label: 'Supervisor',    requireAnyRole: ['supervisor', 'ops', 'warehouse'] },
-      { href: '/dispatch',               label: 'Dispatch Board' },
-      { href: '/dispatch/drivers',       label: 'Driver Roster', requireAnyRole: ['supervisor', 'ops', 'dispatch'] },
-      { href: '/delivery',               label: 'Delivery Tracker' },
-      { href: '/delivery/map',           label: 'Fleet Map' },
-      { href: '/tv/20GR',                label: 'TV Board',      requireAnyRole: ['supervisor', 'ops', 'warehouse'] },
-    ],
-  },
-  {
-    id: 'sales',
-    label: 'Sales',
-    icon: <ShoppingCart className="w-4 h-4" />,
-    dropdown: true,
-    isActive: (p) => p.startsWith('/sales') || p.startsWith('/credits'),
-    links: [
-      { href: '/sales',              label: 'Sales Hub' },
-      { href: '/sales/customers',    label: 'Customers' },
-      { href: '/sales/transactions', label: 'Transactions' },
-      { href: '/sales/history',      label: 'Purchase History' },
-      { href: '/sales/products',     label: 'Products & Stock' },
-      { href: '/sales/reports',      label: 'Reports' },
-      { href: '/sales/tracker',      label: 'Delivery Tracker', requireAnyRole: ['sales', 'ops', 'supervisor'] },
-      { href: '/sales/deliveries',   label: 'Sales Deliveries', requireAnyRole: ['sales', 'ops', 'supervisor'] },
-      { href: '/sales/rep-dashboard',label: 'Rep Dashboard',    requireAnyRole: ['sales'] },
-      { href: '/credits',            label: 'RMA Credits' },
-    ],
-  },
-  {
-    id: 'estimating',
-    label: 'Bids & Design',
-    icon: <FileText className="w-4 h-4" />,
-    dropdown: true,
-    isActive: (p) =>
-      p === '/estimating' ||
-      p.startsWith('/estimating/') ||
-      p.startsWith('/takeoff') ||
-      p.startsWith('/legacy-bids') ||
-      p.startsWith('/all-bids') ||
-      p.startsWith('/ewp') ||
-      p.startsWith('/projects') ||
-      p.startsWith('/bids') ||
-      p.startsWith('/designs'),
-    links: [
-      { href: '/estimating',  label: 'Estimating App' },
-      { href: '/takeoff',     label: 'PDF Takeoff' },
-      { href: '/legacy-bids', label: 'Bids' },
-      { href: '/ewp',         label: 'EWP' },
-      { href: '/projects',    label: 'Projects' },
-      { href: '/designs',     label: 'Design' },
-    ],
-  },
-  {
-    id: 'service',
-    label: 'Service',
-    icon: <Wrench className="w-4 h-4" />,
-    dropdown: false,
-    href: '/it-issues',
-    isActive: (p) => p.startsWith('/it-issues'),
-    links: [],
-  },
-  {
-    id: 'purchasing',
-    label: 'Purchasing',
-    icon: <PackageCheck className="w-4 h-4" />,
-    dropdown: true,
-    isActive: (p) => p === '/purchasing' || p.startsWith('/purchasing/'),
-    links: [
-      { href: '/purchasing/workspace',      label: 'Buyer Workspace',  requireAnyRole: ['purchasing', 'ops', 'supervisor'] },
-      { href: '/purchasing/open-pos',       label: 'Open POs',         requireAnyRole: ['purchasing', 'ops', 'supervisor', 'sales'] },
-      { href: '/purchasing/suggested-buys', label: 'Suggested Buys',   requireAnyRole: ['purchasing', 'ops', 'supervisor'] },
-      { href: '/purchasing/exceptions',     label: 'Exceptions',       requireAnyRole: ['purchasing', 'ops', 'supervisor'] },
-      { href: '/purchasing/manage',         label: 'Command Center',   requireAnyRole: ['purchasing', 'ops', 'supervisor'] },
-      { href: '/purchasing',                label: 'PO Check-In' },
-      { href: '/purchasing/review',         label: 'Review Queue',     requireAnyRole: ['purchasing', 'ops', 'supervisor'] },
-    ],
-  },
-];
+function getDomains(tvBranch: string): Domain[] {
+  return [
+    {
+      id: 'warehouse',
+      label: 'Warehouse',
+      icon: <Boxes className="w-4 h-4" />,
+      dropdown: true,
+      isActive: (p) =>
+        ['/warehouse', '/work-orders', '/supervisor'].some(
+          (prefix) => p === prefix || p.startsWith(prefix + '/')
+        ) || p.startsWith('/tv/') || p.startsWith('/kiosk/'),
+      links: [
+        { href: '/warehouse',              label: 'Picks Board' },
+        { href: '/warehouse/open-picks',   label: 'Open Picks' },
+        { href: '/warehouse/picker-stats', label: 'Picker Stats' },
+        { href: '/work-orders',            label: 'Work Orders' },
+        { href: '/supervisor',             label: 'Supervisor',   requireAnyRole: ['supervisor', 'ops', 'warehouse'] },
+        { href: `/tv/${tvBranch}`,         label: 'TV Board',     requireAnyRole: ['supervisor', 'ops', 'warehouse'] },
+        { href: '/warehouse/pickers',      label: 'Picker Admin', requireAnyRole: ['supervisor', 'ops'] },
+      ],
+    },
+    {
+      id: 'dispatch',
+      label: 'Dispatch',
+      icon: <Truck className="w-4 h-4" />,
+      dropdown: true,
+      isActive: (p) =>
+        ['/dispatch', '/delivery'].some((prefix) => p === prefix || p.startsWith(prefix + '/')) ||
+        p.startsWith('/ops/delivery'),
+      links: [
+        { href: '/dispatch',               label: 'Dispatch Board' },
+        { href: '/dispatch/drivers',       label: 'Driver Roster',   requireAnyRole: ['supervisor', 'ops', 'dispatch'] },
+        { href: '/delivery',               label: 'Delivery Tracker' },
+        { href: '/delivery/map',           label: 'Fleet Map' },
+        { href: '/ops/delivery-reporting', label: 'Delivery Report', requireAnyRole: ['supervisor', 'ops'] },
+      ],
+    },
+    {
+      id: 'sales',
+      label: 'Sales',
+      icon: <ShoppingCart className="w-4 h-4" />,
+      dropdown: true,
+      isActive: (p) => p.startsWith('/sales') || p.startsWith('/credits'),
+      links: [
+        { href: '/sales',               label: 'Sales Hub' },
+        { href: '/sales/customers',     label: 'Customers' },
+        { href: '/sales/transactions',  label: 'Transactions' },
+        { href: '/sales/history',       label: 'Purchase History' },
+        { href: '/sales/products',      label: 'Products & Stock' },
+        { href: '/sales/reports',       label: 'Reports' },
+        { href: '/sales/tracker',       label: 'Sales Tracker',    requireAnyRole: ['sales', 'ops', 'supervisor'] },
+        { href: '/sales/deliveries',    label: 'Sales Deliveries', requireAnyRole: ['sales', 'ops', 'supervisor'] },
+        { href: '/sales/rep-dashboard', label: 'Rep Dashboard',    requireAnyRole: ['sales'] },
+        { href: '/credits',             label: 'RMA Credits' },
+      ],
+    },
+    {
+      id: 'estimating',
+      label: 'Bids & Design',
+      icon: <FileText className="w-4 h-4" />,
+      dropdown: true,
+      isActive: (p) =>
+        p === '/estimating' ||
+        p.startsWith('/estimating/') ||
+        p.startsWith('/takeoff') ||
+        p.startsWith('/legacy-bids') ||
+        p.startsWith('/all-bids') ||
+        p.startsWith('/bids') ||
+        p.startsWith('/ewp') ||
+        p.startsWith('/projects') ||
+        p.startsWith('/designs'),
+      links: [
+        { href: '/estimating',            label: 'Estimating App' },
+        { href: '/takeoff',               label: 'PDF Takeoff' },
+        { href: '/legacy-bids',           label: 'Bids' },
+        { href: '/legacy-bids/completed', label: 'Completed Bids' },
+        { href: '/all-bids',              label: 'All Bids' },
+        { href: '/bids',                  label: 'Bid Projects' },
+        { href: '/ewp',                   label: 'EWP' },
+        { href: '/projects',              label: 'Projects' },
+        { href: '/designs',               label: 'Design' },
+      ],
+    },
+    {
+      id: 'service',
+      label: 'Service',
+      icon: <Wrench className="w-4 h-4" />,
+      dropdown: false,
+      href: '/it-issues',
+      isActive: (p) => p.startsWith('/it-issues'),
+      links: [],
+    },
+    {
+      id: 'purchasing',
+      label: 'Purchasing',
+      icon: <PackageCheck className="w-4 h-4" />,
+      dropdown: true,
+      isActive: (p) =>
+        p.startsWith('/purchasing/workspace') ||
+        p.startsWith('/purchasing/open-pos') ||
+        p.startsWith('/purchasing/suggested-buys') ||
+        p.startsWith('/purchasing/exceptions') ||
+        p.startsWith('/purchasing/manage') ||
+        p.startsWith('/purchasing/pos'),
+      links: [
+        { href: '/purchasing/workspace',      label: 'Buyer Workspace', requireAnyRole: ['purchasing', 'ops', 'supervisor'] },
+        { href: '/purchasing/open-pos',       label: 'Open POs',        requireAnyRole: ['purchasing', 'ops', 'supervisor', 'sales'] },
+        { href: '/purchasing/suggested-buys', label: 'Suggested Buys',  requireAnyRole: ['purchasing', 'ops', 'supervisor'] },
+        { href: '/purchasing/exceptions',     label: 'Exceptions',      requireAnyRole: ['purchasing', 'ops', 'supervisor'] },
+        { href: '/purchasing/manage',         label: 'Command Center',  requireAnyRole: ['purchasing', 'ops', 'supervisor'] },
+      ],
+    },
+    {
+      id: 'receiving',
+      label: 'Receiving',
+      icon: <Inbox className="w-4 h-4" />,
+      dropdown: true,
+      isActive: (p) => p === '/purchasing' || p.startsWith('/purchasing/review'),
+      links: [
+        { href: '/purchasing',        label: 'PO Check-In' },
+        { href: '/purchasing/review', label: 'Review Queue', requireAnyRole: ['purchasing', 'ops', 'supervisor'] },
+      ],
+    },
+  ];
+}
 
 const ADMIN_LINKS: NavLink[] = [
-  { href: '/admin',                  label: 'Dashboard' },
-  { href: '/admin/customers',        label: 'Customers' },
-  { href: '/admin/products',         label: 'Products / SKUs' },
-  { href: '/admin/formulas',         label: 'Formulas' },
-  { href: '/admin/users',            label: 'Users' },
-  { href: '/admin/bid-fields',       label: 'Bid Fields' },
-  { href: '/admin/notifications',    label: 'Notifications' },
-  { href: '/admin/audit',            label: 'Audit Log' },
-  { href: '/admin/erp',              label: 'ERP Sync' },
-  { href: '/admin/app-users',        label: 'App Users' },
-  { href: '/ops/delivery-reporting', label: 'Delivery Report' },
-  { href: '/warehouse/pickers',      label: 'Picker Admin' },
+  { href: '/admin',               label: 'Dashboard' },
+  { href: '/admin/customers',     label: 'Customers' },
+  { href: '/admin/products',      label: 'Products / SKUs' },
+  { href: '/admin/formulas',      label: 'Formulas' },
+  { href: '/admin/users',         label: 'Users' },
+  { href: '/admin/bid-fields',    label: 'Bid Fields' },
+  { href: '/admin/notifications', label: 'Notifications' },
+  { href: '/admin/audit',         label: 'Audit Log' },
+  { href: '/admin/erp',           label: 'ERP Sync' },
+  { href: '/admin/app-users',     label: 'App Users' },
 ];
 
 // ─── Role helpers ─────────────────────────────────────────────────────────────
@@ -315,6 +347,8 @@ function canSeeSection(domainId: string, role: string, roles: string[]): boolean
   const isWHUser = (WH_ROLES as readonly string[]).some((r) => roles.includes(r));
 
   switch (domainId) {
+    case 'warehouse':
+      return hasAnyRole(roles, 'warehouse', 'sales', 'ops', 'supervisor', 'dispatch');
     case 'dispatch':
       return hasAnyRole(roles, 'warehouse', 'sales', 'ops', 'supervisor', 'dispatch');
     case 'sales':
@@ -327,6 +361,8 @@ function canSeeSection(domainId: string, role: string, roles: string[]): boolean
       return role !== 'viewer';
     case 'purchasing':
       // Any authenticated non-viewer can reach at least PO Check-In
+      return role !== 'viewer';
+    case 'receiving':
       return role !== 'viewer';
     default:
       return false;
@@ -359,6 +395,8 @@ export function TopNav({ userName, userRole }: Props) {
   const pathname = usePathname();
   const [openMenu, setOpenMenu] = React.useState<string | null>(null);
   const [mobileOpen, setMobileOpen] = React.useState(false);
+  const [mobileOpenSections, setMobileOpenSections] = React.useState<Set<string>>(new Set());
+  const [tvBranch, setTvBranch] = React.useState('20GR');
   const navRef = React.useRef<HTMLElement>(null);
 
   // Derive auth state — session wins over props
@@ -370,7 +408,14 @@ export function TopNav({ userName, userRole }: Props) {
   const isWHUser = (WH_ROLES as readonly string[]).some((r) => roles.includes(r));
   const signOutUrl = isWHUser ? '/ops-login' : '/login';
 
+  // Sync TV Board branch from cookie
+  React.useEffect(() => {
+    const branch = readBranchCookie();
+    if (branch) setTvBranch(branch);
+  }, []);
+
   // Build the filtered domain list once per render
+  const DOMAINS = getDomains(tvBranch);
   const visibleDomains = DOMAINS
     .filter((d) => canSeeSection(d.id, role, roles))
     .map((d) => ({
@@ -391,9 +436,19 @@ export function TopNav({ userName, userRole }: Props) {
   React.useEffect(() => {
     setMobileOpen(false);
     setOpenMenu(null);
+    setMobileOpenSections(new Set());
   }, [pathname]);
 
   const toggle = (id: string) => setOpenMenu((prev) => (prev === id ? null : id));
+
+  function toggleMobileSection(id: string) {
+    setMobileOpenSections((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
 
   const dropdownItem = (href: string, label: string) => (
     <Link
@@ -483,7 +538,7 @@ export function TopNav({ userName, userRole }: Props) {
                   onClick={() => toggle('admin')}
                   className={cn(
                     'flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium transition',
-                    pathname.startsWith('/admin') || pathname.startsWith('/ops')
+                    pathname.startsWith('/admin')
                       ? 'bg-cyan-500/20 text-cyan-400'
                       : 'text-slate-300 hover:text-white hover:bg-slate-800'
                   )}
@@ -526,7 +581,7 @@ export function TopNav({ userName, userRole }: Props) {
         </div>
       </nav>
 
-      {/* Mobile drawer — same role-filtered domains */}
+      {/* Mobile drawer — collapsible sections, all collapsed by default */}
       {mobileOpen && (
         <div className="lg:hidden fixed inset-0 z-40 flex flex-col print:hidden">
           <div
@@ -545,64 +600,109 @@ export function TopNav({ userName, userRole }: Props) {
               </Link>
               <div className="border-t border-slate-800 my-1" />
 
-              {visibleDomains.map((domain) => (
-                <React.Fragment key={domain.id}>
-                  <div className="pt-2 pb-0.5 px-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">
-                    {domain.label}
-                  </div>
-                  {domain.dropdown ? (
-                    domain.links.map((l) => (
-                      <Link
-                        key={l.href}
-                        href={l.href}
-                        className={cn(
-                          'flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition',
-                          pathname === l.href
-                            ? 'bg-cyan-500/20 text-cyan-400'
-                            : 'text-slate-400 hover:text-white hover:bg-slate-800'
-                        )}
-                      >
-                        {domain.icon}
-                        {l.label}
-                      </Link>
-                    ))
-                  ) : (
+              {visibleDomains.map((domain) => {
+                const sectionOpen = mobileOpenSections.has(domain.id);
+
+                if (!domain.dropdown) {
+                  // Direct link (e.g. Service)
+                  return (
                     <Link
+                      key={domain.id}
                       href={domain.href!}
                       className={cn(
-                        'flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition',
+                        'flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition',
                         domain.isActive(pathname)
                           ? 'bg-cyan-500/20 text-cyan-400'
-                          : 'text-slate-400 hover:text-white hover:bg-slate-800'
+                          : 'text-slate-300 hover:text-white hover:bg-slate-800'
                       )}
                     >
                       {domain.icon}
                       {domain.label}
                     </Link>
-                  )}
-                </React.Fragment>
-              ))}
+                  );
+                }
+
+                return (
+                  <React.Fragment key={domain.id}>
+                    <button
+                      onClick={() => toggleMobileSection(domain.id)}
+                      className={cn(
+                        'w-full flex items-center justify-between px-3 py-2.5 rounded-lg text-sm font-semibold transition',
+                        domain.isActive(pathname)
+                          ? 'text-cyan-400'
+                          : 'text-slate-400 hover:text-white hover:bg-slate-800'
+                      )}
+                    >
+                      <span className="flex items-center gap-2">
+                        {domain.icon}
+                        {domain.label}
+                      </span>
+                      <ChevronDown
+                        className={cn('w-4 h-4 transition-transform', sectionOpen && 'rotate-180')}
+                      />
+                    </button>
+                    {sectionOpen && (
+                      <div className="ml-4 border-l border-slate-700 pl-3 pb-1 space-y-0.5">
+                        {domain.links.map((l) => (
+                          <Link
+                            key={l.href}
+                            href={l.href}
+                            className={cn(
+                              'flex items-center px-3 py-2 rounded-lg text-sm transition',
+                              pathname === l.href
+                                ? 'bg-cyan-500/20 text-cyan-400'
+                                : 'text-slate-400 hover:text-white hover:bg-slate-800'
+                            )}
+                          >
+                            {l.label}
+                          </Link>
+                        ))}
+                      </div>
+                    )}
+                  </React.Fragment>
+                );
+              })}
 
               {role === 'admin' && (
                 <>
-                  <div className="pt-2 pb-0.5 px-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">
-                    Admin
-                  </div>
-                  {ADMIN_LINKS.map((l) => (
-                    <Link
-                      key={l.href}
-                      href={l.href}
+                  <button
+                    onClick={() => toggleMobileSection('admin')}
+                    className={cn(
+                      'w-full flex items-center justify-between px-3 py-2.5 rounded-lg text-sm font-semibold transition',
+                      pathname.startsWith('/admin')
+                        ? 'text-cyan-400'
+                        : 'text-slate-400 hover:text-white hover:bg-slate-800'
+                    )}
+                  >
+                    <span className="flex items-center gap-2">
+                      <Settings className="w-4 h-4" />
+                      Admin
+                    </span>
+                    <ChevronDown
                       className={cn(
-                        'flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition',
-                        pathname === l.href
-                          ? 'bg-cyan-500/20 text-cyan-400'
-                          : 'text-slate-300 hover:text-white hover:bg-slate-800'
+                        'w-4 h-4 transition-transform',
+                        mobileOpenSections.has('admin') && 'rotate-180'
                       )}
-                    >
-                      <Settings className="w-4 h-4 text-slate-500" />
-                      {l.label}
-                    </Link>
-                  ))}
+                    />
+                  </button>
+                  {mobileOpenSections.has('admin') && (
+                    <div className="ml-4 border-l border-slate-700 pl-3 pb-1 space-y-0.5">
+                      {ADMIN_LINKS.map((l) => (
+                        <Link
+                          key={l.href}
+                          href={l.href}
+                          className={cn(
+                            'flex items-center px-3 py-2 rounded-lg text-sm transition',
+                            pathname === l.href
+                              ? 'bg-cyan-500/20 text-cyan-400'
+                              : 'text-slate-300 hover:text-white hover:bg-slate-800'
+                          )}
+                        >
+                          {l.label}
+                        </Link>
+                      ))}
+                    </div>
+                  )}
                 </>
               )}
 
