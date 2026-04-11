@@ -72,8 +72,10 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'A valid email address is required.' }, { status: 400 });
     }
 
+    console.log('[request-otp] step 1: connecting to DB for', email);
     const sql = getErpSql();
 
+    console.log('[request-otp] step 2: querying app_users');
     // Look up user — vague response if not found (don't reveal whether email exists)
     const users = await sql`
       SELECT id FROM app_users
@@ -81,6 +83,7 @@ export async function POST(req: NextRequest) {
         AND is_active = true
       LIMIT 1
     `;
+    console.log('[request-otp] step 3: user lookup done, found', users.length);
 
     if (users.length === 0) {
       // Deliberate no-op: return 200 so callers can't enumerate users
