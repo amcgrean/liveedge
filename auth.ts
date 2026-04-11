@@ -148,8 +148,14 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
             return null;
           }
 
-          const { getErpSql } = await import('./db/supabase');
-          const sql = getErpSql();
+          // Use pooled URL for faster cold-start in serverless
+          const { default: postgres } = await import('postgres');
+          const otpDbUrl =
+            process.env.POSTGRES_URL ||
+            process.env.POSTGRES_URL_NON_POOLING ||
+            process.env.POSTGRES_URL_UNPOOLED;
+          if (!otpDbUrl) return null;
+          const sql = postgres(otpDbUrl, { max: 1, idle_timeout: 10, connect_timeout: 8, prepare: false });
 
           // Verify OTP
           const otpRows = await sql<{ id: number; code: string }[]>`
