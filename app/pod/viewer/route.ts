@@ -41,22 +41,49 @@ function esc(s: string) {
   return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }
 
-function renderSections(grouped: Record<string, (PhotoRow & { url: string })[]>): string {
-  return Object.entries(grouped).map(([cat, catPhotos]) => `
-    <div class="section-title">${esc(categoryLabel[cat] ?? cat)} (${catPhotos.length})</div>
-    <div class="photo-grid">
-      ${catPhotos.map((p) => `
-        <div class="photo-card">
-          <img src="${esc(p.url)}" alt="${esc(p.filename)}" loading="lazy" onclick="openLb(this.src)" />
-          <div class="photo-meta">
-            <span class="driver">${esc(p.driver_name ?? 'Driver')}</span>
-            <span class="time">${fmtDate(p.taken_at)}</span>
-          </div>
-          ${p.notes ? `<div class="photo-notes">${esc(p.notes)}</div>` : ''}
+function renderPhotoGrid(catPhotos: (PhotoRow & { url: string })[]): string {
+  return `<div class="photo-grid">
+    ${catPhotos.map((p) => `
+      <div class="photo-card">
+        <img src="${esc(p.url)}" alt="${esc(p.filename)}" loading="lazy" onclick="openLb(this.src)" />
+        <div class="photo-meta">
+          <span class="driver">${esc(p.driver_name ?? 'Driver')}</span>
+          <span class="time">${fmtDate(p.taken_at)}</span>
         </div>
-      `).join('')}
-    </div>
-  `).join('');
+        ${p.notes ? `<div class="photo-notes">${esc(p.notes)}</div>` : ''}
+      </div>
+    `).join('')}
+  </div>`;
+}
+
+function renderSections(photos: (PhotoRow & { url: string })[], multiShipment: boolean): string {
+  if (!multiShipment) {
+    // Single shipment — group by category only
+    const byCategory: Record<string, typeof photos> = {};
+    for (const p of photos) (byCategory[p.category] ??= []).push(p);
+    return Object.entries(byCategory).map(([cat, catPhotos]) => `
+      <div class="section-title">${esc(categoryLabel[cat] ?? cat)} (${catPhotos.length})</div>
+      ${renderPhotoGrid(catPhotos)}
+    `).join('');
+  }
+
+  // Multiple shipments — group by shipment first, then by category
+  const byShipment: Record<number, typeof photos> = {};
+  for (const p of photos) (byShipment[p.shipment_num] ??= []).push(p);
+
+  return Object.entries(byShipment)
+    .sort(([a], [b]) => Number(a) - Number(b))
+    .map(([shipNum, shipPhotos]) => {
+      const byCategory: Record<string, typeof shipPhotos> = {};
+      for (const p of shipPhotos) (byCategory[p.category] ??= []).push(p);
+      return `
+        <div class="shipment-header">Shipment #${esc(shipNum)} &mdash; ${shipPhotos.length} photo${shipPhotos.length !== 1 ? 's' : ''}</div>
+        ${Object.entries(byCategory).map(([cat, catPhotos]) => `
+          <div class="section-title">${esc(categoryLabel[cat] ?? cat)} (${catPhotos.length})</div>
+          ${renderPhotoGrid(catPhotos)}
+        `).join('')}
+      `;
+    }).join('');
 }
 
 export async function GET(req: NextRequest) {
@@ -92,10 +119,8 @@ export async function GET(req: NextRequest) {
     }
   }
 
-  const grouped: Record<string, typeof photos> = {};
-  for (const p of photos) {
-    (grouped[p.category] ??= []).push(p);
-  }
+  const shipmentNums = new Set(photos.map((p) => p.shipment_num));
+  const multiShipment = shipmentNums.size > 1;
 
   const html = `<!DOCTYPE html>
 <html lang="en">
@@ -114,9 +139,14 @@ export async function GET(req: NextRequest) {
     .meta-grid { display: flex; flex-wrap: wrap; gap: 8px 24px; margin-top: 10px; font-size: 0.75rem; }
     .meta-item { color: #94a3b8; }
     .meta-item strong { color: #cbd5e1; }
+    .shipment-header {
+      font-size: 1rem; font-weight: 700; color: #67e8f9;
+      border-bottom: 1px solid #1e293b; padding-bottom: 10px; margin: 32px 0 4px;
+    }
+    .shipment-header:first-child { margin-top: 0; }
     .section-title {
       font-size: 0.8125rem; font-weight: 600; text-transform: uppercase;
-      letter-spacing: 0.05em; color: #475569; margin: 24px 0 12px;
+      letter-spacing: 0.05em; color: #475569; margin: 20px 0 12px;
     }
     .photo-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 16px; }
     .photo-card { background: #1e293b; border: 1px solid #334155; border-radius: 10px; overflow: hidden; }
@@ -180,7 +210,7 @@ export async function GET(req: NextRequest) {
     </div>
   ` : ''}
 
-  ${renderSections(grouped)}
+  ${renderSections(photos, multiShipment)}
 
   <div id="lb" onclick="if(event.target===this)closeLb()">
     <button id="lb-close" onclick="closeLb()">&#x2715;</button>
