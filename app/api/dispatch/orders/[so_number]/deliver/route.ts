@@ -53,16 +53,15 @@ export async function POST(req: NextRequest, context: RouteContext) {
   // 1. Push status to Agility (non-fatal if API not configured)
   if (isAgilityConfigured()) {
     try {
-      await agilityApi.shipmentInfoUpdate(
-        {
-          OrderID:            soNumber,
-          ShipmentNumber:     body.shipmentNum ?? 1,
-          UpdateAllPickFiles: true,
-          UpdateSalesOrder:   true,
-          ShipmentStatusFlag: 'D',
-        },
-        { branch: agilityBranch }
-      );
+      // Log exactly what we're sending to help diagnose parse errors
+      const shipPayload = {
+        OrderID:            soNumber,
+        ShipmentNumber:     body.shipmentNum ?? 1,
+        UpdateAllPickFiles: true,
+        ShipmentStatusFlag: 'Delivered',
+      };
+      console.log('[deliver] ShipmentInfoUpdate payload:', JSON.stringify(shipPayload), 'branch:', agilityBranch);
+      await agilityApi.shipmentInfoUpdate(shipPayload, { branch: agilityBranch });
       agilitySuccess = true;
     } catch (err) {
       agilityError = err instanceof AgilityApiError ? err.message : String(err);
