@@ -58,7 +58,7 @@ export async function POST(req: NextRequest, context: RouteContext) {
         OrderID:            soNumber,
         ShipmentNumber:     body.shipmentNum ?? 1,
         UpdateAllPickFiles: true,
-        ShipmentStatusFlag: 'Delivered',
+        ShipmentStatusFlag: 'Delivered' as const,
       };
       console.log('[deliver] ShipmentInfoUpdate payload:', JSON.stringify(shipPayload), 'branch:', agilityBranch);
       await agilityApi.shipmentInfoUpdate(shipPayload, { branch: agilityBranch });
