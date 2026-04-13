@@ -168,10 +168,16 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
             LIMIT 1
           `;
 
-          if (otpRows.length === 0) return null;
+          if (otpRows.length === 0) {
+            console.warn('[auth/otp] no valid code found for', email);
+            return null;
+          }
 
           const otp = otpRows[0];
-          if (otp.code !== code) return null;
+          if (otp.code !== code) {
+            console.warn('[auth/otp] code mismatch for', email, '— entered:', code, 'stored:', otp.code);
+            return null;
+          }
 
           // Mark code as used
           await sql`UPDATE otp_codes SET used = true WHERE id = ${otp.id}`;
@@ -191,7 +197,10 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
             LIMIT 1
           `;
 
-          if (userRows.length === 0) return null;
+          if (userRows.length === 0) {
+            console.warn('[auth/otp] user not found in app_users for', email);
+            return null;
+          }
 
           const user = userRows[0];
           const roles: string[] = Array.isArray(user.roles) ? user.roles : [];
