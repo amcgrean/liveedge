@@ -8,17 +8,17 @@ import * as legacySchema from './schema-legacy';
 // used for ERP reads (db/supabase.ts points at the same DB, public schema).
 //
 // Env var resolution order:
-//   BIDS_DATABASE_URL          — preferred: direct (non-pooled) Supabase URL for bids schema
-//   POSTGRES_URL_NON_POOLING   — Vercel Supabase integration direct URL
-//   POSTGRES_URL               — Vercel Supabase integration pooled URL (transaction mode)
+//   BIDS_DATABASE_URL          — explicit override if needed
+//   POSTGRES_URL               — Vercel Supabase integration pooled URL (preferred — avoids
+//                                MaxClientsInSessionMode under concurrent serverless invocations)
+//   POSTGRES_URL_NON_POOLING   — direct URL fallback
 //
-// Use the direct (non-pooled) URL when available — avoids pgBouncer issues
-// with Drizzle's prepared statements. In serverless, max:1 is correct.
+// prepare: false is set so pgBouncer transaction mode works correctly.
 function createDb() {
   const databaseUrl =
     process.env.BIDS_DATABASE_URL ||
-    process.env.POSTGRES_URL_NON_POOLING ||
-    process.env.POSTGRES_URL;
+    process.env.POSTGRES_URL ||
+    process.env.POSTGRES_URL_NON_POOLING;
 
   if (!databaseUrl) {
     throw new Error(
