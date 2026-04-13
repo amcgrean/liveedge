@@ -196,6 +196,10 @@ export const legacyBid = bidsSchema.table('bid', {
   lastUpdatedAt:   timestamp('last_updated_at').defaultNow(),
   branchId:        integer('branch_id').references(() => legacyBranch.branchId),
   jobId:           integer('job_id').references(() => legacyJob.id),
+  // Agility ERP integration — added via migration 0008 (READ/WRITE only, not drizzle-kit managed)
+  agilityQuoteId:  varchar('agility_quote_id', { length: 50 }),
+  agilitySoId:     varchar('agility_so_id', { length: 50 }),
+  erpPushedAt:     timestamp('erp_pushed_at', { withTimezone: true }),
 });
 
 // ============================================================

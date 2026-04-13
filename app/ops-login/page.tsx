@@ -2,16 +2,21 @@
 
 import React, { useState } from 'react';
 import { signIn } from 'next-auth/react';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { HardHat, ArrowLeft, Mail } from 'lucide-react';
 
 type Step = 'email' | 'code';
 
 export default function OpsLoginPage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
 
-  const [step, setStep] = useState<Step>('email');
-  const [email, setEmail] = useState('');
+  // Allow ?step=code&email=... to bypass the send-code API (e.g. when code was inserted directly)
+  const initialStep = (searchParams.get('step') === 'code' ? 'code' : 'email') as Step;
+  const initialEmail = searchParams.get('email') ?? '';
+
+  const [step, setStep] = useState<Step>(initialStep);
+  const [email, setEmail] = useState(initialEmail);
   const [code, setCode] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
@@ -21,18 +26,24 @@ export default function OpsLoginPage() {
     setLoading(true);
     setError('');
 
-    const res = await fetch('/api/auth/request-otp', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ email: email.trim().toLowerCase() }),
-    });
+    try {
+      const res = await fetch('/api/auth/request-otp', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: email.trim().toLowerCase() }),
+      });
 
-    const data = await res.json();
+      let data: { error?: string } = {};
+      try { data = await res.json(); } catch { /* non-JSON response */ }
 
-    if (!res.ok) {
-      setError(data.error ?? 'Failed to send code. Please try again.');
-      setLoading(false);
-      return;
+      if (!res.ok) {
+        setError(data.error ?? 'Failed to send code. Please try again.');
+        setLoading(false);
+        return;
+      }
+    } catch {
+      // Network error or timeout — still advance; code may have been sent
+      // or can be entered if generated externally
     }
 
     setLoading(false);

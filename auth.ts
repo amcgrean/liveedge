@@ -148,8 +148,14 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
             return null;
           }
 
-          const { getErpSql } = await import('./db/supabase');
-          const sql = getErpSql();
+          // Use pooled URL for faster cold-start in serverless
+          const { default: postgres } = await import('postgres');
+          const otpDbUrl =
+            process.env.POSTGRES_URL ||
+            process.env.POSTGRES_URL_NON_POOLING ||
+            process.env.POSTGRES_URL_UNPOOLED;
+          if (!otpDbUrl) return null;
+          const sql = postgres(otpDbUrl, { max: 1, idle_timeout: 10, connect_timeout: 8, prepare: false });
 
           // Verify OTP
           const otpRows = await sql<{ id: number; code: string }[]>`
@@ -162,10 +168,16 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
             LIMIT 1
           `;
 
-          if (otpRows.length === 0) return null;
+          if (otpRows.length === 0) {
+            console.warn('[auth/otp] no valid code found for', email);
+            return null;
+          }
 
           const otp = otpRows[0];
-          if (otp.code !== code) return null;
+          if (otp.code !== code) {
+            console.warn('[auth/otp] code mismatch for', email, '— entered:', code, 'stored:', otp.code);
+            return null;
+          }
 
           // Mark code as used
           await sql`UPDATE otp_codes SET used = true WHERE id = ${otp.id}`;
@@ -185,7 +197,10 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
             LIMIT 1
           `;
 
-          if (userRows.length === 0) return null;
+          if (userRows.length === 0) {
+            console.warn('[auth/otp] user not found in app_users for', email);
+            return null;
+          }
 
           const user = userRows[0];
           const roles: string[] = Array.isArray(user.roles) ? user.roles : [];

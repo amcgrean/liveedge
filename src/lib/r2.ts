@@ -149,3 +149,45 @@ export async function deletePdf(key: string): Promise<void> {
     })
   );
 }
+
+/**
+ * Upload an image (or any binary) to R2 at an arbitrary key. Returns the key.
+ */
+export async function uploadImage(
+  key: string,
+  data: Buffer | Uint8Array,
+  contentType: string
+): Promise<string> {
+  const client = getR2Client();
+  await client.send(
+    new PutObjectCommand({
+      Bucket: getBucketName(),
+      Key: key,
+      Body: data,
+      ContentType: contentType,
+    })
+  );
+  return key;
+}
+
+/**
+ * Get a presigned download URL for any R2 object (default 1 hour).
+ */
+export async function getPresignedUrl(key: string, expiresIn = 3600): Promise<string> {
+  const client = getR2Client();
+  return getSignedUrl(
+    client,
+    new GetObjectCommand({ Bucket: getBucketName(), Key: key }),
+    { expiresIn }
+  );
+}
+
+/**
+ * Delete any R2 object by key.
+ */
+export async function deleteObject(key: string): Promise<void> {
+  const client = getR2Client();
+  await client.send(
+    new DeleteObjectCommand({ Bucket: getBucketName(), Key: key })
+  );
+}

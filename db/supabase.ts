@@ -13,7 +13,9 @@
  *   POSTGRES_URL              — pooled connection (pgBouncer, transaction mode)
  *   POSTGRES_URL_NON_POOLING  — direct connection
  *
- * We prefer the non-pooling URL to avoid pgBouncer issues with prepared statements.
+ * We prefer the POOLED URL for ERP reads — serverless functions each open their
+ * own connection and quickly exhaust Supabase's direct connection limit. pgBouncer
+ * transaction mode works fine with prepare: false.
  */
 import { drizzle } from 'drizzle-orm/postgres-js';
 import postgres from 'postgres';
@@ -23,9 +25,9 @@ let _erpSql: ReturnType<typeof postgres> | null = null;
 
 function getErpConnectionString(): string {
   const url =
+    process.env.POSTGRES_URL ||
     process.env.POSTGRES_URL_NON_POOLING ||
     process.env.POSTGRES_URL_UNPOOLED ||
-    process.env.POSTGRES_URL ||
     process.env.SUPABASE_DB_URL;
 
   if (!url) {

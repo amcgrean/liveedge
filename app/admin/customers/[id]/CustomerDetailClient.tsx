@@ -5,7 +5,7 @@ import type { Session } from 'next-auth';
 import { useParams } from 'next/navigation';
 import Link from 'next/link';
 import { TopNav } from '../../../../src/components/nav/TopNav';
-import { ArrowLeft, FileText, Ruler, Layers, ExternalLink } from 'lucide-react';
+import { ArrowLeft, FileText, Ruler, Layers, ExternalLink, DollarSign, AlertCircle } from 'lucide-react';
 
 interface Customer {
   id: string;
@@ -55,6 +55,26 @@ interface EWP {
   href: string;
 }
 
+interface ArInvoice {
+  cust_key: string | null;
+  ref_num: string | null;
+  open_amt: number | null;
+  open_flag: string | null;
+  due_date: string | null;
+  invoice_date: string | null;
+  tran_type: string | null;
+}
+
+interface ArData {
+  source: string;
+  customerCode: string;
+  openBalance: number;
+  overdueBalance: number;
+  openInvoices: number;
+  overdueInvoices: number;
+  invoices: ArInvoice[];
+}
+
 interface Props {
   session: Session;
 }
@@ -69,6 +89,12 @@ export default function CustomerDetailClient({ session }: Props) {
   const [ewp, setEwp]           = useState<EWP[]>([]);
   const [loading, setLoading]   = useState(true);
   const [error, setError]       = useState('');
+
+  // AR state
+  const [arData, setArData]         = useState<ArData | null>(null);
+  const [arLoading, setArLoading]   = useState(false);
+  const [arError, setArError]       = useState('');
+  const [arExpanded, setArExpanded] = useState(false);
 
   const fetchAll = useCallback(async () => {
     setLoading(true);
@@ -99,6 +125,25 @@ export default function CustomerDetailClient({ session }: Props) {
   }, [custId]);
 
   useEffect(() => { fetchAll(); }, [fetchAll]);
+
+  const fetchAr = useCallback(async (code: string) => {
+    setArLoading(true);
+    setArError('');
+    try {
+      const res = await fetch(`/api/sales/customers/${encodeURIComponent(code)}/ar-live`);
+      if (res.ok) setArData(await res.json());
+      else setArError('Failed to load AR data');
+    } catch {
+      setArError('Network error loading AR');
+    } finally {
+      setArLoading(false);
+    }
+  }, []);
+
+  // Fetch AR once customer is loaded
+  useEffect(() => {
+    if (customer?.code) fetchAr(customer.code);
+  }, [customer?.code, fetchAr]);
 
   const fmt = (iso: string | null) =>
     iso ? new Date(iso).toLocaleDateString() : '—';
@@ -156,6 +201,100 @@ export default function CustomerDetailClient({ session }: Props) {
             </div>
           ))}
         </div>
+
+        {/* AR Balance */}
+        <section>
+          <div className="flex items-center justify-between mb-3">
+            <h2 className="font-semibold text-sm text-gray-300 flex items-center gap-2">
+              <DollarSign className="w-4 h-4 text-cyan-400" />
+              Accounts Receivable
+              {arData && (
+                <span className="text-xs font-normal text-gray-500">(mirror table)</span>
+              )}
+            </h2>
+            {arData && arData.invoices.length > 0 && (
+              <button
+                onClick={() => setArExpanded((v) => !v)}
+                className="text-xs text-gray-500 hover:text-gray-300 transition-colors"
+              >
+                {arExpanded ? 'Hide invoices' : `Show ${arData.invoices.length} invoices`}
+              </button>
+            )}
+          </div>
+
+          {arLoading ? (
+            <div className="text-sm text-gray-500 animate-pulse">Loading AR data…</div>
+          ) : arError ? (
+            <div className="flex items-center gap-2 text-sm text-red-400">
+              <AlertCircle className="w-4 h-4" /> {arError}
+            </div>
+          ) : arData ? (
+            <div className="space-y-3">
+              {/* Summary tiles */}
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                <div className={`rounded-lg p-3 text-center border ${arData.openBalance > 0 ? 'bg-red-900/20 border-red-800' : 'bg-gray-900 border-gray-800'}`}>
+                  <div className={`text-xl font-bold tabular-nums ${arData.openBalance > 0 ? 'text-red-300' : 'text-gray-200'}`}>
+                    ${arData.openBalance.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                  </div>
+                  <div className="text-xs text-gray-400 mt-0.5">Open Balance</div>
+                </div>
+                <div className={`rounded-lg p-3 text-center border ${arData.overdueBalance > 0 ? 'bg-red-900/30 border-red-700' : 'bg-gray-900 border-gray-800'}`}>
+                  <div className={`text-xl font-bold tabular-nums ${arData.overdueBalance > 0 ? 'text-red-400' : 'text-gray-200'}`}>
+                    ${arData.overdueBalance.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                  </div>
+                  <div className="text-xs text-gray-400 mt-0.5">Overdue</div>
+                </div>
+                <div className="bg-gray-900 border border-gray-800 rounded-lg p-3 text-center">
+                  <div className="text-xl font-bold text-gray-200">{arData.openInvoices}</div>
+                  <div className="text-xs text-gray-400 mt-0.5">Open Invoices</div>
+                </div>
+                <div className={`rounded-lg p-3 text-center border ${arData.overdueInvoices > 0 ? 'bg-amber-900/20 border-amber-800' : 'bg-gray-900 border-gray-800'}`}>
+                  <div className={`text-xl font-bold ${arData.overdueInvoices > 0 ? 'text-amber-300' : 'text-gray-200'}`}>{arData.overdueInvoices}</div>
+                  <div className="text-xs text-gray-400 mt-0.5">Overdue Invoices</div>
+                </div>
+              </div>
+
+              {/* Invoice list (expandable) */}
+              {arExpanded && arData.invoices.length > 0 && (
+                <div className="bg-gray-900 border border-gray-800 rounded-lg overflow-hidden">
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-sm">
+                      <thead>
+                        <tr className="text-xs text-gray-500 border-b border-gray-800">
+                          <th className="px-4 py-2 text-left font-medium">Ref #</th>
+                          <th className="px-4 py-2 text-left font-medium">Type</th>
+                          <th className="px-4 py-2 text-left font-medium">Invoice Date</th>
+                          <th className="px-4 py-2 text-left font-medium">Due Date</th>
+                          <th className="px-4 py-2 text-right font-medium">Amount</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {arData.invoices.map((inv, i) => {
+                          const isOverdue = inv.due_date ? new Date(inv.due_date) < new Date() : false;
+                          return (
+                            <tr key={i} className={`border-b border-gray-800 ${isOverdue ? 'bg-red-900/10' : ''}`}>
+                              <td className="px-4 py-2 font-mono text-xs text-cyan-300">{inv.ref_num ?? '—'}</td>
+                              <td className="px-4 py-2 text-xs text-gray-400">{inv.tran_type ?? '—'}</td>
+                              <td className="px-4 py-2 text-xs text-gray-400">{inv.invoice_date ? fmt(inv.invoice_date) : '—'}</td>
+                              <td className={`px-4 py-2 text-xs ${isOverdue ? 'text-red-400 font-medium' : 'text-gray-400'}`}>
+                                {inv.due_date ? fmt(inv.due_date) : '—'}
+                              </td>
+                              <td className="px-4 py-2 text-right text-sm font-mono text-gray-200">
+                                ${Number(inv.open_amt ?? 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )}
+            </div>
+          ) : (
+            <p className="text-sm text-gray-500">No AR data available.</p>
+          )}
+        </section>
 
         {/* Bids */}
         <section>

@@ -67,6 +67,11 @@ export default function WarehouseClient({ initialStats, isAdmin, userBranch, use
   const [assignments, setAssignments] = useState<Record<string, Assignment>>({});
   const [assigningKey, setAssigningKey] = useState<string | null>(null);
 
+  // Pick file release state — keyed by SO number
+  const [pickFileState, setPickFileState] = useState<
+    Record<string, { loading: boolean; fileId?: string; error?: string }>
+  >({});
+
   // Refresh stats every 60 seconds (only when tab is visible)
   useEffect(() => {
     const id = setInterval(async () => {
@@ -155,6 +160,28 @@ export default function WarehouseClient({ initialStats, isAdmin, userBranch, use
       }
     } catch { /* silent */ } finally {
       setAssigningKey(null);
+    }
+  }, []);
+
+  const handleReleaseToPickFile = useCallback(async (soNumber: string, branchCode: string) => {
+    setPickFileState((s) => ({ ...s, [soNumber]: { loading: true } }));
+    try {
+      const res = await fetch('/api/warehouse/picks/create-pick-file', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ soNumber, branchCode }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setPickFileState((s) => ({ ...s, [soNumber]: { loading: false, error: data.error ?? 'Failed' } }));
+      } else {
+        setPickFileState((s) => ({
+          ...s,
+          [soNumber]: { loading: false, fileId: data.pickFileId },
+        }));
+      }
+    } catch {
+      setPickFileState((s) => ({ ...s, [soNumber]: { loading: false, error: 'Network error' } }));
     }
   }, []);
 
@@ -293,6 +320,7 @@ export default function WarehouseClient({ initialStats, isAdmin, userBranch, use
                     <th className="px-4 py-2 text-left font-medium">Ship Via</th>
                     <th className="px-4 py-2 text-left font-medium">Expect</th>
                     <th className="px-4 py-2 text-right font-medium">Lines</th>
+                    {isAdmin && <th className="px-4 py-2 text-center font-medium">Pick File</th>}
                   </tr>
                 </thead>
                 <tbody>
@@ -364,6 +392,36 @@ export default function WarehouseClient({ initialStats, isAdmin, userBranch, use
                       <td className="px-4 py-2.5 text-right text-gray-300 font-mono text-xs">
                         {p.line_count}
                       </td>
+                      {isAdmin && (
+                        <td className="px-4 py-2.5 text-center">
+                          {(() => {
+                            const pfs = pickFileState[p.so_number];
+                            if (pfs?.fileId) {
+                              return (
+                                <span className="text-[10px] text-green-400 font-mono">
+                                  ✓ {pfs.fileId}
+                                </span>
+                              );
+                            }
+                            if (pfs?.error) {
+                              return (
+                                <span className="text-[10px] text-red-400" title={pfs.error}>
+                                  ✗ Error
+                                </span>
+                              );
+                            }
+                            return (
+                              <button
+                                disabled={pfs?.loading}
+                                onClick={() => handleReleaseToPickFile(p.so_number, p.system_id)}
+                                className="text-[10px] px-2 py-0.5 bg-amber-900/50 hover:bg-amber-800/70 text-amber-300 border border-amber-700/50 rounded disabled:opacity-50 transition-colors whitespace-nowrap"
+                              >
+                                {pfs?.loading ? '…' : 'Release'}
+                              </button>
+                            );
+                          })()}
+                        </td>
+                      )}
                     </tr>
                   ))}
                 </tbody>

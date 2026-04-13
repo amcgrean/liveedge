@@ -1,5 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getErpSql } from '../../../../db/supabase';
+import postgres from 'postgres';
+
+// Use pooled connection for OTP — faster cold-start than the direct (non-pooling) URL
+function getOtpSql() {
+  const url =
+    process.env.POSTGRES_URL ||
+    process.env.POSTGRES_URL_NON_POOLING ||
+    process.env.POSTGRES_URL_UNPOOLED;
+  if (!url) throw new Error('No database URL configured');
+  return postgres(url, { max: 1, idle_timeout: 10, connect_timeout: 8, prepare: false });
+}
 
 const OTP_LENGTH = 6;
 const OTP_EXPIRY_MINUTES = 10;
@@ -63,6 +73,15 @@ async function sendOtpEmail(to: string, code: string): Promise<{ ok: boolean; ms
   return { ok: true, msg: 'sent' };
 }
 
+function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise<T> {
+  return Promise.race([
+    promise,
+    new Promise<never>((_, reject) =>
+      setTimeout(() => reject(new Error(`[request-otp] timeout after ${ms}ms at: ${label}`)), ms)
+    ),
+  ]);
+}
+
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
@@ -72,15 +91,13 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'A valid email address is required.' }, { status: 400 });
     }
 
-    const sql = getErpSql();
-
+    const sql = getOtpSql();
     // Look up user — vague response if not found (don't reveal whether email exists)
-    const users = await sql`
-      SELECT id FROM app_users
-      WHERE email = ${email}
-        AND is_active = true
-      LIMIT 1
-    `;
+    const users = await withTimeout(
+      sql`SELECT id FROM app_users WHERE email = ${email} AND is_active = true LIMIT 1`,
+      8000,
+      'app_users lookup'
+    );
 
     if (users.length === 0) {
       // Deliberate no-op: return 200 so callers can't enumerate users

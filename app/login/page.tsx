@@ -3,7 +3,8 @@
 import React, { useState } from 'react';
 import { signIn } from 'next-auth/react';
 import { useRouter } from 'next/navigation';
-import { Hammer, Eye, EyeOff } from 'lucide-react';
+import Link from 'next/link';
+import { Hammer, Eye, EyeOff, HardHat } from 'lucide-react';
 
 export default function LoginPage() {
   const router = useRouter();
@@ -111,7 +112,14 @@ export default function LoginPage() {
             </button>
           </form>
 
-          <div className="mt-6 pt-5 border-t border-slate-700">
+          <div className="mt-6 pt-5 border-t border-slate-700 space-y-3">
+            <Link
+              href="/ops-login"
+              className="flex items-center justify-center gap-2 w-full py-2 rounded-lg border border-slate-600 text-slate-300 hover:border-cyan-400/50 hover:text-cyan-400 transition text-sm"
+            >
+              <HardHat className="w-4 h-4" />
+              Warehouse &amp; Ops staff sign in here
+            </Link>
             <p className="text-xs text-slate-500 text-center">
               Contact your administrator to request an account.
             </p>

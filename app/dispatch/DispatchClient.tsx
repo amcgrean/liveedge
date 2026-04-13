@@ -6,9 +6,10 @@ import { usePageTracking } from '@/hooks/usePageTracking';
 import type { DeliveryStop } from '../api/dispatch/deliveries/route';
 import type { DispatchKpis } from '../api/dispatch/kpis/route';
 import type { OrderLine } from '../api/dispatch/orders/[so_number]/lines/route';
+import Link from 'next/link';
 import {
   X, ChevronDown, ChevronRight, ChevronUp, Truck, AlertCircle,
-  MapPin, User, Plus, Trash2, RefreshCw, Search,
+  MapPin, User, Plus, Trash2, RefreshCw, Search, Package, MessageSquare, Send, Camera,
 } from 'lucide-react';
 
 // ── Types ──────────────────────────────────────────────────────────────────────
@@ -328,9 +329,62 @@ function DetailPanel({ stop, onClose }: { stop: DeliveryStop; onClose: () => voi
   const [loadingTimeline, setLoadingTimeline] = useState(false);
   const [loadingLines, setLoadingLines] = useState(false);
 
+  // ERP action state
+  const [pickFileId, setPickFileId] = useState<string | null>(null);
+  const [pickLoading, setPickLoading] = useState(false);
+  const [pickError, setPickError] = useState('');
+  const [noteText, setNoteText] = useState('');
+  const [showNoteForm, setShowNoteForm] = useState(false);
+  const [noteLoading, setNoteLoading] = useState(false);
+  const [noteError, setNoteError] = useState('');
+  const [noteSuccess, setNoteSuccess] = useState('');
+
   useEffect(() => {
     setTimeline(null); setLines(null); setDetailTab('timeline');
+    setPickFileId(null); setPickError(''); setNoteText(''); setShowNoteForm(false); setNoteError(''); setNoteSuccess('');
   }, [stop.so_id]);
+
+  const handleReleasePick = async () => {
+    setPickLoading(true);
+    setPickError('');
+    try {
+      const res = await fetch(`/api/warehouse/orders/${encodeURIComponent(stop.so_id)}/release-pick`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ branchCode: stop.system_id }),
+      });
+      const data = await res.json();
+      if (!res.ok) { setPickError(data.error ?? 'Failed to create pick file'); return; }
+      setPickFileId(data.pickFileId ?? 'Created');
+    } catch {
+      setPickError('Network error');
+    } finally {
+      setPickLoading(false);
+    }
+  };
+
+  const handleSendNote = async () => {
+    if (!noteText.trim()) return;
+    setNoteLoading(true);
+    setNoteError('');
+    setNoteSuccess('');
+    try {
+      const res = await fetch(`/api/sales/orders/${encodeURIComponent(stop.so_id)}/push-to-erp`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'message', branchCode: stop.system_id, message: noteText.trim() }),
+      });
+      const data = await res.json();
+      if (!res.ok) { setNoteError(data.error ?? 'Failed to add note'); return; }
+      setNoteSuccess('Note added to order in Agility');
+      setNoteText('');
+      setShowNoteForm(false);
+    } catch {
+      setNoteError('Network error');
+    } finally {
+      setNoteLoading(false);
+    }
+  };
 
   useEffect(() => {
     if (detailTab !== 'timeline' || timeline) return;
@@ -397,6 +451,92 @@ function DetailPanel({ stop, onClose }: { stop: DeliveryStop; onClose: () => voi
             </dd>
           </div>
         </dl>
+      </div>
+
+      {/* ERP Actions */}
+      <div className="px-4 py-3 border-b border-gray-700 shrink-0 space-y-2">
+        <div className="flex flex-wrap gap-2">
+          {/* Open POD capture — always available */}
+          <Link
+            href={`/dispatch/pod/${encodeURIComponent(stop.so_id)}?branch=${stop.system_id}&shipment=${stop.shipment_num}&customer=${encodeURIComponent(stop.customer_name ?? '')}`}
+            target="_blank"
+            className="flex items-center gap-1.5 px-3 py-1.5 bg-cyan-900/40 hover:bg-cyan-900/60 text-cyan-300 border border-cyan-700/50 rounded text-xs font-medium transition-colors"
+          >
+            <Camera className="w-3.5 h-3.5" />
+            Open POD
+          </Link>
+        </div>
+        <div className="flex gap-2">
+          {/* Release to Pick — only for pickable statuses */}
+          {['K', 'P', 'S'].includes((stop.status_flag ?? '').toUpperCase()) && (
+            pickFileId ? (
+              <div className="flex items-center gap-1.5 text-xs text-green-400">
+                <Package className="w-3.5 h-3.5" />
+                Pick file {pickFileId} created
+              </div>
+            ) : (
+              <button
+                onClick={handleReleasePick}
+                disabled={pickLoading}
+                className="flex items-center gap-1.5 px-3 py-1.5 bg-amber-900/40 hover:bg-amber-900/60 disabled:opacity-50 text-amber-300 border border-amber-700/50 rounded text-xs font-medium transition-colors"
+              >
+                <Package className="w-3.5 h-3.5" />
+                {pickLoading ? 'Releasing…' : 'Release to Pick'}
+              </button>
+            )
+          )}
+
+          {/* Add Note */}
+          <button
+            onClick={() => { setShowNoteForm((v) => !v); setNoteError(''); setNoteSuccess(''); }}
+            className="flex items-center gap-1.5 px-3 py-1.5 bg-gray-800 hover:bg-gray-700 text-gray-400 border border-gray-600 rounded text-xs transition-colors"
+          >
+            <MessageSquare className="w-3.5 h-3.5" />
+            Add Note
+          </button>
+        </div>
+
+        {pickError && (
+          <div className="text-[11px] text-red-400 flex items-center gap-1">
+            <AlertCircle className="w-3 h-3 shrink-0" /> {pickError}
+          </div>
+        )}
+        {noteSuccess && (
+          <div className="text-[11px] text-green-400">{noteSuccess}</div>
+        )}
+        {noteError && (
+          <div className="text-[11px] text-red-400 flex items-center gap-1">
+            <AlertCircle className="w-3 h-3 shrink-0" /> {noteError}
+          </div>
+        )}
+
+        {showNoteForm && (
+          <div className="space-y-1.5">
+            <textarea
+              value={noteText}
+              onChange={(e) => setNoteText(e.target.value)}
+              placeholder="Note to add to this order in Agility..."
+              rows={2}
+              className="w-full px-2 py-1.5 bg-gray-800 border border-gray-600 rounded text-xs text-gray-100 placeholder-gray-600 focus:outline-none focus:border-cyan-500 resize-none"
+            />
+            <div className="flex gap-1.5">
+              <button
+                onClick={handleSendNote}
+                disabled={noteLoading || !noteText.trim()}
+                className="flex items-center gap-1 px-3 py-1 bg-cyan-700 hover:bg-cyan-600 disabled:opacity-50 text-white rounded text-xs font-medium transition-colors"
+              >
+                <Send className="w-3 h-3" />
+                {noteLoading ? 'Sending…' : 'Send'}
+              </button>
+              <button
+                onClick={() => { setShowNoteForm(false); setNoteText(''); }}
+                className="px-2 py-1 text-gray-500 hover:text-white text-xs transition-colors"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Tabs */}

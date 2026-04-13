@@ -17,6 +17,25 @@ type PoDetail = {
   receiving_summary: Record<string, unknown> | null;
 };
 
+type LivePoLine = {
+  sequence: number;
+  item_code: string | null;
+  description: string | null;
+  qty_ordered: number | null;
+  qty_received: number | null;
+  uom: string | null;
+};
+
+type LivePoData = {
+  header: Record<string, unknown>;
+  lines: LivePoLine[];
+  lineCount: number;
+  totalQtyOrdered: number;
+  totalQtyReceived: number;
+  source: 'mirror' | 'live+mirror';
+  liveError?: string;
+};
+
 type UploadedPhoto = { url: string; key: string };
 
 type Step = 'search' | 'photos' | 'confirm' | 'done';
@@ -36,6 +55,8 @@ export default function CheckinClient() {
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
   const [submissionId, setSubmissionId] = useState('');
+  const [liveData, setLiveData] = useState<LivePoData | null>(null);
+  const [loadingLive, setLoadingLive] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
 
   async function search(q: string) {
@@ -53,10 +74,29 @@ export default function CheckinClient() {
   async function selectPo(po: PoResult) {
     setSelectedPo(po);
     setError('');
+    setLiveData(null);
+
+    // Load mirror table detail (non-critical)
     try {
       const res = await fetch(`/api/purchasing/pos/${encodeURIComponent(po.po_number)}`);
       if (res.ok) setPoDetail(await res.json());
     } catch { /* non-critical */ }
+
+    // Load live ERP data in background (non-blocking)
+    if (po.system_id) {
+      setLoadingLive(true);
+      try {
+        const liveRes = await fetch(
+          `/api/purchasing/pos/${encodeURIComponent(po.po_number)}/live?branch=${encodeURIComponent(po.system_id)}`
+        );
+        if (liveRes.ok) {
+          const d = await liveRes.json() as LivePoData;
+          setLiveData(d);
+        }
+      } catch { /* non-critical — degrade gracefully */ }
+      finally { setLoadingLive(false); }
+    }
+
     setStep('photos');
   }
 
@@ -109,6 +149,8 @@ export default function CheckinClient() {
     setSearchResults([]);
     setSelectedPo(null);
     setPoDetail(null);
+    setLiveData(null);
+    setLoadingLive(false);
     setPhotos([]);
     setNotes('');
     setPriority('');
@@ -222,6 +264,93 @@ export default function CheckinClient() {
                   <div>Lines: {poDetail.lines.length}</div>
                 </div>
               )}
+
+              {/* Live ERP data panel */}
+              {loadingLive && (
+                <div className="mt-3 text-xs text-gray-500 animate-pulse">Loading live PO data…</div>
+              )}
+              {liveData && !loadingLive && (
+                <div className="mt-3 border-t border-gray-700 pt-3 space-y-2">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-medium text-gray-300">Live ERP Status</span>
+                    <span className={`text-[10px] px-1.5 py-0.5 rounded font-medium ${
+                      liveData.source === 'live+mirror'
+                        ? 'bg-green-900/50 text-green-400 border border-green-800'
+                        : 'bg-gray-800 text-gray-500 border border-gray-700'
+                    }`}>
+                      {liveData.source === 'live+mirror' ? 'Live' : 'Mirror'}
+                    </span>
+                  </div>
+
+                  {/* Receipt progress bar */}
+                  <div>
+                    <div className="flex justify-between text-[10px] text-gray-500 mb-1">
+                      <span>Qty received vs ordered</span>
+                      <span>{liveData.totalQtyReceived} / {liveData.totalQtyOrdered}</span>
+                    </div>
+                    <div className="w-full h-1.5 bg-gray-700 rounded-full overflow-hidden">
+                      <div
+                        className={`h-full rounded-full transition-all ${
+                          liveData.totalQtyReceived >= liveData.totalQtyOrdered
+                            ? 'bg-green-500'
+                            : 'bg-amber-500'
+                        }`}
+                        style={{
+                          width: `${Math.min(100, liveData.totalQtyOrdered > 0
+                            ? (liveData.totalQtyReceived / liveData.totalQtyOrdered) * 100
+                            : 0)}%`,
+                        }}
+                      />
+                    </div>
+                  </div>
+
+                  {/* Line items table */}
+                  {liveData.lines.length > 0 && (
+                    <div className="max-h-48 overflow-y-auto rounded border border-gray-700">
+                      <table className="w-full text-[10px]">
+                        <thead className="sticky top-0 bg-gray-850">
+                          <tr className="text-gray-500 border-b border-gray-700">
+                            <th className="px-2 py-1 text-left font-medium">Item</th>
+                            <th className="px-2 py-1 text-left font-medium">Description</th>
+                            <th className="px-2 py-1 text-right font-medium">Ordered</th>
+                            <th className="px-2 py-1 text-right font-medium">Received</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {liveData.lines.map((line) => {
+                            const ordered  = Number(line.qty_ordered ?? 0);
+                            const received = Number(line.qty_received ?? 0);
+                            const short    = received < ordered;
+                            return (
+                              <tr
+                                key={line.sequence}
+                                className={`border-b border-gray-800 ${short ? 'bg-amber-950/20' : ''}`}
+                              >
+                                <td className="px-2 py-1 font-mono text-cyan-400">{line.item_code ?? '—'}</td>
+                                <td className="px-2 py-1 text-gray-400 max-w-[140px] truncate">{line.description ?? '—'}</td>
+                                <td className="px-2 py-1 text-right text-gray-300 tabular-nums">
+                                  {ordered} {line.uom ?? ''}
+                                </td>
+                                <td className={`px-2 py-1 text-right tabular-nums font-medium ${
+                                  received >= ordered ? 'text-green-400' : 'text-amber-400'
+                                }`}>
+                                  {received}
+                                </td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+
+                  {liveData.liveError && (
+                    <p className="text-[10px] text-gray-600 italic">
+                      Live API unavailable — showing mirror data
+                    </p>
+                  )}
+                </div>
+              )}
             </div>
 
             <div>
@@ -290,14 +419,33 @@ export default function CheckinClient() {
         {/* Step 3: Confirm + Notes */}
         {step === 'confirm' && selectedPo && (
           <div className="space-y-4">
-            <div className="bg-gray-800 rounded p-4 border border-gray-700">
+            <div className="bg-gray-800 rounded p-4 border border-gray-700 space-y-2">
               <div className="font-mono font-bold text-cyan-300">{selectedPo.po_number}</div>
               {selectedPo.supplier_name && (
                 <div className="text-gray-300 text-sm">{selectedPo.supplier_name}</div>
               )}
-              <div className="mt-2 text-xs text-gray-500">
+              <div className="text-xs text-gray-500">
                 {photos.length} photo{photos.length !== 1 ? 's' : ''} attached
               </div>
+              {liveData && (
+                <div className="pt-2 border-t border-gray-700 text-xs space-y-1">
+                  <div className="flex justify-between text-gray-400">
+                    <span>{liveData.lineCount} line{liveData.lineCount !== 1 ? 's' : ''}</span>
+                    <span className={
+                      liveData.totalQtyReceived >= liveData.totalQtyOrdered
+                        ? 'text-green-400'
+                        : 'text-amber-400'
+                    }>
+                      {liveData.totalQtyReceived} / {liveData.totalQtyOrdered} units received
+                    </span>
+                  </div>
+                  {liveData.lines.some((l) => Number(l.qty_received ?? 0) < Number(l.qty_ordered ?? 0)) && (
+                    <p className="text-amber-400/80 text-[10px]">
+                      ⚠ Some lines short — note any discrepancies below
+                    </p>
+                  )}
+                </div>
+              )}
             </div>
 
             <div>
