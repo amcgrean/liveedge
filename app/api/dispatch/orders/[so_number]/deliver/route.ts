@@ -60,8 +60,6 @@ export async function POST(req: NextRequest, context: RouteContext) {
           UpdateAllPickFiles: true,
           UpdateSalesOrder:   true,
           ShipmentStatusFlag: 'D',
-          ShipDate:           body.shipDate ?? today,
-          ...(body.notes ? { Notes: body.notes } : {}),
         },
         { branch: agilityBranch }
       );
@@ -78,7 +76,7 @@ export async function POST(req: NextRequest, context: RouteContext) {
     const sql = getErpSql();
     await sql`
       UPDATE dispatch_route_stops
-      SET status = 'delivered', updated_at = NOW()
+      SET status = 'delivered'
       WHERE id = ${body.stopId}
     `;
   } catch (err) {
