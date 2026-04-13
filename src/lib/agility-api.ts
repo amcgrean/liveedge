@@ -55,8 +55,8 @@ interface AgilitySession {
 
 interface LoginResponse {
   response: {
-    ContextId: string;
-    Branch: string;
+    SessionContextId: string;
+    InitialBranch: string;
     ReturnCode: number;
     MessageText: string;
   };
@@ -172,24 +172,24 @@ async function login(branchKey: string = ''): Promise<AgilitySession> {
     throw new AgilityAuthError('Agility Login returned invalid JSON');
   }
 
-  const { ContextId, Branch, ReturnCode, MessageText } = data.response;
+  const { SessionContextId, InitialBranch, ReturnCode, MessageText } = data.response;
 
   if (ReturnCode !== 0) {
     throw new AgilityAuthError(`Agility Login error (RC ${ReturnCode}): ${MessageText}`);
   }
 
-  if (!ContextId) {
-    throw new AgilityAuthError('Agility Login succeeded but returned no ContextId');
+  if (!SessionContextId) {
+    throw new AgilityAuthError('Agility Login succeeded but returned no SessionContextId');
   }
 
   const session: AgilitySession = {
-    contextId: ContextId,
-    branch: Branch,
-    loginBranch: branchKey || Branch,
+    contextId: SessionContextId,
+    branch: InitialBranch,
+    loginBranch: branchKey || InitialBranch,
     expiresAt: Date.now() + SESSION_TTL_MS,
   };
 
-  _sessionCache.set(branchKey || Branch, session);
+  _sessionCache.set(branchKey || InitialBranch, session);
   return session;
 }
 
