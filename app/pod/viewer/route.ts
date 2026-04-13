@@ -89,7 +89,9 @@ function renderSections(photos: (PhotoRow & { url: string })[], multiShipment: b
 export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url);
   const branch = searchParams.get('Branch') ?? searchParams.get('branch') ?? '';
-  const refNum = searchParams.get('RefNum') ?? searchParams.get('refNum') ?? searchParams.get('so') ?? '';
+  const rawRef = searchParams.get('RefNum') ?? searchParams.get('refNum') ?? searchParams.get('so') ?? '';
+  // Agility zero-pads SO numbers (e.g. 0001385928) — strip leading zeros to match our stored so_id
+  const refNum = rawRef.replace(/^0+/, '') || rawRef;
   const type   = searchParams.get('Type')   ?? searchParams.get('type')   ?? 'SO';
 
   const hasParams = !!(branch && refNum);
