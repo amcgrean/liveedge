@@ -22,8 +22,8 @@ type RouteContext = { params: Promise<{ so_number: string }> };
 
 interface DeliverBody {
   branchCode: string;
-  shipmentNum: number;
-  stopId: number;
+  shipmentNum: number | string;
+  stopId: number | string;
   shipDate?: string;
   notes?: string;
 }
@@ -56,7 +56,7 @@ export async function POST(req: NextRequest, context: RouteContext) {
       // Log exactly what we're sending to help diagnose parse errors
       const shipPayload = {
         OrderID:            soNumber,
-        ShipmentNumber:     body.shipmentNum ?? 1,
+        ShipmentNumber:     Number(body.shipmentNum) || 1,
         UpdateAllPickFiles: true,
         ShipmentStatusFlag: 'Delivered' as const,
       };
@@ -76,7 +76,7 @@ export async function POST(req: NextRequest, context: RouteContext) {
     await sql`
       UPDATE dispatch_route_stops
       SET status = 'delivered'
-      WHERE id = ${body.stopId}
+      WHERE id = ${Number(body.stopId)}
     `;
   } catch (err) {
     console.error(`[deliver/${soNumber}] stop update failed:`, err);
