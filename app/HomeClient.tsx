@@ -176,6 +176,7 @@ export default function HomeClient({ userName, userRole, userBranch }: Props) {
   const pathname = usePathname();
   const [data, setData] = useState<HomeData | null>(null);
   const [loading, setLoading] = useState(true);
+  const [mounted, setMounted] = useState(false);
 
   const load = useCallback(async () => {
     try {
@@ -187,6 +188,7 @@ export default function HomeClient({ userName, userRole, userBranch }: Props) {
   }, []);
 
   useEffect(() => { load(); }, [load]);
+  useEffect(() => { setMounted(true); }, []);
 
   // Track this page visit
   useEffect(() => {
@@ -211,10 +213,12 @@ export default function HomeClient({ userName, userRole, userBranch }: Props) {
         <div className="flex flex-wrap items-end justify-between gap-4">
           <div>
             <h1 className="text-3xl font-bold text-white">
-              {greeting()}{userName ? `, ${userName.split(' ')[0]}` : ''}
+              {mounted ? greeting() : 'Welcome'}{userName ? `, ${userName.split(' ')[0]}` : ''}
             </h1>
             <p className="text-gray-500 mt-1 text-sm">
-              {new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}
+              {mounted
+                ? new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })
+                : <span className="invisible">—</span>}
               {userBranch && <span className="ml-2 text-gray-600">· {userBranch}</span>}
             </p>
           </div>
