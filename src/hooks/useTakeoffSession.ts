@@ -48,12 +48,24 @@ export function useTakeoffSession({ state, dispatch }: UseTakeoffSessionOpts) {
           });
         }
 
-        // Map groups
+        // Map groups.
+        // Normalize legacy/inconsistent type values: start-takeoff has been
+        // storing 'polyline'|'polygon' (from preset.toolType) while the
+        // reducer expects 'linear'|'area'. Without this normalization,
+        // selecting a preset doesn't switch the drawing tool (stays 'select')
+        // and users can't draw, or the wrong tool is active from a previous
+        // action.
+        function normalizeGroupType(t: unknown): 'linear' | 'area' | 'count' {
+          if (t === 'linear' || t === 'polyline') return 'linear';
+          if (t === 'area' || t === 'polygon') return 'area';
+          if (t === 'count') return 'count';
+          return 'linear'; // safe fallback for unknown values
+        }
         const groups: GroupState[] = (data.groups ?? []).map((g: Record<string, unknown>) => ({
           id: g.id as string,
           name: g.name as string,
           color: g.color as string,
-          type: g.type as 'linear' | 'area' | 'count',
+          type: normalizeGroupType(g.type),
           unit: g.unit as string,
           sortOrder: g.sortOrder as number,
           targetField: g.targetField as string | null,

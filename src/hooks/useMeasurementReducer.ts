@@ -122,13 +122,16 @@ const initialState: TakeoffState = {
   currentPage: 1,
   activeTool: 'select',
   activePresetId: null,
+  // NOTE: downstream code uses zoom===0 as a "fit to window" sentinel that
+  // triggers a fit-to-page calculation in TakeoffCanvas. This is also the
+  // initial value — we want the PDF to land fit-to-page, not at 100%.
   activeViewportId: null,
   selectedObjectId: null,
   viewports: {},
   groups: [],
   measurements: {},
   pageStates: {},
-  zoom: 1,
+  zoom: 0, // 0 = "fit to window" sentinel; TakeoffCanvas computes actual fit on first PDF render
   isDirty: false,
   isLoading: true,
 };

@@ -170,13 +170,21 @@ export async function POST(req: NextRequest, context: RouteContext) {
         ? STANDARD_PRESETS.filter((p) => !p.category || activeCategories.has(p.category))
         : STANDARD_PRESETS;
 
+    // Map preset.toolType ('polyline'|'polygon'|'count') to the group.type
+    // values the reducer expects ('linear'|'area'|'count'). Custom groups use
+    // the latter, so we keep the storage consistent.
+    function presetToGroupType(t: string): 'linear' | 'area' | 'count' {
+      if (t === 'polyline') return 'linear';
+      if (t === 'polygon') return 'area';
+      return 'count';
+    }
     if (filteredPresets.length > 0) {
       await db.insert(schema.takeoffGroups).values(
         filteredPresets.map((preset, idx) => ({
           sessionId: takeoffSession.id,
           name: preset.name,
           color: preset.color,
-          type: preset.toolType,
+          type: presetToGroupType(preset.toolType),
           unit: preset.unit,
           sortOrder: idx,
           targetField: preset.targetField,

@@ -86,14 +86,21 @@ export async function POST(req: NextRequest) {
       })
       .returning();
 
-    // Create standard preset groups
+    // Create standard preset groups. Map preset.toolType to the reducer's
+    // group.type values so the drawing tool activates correctly when the
+    // user selects a preset.
+    function presetToGroupType(t: string): 'linear' | 'area' | 'count' {
+      if (t === 'polyline') return 'linear';
+      if (t === 'polygon') return 'area';
+      return 'count';
+    }
     if (STANDARD_PRESETS.length > 0) {
       await db.insert(schema.takeoffGroups).values(
         STANDARD_PRESETS.map((preset, idx) => ({
           sessionId: takeoffSession.id,
           name: preset.name,
           color: preset.color,
-          type: preset.toolType,
+          type: presetToGroupType(preset.toolType),
           unit: preset.unit,
           sortOrder: idx,
           targetField: preset.targetField,

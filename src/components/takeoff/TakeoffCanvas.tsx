@@ -160,6 +160,26 @@ export function TakeoffCanvas({
       // Match Fabric canvas to PDF canvas dimensions
       resizeFabricCanvas(fabricCanvas, width, height);
 
+      // If the current zoom is still the sentinel "fit-to-window" (0), OR if
+      // this is the first render (no previous zoom set by the canvas), fit
+      // the new page into the container. This makes the PDF land fit-to-page
+      // on initial load instead of zoomed in at native pixel scale.
+      const containerEl = containerRef.current;
+      if (containerEl && (state.zoom === 0 || lastCanvasZoomRef.current === 1)) {
+        const containerW = containerEl.clientWidth;
+        const containerH = containerEl.clientHeight;
+        if (containerW > 0 && containerH > 0) {
+          const fitZoom = Math.min(containerW / width, containerH / height, 1) * 0.95;
+          const clampedFit = Math.max(0.05, Math.min(10, fitZoom));
+          const offsetX = (containerW - width * clampedFit) / 2;
+          const offsetY = (containerH - height * clampedFit) / 2;
+          fabricCanvas.setViewportTransform([clampedFit, 0, 0, clampedFit, offsetX, offsetY]);
+          fabricCanvas.requestRenderAll();
+          lastCanvasZoomRef.current = clampedFit;
+          dispatch({ type: 'SET_ZOOM', payload: clampedFit });
+        }
+      }
+
       // Restore saved Fabric state for this page if it exists
       const savedState = state.pageStates[pageNum];
       if (savedState) {
