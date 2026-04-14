@@ -99,15 +99,16 @@ export async function GET(req: NextRequest, context: RouteContext) {
   try {
     const liveRaw = await agilityApi.purchaseOrderGet(po, { branch: agilityBranch });
 
-    // Extract the useful parts of the live response
-    // TODO: Verify exact field names against real API response on Monday
-    const liveResponse = liveRaw as Record<string, unknown>;
-    const liveHeader = liveResponse.dsPurchaseOrderHeader
-      ? (liveResponse.dsPurchaseOrderHeader as Record<string, unknown[]>).dtPurchaseOrderHeader?.[0]
-      : null;
-    const liveLines = liveResponse.dsPurchaseOrderDetail
-      ? (liveResponse.dsPurchaseOrderDetail as Record<string, unknown[]>).dtPurchaseOrderDetail ?? []
-      : [];
+    // Response shape (confirmed from Postman v619 collection):
+    // response.PurchaseOrderResponse.dsPurchaseOrderResponse.dtPurchaseOrderHeader[]
+    // response.PurchaseOrderResponse.dsPurchaseOrderResponse.dtPurchaseOrderDetail[]
+    const ds = (
+      (liveRaw as Record<string, unknown>).PurchaseOrderResponse as
+      Record<string, { dtPurchaseOrderHeader?: unknown[]; dtPurchaseOrderDetail?: unknown[] }> | undefined
+    )?.dsPurchaseOrderResponse;
+
+    const liveHeader = ds?.dtPurchaseOrderHeader?.[0] ?? null;
+    const liveLines  = ds?.dtPurchaseOrderDetail ?? [];
 
     return NextResponse.json({
       ...mirrorData,
@@ -115,7 +116,6 @@ export async function GET(req: NextRequest, context: RouteContext) {
       liveData: {
         header: liveHeader,
         lines:  liveLines,
-        raw:    liveRaw,  // include raw for debugging until field names are confirmed
       },
     });
   } catch (err) {
