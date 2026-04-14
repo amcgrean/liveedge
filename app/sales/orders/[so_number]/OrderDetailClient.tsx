@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import Link from 'next/link';
 import { ArrowLeft, ChevronDown, ChevronRight, Truck, Package, MessageSquare, XCircle, AlertCircle, Send } from 'lucide-react';
+import { usePageTracking } from '@/hooks/usePageTracking';
 
 interface OrderLine {
   sequence: number;
@@ -195,6 +196,7 @@ function ShipmentRow({ shipment }: { shipment: ShipmentRecord }) {
 }
 
 export default function OrderDetailClient({ soNumber }: Props) {
+  usePageTracking();
   const [order, setOrder] = useState<OrderDetail | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');

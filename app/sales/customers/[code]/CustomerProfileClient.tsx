@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import Link from 'next/link';
 import { ArrowLeft, Phone, Mail, MapPin, DollarSign, Send, AlertCircle, CheckCircle } from 'lucide-react';
+import { usePageTracking } from '@/hooks/usePageTracking';
 
 type Customer = {
   cust_key: string; cust_code: string; cust_name: string | null;
@@ -56,6 +57,7 @@ const SO_STATUS: Record<string, { label: string; color: string }> = {
 const NOTE_TYPES = ['Call', 'Visit', 'Email', 'Quote Follow-Up', 'Issue', 'Other'];
 
 export default function CustomerProfileClient({ code, userName }: { code: string; userName: string }) {
+  usePageTracking();
   const [tab, setTab] = useState<Tab>('overview');
   const [customer, setCustomer] = useState<Customer | null>(null);
   const [orders, setOrders] = useState<Order[]>([]);

@@ -6,6 +6,7 @@ import {
   RefreshCw, Package, CheckCircle, Clock, MessageSquare,
   Send, Lock, ChevronDown, ChevronUp, Truck,
 } from 'lucide-react';
+import { usePageTracking } from '@/hooks/usePageTracking';
 
 interface PoHeader {
   po_number: string;
@@ -212,6 +213,7 @@ function ReceivingHistory({ receipts }: { receipts: Receipt[] }) {
 // ─── Main component ───────────────────────────────────────────────────────────
 
 export default function PosDetailClient({ po, isAdmin }: Props) {
+  usePageTracking();
   const [data, setData] = useState<PoData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');

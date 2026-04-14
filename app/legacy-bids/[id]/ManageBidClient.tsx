@@ -4,6 +4,7 @@ import React, { useState, useEffect, useCallback, useRef } from 'react';
 import type { Session } from 'next-auth';
 import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import { TopNav } from '../../../src/components/nav/TopNav';
+import { usePageTracking } from '@/hooks/usePageTracking';
 import {
   ArrowLeft,
   Calculator,
@@ -91,6 +92,7 @@ interface Props {
 }
 
 export default function ManageBidClient({ session }: Props) {
+  usePageTracking();
   const params = useParams();
   const router = useRouter();
   const searchParams = useSearchParams();
