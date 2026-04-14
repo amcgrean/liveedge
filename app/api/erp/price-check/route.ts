@@ -80,7 +80,7 @@ export async function POST(req: NextRequest) {
     );
 
     // Build a lookup of returned items for mismatch detection
-    const returnedSkus = new Set(results.map((r) => r.ItemID));
+    const returnedSkus = new Set(results.map((r) => r.ItemCode));
     const notFound = body.items
       .filter((item) => !returnedSkus.has(item.sku))
       .map((item) => item.sku);

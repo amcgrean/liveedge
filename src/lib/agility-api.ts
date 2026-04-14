@@ -382,15 +382,20 @@ export interface ItemPriceAndAvailabilityRequest {
   }[];
 }
 
+// Field names confirmed from Postman v619 collection
 export interface ItemPriceAvailResult {
-  ItemID: string;
-  Description: string;
+  ItemCode: string;
+  ItemDescription: string;
   UOM: string;
-  Price: number;
-  QuantityAvailable: number;
-  QuantityOnOrder: number;
-  LeadDays: number;
-  PriceLevel: string;
+  GrossPrice: number;
+  NetPrice: number;
+  OnHandQuantity: number;
+  AvailableQuantity: number;
+  OnOrderQty: number;
+  HandlingCode: string;
+  NonSaleable: boolean;
+  Stock: boolean;
+  Discontinued: string;
 }
 
 /**
@@ -402,9 +407,11 @@ async function itemPriceAndAvailability(
   options: { branch?: string } = {}
 ): Promise<ItemPriceAvailResult[]> {
   const res = await callApi<{
-    dsItemPriceAndAvailability: { dtItemPriceAndAvailability: ItemPriceAvailResult[] };
+    ItemPriceAndAvailResponse: {
+      dsItemPriceAndAvailResponse: { dtItemPriceAndAvailResponse: ItemPriceAvailResult[] };
+    };
   }>('Inventory', 'ItemPriceAndAvailabilityList', request, options);
-  return res.dsItemPriceAndAvailability?.dtItemPriceAndAvailability ?? [];
+  return res.ItemPriceAndAvailResponse?.dsItemPriceAndAvailResponse?.dtItemPriceAndAvailResponse ?? [];
 }
 
 /**
@@ -418,14 +425,19 @@ export interface ItemsListRequest {
   ItemID?: string;
 }
 
+// Field names confirmed from Postman v619 collection
 export interface AgilityItem {
-  ItemID: string;
-  Description: string;
+  ItemCode: string;
+  ItemDescription: string;
   UOM: string;
   HandlingCode: string;
-  Active: boolean;
-  Weight: number;
-  PriceGroupID: string;
+  Stock: boolean;
+  Discontinued: string;
+  GrossPrice: number;
+  NetPrice: number;
+  OnHandQuantity: number;
+  AvailableQuantity: number;
+  PrimarySupplierID: string;
 }
 
 async function itemsList(
@@ -433,13 +445,13 @@ async function itemsList(
   options: { branch?: string } = {}
 ): Promise<{ items: AgilityItem[]; moreAvailable: boolean; nextPointer: number }> {
   const res = await callApi<{
-    dsItemsList: { dtItemsList: AgilityItem[] };
+    ItemsListResponse: { dsItemsListResponse: { dtItemsListResponse: AgilityItem[] } };
     MoreResultsAvailable: boolean;
     NextChunkStartPointer: number;
   }>('Inventory', 'ItemsList', { RecordFetchLimit: 200, ...request }, options);
 
   return {
-    items: res.dsItemsList?.dtItemsList ?? [],
+    items: res.ItemsListResponse?.dsItemsListResponse?.dtItemsListResponse ?? [],
     moreAvailable: res.MoreResultsAvailable ?? false,
     nextPointer: res.NextChunkStartPointer ?? 0,
   };
@@ -449,19 +461,23 @@ async function itemsList(
 // Orders service
 // ---------------------------------------------------------------------------
 
+// Field names confirmed from Postman v619 collection
 export interface SalesOrderHeader {
-  OrderID: string;
+  OrderID: number;
+  BranchID: string;
   CustomerID: string;
   ShipToSequence: number;
   SaleType: string;
   OrderDate: string;
-  ExpectDate: string | null;
-  Status: string;
-  Reference: string;
+  ExpectedDate: string | null;
+  OrderStatus: string;
+  TransactionReference: string;
   ShipVia: string;
-  Driver: string;
-  Route: string;
+  RouteID: string;
   OrderTotal: number;
+  ShipToName: string | null;
+  ShipToCity: string | null;
+  ShipToState: string | null;
 }
 
 export interface SalesOrderListRequest {
@@ -479,13 +495,13 @@ async function salesOrderList(
   options: { branch?: string } = {}
 ): Promise<{ orders: SalesOrderHeader[]; moreAvailable: boolean; nextPointer: number }> {
   const res = await callApi<{
-    dsSalesOrderList: { dtSalesOrderList: SalesOrderHeader[] };
+    OrdersResponse: { dsOrdersResponse: { dtOrderResponse: SalesOrderHeader[] } };
     MoreResultsAvailable: boolean;
     NextChunkStartPointer: number;
   }>('Orders', 'SalesOrderList', { RecordFetchLimit: 200, ...request }, options);
 
   return {
-    orders: res.dsSalesOrderList?.dtSalesOrderList ?? [],
+    orders: res.OrdersResponse?.dsOrdersResponse?.dtOrderResponse ?? [],
     moreAvailable: res.MoreResultsAvailable ?? false,
     nextPointer: res.NextChunkStartPointer ?? 0,
   };
