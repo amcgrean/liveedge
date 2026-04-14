@@ -209,10 +209,14 @@ export function TakeoffCanvas({
   }, [state.currentPage]);
 
   // ── Zoom/scroll handler ──
+  // Attached once at container level using capture phase so it catches wheel
+  // events before they hit Fabric.js's own DOM layer, regardless of how Fabric
+  // restructures the DOM (Fabric wraps the lower-canvas in a canvas-container
+  // div and adds an upper-canvas on top, which can interfere with listeners
+  // attached directly to our canvas refs). Capture phase also sidesteps any
+  // third-party layer that might stopPropagation on the bubble phase.
   useEffect(() => {
     const container = containerRef.current;
-    const pdfCanvasEl = pdfCanvasRef.current;
-    const fabricCanvasEl = fabricCanvasRef.current;
     if (!container) return;
 
     function handleWheel(e: WheelEvent) {
@@ -223,6 +227,7 @@ export function TakeoffCanvas({
       if (scrollMode === 'zoom') {
         // Scroll always zooms (no modifier required). Ctrl+scroll also zooms.
         e.preventDefault();
+        e.stopPropagation();
         const delta = -e.deltaY / 500;
         const currentZoom = fabricCanvas.getZoom();
         const newZoom = Math.min(Math.max(currentZoom + delta, 0.1), 10);
@@ -234,6 +239,7 @@ export function TakeoffCanvas({
         // Pan mode: Ctrl+scroll still zooms; plain scroll pans the canvas
         if (e.ctrlKey || e.metaKey) {
           e.preventDefault();
+          e.stopPropagation();
           const delta = -e.deltaY / 500;
           const currentZoom = fabricCanvas.getZoom();
           const newZoom = Math.min(Math.max(currentZoom + delta, 0.1), 10);
@@ -244,6 +250,7 @@ export function TakeoffCanvas({
         } else {
           // Pan canvas by scroll amount
           e.preventDefault();
+          e.stopPropagation();
           const dx = e.shiftKey ? -e.deltaY : -e.deltaX;
           const dy = e.shiftKey ? 0 : -e.deltaY;
           panCanvas(fabricCanvas, dx, dy);
@@ -251,14 +258,10 @@ export function TakeoffCanvas({
       }
     }
 
-    const opts: AddEventListenerOptions = { passive: false };
+    const opts: AddEventListenerOptions = { passive: false, capture: true };
     container.addEventListener('wheel', handleWheel, opts);
-    pdfCanvasEl?.addEventListener('wheel', handleWheel, opts);
-    fabricCanvasEl?.addEventListener('wheel', handleWheel, opts);
     return () => {
-      container.removeEventListener('wheel', handleWheel);
-      pdfCanvasEl?.removeEventListener('wheel', handleWheel);
-      fabricCanvasEl?.removeEventListener('wheel', handleWheel);
+      container.removeEventListener('wheel', handleWheel, opts);
     };
   }, [dispatch, scrollMode]);
 
