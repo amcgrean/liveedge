@@ -67,7 +67,7 @@ export async function GET(_req: NextRequest, context: RouteContext) {
     const shipToRows = await sql<ShipToRow[]>`
       SELECT seq_num, shipto_name, address_1, address_2, city, state, zip
       FROM agility_customers
-      WHERE cust_code = ${customerCode}
+      WHERE TRIM(cust_code) = TRIM(${customerCode})
         AND is_deleted = false
         AND seq_num >= 1
       ORDER BY seq_num
