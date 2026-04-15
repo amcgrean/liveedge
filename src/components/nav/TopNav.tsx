@@ -5,9 +5,9 @@ import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { signOut, useSession } from 'next-auth/react';
 import {
-  Hammer, LogOut, ChevronDown, Menu, X, Settings,
+  LogOut, ChevronDown, Menu, X, Settings,
   Truck, ShoppingCart, FileText, Wrench, PackageCheck, MapPin, Search,
-  Boxes, Inbox,
+  Boxes, HelpCircle, User,
 } from 'lucide-react';
 import { cn } from '../../lib/utils';
 
@@ -116,11 +116,9 @@ function GlobalSearch() {
     else setQ('');
   }, [open]);
 
-  // Close on Escape
   React.useEffect(() => {
     function handler(e: KeyboardEvent) {
       if (e.key === 'Escape') setOpen(false);
-      // Cmd/Ctrl+K to open
       if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
         e.preventDefault();
         setOpen((p) => !p);
@@ -172,8 +170,9 @@ function GlobalSearch() {
 interface NavLink {
   href: string;
   label: string;
-  // If set, only shown to users with at least one of these WH-Tracker roles (admins always see all)
   requireAnyRole?: string[];
+  /** Renders a labeled section divider above this link in the dropdown */
+  sectionBefore?: string;
 }
 
 interface Domain {
@@ -189,8 +188,8 @@ interface Domain {
 function getDomains(tvBranch: string): Domain[] {
   return [
     {
-      id: 'warehouse',
-      label: 'Warehouse',
+      id: 'yard',
+      label: 'Yard',
       icon: <Boxes className="w-4 h-4" />,
       dropdown: true,
       isActive: (p) =>
@@ -244,7 +243,7 @@ function getDomains(tvBranch: string): Domain[] {
     },
     {
       id: 'estimating',
-      label: 'Bids & Design',
+      label: 'Services',
       icon: <FileText className="w-4 h-4" />,
       dropdown: true,
       isActive: (p) =>
@@ -270,15 +269,6 @@ function getDomains(tvBranch: string): Domain[] {
       ],
     },
     {
-      id: 'service',
-      label: 'Service',
-      icon: <Wrench className="w-4 h-4" />,
-      dropdown: false,
-      href: '/it-issues',
-      isActive: (p) => p.startsWith('/it-issues'),
-      links: [],
-    },
-    {
       id: 'purchasing',
       label: 'Purchasing',
       icon: <PackageCheck className="w-4 h-4" />,
@@ -289,23 +279,17 @@ function getDomains(tvBranch: string): Domain[] {
         p.startsWith('/purchasing/suggested-buys') ||
         p.startsWith('/purchasing/exceptions') ||
         p.startsWith('/purchasing/manage') ||
-        p.startsWith('/purchasing/pos'),
+        p.startsWith('/purchasing/pos') ||
+        p.startsWith('/purchasing/review') ||
+        p === '/purchasing',
       links: [
         { href: '/purchasing/workspace',      label: 'Buyer Workspace', requireAnyRole: ['purchasing', 'ops', 'supervisor'] },
         { href: '/purchasing/open-pos',       label: 'Open POs',        requireAnyRole: ['purchasing', 'ops', 'supervisor', 'sales'] },
         { href: '/purchasing/suggested-buys', label: 'Suggested Buys',  requireAnyRole: ['purchasing', 'ops', 'supervisor'] },
         { href: '/purchasing/exceptions',     label: 'Exceptions',      requireAnyRole: ['purchasing', 'ops', 'supervisor'] },
         { href: '/purchasing/manage',         label: 'Command Center',  requireAnyRole: ['purchasing', 'ops', 'supervisor'] },
-      ],
-    },
-    {
-      id: 'receiving',
-      label: 'Receiving',
-      icon: <Inbox className="w-4 h-4" />,
-      dropdown: true,
-      isActive: (p) => p === '/purchasing' || p.startsWith('/purchasing/review'),
-      links: [
-        { href: '/purchasing',        label: 'PO Check-In' },
+        // Receiving — merged from former top-level Receiving menu
+        { href: '/purchasing',        label: 'PO Check-In',  sectionBefore: 'Receiving' },
         { href: '/purchasing/review', label: 'Review Queue', requireAnyRole: ['purchasing', 'ops', 'supervisor'] },
       ],
     },
@@ -327,7 +311,6 @@ const ADMIN_LINKS: NavLink[] = [
 
 // ─── Role helpers ─────────────────────────────────────────────────────────────
 
-// WH-Tracker operational roles (from app_users.roles[])
 const WH_ROLES = ['warehouse', 'sales', 'ops', 'supervisor', 'purchasing', 'dispatch'] as const;
 type WHRole = typeof WH_ROLES[number];
 
@@ -335,44 +318,26 @@ function hasAnyRole(roles: string[], ...check: WHRole[]): boolean {
   return check.some((r) => roles.includes(r));
 }
 
-/**
- * Returns true if the current user should see the given domain section.
- * Admins always see everything. WH-Tracker users see only their sections.
- * Legacy credential users (no WH-Tracker roles) see estimating/service/purchasing.
- */
 function canSeeSection(domainId: string, role: string, roles: string[]): boolean {
   if (role === 'admin') return true;
-
-  // Is this a WH-Tracker OTP user? (has at least one ops role)
   const isWHUser = (WH_ROLES as readonly string[]).some((r) => roles.includes(r));
-
   switch (domainId) {
-    case 'warehouse':
+    case 'yard':
       return hasAnyRole(roles, 'warehouse', 'sales', 'ops', 'supervisor', 'dispatch');
     case 'dispatch':
       return hasAnyRole(roles, 'warehouse', 'sales', 'ops', 'supervisor', 'dispatch');
     case 'sales':
       return hasAnyRole(roles, 'sales', 'ops', 'supervisor');
     case 'estimating':
-      // Legacy credential users only (estimators / admins without WH-Tracker roles)
       return (role === 'admin' || role === 'estimator') && !isWHUser;
-    case 'service':
-      // All authenticated users (not viewer-only guard needed — layouts handle that)
-      return role !== 'viewer';
     case 'purchasing':
-      // Any authenticated non-viewer can reach at least PO Check-In
-      return role !== 'viewer';
-    case 'receiving':
+      // Covers both purchasing and receiving (merged)
       return role !== 'viewer';
     default:
       return false;
   }
 }
 
-/**
- * Returns true if the current user should see a specific nav link.
- * If requireAnyRole is unset the link is visible to all who can see its section.
- */
 function canSeeLink(link: NavLink, role: string, roles: string[]): boolean {
   if (role === 'admin') return true;
   if (!link.requireAnyRole) return true;
@@ -382,8 +347,6 @@ function canSeeLink(link: NavLink, role: string, roles: string[]): boolean {
 // ─── Props ────────────────────────────────────────────────────────────────────
 
 interface Props {
-  // Optional: displayed name / role overrides (used by components that don't
-  // yet call useSession themselves). Session-derived values take precedence.
   userName?: string | null;
   userRole?: string;
 }
@@ -399,20 +362,17 @@ export function TopNav({ userName, userRole }: Props) {
   const [tvBranch, setTvBranch] = React.useState('20GR');
   const navRef = React.useRef<HTMLElement>(null);
 
-  // Derive auth state — session wins over props
   const name: string = session?.user?.name ?? userName ?? 'User';
   const role: string = (session?.user as { role?: string } | undefined)?.role ?? userRole ?? 'viewer';
   const roles: string[] = (session?.user as { roles?: string[] } | undefined)?.roles ?? [];
 
   const signOutUrl = '/login';
 
-  // Sync TV Board branch from cookie
   React.useEffect(() => {
     const branch = readBranchCookie();
     if (branch) setTvBranch(branch);
   }, []);
 
-  // Build the filtered domain list once per render
   const DOMAINS = getDomains(tvBranch);
   const visibleDomains = DOMAINS
     .filter((d) => canSeeSection(d.id, role, roles))
@@ -448,21 +408,56 @@ export function TopNav({ userName, userRole }: Props) {
     });
   }
 
-  const dropdownItem = (href: string, label: string) => (
-    <Link
-      key={href}
-      href={href}
-      onClick={() => setOpenMenu(null)}
-      className={cn(
-        'block px-4 py-2.5 text-sm transition whitespace-nowrap',
-        pathname === href || (href !== '/' && pathname.startsWith(href + '/'))
-          ? 'bg-cyan-500/20 text-cyan-400'
-          : 'text-slate-300 hover:bg-slate-800 hover:text-white'
-      )}
-    >
-      {label}
-    </Link>
-  );
+  /** Renders a single dropdown link, with an optional labeled section divider above it */
+  function renderDropdownLink(l: NavLink) {
+    const isCurrentPath =
+      pathname === l.href || (l.href !== '/' && pathname.startsWith(l.href + '/'));
+    return (
+      <React.Fragment key={l.href}>
+        {l.sectionBefore && (
+          <div className="px-4 pt-2.5 pb-1">
+            <div className="border-t border-slate-700/60" />
+            <span className="text-[10px] uppercase tracking-widest text-slate-500 font-semibold mt-2 block">
+              {l.sectionBefore}
+            </span>
+          </div>
+        )}
+        <Link
+          href={l.href}
+          onClick={() => setOpenMenu(null)}
+          className={cn(
+            'block px-4 py-2.5 text-sm transition whitespace-nowrap',
+            isCurrentPath
+              ? 'bg-cyan-500/20 text-cyan-400'
+              : 'text-slate-300 hover:bg-slate-800 hover:text-white'
+          )}
+        >
+          {l.label}
+        </Link>
+      </React.Fragment>
+    );
+  }
+
+  /** Admin-only dropdown link (no sectionBefore support needed) */
+  function renderAdminLink(l: NavLink) {
+    const isCurrentPath =
+      pathname === l.href || (l.href !== '/' && pathname.startsWith(l.href + '/'));
+    return (
+      <Link
+        key={l.href}
+        href={l.href}
+        onClick={() => setOpenMenu(null)}
+        className={cn(
+          'block px-4 py-2.5 text-sm transition whitespace-nowrap',
+          isCurrentPath
+            ? 'bg-cyan-500/20 text-cyan-400'
+            : 'text-slate-300 hover:bg-slate-800 hover:text-white'
+        )}
+      >
+        {l.label}
+      </Link>
+    );
+  }
 
   return (
     <>
@@ -471,11 +466,27 @@ export function TopNav({ userName, userRole }: Props) {
         className="sticky top-0 z-50 bg-slate-950/90 border-b border-white/10 backdrop-blur-sm print:hidden"
       >
         <div className="max-w-screen-2xl mx-auto px-4 flex items-center justify-between h-14">
+
           {/* Brand */}
           <div className="flex items-center gap-1">
-            <Link href="/" className="flex items-center gap-2 text-white font-bold text-lg flex-shrink-0 mr-3">
-              <Hammer className="w-5 h-5 text-cyan-400" />
-              <span>Live<span className="text-cyan-400">Edge</span></span>
+            <Link href="/" className="flex items-center gap-2.5 flex-shrink-0 mr-3">
+              {/* Beisser B logo badge */}
+              <span className="flex items-center justify-center w-8 h-8 bg-white rounded-lg overflow-hidden flex-shrink-0 shadow-sm">
+                <img
+                  src="/icons/beisser_B_full_color_RGB.png"
+                  alt="Beisser"
+                  className="w-full h-full object-cover"
+                />
+              </span>
+              {/* App name */}
+              <div className="hidden sm:flex flex-col leading-tight">
+                <span className="text-[9px] text-slate-400 font-normal tracking-widest uppercase leading-none">
+                  Beisser Lumber
+                </span>
+                <span className="text-base font-bold leading-none text-white">
+                  Live<span className="text-cyan-400">Edge</span>
+                </span>
+              </div>
             </Link>
 
             {/* Desktop domain nav — role-filtered */}
@@ -511,8 +522,8 @@ export function TopNav({ userName, userRole }: Props) {
                       />
                     </button>
                     {openMenu === domain.id && (
-                      <div className="absolute left-0 mt-1 min-w-[160px] bg-slate-900 border border-white/10 rounded-xl shadow-xl overflow-hidden z-50">
-                        {domain.links.map((l) => dropdownItem(l.href, l.label))}
+                      <div className="absolute left-0 mt-1 min-w-[170px] bg-slate-900 border border-white/10 rounded-xl shadow-xl overflow-hidden z-50">
+                        {domain.links.map((l) => renderDropdownLink(l))}
                       </div>
                     )}
                   </div>
@@ -523,13 +534,10 @@ export function TopNav({ userName, userRole }: Props) {
 
           {/* Right side */}
           <div className="flex items-center gap-2">
-            {/* Global search */}
             <GlobalSearch />
-
-            {/* Branch switcher */}
             <BranchSwitcher />
 
-            {/* Admin dropdown — desktop only, admin role */}
+            {/* Admin dropdown — desktop only */}
             {role === 'admin' && (
               <div className="relative hidden lg:block">
                 <button
@@ -549,22 +557,56 @@ export function TopNav({ userName, userRole }: Props) {
                 </button>
                 {openMenu === 'admin' && (
                   <div className="absolute right-0 mt-1 min-w-[190px] bg-slate-900 border border-white/10 rounded-xl shadow-xl overflow-hidden z-50">
-                    {ADMIN_LINKS.map((l) => dropdownItem(l.href, l.label))}
+                    {ADMIN_LINKS.map((l) => renderAdminLink(l))}
                   </div>
                 )}
               </div>
             )}
 
-            {/* User + logout */}
-            <div className="hidden sm:flex items-center gap-2 pl-3 border-l border-slate-700">
-              <span className="text-sm text-slate-400">{name}</span>
+            {/* User dropdown — desktop */}
+            <div className="relative hidden sm:block pl-3 border-l border-slate-700">
               <button
-                onClick={() => signOut({ callbackUrl: signOutUrl })}
-                className="p-2 rounded-lg text-slate-400 hover:text-red-400 hover:bg-slate-800 transition"
-                title="Sign out"
+                onClick={() => toggle('user')}
+                className="flex items-center gap-1.5 px-2 py-1.5 rounded-lg text-sm text-slate-300 hover:text-white hover:bg-slate-800 transition"
               >
-                <LogOut className="w-4 h-4" />
+                <User className="w-4 h-4 text-slate-400" />
+                <span className="max-w-[120px] truncate">{name}</span>
+                <ChevronDown
+                  className={cn('w-3 h-3 transition-transform', openMenu === 'user' && 'rotate-180')}
+                />
               </button>
+              {openMenu === 'user' && (
+                <div className="absolute right-0 mt-1 min-w-[210px] bg-slate-900 border border-white/10 rounded-xl shadow-xl overflow-hidden z-50">
+                  <div className="px-4 py-2.5 border-b border-slate-800">
+                    <p className="text-[10px] text-slate-500 uppercase tracking-wider">Signed in as</p>
+                    <p className="text-sm font-semibold text-white truncate mt-0.5">{name}</p>
+                  </div>
+                  <Link
+                    href="/it-issues"
+                    onClick={() => setOpenMenu(null)}
+                    className="flex items-center gap-2.5 px-4 py-2.5 text-sm text-slate-300 hover:bg-slate-800 hover:text-white transition"
+                  >
+                    <Wrench className="w-4 h-4 flex-shrink-0" />
+                    Report an Issue
+                  </Link>
+                  <Link
+                    href="/help"
+                    onClick={() => setOpenMenu(null)}
+                    className="flex items-center gap-2.5 px-4 py-2.5 text-sm text-slate-300 hover:bg-slate-800 hover:text-white transition"
+                  >
+                    <HelpCircle className="w-4 h-4 flex-shrink-0" />
+                    Help &amp; Docs
+                  </Link>
+                  <div className="border-t border-slate-700/50 my-1" />
+                  <button
+                    onClick={() => signOut({ callbackUrl: signOutUrl })}
+                    className="w-full flex items-center gap-2.5 px-4 py-2.5 text-sm text-slate-300 hover:bg-slate-800 hover:text-red-400 transition"
+                  >
+                    <LogOut className="w-4 h-4 flex-shrink-0" />
+                    Sign Out
+                  </button>
+                </div>
+              )}
             </div>
 
             {/* Mobile hamburger */}
@@ -579,7 +621,7 @@ export function TopNav({ userName, userRole }: Props) {
         </div>
       </nav>
 
-      {/* Mobile drawer — collapsible sections, all collapsed by default */}
+      {/* Mobile drawer */}
       {mobileOpen && (
         <div className="lg:hidden fixed inset-0 z-40 flex flex-col print:hidden">
           <div
@@ -588,6 +630,7 @@ export function TopNav({ userName, userRole }: Props) {
           />
           <div className="relative mt-14 bg-slate-900 border-b border-white/10 shadow-xl overflow-y-auto max-h-[calc(100vh-3.5rem)]">
             <div className="px-4 py-3 space-y-0.5">
+
               {/* Mobile search */}
               <Link
                 href="/search"
@@ -598,11 +641,11 @@ export function TopNav({ userName, userRole }: Props) {
               </Link>
               <div className="border-t border-slate-800 my-1" />
 
+              {/* Domain sections */}
               {visibleDomains.map((domain) => {
                 const sectionOpen = mobileOpenSections.has(domain.id);
 
                 if (!domain.dropdown) {
-                  // Direct link (e.g. Service)
                   return (
                     <Link
                       key={domain.id}
@@ -642,18 +685,26 @@ export function TopNav({ userName, userRole }: Props) {
                     {sectionOpen && (
                       <div className="ml-4 border-l border-slate-700 pl-3 pb-1 space-y-0.5">
                         {domain.links.map((l) => (
-                          <Link
-                            key={l.href}
-                            href={l.href}
-                            className={cn(
-                              'flex items-center px-3 py-2 rounded-lg text-sm transition',
-                              pathname === l.href
-                                ? 'bg-cyan-500/20 text-cyan-400'
-                                : 'text-slate-400 hover:text-white hover:bg-slate-800'
+                          <React.Fragment key={l.href}>
+                            {l.sectionBefore && (
+                              <div className="pt-2 pb-0.5">
+                                <span className="text-[10px] uppercase tracking-widest text-slate-500 font-semibold">
+                                  {l.sectionBefore}
+                                </span>
+                              </div>
                             )}
-                          >
-                            {l.label}
-                          </Link>
+                            <Link
+                              href={l.href}
+                              className={cn(
+                                'flex items-center px-3 py-2 rounded-lg text-sm transition',
+                                pathname === l.href
+                                  ? 'bg-cyan-500/20 text-cyan-400'
+                                  : 'text-slate-400 hover:text-white hover:bg-slate-800'
+                              )}
+                            >
+                              {l.label}
+                            </Link>
+                          </React.Fragment>
                         ))}
                       </div>
                     )}
@@ -661,6 +712,7 @@ export function TopNav({ userName, userRole }: Props) {
                 );
               })}
 
+              {/* Admin section (mobile) */}
               {role === 'admin' && (
                 <>
                   <button
@@ -704,16 +756,34 @@ export function TopNav({ userName, userRole }: Props) {
                 </>
               )}
 
-              <div className="pt-2 border-t border-slate-800 flex items-center justify-between px-3 py-2.5">
-                <span className="text-sm text-slate-400">{name}</span>
+              {/* Account section (mobile) */}
+              <div className="pt-2 border-t border-slate-800">
+                <div className="px-3 py-1.5 text-[10px] text-slate-500 uppercase tracking-widest font-semibold">
+                  Account — {name}
+                </div>
+                <Link
+                  href="/it-issues"
+                  className="flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm text-slate-300 hover:text-white hover:bg-slate-800 transition"
+                >
+                  <Wrench className="w-4 h-4" />
+                  Report an Issue
+                </Link>
+                <Link
+                  href="/help"
+                  className="flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm text-slate-300 hover:text-white hover:bg-slate-800 transition"
+                >
+                  <HelpCircle className="w-4 h-4" />
+                  Help &amp; Docs
+                </Link>
                 <button
                   onClick={() => signOut({ callbackUrl: signOutUrl })}
-                  className="flex items-center gap-2 text-sm text-slate-400 hover:text-red-400 transition"
+                  className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm text-slate-300 hover:text-red-400 hover:bg-slate-800 transition"
                 >
                   <LogOut className="w-4 h-4" />
-                  Sign out
+                  Sign Out
                 </button>
               </div>
+
             </div>
           </div>
         </div>
