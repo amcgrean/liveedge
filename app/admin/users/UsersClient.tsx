@@ -144,6 +144,7 @@ export default function UsersClient() {
         {loading ? (
           <div className="p-12 text-center text-slate-400 animate-pulse">Loading...</div>
         ) : (
+          <div className="overflow-x-auto">
           <table className="admin-table">
             <thead>
               <tr>
@@ -208,6 +209,7 @@ export default function UsersClient() {
               })}
             </tbody>
           </table>
+          </div>
         )}
       </div>
 

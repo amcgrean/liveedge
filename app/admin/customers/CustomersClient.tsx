@@ -122,6 +122,7 @@ export default function CustomersClient() {
         ) : filtered.length === 0 ? (
           <div className="p-12 text-center text-slate-400">No customers found.</div>
         ) : (
+          <div className="overflow-x-auto">
           <table className="admin-table">
             <thead>
               <tr>
@@ -160,6 +161,7 @@ export default function CustomersClient() {
               ))}
             </tbody>
           </table>
+          </div>
         )}
       </div>
 

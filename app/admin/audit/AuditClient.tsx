@@ -74,6 +74,7 @@ export default function AuditClient() {
         ) : entries.length === 0 ? (
           <div className="p-12 text-center text-slate-500">No audit entries found</div>
         ) : (
+          <div className="overflow-x-auto">
           <table className="admin-table">
             <thead><tr><th>Time</th><th>User</th><th>Model</th><th>Action</th><th>Changes</th></tr></thead>
             <tbody>
@@ -88,6 +89,7 @@ export default function AuditClient() {
               ))}
             </tbody>
           </table>
+          </div>
         )}
       </div>
 

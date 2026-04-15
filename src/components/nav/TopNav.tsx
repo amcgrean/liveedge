@@ -298,13 +298,17 @@ function getDomains(tvBranch: string): Domain[] {
 
 const ADMIN_LINKS: NavLink[] = [
   { href: '/admin',               label: 'Dashboard' },
-  { href: '/admin/customers',     label: 'Customers' },
+  // General
+  { href: '/admin/customers',     label: 'Customers',       sectionBefore: 'General' },
   { href: '/admin/products',      label: 'Products / SKUs' },
   { href: '/admin/formulas',      label: 'Formulas' },
-  { href: '/admin/users',         label: 'Users' },
-  { href: '/admin/bid-fields',    label: 'Bid Fields' },
+  // Services
+  { href: '/admin/bid-fields',    label: 'Bid Fields',      sectionBefore: 'Services' },
+  // Users
+  { href: '/admin/users',         label: 'Users',           sectionBefore: 'Users' },
   { href: '/admin/notifications', label: 'Notifications' },
-  { href: '/admin/audit',         label: 'Audit Log' },
+  // System
+  { href: '/admin/audit',         label: 'Audit Log',       sectionBefore: 'System' },
   { href: '/admin/erp',           label: 'ERP Sync' },
   { href: '/admin/analytics',     label: 'Page Analytics' },
 ];
@@ -438,26 +442,6 @@ export function TopNav({ userName, userRole }: Props) {
     );
   }
 
-  /** Admin-only dropdown link (no sectionBefore support needed) */
-  function renderAdminLink(l: NavLink) {
-    const isCurrentPath =
-      pathname === l.href || (l.href !== '/' && pathname.startsWith(l.href + '/'));
-    return (
-      <Link
-        key={l.href}
-        href={l.href}
-        onClick={() => setOpenMenu(null)}
-        className={cn(
-          'block px-4 py-2.5 text-sm transition whitespace-nowrap',
-          isCurrentPath
-            ? 'bg-cyan-500/20 text-cyan-400'
-            : 'text-slate-300 hover:bg-slate-800 hover:text-white'
-        )}
-      >
-        {l.label}
-      </Link>
-    );
-  }
 
   return (
     <>
@@ -557,7 +541,7 @@ export function TopNav({ userName, userRole }: Props) {
                 </button>
                 {openMenu === 'admin' && (
                   <div className="absolute right-0 mt-1 min-w-[190px] bg-slate-900 border border-white/10 rounded-xl shadow-xl overflow-hidden z-50">
-                    {ADMIN_LINKS.map((l) => renderAdminLink(l))}
+                    {ADMIN_LINKS.map((l) => renderDropdownLink(l))}
                   </div>
                 )}
               </div>
@@ -738,18 +722,26 @@ export function TopNav({ userName, userRole }: Props) {
                   {mobileOpenSections.has('admin') && (
                     <div className="ml-4 border-l border-slate-700 pl-3 pb-1 space-y-0.5">
                       {ADMIN_LINKS.map((l) => (
-                        <Link
-                          key={l.href}
-                          href={l.href}
-                          className={cn(
-                            'flex items-center px-3 py-2 rounded-lg text-sm transition',
-                            pathname === l.href
-                              ? 'bg-cyan-500/20 text-cyan-400'
-                              : 'text-slate-300 hover:text-white hover:bg-slate-800'
+                        <React.Fragment key={l.href}>
+                          {l.sectionBefore && (
+                            <div className="pt-2 pb-0.5">
+                              <span className="text-[10px] uppercase tracking-widest text-slate-500 font-semibold">
+                                {l.sectionBefore}
+                              </span>
+                            </div>
                           )}
-                        >
-                          {l.label}
-                        </Link>
+                          <Link
+                            href={l.href}
+                            className={cn(
+                              'flex items-center px-3 py-2 rounded-lg text-sm transition',
+                              pathname === l.href
+                                ? 'bg-cyan-500/20 text-cyan-400'
+                                : 'text-slate-300 hover:text-white hover:bg-slate-800'
+                            )}
+                          >
+                            {l.label}
+                          </Link>
+                        </React.Fragment>
                       ))}
                     </div>
                   )}
