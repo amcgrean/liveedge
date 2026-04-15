@@ -10,7 +10,7 @@ interface Props {
 
 export default async function EstimatingPage({ searchParams }: Props) {
   const session = await auth();
-  if (!session) redirect('/ops-login');
+  if (!session) redirect('/login');
   const { bid } = await searchParams;
   return <TakeoffApp session={session} initialBidId={bid} />;
 }

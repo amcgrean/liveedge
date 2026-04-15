@@ -1,156 +1,164 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '../../../../auth';
-import { getDb } from '../../../../db/index';
-import { legacyUser, legacyUserType } from '../../../../db/schema-legacy';
-import { eq, desc, ilike } from 'drizzle-orm';
+import { getErpSql } from '../../../../db/supabase';
 import bcrypt from 'bcryptjs';
-import type { Session } from 'next-auth';
+
+// All admin/users routes now operate on public.app_users (unified auth table).
+// bids."user" is kept as-is (read-only, FK references intact) but is no longer
+// the source of truth for authentication.
 
 function dbError(err: unknown) {
-  if (err instanceof Error && err.message.includes('DATABASE_URL')) {
-    return NextResponse.json({ error: 'Database not configured.' }, { status: 503 });
-  }
   console.error('[admin/users API]', err);
   return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
 }
 
-async function requireAdmin(session: Session | null) {
-  if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-  const role = (session.user as { role?: string }).role ?? 'estimator';
-  if (role !== 'admin') return NextResponse.json({ error: 'Admin access required' }, { status: 403 });
-  return null;
-}
-
-function deriveRole(row: { isAdmin: boolean | null; isEstimator: boolean | null; isCommercialEstimator: boolean | null; isPurchasing?: boolean | null; isWarehouse?: boolean | null; isReceivingYard?: boolean | null }): string {
-  if (row.isAdmin) return 'admin';
-  if (row.isEstimator || row.isCommercialEstimator) return 'estimator';
-  if (row.isPurchasing) return 'purchasing';
-  if (row.isWarehouse) return 'warehouse';
-  if (row.isReceivingYard) return 'receiving_yard';
-  return 'viewer';
-}
-
-export async function GET(_req: NextRequest) {
+async function requireAdmin() {
   const session = await auth();
-  const err = await requireAdmin(session);
-  if (err) return err;
+  if (!session?.user) return { error: NextResponse.json({ error: 'Unauthorized' }, { status: 401 }) };
+  if (session.user.role !== 'admin') return { error: NextResponse.json({ error: 'Admin access required' }, { status: 403 }) };
+  return { session };
+}
+
+type AppUserRow = {
+  id: number;
+  email: string;
+  display_name: string | null;
+  username: string | null;
+  roles: string[] | null;
+  is_active: boolean;
+  created_at: string | null;
+  branch: string | null;
+};
+
+// Map app_users row → UI-facing object
+function toUserDto(r: AppUserRow) {
+  const roles: string[] = Array.isArray(r.roles) ? r.roles : [];
+  // Derive a single-role label for the existing UI
+  const role = roles.includes('admin')
+    ? 'admin'
+    : roles.includes('estimator') || roles.includes('estimating')
+    ? 'estimator'
+    : roles.includes('purchasing')
+    ? 'purchasing'
+    : roles.includes('receiving_yard')
+    ? 'receiving_yard'
+    : roles.includes('warehouse')
+    ? 'warehouse'
+    : roles.includes('designer')
+    ? 'designer'
+    : roles.includes('supervisor')
+    ? 'supervisor'
+    : roles.includes('sales')
+    ? 'sales'
+    : roles.includes('ops')
+    ? 'ops'
+    : roles.includes('dispatch')
+    ? 'dispatch'
+    : roles.length > 0
+    ? roles[0]
+    : 'viewer';
+
+  return {
+    id:        String(r.id),
+    name:      r.display_name ?? r.username ?? r.email.split('@')[0],
+    email:     r.email,
+    username:  r.username ?? null,
+    role,
+    roles,
+    branch:    r.branch ?? null,
+    isActive:  r.is_active,
+    createdAt: r.created_at ?? new Date(0).toISOString(),
+  };
+}
+
+export async function GET() {
+  const { error } = await requireAdmin();
+  if (error) return error;
 
   try {
-    const db = getDb();
-    const rows = await db
-      .select({
-        id:                    legacyUser.id,
-        username:              legacyUser.username,
-        email:                 legacyUser.email,
-        isAdmin:               legacyUser.isAdmin,
-        isEstimator:           legacyUser.isEstimator,
-        isCommercialEstimator: legacyUser.isCommercialEstimator,
-        isPurchasing:          legacyUser.isPurchasing,
-        isWarehouse:           legacyUser.isWarehouse,
-        isReceivingYard:       legacyUser.isReceivingYard,
-        isActive:              legacyUser.isActive,
-        createdAt:             legacyUser.createdAt,
-      })
-      .from(legacyUser)
-      .orderBy(desc(legacyUser.createdAt));
-
-    return NextResponse.json({
-      users: rows.map((r) => ({
-        id:        String(r.id),
-        name:      r.username,
-        email:     r.email,
-        role:      deriveRole(r),
-        isActive:  r.isActive ?? true,
-        createdAt: r.createdAt ? r.createdAt.toISOString() : new Date(0).toISOString(),
-      })),
-    });
+    const sql = getErpSql();
+    const rows = await sql<AppUserRow[]>`
+      SELECT id, email, display_name, username, roles, is_active,
+             created_at::text, branch
+      FROM app_users
+      ORDER BY display_name NULLS LAST, email
+    `;
+    return NextResponse.json({ users: rows.map(toUserDto) });
   } catch (err) {
     return dbError(err);
   }
 }
 
 export async function POST(req: NextRequest) {
-  const session = await auth();
-  const adminErr = await requireAdmin(session);
-  if (adminErr) return adminErr;
+  const { error } = await requireAdmin();
+  if (error) return error;
 
-  let body: { username?: string; name?: string; email?: string; role: string; password: string };
+  let body: {
+    name?: string;       // display name
+    username?: string;
+    email?: string;
+    role?: string;
+    roles?: string[];
+    password?: string;
+    branch?: string;
+  };
   try { body = await req.json(); } catch { return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 }); }
 
-  const username = (body.username ?? body.name ?? '').trim();
-  if (!username || !body.password) {
-    return NextResponse.json({ error: 'username and password are required' }, { status: 422 });
+  // username is required for password-based users; email is always required
+  const email = body.email?.trim().toLowerCase();
+  const username = (body.username ?? body.name ?? '').trim().toLowerCase() || null;
+
+  if (!email && !username) {
+    return NextResponse.json({ error: 'email or username is required' }, { status: 422 });
   }
 
-  const validRoles = ['admin', 'estimator', 'purchasing', 'warehouse', 'receiving_yard', 'viewer'];
-  if (!validRoles.includes(body.role)) {
-    return NextResponse.json({ error: `role must be one of: ${validRoles.join(', ')}` }, { status: 422 });
+  // Build roles array from either explicit roles[] or single role string
+  let roles: string[];
+  if (Array.isArray(body.roles) && body.roles.length > 0) {
+    roles = body.roles;
+  } else if (body.role) {
+    roles = [body.role];
+  } else {
+    roles = ['estimator'];
   }
+
+  let passwordHash: string | null = null;
+  if (body.password) {
+    if (body.password.length < 8) {
+      return NextResponse.json({ error: 'Password must be at least 8 characters' }, { status: 422 });
+    }
+    passwordHash = await bcrypt.hash(body.password, 12);
+  } else if (username && !email?.includes('@')) {
+    // Username-only users need a password
+    return NextResponse.json({ error: 'Password is required for username-only users' }, { status: 422 });
+  }
+
+  const displayName = body.name?.trim() || username || (email ? email.split('@')[0] : null);
+  const finalEmail = email ?? `${username}@beisserlumber.local`;
+  const branch = body.branch?.trim() || null;
 
   try {
-    const db = getDb();
-
-    // Resolve a usertypeId — seed defaults if table is empty, then match by role name
-    let allTypes = await db.select().from(legacyUserType);
-    if (allTypes.length === 0) {
-      // Seed the three standard types so the FK is satisfied
-      await db.insert(legacyUserType).values([
-        { name: 'admin' },
-        { name: 'estimator' },
-        { name: 'viewer' },
-      ]).onConflictDoNothing();
-      allTypes = await db.select().from(legacyUserType);
-    }
-    let usertypeId = allTypes[0]?.id ?? 1;
-    const roleLabel = body.role === 'admin' ? 'admin' : body.role === 'estimator' ? 'estimat' : 'viewer';
-    const match = allTypes.find((t) => t.name.toLowerCase().includes(roleLabel));
-    if (match) usertypeId = match.id;
-
-    const password = await bcrypt.hash(body.password, 12);
-    const isAdmin          = body.role === 'admin';
-    const isEstimator      = body.role === 'estimator';
-    const isPurchasing     = body.role === 'purchasing';
-    const isWarehouse      = body.role === 'warehouse';
-    const isReceivingYard  = body.role === 'receiving_yard';
-    const email = body.email ? body.email.toLowerCase().trim() : null;
-
-    const [user] = await db
-      .insert(legacyUser)
-      .values({
-        username,
-        ...(email ? { email } : {}),
-        password,
-        usertypeId,
-        isAdmin,
-        isEstimator,
-        isPurchasing,
-        isWarehouse,
-        isReceivingYard,
-        isCommercialEstimator: false,
-        isResidentialEstimator: false,
-        isDesigner: false,
-        isActive: true,
-      })
-      .returning({
-        id:       legacyUser.id,
-        username: legacyUser.username,
-        email:    legacyUser.email,
-        isAdmin:  legacyUser.isAdmin,
-        isActive: legacyUser.isActive,
-        createdAt: legacyUser.createdAt,
-      });
-
-    return NextResponse.json({
-      user: {
-        id:        String(user.id),
-        name:      user.username,
-        email:     user.email,
-        role:      body.role,
-        isActive:  user.isActive ?? true,
-        createdAt: user.createdAt ? user.createdAt.toISOString() : new Date().toISOString(),
-      },
-    }, { status: 201 });
+    const sql = getErpSql();
+    const [row] = await sql<AppUserRow[]>`
+      INSERT INTO app_users (email, display_name, username, password_hash, roles, branch, is_active)
+      VALUES (
+        ${finalEmail},
+        ${displayName},
+        ${username},
+        ${passwordHash},
+        ${JSON.stringify(roles)},
+        ${branch},
+        true
+      )
+      RETURNING id, email, display_name, username, roles, is_active,
+                created_at::text, branch
+    `;
+    return NextResponse.json({ user: toUserDto(row) }, { status: 201 });
   } catch (err) {
+    const msg = err instanceof Error ? err.message : '';
+    if (msg.includes('unique') || msg.includes('uq_app_users')) {
+      return NextResponse.json({ error: 'A user with that email or username already exists.' }, { status: 409 });
+    }
     return dbError(err);
   }
 }

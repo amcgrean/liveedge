@@ -7,7 +7,7 @@ export const metadata = { title: 'RMA Credits' };
 
 export default async function CreditsPage() {
   const session = await auth();
-  if (!session?.user) redirect('/ops-login');
+  if (!session?.user) redirect('/login');
 
   return (
     <div className="min-h-screen bg-gray-950">

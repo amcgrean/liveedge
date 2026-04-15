@@ -4,7 +4,7 @@ import OpenPicksClient from './OpenPicksClient';
 
 export default async function OpenPicksPage() {
   const session = await auth();
-  if (!session?.user) redirect('/ops-login');
+  if (!session?.user) redirect('/login');
 
   const isAdmin =
     session.user.role === 'admin' ||

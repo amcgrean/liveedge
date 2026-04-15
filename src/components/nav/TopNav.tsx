@@ -322,7 +322,6 @@ const ADMIN_LINKS: NavLink[] = [
   { href: '/admin/notifications', label: 'Notifications' },
   { href: '/admin/audit',         label: 'Audit Log' },
   { href: '/admin/erp',           label: 'ERP Sync' },
-  { href: '/admin/app-users',     label: 'App Users' },
   { href: '/admin/analytics',     label: 'Page Analytics' },
 ];
 
@@ -405,9 +404,7 @@ export function TopNav({ userName, userRole }: Props) {
   const role: string = (session?.user as { role?: string } | undefined)?.role ?? userRole ?? 'viewer';
   const roles: string[] = (session?.user as { roles?: string[] } | undefined)?.roles ?? [];
 
-  // WH-Tracker user = has at least one ops role in the raw roles array
-  const isWHUser = (WH_ROLES as readonly string[]).some((r) => roles.includes(r));
-  const signOutUrl = isWHUser ? '/ops-login' : '/login';
+  const signOutUrl = '/login';
 
   // Sync TV Board branch from cookie
   React.useEffect(() => {

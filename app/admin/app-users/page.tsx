@@ -1,8 +1,6 @@
-import { Metadata } from 'next';
-import AppUsersClient from './AppUsersClient';
+import { redirect } from 'next/navigation';
 
-export const metadata: Metadata = { title: 'App Users | Admin | LiveEdge' };
-
-export default function AppUsersPage() {
-  return <AppUsersClient />;
+// /admin/app-users is retired — all users are now managed at /admin/users.
+export default function AppUsersRedirect() {
+  redirect('/admin/users');
 }

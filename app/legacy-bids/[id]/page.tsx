@@ -6,6 +6,6 @@ export const metadata = { title: 'Manage Bid | LiveEdge' };
 
 export default async function ManageBidPage() {
   const session = await auth();
-  if (!session) redirect('/ops-login');
+  if (!session) redirect('/login');
   return <ManageBidClient session={session} />;
 }

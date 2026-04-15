@@ -1,49 +1,39 @@
 import NextAuth from 'next-auth';
 import Credentials from 'next-auth/providers/credentials';
-import { eq, or } from 'drizzle-orm';
-import { legacyUser, legacyLoginActivity } from './db/schema-legacy';
 import { z } from 'zod';
-import bcrypt from 'bcryptjs';
 
-const loginSchema = z.object({
-  username: z.string().min(1),
-  password: z.string().min(1),
-});
-
-const otpSchema = z.object({
-  email: z.string().email(),
-  code: z.string().min(1),
+// ─── Input schema ─────────────────────────────────────────────────────────────
+// All users authenticate via OTP — identifier can be a username or email,
+// the server resolves it to an email and issues a code.
+const unifiedSchema = z.object({
+  identifier: z.string().min(1),
+  otp_code:   z.string().optional(),
 });
 
 export const { handlers, signIn, signOut, auth } = NextAuth({
-  // Keep authentication checks in Node-backed pages/layouts and API routes.
-  // The Edge middleware path caused a Vercel runtime load failure, so this
-  // config is intentionally consumed from server components and route handlers.
   providers: [
-    // ──────────────────────────────────────────────────────────
-    // Legacy username/password provider (beisser-takeoff users)
-    // ──────────────────────────────────────────────────────────
     Credentials({
       id: 'credentials',
       credentials: {
-        username: { label: 'Username', type: 'text' },
-        password: { label: 'Password', type: 'password' },
+        identifier: { label: 'Email or username', type: 'text' },
+        otp_code:   { label: 'Code',              type: 'text' },
       },
       async authorize(credentials) {
         try {
-          const parsed = loginSchema.safeParse(credentials);
+          const parsed = unifiedSchema.safeParse(credentials);
           if (!parsed.success) return null;
 
-          const { username, password } = parsed.data;
+          const { identifier, otp_code } = parsed.data;
+          if (!otp_code) return null; // OTP step not yet completed
 
-          // Dev bypass when DB is not configured
+          // ── Dev bypass ────────────────────────────────────────────────────
           const hasDb =
             process.env.BIDS_DATABASE_URL ||
             process.env.POSTGRES_URL_NON_POOLING ||
             process.env.POSTGRES_URL;
 
           if (!hasDb) {
-            if (username === 'admin' && password === 'ChangeMe123!') {
+            if ((identifier === 'admin' || identifier === 'admin@beisserlumber.com') && otp_code === '000000') {
               return {
                 id: 'dev',
                 name: 'Dev Admin',
@@ -57,107 +47,44 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
             return null;
           }
 
-          const { getDb } = await import('./db/index');
-          const db = getDb();
-          const rows = await db
-            .select()
-            .from(legacyUser)
-            .where(
-              or(
-                eq(legacyUser.username, username),
-                eq(legacyUser.email, username)
-              )
-            )
-            .limit(1);
-
-          const user = rows[0];
-          if (!user) return null;
-          if (user.isActive === false) return null;
-
-          const passwordOk = await bcrypt.compare(password, user.password);
-          if (!passwordOk) return null;
-
-          const role = user.isAdmin ? 'admin' : user.isEstimator ? 'estimator' : 'viewer';
-          const roles: string[] = user.isAdmin
-            ? ['admin']
-            : user.isWarehouse
-            ? ['warehouse']
-            : user.isPurchasing
-            ? ['purchasing']
-            : user.isReceivingYard
-            ? ['receiving_yard']
-            : [];
-
-          // Track login activity (non-critical)
-          db.insert(legacyLoginActivity).values({
-            userId: user.id,
-            loggedIn: new Date(),
-          }).catch((err) => console.warn('[auth] login activity log failed:', err));
-
-          return {
-            id: String(user.id),
-            name: user.username,
-            email: user.email ?? `${user.username}@beisserlumber.local`,
-            role,
-            roles,
-            branch: null,
-            branchId: user.userBranchId,
-          };
-        } catch (err) {
-          console.error('[auth] credentials authorize error:', err);
-          return null;
-        }
-      },
-    }),
-
-    // ──────────────────────────────────────────────────────────
-    // OTP provider (WH-Tracker / ops users)
-    // ──────────────────────────────────────────────────────────
-    Credentials({
-      id: 'otp',
-      credentials: {
-        email: { label: 'Email', type: 'email' },
-        code: { label: 'Code', type: 'text' },
-      },
-      async authorize(credentials) {
-        try {
-          const parsed = otpSchema.safeParse(credentials);
-          if (!parsed.success) return null;
-
-          const { email, code } = parsed.data;
-
-          // Dev bypass: no DB configured
-          const hasDb =
-            process.env.BIDS_DATABASE_URL ||
-            process.env.POSTGRES_URL_NON_POOLING ||
-            process.env.POSTGRES_URL ||
-            process.env.SUPABASE_DB_URL;
-
-          if (!hasDb) {
-            if (email === 'admin@beisserlumber.com' && code === '000000') {
-              return {
-                id: 'dev',
-                name: 'Dev Admin',
-                email: 'admin@beisserlumber.com',
-                role: 'admin',
-                roles: ['admin'],
-                branch: null,
-                branchId: null,
-              };
-            }
-            return null;
-          }
-
-          // Use pooled URL for faster cold-start in serverless
+          // ── DB connection ─────────────────────────────────────────────────
           const { default: postgres } = await import('postgres');
-          const otpDbUrl =
+          const dbUrl =
             process.env.POSTGRES_URL ||
             process.env.POSTGRES_URL_NON_POOLING ||
-            process.env.POSTGRES_URL_UNPOOLED;
-          if (!otpDbUrl) return null;
-          const sql = postgres(otpDbUrl, { max: 1, idle_timeout: 10, connect_timeout: 8, prepare: false });
+            process.env.BIDS_DATABASE_URL;
+          if (!dbUrl) return null;
+          const sql = postgres(dbUrl, { max: 1, idle_timeout: 10, connect_timeout: 8, prepare: false });
 
-          // Verify OTP
+          // ── Resolve identifier → email ────────────────────────────────────
+          // Username-based identifiers need to be looked up first so we can
+          // check the OTP code (which is always keyed by email).
+          const input = identifier.trim().toLowerCase();
+          const isEmail = input.includes('@');
+
+          const userRows = await sql<{
+            id: number;
+            email: string;
+            display_name: string | null;
+            roles: string[] | null;
+            branch: string | null;
+          }[]>`
+            SELECT id, email, display_name, roles, branch
+            FROM app_users
+            WHERE ${isEmail ? sql`email = ${input}` : sql`username = ${input}`}
+              AND is_active = true
+            LIMIT 1
+          `;
+
+          if (userRows.length === 0) {
+            console.warn('[auth/otp] user not found in app_users for', input);
+            return null;
+          }
+
+          const user = userRows[0];
+          const email = user.email;
+
+          // ── Verify OTP ────────────────────────────────────────────────────
           const otpRows = await sql<{ id: number; code: string }[]>`
             SELECT id, code
             FROM otp_codes
@@ -169,56 +96,25 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
           `;
 
           if (otpRows.length === 0) {
-            console.warn('[auth/otp] no valid code found for', email);
+            console.warn('[auth/otp] no valid code for', email);
             return null;
           }
 
-          const otp = otpRows[0];
-          if (otp.code !== code) {
-            console.warn('[auth/otp] code mismatch for', email, '— entered:', code, 'stored:', otp.code);
+          if (otpRows[0].code !== otp_code.trim()) {
+            console.warn('[auth/otp] code mismatch for', email);
             return null;
           }
 
           // Mark code as used
-          await sql`UPDATE otp_codes SET used = true WHERE id = ${otp.id}`;
-
-          // Fetch user from public.app_users
-          const userRows = await sql<{
-            id: number;
-            email: string;
-            display_name: string | null;
-            roles: string[] | null;
-            branch: string | null;
-          }[]>`
-            SELECT id, email, display_name, roles, branch
-            FROM app_users
-            WHERE email = ${email}
-              AND is_active = true
-            LIMIT 1
-          `;
-
-          if (userRows.length === 0) {
-            console.warn('[auth/otp] user not found in app_users for', email);
-            return null;
-          }
-
-          const user = userRows[0];
-          const roles: string[] = Array.isArray(user.roles) ? user.roles : [];
-
-          const role = roles.includes('admin')
-            ? 'admin'
-            : roles.some((r) =>
-                ['ops', 'sales', 'supervisor', 'purchasing', 'warehouse', 'estimating'].includes(r)
-              )
-            ? 'estimator'
-            : 'viewer';
-
-          // Update last_login_at (non-critical)
+          await sql`UPDATE otp_codes SET used = true WHERE id = ${otpRows[0].id}`;
           sql`UPDATE app_users SET last_login_at = NOW() WHERE id = ${user.id}`.catch(() => {});
+
+          const roles: string[] = Array.isArray(user.roles) ? user.roles : [];
+          const role = deriveRole(roles);
 
           return {
             id: String(user.id),
-            name: user.display_name ?? email.split('@')[0],
+            name: user.display_name ?? input.split('@')[0],
             email: user.email,
             role,
             roles,
@@ -226,7 +122,7 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
             branchId: null,
           };
         } catch (err) {
-          console.error('[auth] otp authorize error:', err);
+          console.error('[auth] authorize error:', err);
           return null;
         }
       },
@@ -242,7 +138,6 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
         token.branch = (user as { branch?: string | null }).branch ?? null;
         token.branchId = (user as { branchId?: number | null }).branchId ?? null;
       }
-      // Compatibility: old JWTs from before WH-Tracker migration lack roles/branch
       if (!token.roles || (token.roles as string[]).length === 0) {
         if (token.role === 'admin') token.roles = ['admin'];
       }
@@ -263,10 +158,17 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
   pages: {
     signIn: '/login',
   },
-  // Allow local/dev startup without requiring .env setup.
-  // In production, AUTH_SECRET should always be explicitly configured.
   secret: process.env.AUTH_SECRET ?? 'dev-only-auth-secret',
 });
+
+/** Map a roles[] array to the primary scalar `role` string. */
+function deriveRole(roles: string[]): string {
+  if (roles.includes('admin')) return 'admin';
+  if (roles.some((r) => ['ops', 'sales', 'supervisor', 'purchasing', 'warehouse',
+                         'estimating', 'estimator', 'designer', 'receiving_yard',
+                         'dispatch', 'driver'].includes(r))) return 'estimator';
+  return 'viewer';
+}
 
 // Augment next-auth types
 declare module 'next-auth' {
@@ -276,9 +178,9 @@ declare module 'next-auth' {
       name?: string | null;
       email?: string | null;
       image?: string | null;
-      role: string;         // 'admin' | 'estimator' | 'viewer'
-      roles: string[];      // raw WH-Tracker roles: ['purchasing', 'warehouse', 'admin', ...]
-      branch: string | null; // branch system_id code e.g. '20GR'
+      role: string;
+      roles: string[];
+      branch: string | null;
       branchId: number | null;
     };
   }

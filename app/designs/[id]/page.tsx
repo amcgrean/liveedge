@@ -6,6 +6,6 @@ export const metadata = { title: 'Manage Design | LiveEdge' };
 
 export default async function ManageDesignPage() {
   const session = await auth();
-  if (!session) redirect('/ops-login');
+  if (!session) redirect('/login');
   return <ManageDesignClient session={session} />;
 }
