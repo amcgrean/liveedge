@@ -21,12 +21,13 @@ const BRANCH_OPTIONS = [
   { code: '40CV', label: '40CV · Coralville' },
 ] as const;
 
-/** Per-branch color tokens: button bg/text and dot indicator */
+/** Per-branch color tokens — dot indicator, button, active state */
 const BRANCH_COLORS: Record<string, { btn: string; dot: string; active: string }> = {
-  '10FD': { btn: 'bg-amber-900/40  text-amber-300  hover:bg-amber-900/60',  dot: 'bg-amber-400',  active: 'bg-amber-500/20 text-amber-300' },
-  '20GR': { btn: 'bg-blue-900/40   text-blue-300   hover:bg-blue-900/60',   dot: 'bg-blue-400',   active: 'bg-blue-500/20  text-blue-300'  },
-  '25BW': { btn: 'bg-violet-900/40 text-violet-300 hover:bg-violet-900/60', dot: 'bg-violet-400', active: 'bg-violet-500/20 text-violet-300'},
-  '40CV': { btn: 'bg-emerald-900/40 text-emerald-300 hover:bg-emerald-900/60', dot: 'bg-emerald-400', active: 'bg-emerald-500/20 text-emerald-300' },
+  '':    { btn: 'bg-violet-900/30 text-violet-300 hover:bg-violet-900/50', dot: 'bg-violet-300',  active: 'bg-violet-500/20 text-violet-200' }, // All — lavender
+  '10FD': { btn: 'bg-red-900/40   text-red-300    hover:bg-red-900/60',    dot: 'bg-red-500',    active: 'bg-red-500/20    text-red-300'    }, // Fort Dodge — red
+  '20GR': { btn: 'bg-cyan-900/40  text-cyan-300   hover:bg-cyan-900/60',   dot: 'bg-cyan-400',   active: 'bg-cyan-500/20   text-cyan-300'   }, // Grimes — Beisser green
+  '25BW': { btn: 'bg-gold-800/40  text-gold-300   hover:bg-gold-800/60',   dot: 'bg-gold-400',   active: 'bg-gold-500/20   text-gold-300'   }, // Birchwood — gold
+  '40CV': { btn: 'bg-slate-800    text-slate-200  hover:bg-slate-700',     dot: 'bg-slate-100',  active: 'bg-slate-700     text-white'       }, // Coralville — black
 };
 
 function readBranchCookie(): string {
@@ -73,7 +74,7 @@ function BranchSwitcher() {
 
   const label = BRANCH_OPTIONS.find((b) => b.code === current)?.label ?? 'All Branches';
   const shortLabel = current || 'All';
-  const colors = current ? BRANCH_COLORS[current] : null;
+  const colors = BRANCH_COLORS[current] ?? BRANCH_COLORS[''];
 
   return (
     <div ref={ref} className="relative">
@@ -83,20 +84,17 @@ function BranchSwitcher() {
         title={label}
         className={cn(
           'flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium transition',
-          colors ? colors.btn : 'bg-gray-800 text-gray-400 hover:text-white hover:bg-gray-700'
+          colors.btn
         )}
       >
-        {colors
-          ? <span className={cn('w-2 h-2 rounded-full flex-shrink-0', colors.dot)} />
-          : <MapPin className="w-3 h-3" />
-        }
+        <span className={cn('w-2 h-2 rounded-full flex-shrink-0', colors.dot)} />
         {saving ? '…' : shortLabel}
         <ChevronDown className={cn('w-3 h-3 transition-transform', open && 'rotate-180')} />
       </button>
       {open && (
         <div className="absolute right-0 mt-1 min-w-[200px] bg-slate-900 border border-white/10 rounded-xl shadow-xl overflow-hidden z-50">
           {BRANCH_OPTIONS.map((b) => {
-            const bc = b.code ? BRANCH_COLORS[b.code] : null;
+            const bc = BRANCH_COLORS[b.code] ?? BRANCH_COLORS[''];
             const isActive = b.code === current;
             return (
               <button
@@ -104,15 +102,10 @@ function BranchSwitcher() {
                 onClick={() => select(b.code)}
                 className={cn(
                   'w-full flex items-center gap-2.5 px-4 py-2.5 text-sm transition',
-                  isActive
-                    ? (bc ? bc.active : 'bg-slate-700/50 text-white')
-                    : 'text-slate-300 hover:bg-slate-800 hover:text-white'
+                  isActive ? bc.active : 'text-slate-300 hover:bg-slate-800 hover:text-white'
                 )}
               >
-                {bc
-                  ? <span className={cn('w-2 h-2 rounded-full flex-shrink-0', bc.dot)} />
-                  : <MapPin className="w-3 h-3 text-slate-500" />
-                }
+                <span className={cn('w-2 h-2 rounded-full flex-shrink-0', bc.dot)} />
                 {b.label}
               </button>
             );
