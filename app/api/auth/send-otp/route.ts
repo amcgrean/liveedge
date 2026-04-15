@@ -2,9 +2,9 @@ import { NextRequest, NextResponse } from 'next/server';
 import postgres from 'postgres';
 
 // POST /api/auth/send-otp
-// Called by the unified /login page when an email address is entered.
-// Generates a 6-digit OTP, stores it in public.otp_codes, and emails it via Resend.
-// Always returns { ok: true } — never reveals whether the email exists.
+// Accepts { identifier } — either an email address or a username.
+// Looks up the user in app_users, sends a 6-digit OTP to their email.
+// Always returns { ok: true } — never reveals whether the identifier exists.
 
 function getOtpSql() {
   const url =
@@ -80,17 +80,22 @@ async function sendOtpEmail(to: string, code: string): Promise<{ ok: boolean; ms
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
-    const email = ((body?.email as string) ?? '').trim().toLowerCase();
+    const identifier = ((body?.identifier as string) ?? '').trim().toLowerCase();
 
-    if (!email || !email.includes('@')) {
-      return NextResponse.json({ error: 'A valid email address is required.' }, { status: 400 });
+    if (!identifier) {
+      return NextResponse.json({ error: 'Email or username is required.' }, { status: 400 });
     }
 
     const sql = getOtpSql();
 
-    // Look up user — vague response if not found (don't reveal whether email exists)
-    const users = await sql`
-      SELECT id FROM app_users WHERE email = ${email} AND is_active = true LIMIT 1
+    // Resolve identifier → email
+    // Look up by email if it contains @, otherwise by username
+    const isEmail = identifier.includes('@');
+    const users = await sql<{ id: number; email: string }[]>`
+      SELECT id, email FROM app_users
+      WHERE ${isEmail ? sql`email = ${identifier}` : sql`username = ${identifier}`}
+        AND is_active = true
+      LIMIT 1
     `;
 
     if (users.length === 0) {
@@ -98,6 +103,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ ok: true });
     }
 
+    const email = users[0].email;
     const now = new Date();
     const windowStart = new Date(now.getTime() - OTP_RATE_WINDOW_MINUTES * 60_000);
 
