@@ -194,6 +194,57 @@ Full migration plan in `docs/migration-plan.md`. Six phases.
 - **Print CSS**: already comprehensive in `app/globals.css` (lines 63–130) — hides nav/buttons, white bg, page-break handling
 - **Error boundaries**: `app/error.tsx` + 6 route-level `error.tsx` files already in place; no additional work needed
 
+#### Nav + Branding Overhaul (2026-04-15) — COMPLETE
+Branch: `claude/update-navbar-menu-cgiYe` (merged to `main`)
+
+**Navigation restructure:**
+- **Warehouse → Yard**: domain key `warehouse` → `yard`, label "Warehouse" → "Yard", all `/warehouse/*` paths unchanged
+- **Estimating → Services**: label "Estimating" → "Services" (covers bids, EWP, designs, takeoff)
+- **Service direct link removed**: `/it-issues` moved into user dropdown (see below)
+- **Receiving merged into Purchasing**: PO Check-In + Review Queue now appear as items inside the Purchasing dropdown; separate Receiving domain removed
+- **User dropdown** added under logged-in username (chevron toggle): Report an Issue (`/it-issues`), Help & Docs (`/help`), Sign Out. Sign Out button moved here from top-level nav.
+- **Admin dropdown** reorganized into 4 labeled sections: General, Services, Users, System (see Admin Portal section)
+
+**Branding:**
+- App name: **Beisser LiveEdge** (Beisser Lumber Co. + LiveEdge app)
+- Logo files committed to `public/icons/` (Beisser B mark, full-color RGB PNG)
+- `app/layout.tsx`: title `'Beisser LiveEdge'`, favicon → `/icons/beisser_B_full_color_RGB.png`, themeColor `#006834`
+- `public/manifest.webmanifest`: name/short_name updated, `theme_color: "#006834"`, icons updated
+- Tailwind: `cyan-*` already remapped to Beisser green (#006834) in `tailwind.config.mjs`; `gold-*` custom palette added (#9e8635)
+
+**Branch switcher:**
+- Always visible on all screen sizes — removed `hidden sm:block` wrapper
+- Per-branch color dot always shown (no fallback MapPin); `BRANCH_COLORS` constant in `TopNav.tsx`:
+  - `''` (All) → violet/lavender
+  - `10FD` Fort Dodge → red
+  - `20GR` Grimes → cyan (Beisser green)
+  - `25BW` Birchwood → gold
+  - `40CV` Coralville → slate/black
+
+**Help page** (`/help`):
+- `app/help/page.tsx` — server component with `auth()` guard
+- Wiki-style `<details>`/`<summary>` accordion sections: Yard, Dispatch, Sales, Services, Purchasing, Admin
+- Common workflows with numbered steps; navigation access table; CTA to `/it-issues`
+
+#### Admin Portal Overhaul (2026-04-15) — COMPLETE
+
+**Layout & mobile:**
+- `app/admin/AdminLayoutClient.tsx` — full rewrite: sticky mobile header + hamburger → slide-in drawer (`sidebarOpen` state); desktop sidebar `hidden lg:block`; content area `min-w-0 p-4 sm:p-6`
+- All admin data tables wrapped in `<div className="overflow-x-auto">` for horizontal scroll on mobile (AuditClient, ProductsClient, CustomersClient, UsersClient)
+
+**Sidebar sections:**
+```
+General:  Dashboard · Customers · Products/SKUs · Formulas
+Services: Bid Fields
+Users:    Users · Notifications
+System:   Audit Log · ERP Sync · Page Analytics
+```
+- `app/admin/page.tsx` rewritten — sectioned overview cards matching the 4 groups
+
+**Cleanup & security:**
+- `/admin/app-users/` directory **deleted** — `AppUsersClient.tsx` was dead code (461 lines); `page.tsx` was a redirect stub. Auth unification consolidated all users under `/admin/users`
+- `app/admin/customers/[id]/page.tsx` — added explicit admin role guard (`if (role !== 'admin') redirect('/')`) matching all other admin pages
+
 #### WH-Tracker Migration — COMPLETE (2026-04-02), Extended (2026-04-03)
 Full WH-Tracker (Python/Flask) migration into LiveEdge. All modules ported:
 - **Warehouse Board** (`/warehouse`): stats cards, picks board, 60s refresh. API: `/api/warehouse/stats`, `/api/warehouse/picks`
@@ -285,22 +336,24 @@ Branch: `claude/auth-unification-FelEf` (merged to `main`)
 - DNS routing, archive Flask app
 
 #### Still Missing / Deferred
-- **Suggested Buys** (`/purchasing/suggested-buys`): `app_purchasing_queue` view confirmed missing. Check `erp_mirror_suggested_po_*` tables before building
+- **Suggested Buys** (`/purchasing/suggested-buys`): `app_purchasing_queue` view confirmed missing. Check `agility_suggested_po_header` + `agility_suggested_po_lines` before building
 - **RMA Credits images**: `credit_images.filepath` holds local WH-Tracker paths — not R2 keys yet. Metadata search at `/credits` works. Image serving requires R2 pipeline (see Pending Actions)
 - **WH-Tracker kiosk/TV/smart scan**: not appropriate for LiveEdge web app pattern — intentionally deferred
 - **Purchasing workflow** (tasks, approvals, exceptions, PO notes): verify `purchasing_tasks`, `purchasing_approvals`, etc. exist in `public` schema first
 - **Dispatch enrichment** (driver/truck mgmt, AR balance, order timeline per stop): WH-Tracker has these; LiveEdge dispatch shows basic stops only
 - **Sales delivery board** (`/sales/tracker`, `/sales/deliveries`): WH-Tracker had sales-rep-facing delivery views not yet ported
 - **Generic file management**: WH-Tracker's `files` + `file_versions` system not ported to LiveEdge
-- **`app_users` admin UI**: `/admin/users` now queries `public.app_users` but the create/edit UI was built for `bids."user"` fields (password, role booleans). Should be updated to match `app_users` schema (roles JSON array, branch string, no password field).
+- **`app_users` admin UI**: `/admin/users` queries `public.app_users` but the create/edit UI was built for `bids."user"` fields. Should be updated to match `app_users` schema (roles JSON array, branch string, no password field).
+- **Page tracking rollout**: `POST /api/track-visit` exists but not yet wired into module client components — Quick Access strip on homepage stays empty until called
 
 ## Pending Actions
 1. **Apply page_visits migration**: Run `db/migrations/0004_page_visits.sql` in Supabase SQL editor to enable Quick Access tracking on homepage
 2. **Extend page tracking to module clients**: Add `POST /api/track-visit` call to each module's main client component (or extract a shared `usePageTracking` hook in `src/hooks/`) so Quick Access fills with real data
-3. **RMA Credits image pipeline**: `credit_images.filepath` holds WH-Tracker local paths. Plan: add `r2_key TEXT` column to `public.credit_images` (WH-Tracker Alembic migration) → update `sync_email_credits.py` to upload attachments to R2 → add `GET /api/credits/[id]/image` presigned URL route → update `CreditsClient.tsx` to show thumbnails
-4. **Purchasing workflow gaps**: Before building, verify tables exist: `SELECT table_name FROM information_schema.tables WHERE table_schema='public' AND table_name IN ('purchasing_tasks','purchasing_approvals','purchasing_notes','purchasing_exceptions')` — if found, build PO notes API, exceptions view, approval workflow
-5. **Suggested Buys**: `app_purchasing_queue` confirmed missing. Check `erp_mirror_suggested_po_header` + `erp_mirror_suggested_po_detail` before building `/purchasing/suggested-buys`
-6. **Flask sunset**: DNS cutover + archive `C:\Users\amcgrean\python\wh-tracker-fly\WH-Tracker` after testing confirms parity
+3. **`app_users` admin UI**: Update `/admin/users` create/edit forms to match `public.app_users` schema (roles JSON array, branch string) — currently shows bids."user" field layout which no longer matches the auth source of truth
+4. **RMA Credits image pipeline**: `credit_images.filepath` holds WH-Tracker local paths. Plan: add `r2_key TEXT` column to `public.credit_images` (WH-Tracker Alembic migration) → update `sync_email_credits.py` to upload attachments to R2 → add `GET /api/credits/[id]/image` presigned URL route → update `CreditsClient.tsx` to show thumbnails
+5. **Purchasing workflow gaps**: Before building, verify tables exist: `SELECT table_name FROM information_schema.tables WHERE table_schema='public' AND table_name IN ('purchasing_tasks','purchasing_approvals','purchasing_notes','purchasing_exceptions')` — if found, build PO notes API, exceptions view, approval workflow
+6. **Suggested Buys**: `app_purchasing_queue` confirmed missing. Check `agility_suggested_po_header` + `agility_suggested_po_lines` before building `/purchasing/suggested-buys`
+7. **Flask sunset**: DNS cutover + archive `C:\Users\amcgrean\python\wh-tracker-fly\WH-Tracker` after user testing confirms parity
 
 ## Takeoff Debugging (in progress, 2026-04-14)
 
@@ -353,17 +406,59 @@ Branch: `claude/debug-taokeoff-errors-NngpH` (merged to `main`)
 - `app/api/takeoff/sessions/[sessionId]/upload/route.ts` — GET presign, POST proxy (4.5MB limit), PUT confirm
 - `app/api/legacy-bids/[id]/start-takeoff/route.ts` — seeds presets with correct `type` values now
 
+## Agility Live API (DMSi AgilityPublic REST)
+
+Separate from the `agility_*` mirror tables — this is a direct REST client to the DMSi AgilityPublic API (v619) for write-back operations and live lookups that can't wait for the sync.
+
+### Client
+`src/lib/agility-api.ts` — singleton `agilityApi` exported. POST-based RPC; sessions cached per-branch in module memory (3.5h TTL, auto re-login on expiry or 401).
+
+**Env vars required:**
+- `AGILITY_API_URL` — full base URL e.g. `https://api-1390-1.dmsi.com/AgilityPublic/rest/`
+- `AGILITY_USERNAME` — must include company domain suffix e.g. `leapi.beisser` (NOT `leapi`)
+- `AGILITY_PASSWORD`
+- `AGILITY_BRANCH` — default branch code (optional, falls back to login default)
+
+**Branch map:** `BRANCH_MAP` in `agility-api.ts` — all four Beisser branches use identity mapping (`10FD→10FD`, `20GR→20GR`, etc.). Verified via BranchList.
+
+### Methods on `agilityApi`
+| Method | Agility Service/Method | Used by |
+|--------|------------------------|---------|
+| `itemPriceAndAvailability()` | `Inventory / ItemPriceAndAvailabilityList` | `/api/erp/price-check` |
+| `salesOrderCreate()` | `SalesOrder / SalesOrderCreate` | `/api/legacy-bids/[id]/push-to-erp` |
+| `salesOrderCancel()` | `SalesOrder / SalesOrderCancel` | `/api/sales/orders/[so_number]/push-to-erp` |
+| `quoteCreate()` | `SalesOrder / QuoteCreate` | `/api/legacy-bids/[id]/push-to-erp` |
+| `quoteRelease()` | `SalesOrder / QuoteRelease` | `/api/legacy-bids/[id]/promote-quote` |
+| `podSignatureCreate()` | `Dispatch / PODSignatureCreate` | `/api/dispatch/orders/[so_number]/pod` |
+| `shipmentInfoUpdate()` | `Dispatch / ShipmentInfoUpdate` | `/api/dispatch/orders/[so_number]/deliver` |
+| `purchaseOrderGet()` | `Purchasing / PurchaseOrderGet` | `/api/purchasing/pos/[po]/live` |
+| `pickFileCreate()` | `Warehouse / PickFileCreate` | `/api/warehouse/orders/[so_number]/release-pick`, `/api/warehouse/picks/create-pick-file` |
+| `customerOpenActivity()` | `Customer / CustomerOpenActivity` | `/api/sales/customers/[code]/ar-live` |
+| `fetchBranchList()` | `System / BranchList` | admin test only |
+| `fetchVersion()` | `System / AgilityVersion` | admin test only |
+| `call()` | generic passthrough | `/api/sales/orders/[so_number]/push-to-erp` |
+
+Methods built but not yet wired to routes: `salesOrderList`, `salesOrderCreateValidate`, `shipmentsList`, `itemsList`, `customersList`, `customerBilltoBalancesList`, `dispatchGet`, `purchaseOrderCreate`.
+
+### Admin Connectivity Routes
+- `GET /api/admin/agility/status` — checks env var presence, no network call
+- `POST /api/admin/agility/test` — live 4-step test: Login → Version → BranchList → Logout. Accepts optional `{ branch: "20GR" }` body.
+
+### Helper
+`paginateAll<T>()` exported from `agility-api.ts` — pages through list responses automatically using `RecordCount` + `StartingRecord` pattern common across Agility list methods.
+
 ## API Route Patterns
 - **Legacy tables**: Import from `'<relative>/db/schema-legacy'`, use `legacyBid`, `legacyCustomer`, etc. (all now in `bids` schema — queries work transparently via Drizzle)
 - **New tables**: Import from `'<relative>/db/index'` as `{ getDb, schema }`
-- **ERP queries**: Import from `'<relative>/db/supabase'` as `{ getErpDb }`
+- **ERP queries** (read from mirror tables): Import from `'<relative>/db/supabase'` as `{ getErpDb }`
+- **Agility live API** (write-back + live lookups): `import { agilityApi } from '@/lib/agility-api'`
 - **Auth**: `import { auth } from '<relative>/auth'`
 - **Branch context**: `import { getSelectedBranchId } from '@/lib/branch-context'`
 - API route `params` in Next.js 15 are `Promise<{ id: string }>` — must `await params`
 
 ## Tech Stack
 - Next.js 15.1 (App Router), React 19, TypeScript 5.7
-- Tailwind CSS 3.4 (dark theme, cyan accent: brand.400/500/600)
+- Tailwind CSS 3.4 (dark theme; `cyan-*` remapped to Beisser green #006834; `gold-*` custom palette #9e8635)
 - Drizzle ORM + Supabase Postgres (`bids` schema, postgres.js driver)
 - Supabase Postgres (ERP reads via `public` schema, same instance)
 - Cloudflare R2 (file storage via @aws-sdk/client-s3 + @aws-sdk/s3-request-presigner)
@@ -400,18 +495,19 @@ Branch: `claude/debug-taokeoff-errors-NngpH` (merged to `main`)
 - `SESSION_COOKIE_SECURE` — Secure flag on session cookie (`true` in prod, `false` in dev)
 
 ## Navigation Structure
-8 top-level domain dropdowns (Design and Service are direct links, not dropdowns):
-- **Dispatch ▾**: Picks Board, Open Picks, Picker Stats, Work Orders, Supervisor, Dispatch Board, Delivery Tracker, Fleet Map
+Current structure as of 2026-04-15 (7 domain dropdowns + user dropdown; Design is a direct link):
+- **Yard ▾**: Picks Board, Open Picks, Picker Stats, Work Orders, Supervisor (all `/warehouse/*` paths, label renamed from "Warehouse")
+- **Dispatch ▾**: Dispatch Board, Delivery Tracker, Fleet Map
 - **Sales ▾**: Sales Hub, Customers, Transactions, Purchase History, Products & Stock, Reports, RMA Credits
-- **Estimating ▾**: Estimating App (`/estimating`), PDF Takeoff, Bids, EWP, Projects
+- **Services ▾**: Estimating App (`/estimating`), PDF Takeoff, Bids, EWP, Projects (renamed from "Estimating")
 - **Design** (direct → `/designs`)
-- **Service** (direct → `/it-issues`)
-- **Purchasing ▾**: Buyer Workspace, Open POs, Command Center
-- **Receiving ▾**: PO Check-In, Review Queue
-- **Admin ▾** (admin role only): all admin pages + Delivery Report + Picker Admin
+- **Purchasing ▾**: Buyer Workspace, Open POs, Command Center, PO Check-In, Review Queue (Receiving merged in)
+- **Admin ▾** (admin role only): Customers, Products/SKUs, Formulas, Bid Fields, Users, Notifications, Audit Log, ERP Sync, Page Analytics, Delivery Report, Picker Admin
+- **User dropdown** (under logged-in username + chevron): Report an Issue (`/it-issues`), Help & Docs (`/help`), Sign Out
 - Component: `src/components/nav/TopNav.tsx`
-- Single `openMenu: string | null` state + one `<nav>` ref for click-outside (replaced per-domain refs)
-- `isActive()` per domain handles path prefix matching; Purchasing vs Receiving distinguished by specific path sets
+- Single `openMenu: string | null` state + one `<nav>` ref for click-outside
+- `isActive()` per domain handles path prefix matching
+- `BRANCH_COLORS` constant maps branch codes to Tailwind color tokens; dot indicator always shown (no MapPin fallback)
 
 ## Key Conventions
 - Path alias: `@/*` → `./src/*`, `@/db/*` → `./db/*` (but API routes use relative paths for db imports)
