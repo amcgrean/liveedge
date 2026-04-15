@@ -6,6 +6,6 @@ export const metadata = { title: 'New EWP | LiveEdge' };
 
 export default async function AddEWPPage() {
   const session = await auth();
-  if (!session) redirect('/ops-login');
+  if (!session) redirect('/login');
   return <AddEWPClient session={session} />;
 }

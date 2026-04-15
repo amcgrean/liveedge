@@ -4,7 +4,7 @@ import DispatchClient from './DispatchClient';
 
 export default async function DispatchPage() {
   const session = await auth();
-  if (!session?.user) redirect('/ops-login');
+  if (!session?.user) redirect('/login');
 
   const isAdmin =
     session.user.role === 'admin' ||

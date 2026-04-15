@@ -4,7 +4,7 @@ import TransactionsClient from './TransactionsClient';
 
 export default async function TransactionsPage() {
   const session = await auth();
-  if (!session?.user) redirect('/ops-login');
+  if (!session?.user) redirect('/login');
 
   const isAdmin =
     session.user.role === 'admin' ||

@@ -6,6 +6,6 @@ export const metadata = { title: 'EWP | LiveEdge' };
 
 export default async function EWPPage() {
   const session = await auth();
-  if (!session) redirect('/ops-login');
+  if (!session) redirect('/login');
   return <EWPClient session={session} />;
 }

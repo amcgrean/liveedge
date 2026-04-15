@@ -12,7 +12,7 @@ export async function generateMetadata({ params }: Props) {
 
 export default async function CustomerProfilePage({ params }: Props) {
   const session = await auth();
-  if (!session?.user) redirect('/ops-login');
+  if (!session?.user) redirect('/login');
 
   const { code } = await params;
 
