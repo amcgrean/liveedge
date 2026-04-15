@@ -261,6 +261,24 @@ Full WH-Tracker (Python/Flask) migration into LiveEdge. All modules ported:
 - `/sales/orders/[so_number]` — `OrderDetailClient.tsx`: header card, line items table, estimated total
 - SO numbers in SalesClient orders table now link here; customer names link to `/sales/customers/[code]`
 
+#### Auth Unification (2026-04-15) — COMPLETE
+Branch: `claude/auth-unification-FelEf` (merged to `main`)
+
+Single `/login` for all users — replaces the two-login setup (`/login` for username/password, `/ops-login` for email OTP).
+
+- **`auth.ts`**: unified credentials provider — `"@"` in identifier → OTP flow (`public.app_users` + `otp_codes`); no `"@"` → password flow (`public.app_users` first, falls back to `bids."user"` for transition safety)
+- **`app/login/page.tsx`**: 3-step UI (identifier → password or OTP → signed in); auto-detects flow
+- **`app/ops-login/page.tsx`**: redirects to `/login`
+- **`app/api/auth/send-otp/route.ts`**: generates 6-digit OTP, stores in `otp_codes`, emails via Resend (or console if `AUTH_OTP_CONSOLE=true`); rate-limited to 3 codes per 15 min
+- **Admin users** (`app/api/admin/users/`, `app/admin/users/UsersClient.tsx`): now queries `public.app_users` via `getErpSql()` — single source of truth for user management
+- **51 server components**: `redirect('/ops-login')` → `redirect('/login')`
+- **`db/migrate-users-to-app-users.ts`**: documents the migration approach (superseded — `public.app_users` was pre-populated by WH-Tracker; migration was a direct SQL backfill)
+
+**DB steps applied in Supabase (2026-04-15)**:
+1. `public.app_users` already had `username` + `password_hash` columns (added by prior migration) with 70 rows populated from WH-Tracker
+2. Hashed all 70 plaintext passwords in `bids."user"` via `UPDATE bids."user" SET password = crypt(password, gen_salt('bf', 12)) WHERE password NOT LIKE '$2%'`
+3. Backfilled `password_hash` in `app_users` via `UPDATE public.app_users SET password_hash = u.password FROM bids."user" u WHERE estimating_user_id = u.id` (69/70 rows — `po-test` has no estimating user, is OTP-only)
+
 #### Flask Sunset — NOT STARTED
 - DNS routing, archive Flask app
 
@@ -272,7 +290,7 @@ Full WH-Tracker (Python/Flask) migration into LiveEdge. All modules ported:
 - **Dispatch enrichment** (driver/truck mgmt, AR balance, order timeline per stop): WH-Tracker has these; LiveEdge dispatch shows basic stops only
 - **Sales delivery board** (`/sales/tracker`, `/sales/deliveries`): WH-Tracker had sales-rep-facing delivery views not yet ported
 - **Generic file management**: WH-Tracker's `files` + `file_versions` system not ported to LiveEdge
-- **WH-Tracker `app_users` admin**: separate from `bids."user"` — no LiveEdge UI for managing OTP auth users
+- **WH-Tracker `app_users` admin**: now unified — `/admin/users` manages `public.app_users` for both OTP and password users. Creating/editing `app_users` records directly (setting roles, branch, password reset) still needs UI work.
 
 ## Pending Actions
 1. **Apply page_visits migration**: Run `db/migrations/0004_page_visits.sql` in Supabase SQL editor to enable Quick Access tracking on homepage
