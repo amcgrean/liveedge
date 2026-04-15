@@ -75,7 +75,7 @@ export async function PUT(
 
     if (rows.length === 0) return NextResponse.json({ error: 'Not found' }, { status: 404 });
 
-    const r = rows[0] as {
+    const r = rows[0] as unknown as {
       id: number; email: string; display_name: string | null;
       username: string | null; roles: string[] | null; is_active: boolean;
       created_at: string | null; branch: string | null;
