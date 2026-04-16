@@ -126,6 +126,7 @@ export default function ProductsClient() {
         ) : products.length === 0 ? (
           <div className="p-12 text-center text-slate-400">No products found. Add a product to get started.</div>
         ) : (
+          <div className="overflow-x-auto">
           <table className="admin-table">
             <thead>
               <tr>
@@ -157,6 +158,7 @@ export default function ProductsClient() {
               ))}
             </tbody>
           </table>
+          </div>
         )}
       </div>
 

@@ -1,9 +1,21 @@
 {
-  "name": "LiveEdge Delivery",
-  "short_name": "Delivery",
-  "description": "Beisser Lumber driver delivery app",
-  "start_url": "/driver",
+  "name": "Beisser LiveEdge",
+  "short_name": "LiveEdge",
+  "description": "Beisser Lumber internal operations platform — estimating, yard, dispatch, purchasing, and sales tools.",
+  "start_url": "/",
   "display": "standalone",
-  "background_color": "#0f172a",
-  "theme_color": "#0e7490"
+  "background_color": "#040f07",
+  "theme_color": "#006834",
+  "icons": [
+    {
+      "src": "/icons/beisser_B_full_color_RGB.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "/icons/beisser_B_full_color_RGB.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
+  ]
 }

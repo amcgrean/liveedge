@@ -6,6 +6,6 @@ export const metadata = { title: 'Open Bids | LiveEdge' };
 
 export default async function LegacyBidsPage() {
   const session = await auth();
-  if (!session) redirect('/ops-login');
+  if (!session) redirect('/login');
   return <LegacyBidsClient session={session} />;
 }

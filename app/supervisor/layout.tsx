@@ -3,7 +3,7 @@ import { auth } from '../../auth';
 
 export default async function SupervisorLayout({ children }: { children: React.ReactNode }) {
   const session = await auth();
-  if (!session?.user) redirect('/ops-login');
+  if (!session?.user) redirect('/login');
 
   const canAccess =
     session.user.role === 'admin' ||
