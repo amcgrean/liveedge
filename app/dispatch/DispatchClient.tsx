@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useCallback } from 'react';
+import dynamic from 'next/dynamic';
 import { TopNav } from '../../src/components/nav/TopNav';
 import { usePageTracking } from '@/hooks/usePageTracking';
 import { useBranchFilter } from '@/hooks/useBranchFilter';
@@ -10,8 +11,14 @@ import type { OrderLine } from '../api/dispatch/orders/[so_number]/lines/route';
 import Link from 'next/link';
 import {
   X, ChevronDown, ChevronRight, ChevronUp, Truck, AlertCircle,
-  MapPin, User, Plus, Trash2, RefreshCw, Search, Package, MessageSquare, Send, Camera,
+  MapPin, Map as MapIcon, LayoutList, User, Plus, Trash2, RefreshCw, Search, Package, MessageSquare, Send, Camera,
 } from 'lucide-react';
+
+// Leaflet requires browser APIs — load without SSR
+const DispatchMap = dynamic(
+  () => import('../../src/components/dispatch/DispatchMap').then((m) => m.DispatchMap),
+  { ssr: false, loading: () => <div className="flex items-center justify-center h-full text-sm text-gray-500">Loading map…</div> }
+);
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 
@@ -688,6 +695,7 @@ export default function DispatchClient({ isAdmin, userBranch, userName, userRole
   const [showNewRoute, setShowNewRoute] = useState(false);
   const [newRoute, setNewRoute] = useState({ route_name: '', branch_code: userBranch ?? '', driver_name: '', truck_id: '' });
   const [savingRoute, setSavingRoute] = useState(false);
+  const [viewMode, setViewMode] = useState<'board' | 'map'>('board');
 
   // Build a fast lookup: so_id → DeliveryStop
   const stopLookup = React.useMemo(() => {
@@ -913,6 +921,28 @@ export default function DispatchClient({ isAdmin, userBranch, userName, userRole
                 <Truck className="w-3.5 h-3.5" />
                 Trucks
               </button>
+              <div className="flex rounded border border-gray-700 overflow-hidden">
+                <button
+                  onClick={() => setViewMode('board')}
+                  title="Board view"
+                  className={`flex items-center gap-1.5 px-3 py-1.5 text-sm transition ${
+                    viewMode === 'board' ? 'bg-cyan-800 text-cyan-200' : 'bg-gray-800 text-gray-400 hover:text-white'
+                  }`}
+                >
+                  <LayoutList className="w-3.5 h-3.5" />
+                  <span className="hidden sm:inline">Board</span>
+                </button>
+                <button
+                  onClick={() => setViewMode('map')}
+                  title="Map view"
+                  className={`flex items-center gap-1.5 px-3 py-1.5 text-sm border-l border-gray-700 transition ${
+                    viewMode === 'map' ? 'bg-cyan-800 text-cyan-200' : 'bg-gray-800 text-gray-400 hover:text-white'
+                  }`}
+                >
+                  <MapIcon className="w-3.5 h-3.5" />
+                  <span className="hidden sm:inline">Map</span>
+                </button>
+              </div>
             </div>
           </div>
 
@@ -1095,86 +1125,99 @@ export default function DispatchClient({ isAdmin, userBranch, userName, userRole
             </div>
           </div>
 
-          {/* Center: Delivery Board */}
-          <div className="flex-1 overflow-y-auto">
-            {loading && (
-              <div className="flex items-center justify-center h-32 text-sm text-gray-500">
-                <RefreshCw className="w-4 h-4 animate-spin mr-2" /> Loading…
-              </div>
-            )}
-            {!loading && stops.length === 0 && (
-              <div className="flex items-center justify-center h-32 text-sm text-gray-600">
-                No deliveries for {date}{branch ? ` · ${branch}` : ''}.
-              </div>
-            )}
-            {!loading && groupKeys.map((key) => (
-              <div key={key} className="border-b border-gray-800">
-                <div className="flex items-center justify-between px-4 py-2 bg-gray-900/60 border-b border-gray-800 sticky top-0 z-10">
-                  <span className="text-xs font-semibold text-gray-300">
-                    {key}
-                    <span className="ml-2 font-normal text-gray-600">
-                      ({grouped[key].length} stop{grouped[key].length !== 1 ? 's' : ''})
-                    </span>
-                  </span>
-                  <div className="flex gap-1.5">
-                    {['S', 'D', 'I'].map((flag) => {
-                      const cnt = grouped[key].filter((d) => d.status_flag?.toUpperCase() === flag).length;
-                      if (!cnt) return null;
-                      return <span key={flag} className="flex items-center gap-0.5">{statusBadge(flag)}<span className="text-[10px] text-gray-600">{cnt}</span></span>;
-                    })}
-                  </div>
+          {/* Center: Board or Map */}
+          {viewMode === 'map' ? (
+            <div className="flex-1 relative overflow-hidden">
+              <DispatchMap
+                stops={stops}
+                routes={routes}
+                routeStops={routeStops}
+                selectedStop={selectedStop}
+                onSelectStop={setSelectedStop}
+                branch={branch}
+              />
+            </div>
+          ) : (
+            <div className="flex-1 overflow-y-auto">
+              {loading && (
+                <div className="flex items-center justify-center h-32 text-sm text-gray-500">
+                  <RefreshCw className="w-4 h-4 animate-spin mr-2" /> Loading…
                 </div>
-                <table className="w-full text-sm">
-                  <tbody>
-                    {grouped[key].map((d) => {
-                      const isSelected = selectedStop?.so_id === d.so_id;
-                      return (
-                        <tr
-                          key={`${d.so_id}-${d.shipment_num}`}
-                          onClick={() => setSelectedStop(isSelected ? null : d)}
-                          className={`border-b border-gray-800/50 cursor-pointer transition-colors ${
-                            isSelected ? 'bg-cyan-900/20 border-l-2 border-l-cyan-500' : 'hover:bg-gray-800/30'
-                          }`}
-                        >
-                          <td className="px-3 py-2.5 w-4">
-                            {isSelected
-                              ? <ChevronDown className="w-3.5 h-3.5 text-cyan-400" />
-                              : <ChevronRight className="w-3.5 h-3.5 text-gray-600" />}
-                          </td>
-                          <td className="px-2 py-2.5 font-mono text-cyan-400 whitespace-nowrap text-xs w-24">
-                            {d.so_id}
-                            {d.shipment_num > 1 && <span className="text-gray-600 ml-1">#{d.shipment_num}</span>}
-                          </td>
-                          <td className="px-2 py-2.5 max-w-[180px]">
-                            <div className="text-sm text-gray-200 truncate">{d.customer_name ?? '—'}</div>
-                            {d.reference && <div className="text-xs text-gray-500 truncate">{d.reference}</div>}
-                          </td>
-                          <td className="px-2 py-2.5 text-xs text-gray-400 max-w-[140px]">
-                            <div className="truncate">{d.city ?? d.address_1 ?? '—'}</div>
-                          </td>
-                          <td className="px-2 py-2.5">{statusBadge(d.status_flag)}</td>
-                          <td className="px-2 py-2.5 text-xs text-gray-500 whitespace-nowrap">
-                            {d.driver ?? d.route_id_char ?? '—'}
-                          </td>
-                          {isAdmin && <td className="px-2 py-2.5 text-xs text-gray-600">{d.system_id}</td>}
-                          <td className="px-2 py-2.5 text-xs whitespace-nowrap">
-                            {d.ar_balance != null && d.ar_balance > 0
-                              ? <span className="text-red-400 font-medium">{fmtMoney(d.ar_balance)}</span>
-                              : <span className="text-gray-700">—</span>}
-                          </td>
-                          <td className="px-2 py-2.5 text-xs text-gray-500 whitespace-nowrap">
-                            {d.loaded_date
-                              ? `${new Date(d.loaded_date).toLocaleDateString()}${d.loaded_time ? ' ' + d.loaded_time : ''}`
-                              : fmtDate(d.expect_date)}
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
-            ))}
-          </div>
+              )}
+              {!loading && stops.length === 0 && (
+                <div className="flex items-center justify-center h-32 text-sm text-gray-600">
+                  No deliveries for {date}{branch ? ` · ${branch}` : ''}.
+                </div>
+              )}
+              {!loading && groupKeys.map((key) => (
+                <div key={key} className="border-b border-gray-800">
+                  <div className="flex items-center justify-between px-4 py-2 bg-gray-900/60 border-b border-gray-800 sticky top-0 z-10">
+                    <span className="text-xs font-semibold text-gray-300">
+                      {key}
+                      <span className="ml-2 font-normal text-gray-600">
+                        ({grouped[key].length} stop{grouped[key].length !== 1 ? 's' : ''})
+                      </span>
+                    </span>
+                    <div className="flex gap-1.5">
+                      {['S', 'D', 'I'].map((flag) => {
+                        const cnt = grouped[key].filter((d) => d.status_flag?.toUpperCase() === flag).length;
+                        if (!cnt) return null;
+                        return <span key={flag} className="flex items-center gap-0.5">{statusBadge(flag)}<span className="text-[10px] text-gray-600">{cnt}</span></span>;
+                      })}
+                    </div>
+                  </div>
+                  <table className="w-full text-sm">
+                    <tbody>
+                      {grouped[key].map((d) => {
+                        const isSelected = selectedStop?.so_id === d.so_id;
+                        return (
+                          <tr
+                            key={`${d.so_id}-${d.shipment_num}`}
+                            onClick={() => setSelectedStop(isSelected ? null : d)}
+                            className={`border-b border-gray-800/50 cursor-pointer transition-colors ${
+                              isSelected ? 'bg-cyan-900/20 border-l-2 border-l-cyan-500' : 'hover:bg-gray-800/30'
+                            }`}
+                          >
+                            <td className="px-3 py-2.5 w-4">
+                              {isSelected
+                                ? <ChevronDown className="w-3.5 h-3.5 text-cyan-400" />
+                                : <ChevronRight className="w-3.5 h-3.5 text-gray-600" />}
+                            </td>
+                            <td className="px-2 py-2.5 font-mono text-cyan-400 whitespace-nowrap text-xs w-24">
+                              {d.so_id}
+                              {d.shipment_num > 1 && <span className="text-gray-600 ml-1">#{d.shipment_num}</span>}
+                            </td>
+                            <td className="px-2 py-2.5 max-w-[180px]">
+                              <div className="text-sm text-gray-200 truncate">{d.customer_name ?? '—'}</div>
+                              {d.reference && <div className="text-xs text-gray-500 truncate">{d.reference}</div>}
+                            </td>
+                            <td className="px-2 py-2.5 text-xs text-gray-400 max-w-[140px]">
+                              <div className="truncate">{d.city ?? d.address_1 ?? '—'}</div>
+                            </td>
+                            <td className="px-2 py-2.5">{statusBadge(d.status_flag)}</td>
+                            <td className="px-2 py-2.5 text-xs text-gray-500 whitespace-nowrap">
+                              {d.driver ?? d.route_id_char ?? '—'}
+                            </td>
+                            {isAdmin && <td className="px-2 py-2.5 text-xs text-gray-600">{d.system_id}</td>}
+                            <td className="px-2 py-2.5 text-xs whitespace-nowrap">
+                              {d.ar_balance != null && d.ar_balance > 0
+                                ? <span className="text-red-400 font-medium">{fmtMoney(d.ar_balance)}</span>
+                                : <span className="text-gray-700">—</span>}
+                            </td>
+                            <td className="px-2 py-2.5 text-xs text-gray-500 whitespace-nowrap">
+                              {d.loaded_date
+                                ? `${new Date(d.loaded_date).toLocaleDateString()}${d.loaded_time ? ' ' + d.loaded_time : ''}`
+                                : fmtDate(d.expect_date)}
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              ))}
+            </div>
+          )}
 
           {/* Right: Detail Panel (slides in) */}
           {selectedStop && (
