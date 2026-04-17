@@ -30,9 +30,9 @@ interface IncompletePick {
 
 type Step = 'select-picker' | 'select-type' | 'scan' | 'work-orders';
 
-export default function KioskPickersClient({ branch }: { branch: string }) {
-  const [pickers, setPickers] = useState<Picker[]>([]);
-  const [loading, setLoading] = useState(true);
+export default function KioskPickersClient({ branch, initialPickers = [] }: { branch: string; initialPickers?: Picker[] }) {
+  const [pickers, setPickers] = useState<Picker[]>(initialPickers);
+  const [loading, setLoading] = useState(false);
   const [selectedPicker, setSelectedPicker] = useState<Picker | null>(null);
   const [incompletePicks, setIncompletePicks] = useState<IncompletePick[]>([]);
   const [selectedTypeId, setSelectedTypeId] = useState<number | null>(null);
@@ -40,7 +40,6 @@ export default function KioskPickersClient({ branch }: { branch: string }) {
   const [completing, setCompleting] = useState<number | null>(null);
 
   const loadPickers = useCallback(async () => {
-    setLoading(true);
     try {
       const res = await fetch(`/api/kiosk/pickers?branch=${encodeURIComponent(branch)}`);
       if (res.ok) {
@@ -50,7 +49,14 @@ export default function KioskPickersClient({ branch }: { branch: string }) {
     } finally { setLoading(false); }
   }, [branch]);
 
-  useEffect(() => { loadPickers(); }, [loadPickers]);
+  useEffect(() => {
+    // Only show a loading spinner if server didn't provide initial pickers
+    if (pickers.length === 0) {
+      setLoading(true);
+      loadPickers();
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // Auto-refresh every 120s so an idle kiosk doesn't go stale
   useEffect(() => {
