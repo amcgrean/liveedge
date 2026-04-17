@@ -227,6 +227,7 @@ function getDomains(tvBranch: string): Domain[] {
         p.startsWith('/ops/delivery'),
       links: [
         { href: '/dispatch',               label: 'Dispatch Board' },
+        { href: '/dispatch/transfers',     label: 'Branch Transfers' },
         { href: '/dispatch/drivers',       label: 'Driver Roster',   requireAnyRole: ['supervisor', 'ops', 'dispatch'] },
         { href: '/delivery',               label: 'Delivery Tracker' },
         { href: '/delivery/map',           label: 'Fleet Map' },
