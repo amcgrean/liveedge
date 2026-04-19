@@ -28,6 +28,7 @@ type AppUserRow = {
   is_active: boolean;
   created_at: string | null;
   branch: string | null;
+  agent_id: string | null;
 };
 
 // Map app_users row → UI-facing object
@@ -63,6 +64,7 @@ function toUserDto(r: AppUserRow) {
     name:      r.display_name ?? r.username ?? r.email.split('@')[0],
     email:     r.email,
     username:  r.username ?? null,
+    agentId:   r.agent_id ?? null,
     role,
     roles,
     branch:    r.branch ?? null,
@@ -79,7 +81,7 @@ export async function GET() {
     const sql = getErpSql();
     const rows = await sql<AppUserRow[]>`
       SELECT id, email, display_name, username, roles, is_active,
-             created_at::text, branch
+             created_at::text, branch, agent_id
       FROM app_users
       ORDER BY display_name NULLS LAST, email
     `;
@@ -97,6 +99,7 @@ export async function POST(req: NextRequest) {
     name?: string;       // display name
     username?: string;
     email?: string;
+    agentId?: string;
     role?: string;
     roles?: string[];
     password?: string;
@@ -136,11 +139,12 @@ export async function POST(req: NextRequest) {
   const displayName = body.name?.trim() || username || (email ? email.split('@')[0] : null);
   const finalEmail = email ?? `${username}@beisserlumber.local`;
   const branch = body.branch?.trim() || null;
+  const agentId = body.agentId?.trim().toLowerCase() || null;
 
   try {
     const sql = getErpSql();
     const [row] = await sql<AppUserRow[]>`
-      INSERT INTO app_users (email, display_name, username, password_hash, roles, branch, is_active)
+      INSERT INTO app_users (email, display_name, username, password_hash, roles, branch, is_active, agent_id)
       VALUES (
         ${finalEmail},
         ${displayName},
@@ -148,10 +152,11 @@ export async function POST(req: NextRequest) {
         ${passwordHash},
         ${JSON.stringify(roles)},
         ${branch},
-        true
+        true,
+        ${agentId}
       )
       RETURNING id, email, display_name, username, roles, is_active,
-                created_at::text, branch
+                created_at::text, branch, agent_id
     `;
     return NextResponse.json({ user: toUserDto(row) }, { status: 201 });
   } catch (err) {

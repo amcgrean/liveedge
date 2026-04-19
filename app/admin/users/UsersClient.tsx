@@ -11,6 +11,7 @@ interface AppUser {
   id: string;
   name: string;         // display_name
   username: string | null;
+  agentId: string | null;
   email: string | null;
   role: string;         // primary role (derived)
   roles: string[];      // full roles array
@@ -34,7 +35,7 @@ const ROLES = [
 
 const BRANCHES = ['10FD', '20GR', '25BW', '40CV'];
 
-const EMPTY = { name: '', username: '', email: '', role: 'estimator', password: '', branch: '' };
+const EMPTY = { name: '', username: '', agentId: '', email: '', role: 'estimator', password: '', branch: '' };
 
 export default function UsersClient() {
   const { data: session } = useSession();
@@ -62,6 +63,7 @@ export default function UsersClient() {
     setForm({
       name:     u.name,
       username: u.username ?? '',
+      agentId:  u.agentId ?? '',
       email:    u.email ?? '',
       role:     u.role,
       password: '',
@@ -94,6 +96,7 @@ export default function UsersClient() {
         branch: form.branch.trim() || undefined,
       };
       if (form.username.trim()) body.username = form.username.trim().toLowerCase();
+      if (form.agentId.trim())  body.agentId  = form.agentId.trim().toLowerCase();
       if (form.email.trim())    body.email    = form.email.trim().toLowerCase();
       if (form.password)        body.password = form.password;
       const res = await fetch(url, { method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
@@ -150,6 +153,7 @@ export default function UsersClient() {
               <tr>
                 <th>Name</th>
                 <th>Username</th>
+                <th>Agent ID</th>
                 <th>Email</th>
                 <th>Role</th>
                 <th>Branch</th>
@@ -170,6 +174,9 @@ export default function UsersClient() {
                     </td>
                     <td className="text-slate-400 text-sm font-mono">
                       {u.username || <span className="text-slate-600 italic">—</span>}
+                    </td>
+                    <td className="text-slate-400 text-sm font-mono">
+                      {u.agentId || <span className="text-slate-600 italic">—</span>}
                     </td>
                     <td className="text-slate-400 text-sm">{u.email || <span className="text-slate-600 italic">—</span>}</td>
                     <td>
@@ -245,6 +252,14 @@ export default function UsersClient() {
                     placeholder="user@beisserlumber.com"
                     className="w-full px-3 py-2 bg-slate-950/60 border border-slate-700 rounded-lg text-sm text-slate-100 focus:border-cyan-400 focus:outline-none" />
                 </div>
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-slate-400 mb-1">
+                  Agent ID <span className="text-slate-600">(ERP rep code — first name + last initial, e.g. aaronm)</span>
+                </label>
+                <input value={form.agentId} onChange={(e) => setForm({ ...form, agentId: e.target.value })}
+                  placeholder="aaronm"
+                  className="w-full px-3 py-2 bg-slate-950/60 border border-slate-700 rounded-lg text-sm text-slate-100 focus:border-cyan-400 focus:outline-none" />
               </div>
               <div>
                 <label className="block text-xs font-medium text-slate-400 mb-1">Branch</label>

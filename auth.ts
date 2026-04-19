@@ -68,8 +68,9 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
             display_name: string | null;
             roles: string[] | null;
             branch: string | null;
+            agent_id: string | null;
           }[]>`
-            SELECT id, email, display_name, roles, branch
+            SELECT id, email, display_name, roles, branch, agent_id
             FROM app_users
             WHERE ${isEmail ? sql`email = ${input}` : sql`username = ${input}`}
               AND is_active = true
@@ -120,6 +121,7 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
             roles,
             branch: user.branch ?? null,
             branchId: null,
+            agentId: user.agent_id ?? null,
           };
         } catch (err) {
           console.error('[auth] authorize error:', err);
@@ -137,6 +139,7 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
         token.roles = (user as { roles?: string[] }).roles ?? [];
         token.branch = (user as { branch?: string | null }).branch ?? null;
         token.branchId = (user as { branchId?: number | null }).branchId ?? null;
+        token.agentId = (user as { agentId?: string | null }).agentId ?? null;
       }
       if (!token.roles || (token.roles as string[]).length === 0) {
         if (token.role === 'admin') token.roles = ['admin'];
@@ -149,8 +152,8 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
         (session.user as { role?: string }).role = token.role as string;
         (session.user as { roles?: string[] }).roles = (token.roles ?? []) as string[];
         (session.user as { branch?: string | null }).branch = (token.branch ?? null) as string | null;
-        (session.user as { branchId?: number | null }).branchId =
-          token.branchId as number | null;
+        (session.user as { branchId?: number | null }).branchId = token.branchId as number | null;
+        (session.user as { agentId?: string | null }).agentId = (token.agentId ?? null) as string | null;
       }
       return session;
     },
@@ -182,6 +185,7 @@ declare module 'next-auth' {
       roles: string[];
       branch: string | null;
       branchId: number | null;
+      agentId: string | null;
     };
   }
 }

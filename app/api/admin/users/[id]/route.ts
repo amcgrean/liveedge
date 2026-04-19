@@ -24,6 +24,7 @@ export async function PUT(
     name?: string;
     email?: string;
     username?: string;
+    agentId?: string;
     role?: string;
     roles?: string[];
     isActive?: boolean;
@@ -38,6 +39,7 @@ export async function PUT(
   if (body.name !== undefined)     updates.display_name = body.name.trim() || null;
   if (body.email !== undefined)    updates.email = body.email ? body.email.trim().toLowerCase() : null;
   if (body.username !== undefined) updates.username = body.username ? body.username.trim().toLowerCase() : null;
+  if (body.agentId !== undefined)  updates.agent_id = body.agentId ? body.agentId.trim().toLowerCase() : null;
   if (body.branch !== undefined)   updates.branch = body.branch?.trim() || null;
   if (body.isActive !== undefined) updates.is_active = body.isActive;
 
@@ -70,11 +72,11 @@ export async function PUT(
     type UserRow = {
       id: number; email: string; display_name: string | null;
       username: string | null; roles: string[] | null; is_active: boolean;
-      created_at: string | null; branch: string | null;
+      created_at: string | null; branch: string | null; agent_id: string | null;
     };
     const rows = await sql.unsafe<UserRow[]>(
       `UPDATE app_users SET ${setClauses} WHERE id = $1
-       RETURNING id, email, display_name, username, roles, is_active, created_at::text, branch`,
+       RETURNING id, email, display_name, username, roles, is_active, created_at::text, branch, agent_id`,
       values
     );
 
@@ -88,6 +90,7 @@ export async function PUT(
         name:     r.display_name ?? r.username ?? r.email.split('@')[0],
         email:    r.email,
         username: r.username ?? null,
+        agentId:  r.agent_id ?? null,
         role:     rolesArr[0] ?? 'viewer',
         roles:    rolesArr,
         branch:   r.branch ?? null,

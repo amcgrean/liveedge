@@ -78,12 +78,14 @@ export async function GET() {
   const branch = session.user.branch ?? null;
   const sql = getErpSql();
 
-  const userRows = await sql<{ username: string }[]>`
-    SELECT username FROM public.app_users WHERE id = ${userId} AND is_active = true LIMIT 1
+  const userRows = await sql<{ username: string | null; agent_id: string | null }[]>`
+    SELECT username, agent_id FROM public.app_users WHERE id = ${userId} AND is_active = true LIMIT 1
   `;
-  const username = userRows[0]?.username ?? '';
-  const rep = username.toUpperCase().trim();
+  // Prefer agent_id (ERP rep code); fall back to username for users not yet migrated
+  const repRaw = userRows[0]?.agent_id ?? userRows[0]?.username ?? '';
+  const rep = repRaw.toUpperCase().trim();
   if (!rep) return NextResponse.json(EMPTY);
+  const username = userRows[0]?.username ?? '';
 
   type TopCustRow = { cust_code: string; cust_name: string | null; order_count: string };
   type BidActRow  = { bid_id: number; action: string; project_name: string; customer_name: string; ts: string };
