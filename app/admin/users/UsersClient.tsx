@@ -115,7 +115,7 @@ export default function UsersClient() {
   const getRoleInfo = (role: string) => ROLES.find((r) => r.value === role) ?? ROLES[ROLES.length - 1];
 
   return (
-    <div className="max-w-5xl">
+    <div className="max-w-full">
       {/* Context banner */}
       <div className="flex items-start gap-2.5 mb-5 p-3.5 bg-cyan-500/5 border border-cyan-500/20 rounded-xl text-sm text-slate-400">
         <Info className="w-4 h-4 text-cyan-400 mt-0.5 shrink-0" />
