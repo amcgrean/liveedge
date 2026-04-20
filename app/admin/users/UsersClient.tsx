@@ -255,7 +255,7 @@ export default function UsersClient() {
               </div>
               <div>
                 <label className="block text-xs font-medium text-slate-400 mb-1">
-                  Agent ID <span className="text-slate-600">(ERP rep code — first name + last initial, e.g. aaronm)</span>
+                  Agent ID <span className="text-slate-600">(ERP rep code — full first name + last initial, e.g. Aaron McGrean → aaronm)</span>
                 </label>
                 <input value={form.agentId} onChange={(e) => setForm({ ...form, agentId: e.target.value })}
                   placeholder="aaronm"
