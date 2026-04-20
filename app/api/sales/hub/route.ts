@@ -39,7 +39,7 @@ export interface HubTransaction {
   sale_type: string | null;
   expect_date: string | null;
   created_date: string | null;
-  salesperson: string | null;
+  rep_1: string | null;
   system_id: string;
 }
 
@@ -88,12 +88,12 @@ export async function GET() {
   if (!rep) return NextResponse.json(EMPTY);
   const username = userRows[0]?.username ?? '';
 
-  // Debug: show sample of actual salesperson values in this branch so mismatches are visible
+  // Debug: show sample of actual rep_1 values in this branch so mismatches are visible
   const sampleRepsRes = await sql<{ rep: string }[]>`
-    SELECT DISTINCT UPPER(TRIM(salesperson)) AS rep
+    SELECT DISTINCT UPPER(TRIM(rep_1)) AS rep
     FROM public.agility_so_header
     WHERE is_deleted = false
-      AND salesperson IS NOT NULL AND TRIM(salesperson) <> ''
+      AND rep_1 IS NOT NULL AND TRIM(rep_1) <> ''
       ${branch ? sql`AND system_id = ${branch}` : sql``}
     ORDER BY rep LIMIT 30
   `;
@@ -113,20 +113,19 @@ export async function GET() {
     openSvcRes,
     openPOsRes,
   ] = await Promise.all([
-    // My open orders — I am agent 1 (salesperson)
+    // My open orders — I am rep_1 (account rep on order)
     sql<Count[]>`
       SELECT COUNT(*)::text AS cnt FROM public.agility_so_header
       WHERE is_deleted = false
-        AND UPPER(TRIM(salesperson)) = ${rep}
+        AND UPPER(TRIM(rep_1)) = ${rep}
         AND so_status NOT IN ('I', 'C')
         ${branch ? sql`AND system_id = ${branch}` : sql``}
     `,
-    // My written orders — agent 1, written in the last 30 days
-    // TODO: replace salesperson filter with agent_three column once column name is confirmed
+    // My written orders — rep_3 (who wrote the ticket), last 30 days
     sql<Count[]>`
       SELECT COUNT(*)::text AS cnt FROM public.agility_so_header
       WHERE is_deleted = false
-        AND UPPER(TRIM(salesperson)) = ${rep}
+        AND UPPER(TRIM(rep_3)) = ${rep}
         AND created_date >= CURRENT_DATE - INTERVAL '30 days'
         ${branch ? sql`AND system_id = ${branch}` : sql``}
     `,
@@ -138,26 +137,23 @@ export async function GET() {
         AND so_status NOT IN ('I', 'C')
         ${branch ? sql`AND system_id = ${branch}` : sql``}
     `,
-    // Will calls I wrote
+    // Will calls I wrote — rep_3 (who entered the order)
     sql<Count[]>`
       SELECT COUNT(*)::text AS cnt FROM public.agility_so_header
       WHERE is_deleted = false
         AND UPPER(TRIM(sale_type)) = 'WC'
         AND so_status NOT IN ('I', 'C')
-        AND UPPER(TRIM(salesperson)) = ${rep}
+        AND UPPER(TRIM(rep_3)) = ${rep}
+        ${branch ? sql`AND system_id = ${branch}` : sql``}
     `,
-    // Will calls for my customers (cross-schema join)
+    // Will calls for my customers — rep_1 = me (I am account rep on the order)
     sql<Count[]>`
-      SELECT COUNT(*)::text AS cnt
-      FROM public.agility_so_header soh
-      WHERE soh.is_deleted = false
-        AND UPPER(TRIM(soh.sale_type)) = 'WC'
-        AND soh.so_status NOT IN ('I', 'C')
-        AND soh.cust_code IN (
-          SELECT c."customerCode" FROM bids.customer c
-          WHERE UPPER(TRIM(c.sales_agent)) = ${rep}
-        )
-        ${branch ? sql`AND soh.system_id = ${branch}` : sql``}
+      SELECT COUNT(*)::text AS cnt FROM public.agility_so_header
+      WHERE is_deleted = false
+        AND UPPER(TRIM(sale_type)) = 'WC'
+        AND so_status NOT IN ('I', 'C')
+        AND UPPER(TRIM(rep_1)) = ${rep}
+        ${branch ? sql`AND system_id = ${branch}` : sql``}
     `,
     // Open quotes/bids for this rep
     sql<Count[]>`
@@ -191,25 +187,25 @@ export async function GET() {
   ]);
 
   const [topCustRes, recentTxRes, recentBidActRes, recentDesignActRes] = await Promise.all([
-    // Top customers for this rep (last 30 days)
+    // Top customers for this rep (last 30 days, rep_1 = account rep)
     sql<TopCustRow[]>`
       SELECT soh.cust_code, MAX(soh.cust_name) AS cust_name, COUNT(*)::text AS order_count
       FROM public.agility_so_header soh
       WHERE soh.is_deleted = false
         AND soh.created_date >= CURRENT_DATE - INTERVAL '30 days'
-        AND UPPER(TRIM(soh.salesperson)) = ${rep}
+        AND UPPER(TRIM(soh.rep_1)) = ${rep}
         ${branch ? sql`AND soh.system_id = ${branch}` : sql``}
       GROUP BY soh.cust_code
       ORDER BY COUNT(*) DESC
       LIMIT 7
     `,
-    // Recent transactions (last 10 for this rep)
+    // Recent transactions (last 10, rep_1 = account rep on order)
     sql<HubTransaction[]>`
       SELECT so_id, cust_name, cust_code, reference, so_status, sale_type,
-             expect_date::text, created_date::text, salesperson, system_id
+             expect_date::text, created_date::text, rep_1, system_id
       FROM public.agility_so_header
       WHERE is_deleted = false
-        AND UPPER(TRIM(salesperson)) = ${rep}
+        AND UPPER(TRIM(rep_1)) = ${rep}
         ${branch ? sql`AND system_id = ${branch}` : sql``}
       ORDER BY created_date DESC
       LIMIT 10
