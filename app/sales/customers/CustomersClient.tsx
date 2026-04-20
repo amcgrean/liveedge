@@ -10,7 +10,6 @@ type Customer = {
   cust_name: string | null;
   branch_code: string | null;
   phone: string | null;
-  email: string | null;
 };
 
 const BRANCHES = ['', '10FD', '20GR', '25BW', '40CV'];
