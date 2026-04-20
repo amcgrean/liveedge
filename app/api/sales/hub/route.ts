@@ -49,6 +49,7 @@ export interface HubData {
   recentActivity: HubActivity[];
   recentTransactions: HubTransaction[];
   username: string;
+  _debug?: { repUsed: string; agentIdInDb: string | null; branchReps: string[] };
 }
 
 function relativeTime(ts: string): string {
@@ -86,6 +87,16 @@ export async function GET() {
   const rep = repRaw.toUpperCase().trim();
   if (!rep) return NextResponse.json(EMPTY);
   const username = userRows[0]?.username ?? '';
+
+  // Debug: show sample of actual salesperson values in this branch so mismatches are visible
+  const sampleRepsRes = await sql<{ rep: string }[]>`
+    SELECT DISTINCT UPPER(TRIM(salesperson)) AS rep
+    FROM public.agility_so_header
+    WHERE is_deleted = false
+      AND salesperson IS NOT NULL AND TRIM(salesperson) <> ''
+      ${branch ? sql`AND system_id = ${branch}` : sql``}
+    ORDER BY rep LIMIT 30
+  `;
 
   type TopCustRow = { cust_code: string; cust_name: string | null; order_count: string };
   type BidActRow  = { bid_id: number; action: string; project_name: string; customer_name: string; ts: string };
@@ -272,5 +283,7 @@ export async function GET() {
     recentActivity: activityItems,
     recentTransactions: recentTxRes,
     username,
+    // Temporary debug — remove once agent_id matching is confirmed
+    _debug: { repUsed: rep, agentIdInDb: userRows[0]?.agent_id ?? null, branchReps: sampleRepsRes.map((r: { rep: string }) => r.rep) },
   } satisfies HubData);
 }
