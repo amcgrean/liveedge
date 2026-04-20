@@ -237,12 +237,26 @@ Branch: `claude/update-navbar-menu-cgiYe` (merged to `main`)
 
 **Sidebar sections:**
 ```
-General:  Dashboard · Customers · Products/SKUs · Formulas
-Services: Bid Fields
-Users:    Users · Notifications
-System:   Audit Log · ERP Sync · Page Analytics
+General:     Dashboard · Customers · Products/SKUs · Formulas
+Services:    Bid Fields
+Users:       Users · Notifications
+Operations:  Job Review
+System:      Audit Log · ERP Sync · Page Analytics
 ```
 - `app/admin/page.tsx` rewritten — sectioned overview cards matching the 4 groups
+
+#### Job Review (2026-04-17) — COMPLETE
+
+Admin-only view for reviewing ERP sales order jobs with GPS match status.
+
+- **List page** (`/admin/jobs`): paginated at 50/page, search (SO#, customer, reference, PO#), customer code filter, branch/status/GPS/sort dropdowns
+- **Quick filter chips**: Recently Created · Recently Matched GPS · Missing GPS · Has GPS Match — each sets a preset combination of `gps` + `sort` filters
+- **GPS match status**: badge per row — green "GPS" (coordinates on file) / amber "No GPS" (missing from `agility_customers`)
+- **Detail page** (`/admin/jobs/[so_id]`): customer card, order details card, GPS coordinates card, Leaflet map pinned to ship-to address (or "no coordinates" state)
+- **API**: `GET /api/admin/jobs` (list + count) · `GET /api/admin/jobs/[so_id]` (detail) — both admin-only
+- **Data source**: `agility_so_header` JOIN `agility_customers` on `cust_key + shipto_seq_num` for GPS coords (lat/lon)
+- **Map component**: `src/components/admin/JobLocationMap.tsx` — single-marker Leaflet map, same pattern as `DispatchMap` without vehicles/routes
+- **Future**: write-back to Agility API for tax code + address corrections (detail page already displays these fields)
 
 **Cleanup & security:**
 - `/admin/app-users/` directory **deleted** — `AppUsersClient.tsx` was dead code (461 lines); `page.tsx` was a redirect stub. Auth unification consolidated all users under `/admin/users`

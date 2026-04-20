@@ -319,6 +319,8 @@ const ADMIN_LINKS: NavLink[] = [
   // Users
   { href: '/admin/users',         label: 'Users',           sectionBefore: 'Users' },
   { href: '/admin/notifications', label: 'Notifications' },
+  // Operations
+  { href: '/admin/jobs',          label: 'Job Review',      sectionBefore: 'Operations' },
   // System
   { href: '/admin/audit',         label: 'Audit Log',       sectionBefore: 'System' },
   { href: '/admin/erp',           label: 'ERP Sync' },
