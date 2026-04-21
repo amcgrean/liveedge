@@ -49,7 +49,7 @@ export interface HubData {
   recentActivity: HubActivity[];
   recentTransactions: HubTransaction[];
   username: string;
-  _debug?: { repUsed: string; agentIdInDb: string | null; branchReps: string[]; saleTypes: string[] };
+  _debug?: { repUsed: string; agentIdInDb: string | null; branchReps: string[]; saleTypes: string[]; wcStatuses: string[] };
 }
 
 function relativeTime(ts: string): string {
@@ -88,7 +88,7 @@ export async function GET() {
   if (!rep) return NextResponse.json(EMPTY);
   const username = userRows[0]?.username ?? '';
 
-  const [sampleRepsRes, saleTypesRes] = await Promise.all([
+  const [sampleRepsRes, saleTypesRes, wcStatusesRes] = await Promise.all([
     // Debug: show sample of actual rep_1 values in this branch
     sql<{ rep: string }[]>`
       SELECT DISTINCT UPPER(TRIM(rep_1)) AS rep
@@ -107,6 +107,16 @@ export async function GET() {
       GROUP BY UPPER(TRIM(COALESCE(sale_type, '')))
       ORDER BY COUNT(*) DESC
       LIMIT 20
+    `,
+    // Debug: show what so_status values will calls actually have
+    sql<{ so_status: string; cnt: string }[]>`
+      SELECT COALESCE(UPPER(TRIM(so_status)), '(blank)') AS so_status, COUNT(*)::text AS cnt
+      FROM public.agility_so_header
+      WHERE is_deleted = false
+        AND UPPER(TRIM(sale_type)) = 'WILLCALL'
+        ${branch ? sql`AND system_id = ${branch}` : sql``}
+      GROUP BY COALESCE(UPPER(TRIM(so_status)), '(blank)')
+      ORDER BY COUNT(*) DESC
     `,
   ]);
 
@@ -141,12 +151,12 @@ export async function GET() {
         AND created_date >= CURRENT_DATE - INTERVAL '30 days'
         ${branch ? sql`AND system_id = ${branch}` : sql``}
     `,
-    // Branch will calls open (not yet staged/invoiced/closed)
+    // Branch will calls open (not yet staged/delivered/invoiced/closed)
     sql<Count[]>`
       SELECT COUNT(*)::text AS cnt FROM public.agility_so_header
       WHERE is_deleted = false
         AND UPPER(TRIM(sale_type)) = 'WILLCALL'
-        AND so_status NOT IN ('S', 'I', 'C')
+        AND COALESCE(UPPER(TRIM(so_status)), '') NOT IN ('S', 'D', 'I', 'C')
         ${branch ? sql`AND system_id = ${branch}` : sql``}
     `,
     // Will calls I wrote — rep_3 (who entered the order)
@@ -154,7 +164,7 @@ export async function GET() {
       SELECT COUNT(*)::text AS cnt FROM public.agility_so_header
       WHERE is_deleted = false
         AND UPPER(TRIM(sale_type)) = 'WILLCALL'
-        AND so_status NOT IN ('S', 'I', 'C')
+        AND COALESCE(UPPER(TRIM(so_status)), '') NOT IN ('S', 'D', 'I', 'C')
         AND UPPER(TRIM(rep_3)) = ${rep}
         ${branch ? sql`AND system_id = ${branch}` : sql``}
     `,
@@ -163,7 +173,7 @@ export async function GET() {
       SELECT COUNT(*)::text AS cnt FROM public.agility_so_header
       WHERE is_deleted = false
         AND UPPER(TRIM(sale_type)) = 'WILLCALL'
-        AND so_status NOT IN ('S', 'I', 'C')
+        AND COALESCE(UPPER(TRIM(so_status)), '') NOT IN ('S', 'D', 'I', 'C')
         AND UPPER(TRIM(rep_1)) = ${rep}
         ${branch ? sql`AND system_id = ${branch}` : sql``}
     `,
@@ -297,6 +307,7 @@ export async function GET() {
       agentIdInDb: userRows[0]?.agent_id ?? null,
       branchReps: sampleRepsRes.map((r: { rep: string }) => r.rep),
       saleTypes: saleTypesRes.map((r: { sale_type: string; cnt: string }) => `${r.sale_type || '(blank)'}:${r.cnt}`),
+      wcStatuses: (wcStatusesRes as { so_status: string; cnt: string }[]).map((r) => `${r.so_status}:${r.cnt}`),
     },
   } satisfies HubData);
 }
