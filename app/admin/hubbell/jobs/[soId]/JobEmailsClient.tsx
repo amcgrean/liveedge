@@ -46,6 +46,7 @@ type Summary = {
   poCount: number;
   woCount: number;
   emailCount: number;
+  duplicateCount: number;
 };
 
 function formatAmount(v: string | number | null): string {
@@ -105,9 +106,12 @@ export default function JobEmailsClient({ soId }: { soId: string }) {
           <ArrowLeft className="w-4 h-4" />
         </Link>
         <div>
-          <h1 className="text-xl font-bold text-white">SO #{soId}</h1>
+          <h1 className="text-xl font-bold text-white">
+            {soHeader?.cust_name ?? 'Unknown customer'}
+          </h1>
           <p className="text-sm text-slate-400">
-            {soHeader?.cust_name ?? 'Unknown customer'} — PO/WO emails tied to this job
+            PO/WO emails for this job
+            <span className="ml-2 text-slate-600 font-mono text-xs">#{soId}</span>
           </p>
         </div>
       </div>
@@ -165,22 +169,29 @@ export default function JobEmailsClient({ soId }: { soId: string }) {
 
       {/* Summary stats */}
       {summary && summary.emailCount > 0 && (
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-          {[
-            { label: 'Total Emails', value: summary.emailCount, icon: Mail, color: 'text-slate-300' },
-            { label: 'PO Emails',    value: summary.poCount,    icon: Package, color: 'text-blue-300' },
-            { label: 'WO Emails',    value: summary.woCount,    icon: Wrench,  color: 'text-purple-300' },
-            { label: 'Total Amount', value: formatAmount(summary.totalAmount), icon: DollarSign, color: 'text-green-300' },
-          ].map(({ label, value, icon: Icon, color }) => (
-            <div key={label} className="rounded-xl border border-white/10 bg-slate-900/60 p-4">
-              <div className="flex items-center gap-2 mb-1">
-                <Icon className={cn('w-4 h-4', color)} />
-                <span className="text-xs text-slate-500">{label}</span>
+        <>
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+            {[
+              { label: 'Unique PO/WOs', value: summary.emailCount, icon: Mail, color: 'text-slate-300' },
+              { label: 'PO Emails',     value: summary.poCount,    icon: Package, color: 'text-blue-300' },
+              { label: 'WO Emails',     value: summary.woCount,    icon: Wrench,  color: 'text-purple-300' },
+              { label: 'Total Amount',  value: formatAmount(summary.totalAmount), icon: DollarSign, color: 'text-green-300' },
+            ].map(({ label, value, icon: Icon, color }) => (
+              <div key={label} className="rounded-xl border border-white/10 bg-slate-900/60 p-4">
+                <div className="flex items-center gap-2 mb-1">
+                  <Icon className={cn('w-4 h-4', color)} />
+                  <span className="text-xs text-slate-500">{label}</span>
+                </div>
+                <p className={cn('text-2xl font-bold', color)}>{value}</p>
               </div>
-              <p className={cn('text-2xl font-bold', color)}>{value}</p>
-            </div>
-          ))}
-        </div>
+            ))}
+          </div>
+          {summary.duplicateCount > 0 && (
+            <p className="text-xs text-slate-500">
+              {summary.duplicateCount} duplicate {summary.duplicateCount === 1 ? 'email' : 'emails'} with the same PO/WO number hidden — amounts counted once per order.
+            </p>
+          )}
+        </>
       )}
 
       {/* PO/WO table */}

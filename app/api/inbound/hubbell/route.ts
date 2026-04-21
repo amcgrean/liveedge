@@ -135,23 +135,23 @@ export async function POST(req: NextRequest) {
 
   const db = getDb();
 
-  // Insert email record
-  const [emailRow] = await db.insert(hubbellEmails).values({
-    messageId:            messageId ?? null,
+  // Insert email record — ignore exact duplicates (same Message-ID forwarded twice)
+  const inserted = await db.insert(hubbellEmails).values({
+    messageId:             messageId ?? null,
     fromEmail,
-    fromName:             fromName ?? null,
-    subject:              subjectText,
-    bodyText:             bodyText || null,
-    emailType:            extracted.emailType,
-    extractedPoNumber:    extracted.poNumber    ?? null,
-    extractedWoNumber:    extracted.woNumber    ?? null,
-    extractedAddress:     extracted.address     ?? null,
-    extractedCity:        extracted.city        ?? null,
-    extractedState:       extracted.state       ?? null,
-    extractedZip:         extracted.zip         ?? null,
-    extractedAmount:       extracted.amount         != null ? String(extracted.amount)   : null,
-    extractedTaxAmount:    extracted.taxAmount      != null ? String(extracted.taxAmount) : null,
-    extractedShipping:     extracted.shippingAmount != null ? String(extracted.shippingAmount) : null,
+    fromName:              fromName ?? null,
+    subject:               subjectText,
+    bodyText:              bodyText || null,
+    emailType:             extracted.emailType,
+    extractedPoNumber:     extracted.poNumber    ?? null,
+    extractedWoNumber:     extracted.woNumber    ?? null,
+    extractedAddress:      extracted.address     ?? null,
+    extractedCity:         extracted.city        ?? null,
+    extractedState:        extracted.state       ?? null,
+    extractedZip:          extracted.zip         ?? null,
+    extractedAmount:       extracted.amount         != null ? String(extracted.amount)          : null,
+    extractedTaxAmount:    extracted.taxAmount      != null ? String(extracted.taxAmount)        : null,
+    extractedShipping:     extracted.shippingAmount != null ? String(extracted.shippingAmount)  : null,
     extractedNeedByDate:   extracted.needByDate    ?? null,
     extractedContactName:  extracted.contactName   ?? null,
     extractedContactPhone: extracted.contactPhone  ?? null,
@@ -164,9 +164,15 @@ export async function POST(req: NextRequest) {
     confirmedBy:       cacheHit ? 'address_cache' : null,
     confirmedAt:       cacheHit ? receivedAt : null,
     receivedAt,
-  }).returning({ id: hubbellEmails.id });
+  }).onConflictDoNothing().returning({ id: hubbellEmails.id });
 
-  const emailId = emailRow.id;
+  // Same Message-ID already stored — exact duplicate, acknowledge and return
+  if (inserted.length === 0) {
+    console.log(`[inbound/hubbell] Duplicate message-id ${messageId} — skipped`);
+    return NextResponse.json({ ok: true, duplicate: true });
+  }
+
+  const emailId = inserted[0].id;
 
   // Store candidates (only when we ran the matcher, not on cache hits)
   if (candidates.length > 0) {

@@ -290,12 +290,12 @@ export default function EmailDetailClient({ emailId }: { emailId: string }) {
                 <p className="text-xs text-green-400 font-semibold uppercase tracking-wide mb-2">Matched to Job</p>
                 <Link
                   href={`/admin/hubbell/jobs/${email.confirmedSoId}`}
-                  className="text-white font-bold text-lg hover:text-cyan-400 transition"
+                  className="text-white font-bold text-lg hover:text-cyan-400 transition block"
                 >
-                  SO #{email.confirmedSoId}
+                  {email.confirmedCustName ?? `Job #${email.confirmedSoId}`}
                 </Link>
                 {email.confirmedCustName && (
-                  <p className="text-sm text-slate-300 mt-1">{email.confirmedCustName}</p>
+                  <p className="text-xs text-slate-500 mt-0.5 font-mono">Job #{email.confirmedSoId}</p>
                 )}
                 {email.matchConfidence && (
                   <p className="text-xs text-slate-500 mt-1">
