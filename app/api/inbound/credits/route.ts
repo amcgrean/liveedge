@@ -11,6 +11,8 @@ type ResendAttachment = {
   filename: string;
   content: string;       // base64-encoded
   content_type: string;
+  content_disposition?: string;
+  content_id?: string;   // set on HTML-embedded parts (cid: references); absent on real file attachments
   size?: number;
 };
 
@@ -110,6 +112,9 @@ export async function POST(req: NextRequest) {
   for (const att of attachments) {
     const allowed = ['image/jpeg', 'image/png', 'image/gif', 'image/webp', 'application/pdf'];
     if (!allowed.includes(att.content_type)) continue;
+    // Skip HTML-embedded parts (email signatures, tracking pixels) — they carry a Content-ID
+    // used by the HTML body as a cid: reference. Real file attachments don't have one.
+    if (att.content_id) continue;
 
     const safeFilename = att.filename.replace(/[^a-zA-Z0-9._-]/g, '_');
     const timestamp = Date.now();
