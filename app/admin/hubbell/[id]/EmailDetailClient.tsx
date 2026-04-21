@@ -4,7 +4,7 @@ import React, { useEffect, useState } from 'react';
 import Link from 'next/link';
 import {
   ArrowLeft, Mail, CheckCircle, AlertCircle, Clock, XCircle,
-  MapPin, DollarSign, FileText, Tag, User, RotateCcw,
+  MapPin, DollarSign, FileText, Tag, User, RotateCcw, Calendar, Phone,
 } from 'lucide-react';
 import { cn } from '../../../../src/lib/utils';
 
@@ -45,6 +45,11 @@ type EmailDetail = {
   extractedState: string | null;
   extractedZip: string | null;
   extractedAmount: string | null;
+  extractedTaxAmount: string | null;
+  extractedShipping: string | null;
+  extractedNeedByDate: string | null;
+  extractedContactName: string | null;
+  extractedContactPhone: string | null;
   extractedDescription: string | null;
   receivedAt: string;
 };
@@ -137,7 +142,18 @@ export default function EmailDetailClient({ emailId }: { emailId: string }) {
   if (error) return <div className="rounded-xl border border-red-500/30 bg-red-500/10 p-6 text-red-300">{error}</div>;
   if (!email) return null;
 
-  const amount = email.extractedAmount ? parseFloat(email.extractedAmount) : null;
+  const amount   = email.extractedAmount   ? parseFloat(email.extractedAmount)   : null;
+  const tax      = email.extractedTaxAmount ? parseFloat(email.extractedTaxAmount) : null;
+  const shipping = email.extractedShipping  ? parseFloat(email.extractedShipping)  : null;
+
+  function fmtMoney(v: number) {
+    return '$' + v.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  }
+  function fmtDate(iso: string) {
+    // iso is YYYY-MM-DD
+    const [y, m, d] = iso.split('-');
+    return new Date(Number(y), Number(m) - 1, Number(d)).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+  }
 
   return (
     <div className="space-y-5 max-w-4xl">
@@ -213,9 +229,41 @@ export default function EmailDetailClient({ emailId }: { emailId: string }) {
               <div className="flex items-start gap-3">
                 <DollarSign className="w-4 h-4 text-green-400 mt-0.5 shrink-0" />
                 <div>
-                  <dt className="text-xs text-slate-500">Amount</dt>
-                  <dd className="text-sm text-white font-mono">
-                    ${amount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                  <dt className="text-xs text-slate-500">Order Total</dt>
+                  <dd className="text-sm text-white font-mono font-semibold">{fmtMoney(amount)}</dd>
+                  {(tax != null || shipping != null) && (
+                    <div className="flex gap-4 mt-1">
+                      {tax != null && (
+                        <span className="text-xs text-slate-500">Tax: <span className="text-slate-400 font-mono">{fmtMoney(tax)}</span></span>
+                      )}
+                      {shipping != null && (
+                        <span className="text-xs text-slate-500">Shipping: <span className="text-slate-400 font-mono">{fmtMoney(shipping)}</span></span>
+                      )}
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+            {email.extractedNeedByDate && (
+              <div className="flex items-start gap-3">
+                <Calendar className="w-4 h-4 text-cyan-400 mt-0.5 shrink-0" />
+                <div>
+                  <dt className="text-xs text-slate-500">Need By</dt>
+                  <dd className="text-sm text-white">{fmtDate(email.extractedNeedByDate)}</dd>
+                </div>
+              </div>
+            )}
+            {(email.extractedContactName || email.extractedContactPhone) && (
+              <div className="flex items-start gap-3">
+                <Phone className="w-4 h-4 text-slate-400 mt-0.5 shrink-0" />
+                <div>
+                  <dt className="text-xs text-slate-500">Contact</dt>
+                  <dd className="text-sm text-slate-200">
+                    {email.extractedContactName}
+                    {email.extractedContactName && email.extractedContactPhone && ' · '}
+                    {email.extractedContactPhone && (
+                      <span className="font-mono text-xs">{email.extractedContactPhone}</span>
+                    )}
                   </dd>
                 </div>
               </div>
@@ -242,12 +290,12 @@ export default function EmailDetailClient({ emailId }: { emailId: string }) {
                 <p className="text-xs text-green-400 font-semibold uppercase tracking-wide mb-2">Matched to Job</p>
                 <Link
                   href={`/admin/hubbell/jobs/${email.confirmedSoId}`}
-                  className="text-white font-bold text-lg hover:text-cyan-400 transition"
+                  className="text-white font-bold text-lg hover:text-cyan-400 transition block"
                 >
-                  SO #{email.confirmedSoId}
+                  {email.confirmedCustName ?? `Job #${email.confirmedSoId}`}
                 </Link>
                 {email.confirmedCustName && (
-                  <p className="text-sm text-slate-300 mt-1">{email.confirmedCustName}</p>
+                  <p className="text-xs text-slate-500 mt-0.5 font-mono">Job #{email.confirmedSoId}</p>
                 )}
                 {email.matchConfidence && (
                   <p className="text-xs text-slate-500 mt-1">
@@ -258,8 +306,12 @@ export default function EmailDetailClient({ emailId }: { emailId: string }) {
               {email.confirmedBy && (
                 <div className="flex items-center gap-2 text-xs text-slate-500">
                   <User className="w-3.5 h-3.5" />
-                  {email.matchStatus === 'matched' ? 'Auto-matched' : `Confirmed by ${email.confirmedBy}`}
-                  {email.confirmedAt && ` on ${new Date(email.confirmedAt).toLocaleDateString()}`}
+                  {email.confirmedBy === 'address_cache'
+                    ? 'Auto-confirmed via address cache'
+                    : email.matchStatus === 'matched'
+                      ? 'Auto-matched'
+                      : `Confirmed by ${email.confirmedBy}`}
+                  {email.confirmedAt && ` · ${new Date(email.confirmedAt).toLocaleDateString()}`}
                 </div>
               )}
               <button

@@ -2,13 +2,13 @@ import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '../../../../../../auth';
 import { getDb } from '../../../../../../db/index';
 import { hubbellEmails } from '../../../../../../db/schema';
-import { eq, or, desc } from 'drizzle-orm';
+import { eq, desc } from 'drizzle-orm';
 import { getErpSql } from '../../../../../../db/supabase';
 
 type Params = Promise<{ soId: string }>;
 
 // GET /api/admin/hubbell/jobs/[soId]
-// Returns all confirmed emails for a sales order + SO header details
+// Returns confirmed emails for a sales order, deduplicated by PO/WO number.
 export async function GET(req: NextRequest, { params }: { params: Params }) {
   const session = await auth();
   if (!session?.user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
@@ -18,8 +18,8 @@ export async function GET(req: NextRequest, { params }: { params: Params }) {
   const { soId } = await params;
   const db = getDb();
 
-  // All emails confirmed/auto-matched to this SO
-  const emails = await db.select({
+  // All emails confirmed/matched to this SO, newest first
+  const allEmails = await db.select({
     id:                   hubbellEmails.id,
     fromEmail:            hubbellEmails.fromEmail,
     fromName:             hubbellEmails.fromName,
@@ -36,10 +36,27 @@ export async function GET(req: NextRequest, { params }: { params: Params }) {
     receivedAt:           hubbellEmails.receivedAt,
   })
     .from(hubbellEmails)
-    .where(or(
-      eq(hubbellEmails.confirmedSoId, soId),
-    ))
+    .where(eq(hubbellEmails.confirmedSoId, soId))
     .orderBy(desc(hubbellEmails.receivedAt));
+
+  // Deduplicate by PO/WO number — keep the most recently received email per unique order number.
+  // Emails with no PO or WO number are kept as-is (they may be general job correspondence).
+  type EmailRow = (typeof allEmails)[0];
+  const seenKeys = new Set<string>();
+  const emails: EmailRow[] = [];
+  let duplicateCount = 0;
+
+  for (const email of allEmails) {
+    const key = email.extractedPoNumber ?? email.extractedWoNumber ?? null;
+    if (key) {
+      if (seenKeys.has(key)) {
+        duplicateCount++;
+        continue;
+      }
+      seenKeys.add(key);
+    }
+    emails.push(email);
+  }
 
   // Fetch SO header from ERP for context
   type SoHeader = {
@@ -86,7 +103,7 @@ export async function GET(req: NextRequest, { params }: { params: Params }) {
     console.error('[hubbell/jobs] SO header fetch failed', err);
   }
 
-  // Summary stats
+  // Summary stats — amounts counted once per unique PO/WO (deduplicated set)
   const totalAmount = emails.reduce((sum, e) => sum + (parseFloat(e.extractedAmount ?? '0') || 0), 0);
   const poCount = emails.filter((e) => e.emailType === 'po').length;
   const woCount = emails.filter((e) => e.emailType === 'wo').length;
@@ -95,6 +112,6 @@ export async function GET(req: NextRequest, { params }: { params: Params }) {
     soId,
     soHeader,
     emails,
-    summary: { totalAmount, poCount, woCount, emailCount: emails.length },
+    summary: { totalAmount, poCount, woCount, emailCount: emails.length, duplicateCount },
   });
 }

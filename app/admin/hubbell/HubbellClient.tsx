@@ -265,14 +265,20 @@ export default function HubbellClient() {
                   <td className="px-4 py-3 whitespace-nowrap">
                     <div className={statusBadge(email.matchStatus)}>
                       {statusIcon(email.matchStatus)}
-                      {email.matchStatus.charAt(0).toUpperCase() + email.matchStatus.slice(1)}
+                      {email.matchStatus === 'confirmed' ? 'Confirmed'
+                        : email.matchStatus === 'matched' ? 'Auto-matched'
+                        : email.matchStatus === 'pending' ? 'Pending'
+                        : email.matchStatus === 'unmatched' ? 'Unmatched'
+                        : email.matchStatus === 'rejected' ? 'Rejected'
+                        : email.matchStatus}
                     </div>
                     {email.confirmedSoId && (
                       <Link
                         href={`/admin/hubbell/jobs/${email.confirmedSoId}`}
-                        className="text-xs text-cyan-500 hover:text-cyan-300 mt-0.5 block transition"
+                        className="text-xs text-cyan-500 hover:text-cyan-300 mt-0.5 block transition truncate max-w-[160px]"
+                        title={`Job #${email.confirmedSoId}`}
                       >
-                        SO #{email.confirmedSoId}
+                        {email.confirmedCustName ?? `Job #${email.confirmedSoId}`}
                       </Link>
                     )}
                     {email.matchConfidence && !email.confirmedSoId && (
