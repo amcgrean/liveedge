@@ -401,6 +401,72 @@ export const poSubmissions = bidsSchema.table(
 );
 
 // ============================================================
+// HUBBELL EMAIL FORWARDING
+// ============================================================
+export const hubbellEmails = bidsSchema.table(
+  'hubbell_emails',
+  {
+    id:          uuid('id').primaryKey().defaultRandom(),
+    messageId:   varchar('message_id', { length: 500 }).unique(),
+    fromEmail:   varchar('from_email', { length: 255 }).notNull(),
+    fromName:    varchar('from_name', { length: 255 }),
+    subject:     text('subject').notNull(),
+    bodyText:    text('body_text'),
+    emailType:   varchar('email_type', { length: 20 }),
+    // 'po' | 'wo' | 'other'
+    extractedPoNumber:    varchar('extracted_po_number', { length: 100 }),
+    extractedWoNumber:    varchar('extracted_wo_number', { length: 100 }),
+    extractedAddress:     text('extracted_address'),
+    extractedCity:        varchar('extracted_city', { length: 100 }),
+    extractedState:       varchar('extracted_state', { length: 50 }),
+    extractedZip:         varchar('extracted_zip', { length: 20 }),
+    extractedAmount:      numeric('extracted_amount', { precision: 12, scale: 2 }),
+    extractedDescription: text('extracted_description'),
+    // 'pending' | 'matched' | 'unmatched' | 'confirmed' | 'rejected'
+    matchStatus:       varchar('match_status', { length: 20 }).notNull().default('pending'),
+    confirmedSoId:     varchar('confirmed_so_id', { length: 50 }),
+    confirmedCustCode: varchar('confirmed_cust_code', { length: 50 }),
+    confirmedCustName: varchar('confirmed_cust_name', { length: 255 }),
+    matchConfidence:   numeric('match_confidence', { precision: 5, scale: 2 }),
+    confirmedBy:  varchar('confirmed_by', { length: 100 }),
+    confirmedAt:  timestamp('confirmed_at', { withTimezone: true }),
+    receivedAt:   timestamp('received_at', { withTimezone: true }).notNull().defaultNow(),
+    createdAt:    timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt:    timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    index('hubbell_emails_match_status_idx').on(table.matchStatus),
+    index('hubbell_emails_received_at_idx').on(table.receivedAt),
+    index('hubbell_emails_confirmed_so_id_idx').on(table.confirmedSoId),
+  ]
+);
+
+export const hubbellEmailCandidates = bidsSchema.table(
+  'hubbell_email_candidates',
+  {
+    id:       uuid('id').primaryKey().defaultRandom(),
+    emailId:  uuid('email_id').notNull(),
+    soId:     varchar('so_id', { length: 50 }).notNull(),
+    systemId: varchar('system_id', { length: 20 }),
+    custCode: varchar('cust_code', { length: 50 }),
+    custName: varchar('cust_name', { length: 255 }),
+    reference:     varchar('reference', { length: 255 }),
+    shiptoAddress: varchar('shipto_address', { length: 255 }),
+    shiptoCity:    varchar('shipto_city', { length: 100 }),
+    shiptoState:   varchar('shipto_state', { length: 50 }),
+    shiptoZip:     varchar('shipto_zip', { length: 20 }),
+    confidence:    numeric('confidence', { precision: 5, scale: 2 }).notNull(),
+    matchReasons:  jsonb('match_reasons'),
+    rank:          integer('rank').notNull(),
+    createdAt:     timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    index('hubbell_candidates_email_id_idx').on(table.emailId),
+    index('hubbell_candidates_so_id_idx').on(table.soId),
+  ]
+);
+
+// ============================================================
 // RELATIONS
 // ============================================================
 export const bidsRelations = relations(bids, ({ one, many }) => ({
