@@ -90,6 +90,12 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ ok: true, skipped: true });
   }
 
+  // Only handle emails addressed to *@rma.beisser.cloud — ignore events from other inbound domains
+  const toAddresses = payload.data.to ?? [];
+  if (!toAddresses.some(addr => /@rma\.beisser\.cloud$/i.test(addr))) {
+    return NextResponse.json({ ok: true, skipped: true });
+  }
+
   const { from, subject, text, attachments } = payload.data;
   const rmaNumber = extractRmaNumber(subject, text);
   const receivedAt = payload.created_at ? new Date(payload.created_at) : new Date();
