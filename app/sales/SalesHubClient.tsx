@@ -11,6 +11,7 @@ interface Props {
   userBranch: string | null;
   userName: string | null;
   userRole?: string;
+  agentId: string | null;
 }
 
 const SO_STATUS: Record<string, { label: string; color: string }> = {
@@ -88,7 +89,13 @@ function SectionLabel({ children }: { children?: ReactNode }) {
   );
 }
 
-export default function SalesHubClient({ isAdmin, userBranch, userName, userRole }: Props) {
+export default function SalesHubClient({ isAdmin, userBranch, userName, userRole, agentId }: Props) {
+  const thirtyDaysAgo = new Date(Date.now() - 30 * 86_400_000).toISOString().slice(0, 10);
+  const txBase = '/sales/transactions';
+  function txUrl(params: Record<string, string>) {
+    const sp = new URLSearchParams(params);
+    return `${txBase}?${sp.toString()}`;
+  }
   usePageTracking();
   const [data, setData] = useState<HubData | null>(null);
   const [loading, setLoading] = useState(true);
@@ -158,9 +165,9 @@ export default function SalesHubClient({ isAdmin, userBranch, userName, userRole
             <KPICard
               label="My Open Orders"
               value={kpis.myOpenOrders}
-              sub="You are Agent 1"
+              sub="You are account rep"
               accent="#00894a"
-              href="/sales/transactions"
+              href={agentId ? txUrl({ rep1: agentId, status: 'O' }) : txBase}
               loading={loading}
             />
             <KPICard
@@ -168,7 +175,7 @@ export default function SalesHubClient({ isAdmin, userBranch, userName, userRole
               value={kpis.myWrittenOrders}
               sub="Last 30 days"
               accent="#3b82f6"
-              href="/sales/transactions"
+              href={agentId ? txUrl({ rep3: agentId, date_from: thirtyDaysAgo }) : txBase}
               loading={loading}
             />
             <KPICard
@@ -176,7 +183,7 @@ export default function SalesHubClient({ isAdmin, userBranch, userName, userRole
               value={kpis.branchWillCalls}
               sub={`Open at ${userBranch ?? 'branch'}`}
               accent="#f59e0b"
-              href="/sales/transactions"
+              href={txUrl({ sale_type: 'WC', status: 'O', ...(userBranch ? { branch: userBranch } : {}) })}
               loading={loading}
             />
             <KPICard
@@ -184,15 +191,15 @@ export default function SalesHubClient({ isAdmin, userBranch, userName, userRole
               value={kpis.myCustomerWillCalls}
               sub="Will calls for your accounts"
               accent="#f97316"
-              href="/sales/transactions"
+              href={agentId ? txUrl({ rep1: agentId, sale_type: 'WC', status: 'O' }) : txBase}
               loading={loading}
             />
             <KPICard
               label="Will Calls I Wrote"
               value={kpis.willCallsIWrote}
-              sub="Open WCs you created"
+              sub="Open WCs you entered"
               accent="#eab308"
-              href="/sales/transactions"
+              href={agentId ? txUrl({ rep3: agentId, sale_type: 'WC', status: 'O' }) : txBase}
               loading={loading}
             />
           </div>

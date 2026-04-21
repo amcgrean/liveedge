@@ -16,6 +16,7 @@ export default async function SalesPage() {
       userBranch={session.user.branch ?? null}
       userName={session.user.name ?? null}
       userRole={session.user.role}
+      agentId={(session.user as { agentId?: string | null }).agentId ?? null}
     />
   );
 }

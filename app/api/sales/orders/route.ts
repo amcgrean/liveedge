@@ -14,12 +14,12 @@ export interface SalesOrder {
   so_status: string;
   sale_type: string | null;
   ship_via: string | null;
-  salesperson: string | null;
+  rep_1: string | null;
   po_number: string | null;
   line_count: number;
 }
 
-// GET /api/sales/orders?q=&branch=&status=O&limit=100&page=1&date_from=&date_to=&sale_type=
+// GET /api/sales/orders?q=&branch=&status=O&limit=100&page=1&date_from=&date_to=&sale_type=&rep1=&rep3=
 export async function GET(req: NextRequest) {
   const session = await auth();
   if (!session?.user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
@@ -33,6 +33,8 @@ export async function GET(req: NextRequest) {
   const dateFrom = searchParams.get('date_from') ?? '';
   const dateTo = searchParams.get('date_to') ?? '';
   const saleTypeParam = searchParams.get('sale_type') ?? '';
+  const rep1Param = (searchParams.get('rep1') ?? '').trim().toUpperCase();
+  const rep3Param = (searchParams.get('rep3') ?? '').trim().toUpperCase();
 
   const isAdmin =
     session.user.role === 'admin' ||
@@ -56,12 +58,11 @@ export async function GET(req: NextRequest) {
       so_status: string | null;
       sale_type: string | null;
       ship_via: string | null;
-      salesperson: string | null;
+      rep_1: string | null;
       po_number: string | null;
       line_count: number;
     };
 
-    // Build query with optional filters using tagged template conditionals
     const rows = await sql<RawRow[]>`
       SELECT
         soh.so_id::text    AS so_number,
@@ -75,7 +76,7 @@ export async function GET(req: NextRequest) {
         soh.so_status,
         soh.sale_type,
         soh.ship_via,
-        soh.salesperson,
+        soh.rep_1,
         soh.po_number,
         COUNT(DISTINCT sol.sequence)::int AS line_count
       FROM agility_so_header soh
@@ -93,10 +94,12 @@ export async function GET(req: NextRequest) {
         ${dateFrom ? sql`AND CAST(soh.expect_date AS DATE) >= ${dateFrom}::date` : sql``}
         ${dateTo ? sql`AND CAST(soh.expect_date AS DATE) <= ${dateTo}::date` : sql``}
         ${saleTypeParam ? sql`AND UPPER(COALESCE(soh.sale_type,'')) = ${saleTypeParam.toUpperCase()}` : sql``}
+        ${rep1Param ? sql`AND UPPER(TRIM(soh.rep_1)) = ${rep1Param}` : sql``}
+        ${rep3Param ? sql`AND UPPER(TRIM(soh.rep_3)) = ${rep3Param}` : sql``}
       GROUP BY soh.system_id, soh.so_id, soh.cust_name, soh.cust_code,
                soh.shipto_address_1, soh.shipto_city, soh.expect_date,
                soh.reference, soh.so_status, soh.sale_type, soh.ship_via,
-               soh.salesperson, soh.po_number
+               soh.rep_1, soh.po_number
       ORDER BY soh.expect_date ASC NULLS LAST, soh.so_id DESC
       LIMIT ${limit} OFFSET ${offset}
     `;
@@ -113,7 +116,7 @@ export async function GET(req: NextRequest) {
       so_status: r.so_status ?? '',
       sale_type: r.sale_type,
       ship_via: r.ship_via,
-      salesperson: r.salesperson,
+      rep_1: r.rep_1,
       po_number: r.po_number,
       line_count: r.line_count,
     }));

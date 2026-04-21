@@ -17,6 +17,7 @@ export default async function TransactionsPage() {
       <TransactionsClient
         isAdmin={isAdmin}
         userBranch={session.user.branch ?? null}
+        agentId={(session.user as { agentId?: string | null }).agentId ?? null}
       />
     </div>
   );
