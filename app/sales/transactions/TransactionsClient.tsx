@@ -72,7 +72,7 @@ export default function TransactionsClient({ isAdmin, userBranch, agentId }: Pro
 
   // Initialize filter state from URL params (or sensible defaults)
   const [q,         setQ]         = useState(() => sp.get('q') ?? '');
-  const [status,    setStatus]    = useState(() => sp.get('status') ?? 'O');
+  const [status,    setStatus]    = useState(() => sp.get('status') ?? '');
   const [branch,    setBranch]    = useState(() => sp.get('branch') ?? (isAdmin ? '' : (userBranch ?? '')));
   const [saleType,  setSaleType]  = useState(() => sp.get('sale_type') ?? '');
   const [dateFrom,  setDateFrom]  = useState(() => sp.get('date_from') ?? '');
@@ -115,7 +115,7 @@ export default function TransactionsClient({ isAdmin, userBranch, agentId }: Pro
     try {
       const params = new URLSearchParams();
       if (filters.q)        params.set('q',         filters.q);
-      if (filters.status)   params.set('status',    filters.status);
+      params.set('status', filters.status);
       if (filters.branch)   params.set('branch',    filters.branch);
       if (filters.saleType) params.set('sale_type', filters.saleType);
       if (filters.dateFrom) params.set('date_from', filters.dateFrom);
@@ -183,7 +183,7 @@ export default function TransactionsClient({ isAdmin, userBranch, agentId }: Pro
     ...(rep1 ? [{ label: `Rep: ${rep1.toLowerCase()}`, onClear: () => clearFilter('rep1') }] : []),
     ...(rep3 ? [{ label: `Wrote by: ${rep3.toLowerCase()}`, onClear: () => clearFilter('rep3') }] : []),
     ...(saleType ? [{ label: `Type: ${saleType.toUpperCase()}`, onClear: () => clearFilter('saleType') }] : []),
-    ...(status && status !== 'O' ? [{ label: `Status: ${STATUS_OPTIONS.find(s => s.value === status)?.label ?? status}`, onClear: () => clearFilter('status') }] : []),
+    ...(status ? [{ label: `Status: ${STATUS_OPTIONS.find(s => s.value === status)?.label ?? status}`, onClear: () => clearFilter('status') }] : []),
     ...(dateFrom ? [{ label: `From: ${dateFrom}`, onClear: () => clearFilter('dateFrom') }] : []),
     ...(dateTo   ? [{ label: `To: ${dateTo}`,     onClear: () => clearFilter('dateTo') }] : []),
   ];
@@ -191,9 +191,9 @@ export default function TransactionsClient({ isAdmin, userBranch, agentId }: Pro
   // Quick shortcuts for "my" views (only shown when agentId known)
   const shortcuts = agentId ? [
     { label: 'My Open',         params: { rep1: agentId, status: 'O', saleType: '', rep3: '' } },
-    { label: 'My Will Calls',   params: { rep1: agentId, status: 'O', saleType: 'Willcall', rep3: '' } },
+    { label: 'My Will Calls',   params: { rep1: agentId, status: '', saleType: 'Willcall', rep3: '' } },
     { label: 'I Wrote',         params: { rep3: agentId, status: 'O', saleType: '', rep1: '' } },
-    { label: 'WC I Wrote',      params: { rep3: agentId, status: 'O', saleType: 'Willcall', rep1: '' } },
+    { label: 'WC I Wrote',      params: { rep3: agentId, status: '', saleType: 'Willcall', rep1: '' } },
   ] : [];
 
   return (
@@ -245,8 +245,8 @@ export default function TransactionsClient({ isAdmin, userBranch, agentId }: Pro
           })}
           <button
             onClick={() => {
-              setRep1(''); setRep3(''); setSaleType(''); setStatus('O');
-              applyFilters({ rep1: '', rep3: '', saleType: '', status: 'O' });
+              setRep1(''); setRep3(''); setSaleType(''); setStatus('');
+              applyFilters({ rep1: '', rep3: '', saleType: '', status: '' });
             }}
             className="px-3 py-1.5 rounded-lg text-xs font-medium bg-slate-800 text-slate-500 hover:text-white transition"
           >

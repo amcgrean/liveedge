@@ -27,7 +27,7 @@ export async function GET(req: NextRequest) {
   const { searchParams } = req.nextUrl;
   const q = (searchParams.get('q') ?? '').trim();
   const branchParam = searchParams.get('branch') ?? '';
-  const statusParam = searchParams.get('status') ?? 'O';
+  const statusParam = searchParams.get('status') ?? '';
   const limit = Math.min(500, parseInt(searchParams.get('limit') ?? '100', 10) || 100);
   const page = Math.max(1, parseInt(searchParams.get('page') ?? '1', 10) || 1);
   const dateFrom = searchParams.get('date_from') ?? '';

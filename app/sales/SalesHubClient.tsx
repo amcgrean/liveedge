@@ -183,7 +183,7 @@ export default function SalesHubClient({ isAdmin, userBranch, userName, userRole
               value={kpis.branchWillCalls}
               sub={`Open at ${userBranch ?? 'branch'}`}
               accent="#f59e0b"
-              href={txUrl({ sale_type: 'Willcall', status: 'O', ...(userBranch ? { branch: userBranch } : {}) })}
+              href={txUrl({ sale_type: 'Willcall', ...(userBranch ? { branch: userBranch } : {}) })}
               loading={loading}
             />
             <KPICard
@@ -191,7 +191,7 @@ export default function SalesHubClient({ isAdmin, userBranch, userName, userRole
               value={kpis.myCustomerWillCalls}
               sub="Will calls for your accounts"
               accent="#f97316"
-              href={agentId ? txUrl({ rep1: agentId, sale_type: 'Willcall', status: 'O' }) : txBase}
+              href={agentId ? txUrl({ rep1: agentId, sale_type: 'Willcall' }) : txBase}
               loading={loading}
             />
             <KPICard
@@ -199,7 +199,7 @@ export default function SalesHubClient({ isAdmin, userBranch, userName, userRole
               value={kpis.willCallsIWrote}
               sub="Open WCs you entered"
               accent="#eab308"
-              href={agentId ? txUrl({ rep3: agentId, sale_type: 'Willcall', status: 'O' }) : txBase}
+              href={agentId ? txUrl({ rep3: agentId, sale_type: 'Willcall' }) : txBase}
               loading={loading}
             />
           </div>
