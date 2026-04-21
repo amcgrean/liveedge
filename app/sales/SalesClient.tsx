@@ -317,7 +317,7 @@ export default function SalesClient({ isAdmin, userBranch, userName, userRole }:
                           <td className="px-4 py-2.5 text-xs text-gray-400 max-w-[160px] truncate">{o.reference || '—'}</td>
                           <td className="px-4 py-2.5">{statusBadge(o.so_status)}</td>
                           {isAdmin && <td className="px-4 py-2.5 text-xs text-gray-500">{o.system_id}</td>}
-                          <td className="px-4 py-2.5 text-xs text-gray-400">{o.salesperson || '—'}</td>
+                          <td className="px-4 py-2.5 text-xs text-gray-400">{o.rep_1 || '—'}</td>
                           <td className="px-4 py-2.5 text-xs text-gray-400 whitespace-nowrap">
                             {o.expect_date ? new Date(o.expect_date).toLocaleDateString() : '—'}
                           </td>
