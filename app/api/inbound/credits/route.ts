@@ -10,7 +10,8 @@ import { S3Client, PutObjectCommand } from '@aws-sdk/client-s3';
 type ResendAttachment = {
   filename: string;
   content: string;       // base64-encoded
-  contentType: string;
+  content_type: string;
+  content_disposition?: string;
   size?: number;
 };
 
@@ -108,9 +109,10 @@ export async function POST(req: NextRequest) {
   let uploaded = 0;
 
   for (const att of attachments) {
-    // Only accept image/pdf attachments
+    // Only accept image/pdf file attachments; skip inline parts (e.g. email signature icons)
     const allowed = ['image/jpeg', 'image/png', 'image/gif', 'image/webp', 'application/pdf'];
-    if (!allowed.includes(att.contentType)) continue;
+    if (!allowed.includes(att.content_type)) continue;
+    if (att.content_disposition === 'inline') continue;
 
     const safeFilename = att.filename.replace(/[^a-zA-Z0-9._-]/g, '_');
     const timestamp = Date.now();
@@ -130,7 +132,7 @@ export async function POST(req: NextRequest) {
         Bucket: bucket,
         Key: r2Key,
         Body: buffer,
-        ContentType: att.contentType,
+        ContentType: att.content_type,
         Metadata: {
           rma_number: rmaNumber,
           email_from: from,
