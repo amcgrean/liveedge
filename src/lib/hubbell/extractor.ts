@@ -47,11 +47,45 @@ function extractWoNumber(subject: string, body: string): string | null {
     /\bJob\s*(?:No\.?|Number|#)\s*:?\s*([A-Z0-9\-]{3,20})/i,
     /\bWO\s*[-#:]\s*([A-Z0-9\-]{3,20})/i,
     /\bWO\s+([A-Z0-9]{4,20})\b/i,
+    /\bWO(\d{4,})\b/i,          // WO00014235 (no separator)
+    /\bNew\s+WO(\d{4,})\b/i,    // "New WO00014235-..."
   ], combined);
 }
 
 // Common street type suffixes to help identify address lines
 const STREET_TYPES = 'St(?:reet)?|Ave(?:nue)?|Rd|Road|Dr(?:ive)?|Ln|Lane|Blvd|Pkwy|Parkway|Ct(?:ourt)?|Cir(?:cle)?|Pl(?:ace)?|Trl|Trail|Hwy|Highway|Way|Loop|Run';
+
+// Directional prefixes common in Iowa addresses
+const DIRECTIONS = 'NE|NW|SE|SW|North|South|East|West|N|S|E|W';
+
+// Extract an address embedded anywhere in a single-line string (no line-start anchor).
+// Handles formats like "4403 NE 7th St" inside a longer subject line.
+function extractInlineAddress(text: string): string | null {
+  const m = text.match(
+    new RegExp(
+      `\\b(\\d{1,5}\\s+(?:(?:${DIRECTIONS})\\s+)?[\\w.]+(?:\\s+[\\w.]+){0,4}?\\s+(?:${STREET_TYPES})(?:\\.)?(?:\\s+(?:Ste|Suite|Apt|Unit|#)\\s*[\\w-]+)?)\\b`,
+      'i'
+    )
+  );
+  return m ? m[1].trim() : null;
+}
+
+// Parse the structured WO subject format used by this ERP:
+// "New WO<n>-<Customer>-<Address>" or "New WO<n>-<Customer>-<Address>, <City>, <ST> <zip>"
+function parseWoSubject(subject: string): {
+  address: string | null; city: string | null; state: string | null; zip: string | null;
+} | null {
+  // Match: New WO12345-Customer Name-4403 NE 7th St[, City, ST zip]
+  const m = subject.match(/\bNew\s+WO\d+[-\s]+[^-]+-\s*(\d{1,5}\s+.{3,60}?)(?:\s*,\s*([A-Za-z\s]+?)\s*,?\s*([A-Z]{2})\s+(\d{5}))?$/i);
+  if (!m) return null;
+  const rawAddr = m[1].trim();
+  // Stop address at common delimiters if no explicit city block
+  const address = rawAddr.split(/,|;|\s{2,}/)[0].trim();
+  const city  = m[2]?.trim() ?? null;
+  const state = m[3]?.toUpperCase() ?? null;
+  const zip   = m[4] ?? null;
+  return { address, city, state, zip };
+}
 
 function extractAddress(body: string): {
   address: string | null;
@@ -117,6 +151,11 @@ function extractAddress(body: string): {
     }
   }
 
+  // Fallback: scan inline for an embedded street address (catches addresses in subject lines)
+  if (!address) {
+    address = extractInlineAddress(body);
+  }
+
   // Fallback: scan whole text for zip codes to infer state
   if (!zip) {
     const zipMatch = (labeledBlock?.[1] ?? body).match(/\b(\d{5})(?:-\d{4})?\b/);
@@ -178,8 +217,8 @@ function extractDescription(subject: string, body: string): string | null {
 
 function detectEmailType(subject: string, body: string): 'po' | 'wo' | 'other' {
   const combined = `${subject}\n${body.slice(0, 500)}`.toLowerCase();
-  const poScore = (combined.match(/\bpurchase\s+order\b|\bp\.?o\.?\b|\bpo\s*#/g) ?? []).length;
-  const woScore = (combined.match(/\bwork\s+order\b|\bw\.?o\.?\b|\bwo\s*#|\bjob\s+(?:number|no|#)/g) ?? []).length;
+  const poScore = (combined.match(/\bpurchase\s+order\b|\bp\.?o\.?\b|\bpo\s*#|\bpo\d{3,}/g) ?? []).length;
+  const woScore = (combined.match(/\bwork\s+order\b|\bw\.?o\.?\b|\bwo\s*#|\bjob\s+(?:number|no|#)|\bwo\d{4,}|\bnew\s+wo\d/g) ?? []).length;
   if (poScore > woScore) return 'po';
   if (woScore > poScore) return 'wo';
   if (poScore > 0) return 'po';
@@ -194,7 +233,15 @@ export function extractEmailData(subject: string, bodyText: string | null): Extr
   const woNumber  = extractWoNumber(subject, body);
   const amount    = extractAmount(subject, body);
   const desc      = extractDescription(subject, body);
-  const { address, city, state, zip } = extractAddress(body || subject);
+
+  // Try structured WO subject format first ("New WO<n>-Customer-Address")
+  const woSubject = parseWoSubject(subject);
+  const bodyAddr  = extractAddress(body || subject);
+
+  const address = woSubject?.address ?? bodyAddr.address;
+  const city    = woSubject?.city    ?? bodyAddr.city;
+  const state   = woSubject?.state   ?? bodyAddr.state;
+  const zip     = woSubject?.zip     ?? bodyAddr.zip;
 
   return { emailType, poNumber, woNumber, address, city, state, zip, amount, description: desc };
 }
