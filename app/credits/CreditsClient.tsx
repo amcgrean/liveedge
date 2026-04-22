@@ -5,7 +5,7 @@ import {
   Search, ChevronLeft, ChevronRight, Loader2, Paperclip, FileText,
 } from 'lucide-react';
 import { usePageTracking } from '@/hooks/usePageTracking';
-import type { CreditMemo } from '@/app/api/credits/route';
+import type { CreditMemo } from '../api/credits/route';
 
 type ApiResponse = {
   credits: CreditMemo[];
