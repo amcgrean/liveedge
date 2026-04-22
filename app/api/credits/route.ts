@@ -2,110 +2,133 @@ import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '../../../auth';
 import { getErpSql } from '../../../db/supabase';
 
-// GET /api/credits?page=1&rma=&q=
-// Default (no search): paginated list of open credits — ci.rma_number joined to
-// agility_so_header.so_id where so_status='O' (open SOs only).
-// Search mode (rma or q param): grouped by RMA, up to 200 rows.
+export interface CreditMemo {
+  so_id: string;
+  system_id: string;
+  cust_code: string | null;
+  cust_name: string | null;
+  reference: string | null;
+  po_number: string | null;
+  so_status: string | null;
+  salesperson: string | null;
+  order_date: string | null;
+  expect_date: string | null;
+  address_1: string | null;
+  city: string | null;
+  doc_count: number;
+  latest_doc_received: string | null;
+}
+
+// GET /api/credits?q=&branch=&page=1
+// Returns open credit memos (sale_type='CM', not invoiced/closed/cancelled)
+// from agility_so_header. Branch-scoped: non-admins see only their branch.
+// LEFT JOINs credit_images for doc count per CM.
 export async function GET(req: NextRequest) {
   const session = await auth();
   if (!session?.user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
   const { searchParams } = req.nextUrl;
-  const rma = (searchParams.get('rma') ?? '').trim();
-  const q   = (searchParams.get('q')   ?? '').trim();
-  const page = Math.max(1, parseInt(searchParams.get('page') ?? '1', 10) || 1);
-  const PAGE_SIZE = 25;
-  const offset = (page - 1) * PAGE_SIZE;
+  const q      = (searchParams.get('q') ?? '').trim();
+  const branch = searchParams.get('branch') ?? '';
+  const page   = Math.max(1, parseInt(searchParams.get('page') ?? '1', 10) || 1);
+  const limit  = 25;
+  const offset = (page - 1) * limit;
 
-  const isSearch = rma.length > 0 || q.length >= 2;
+  const isAdmin =
+    (session.user as { role?: string }).role === 'admin' ||
+    ((session.user as { roles?: string[] }).roles ?? []).some((r) =>
+      ['admin', 'supervisor', 'ops'].includes(r)
+    );
+  const userBranch      = (session.user as { branch?: string }).branch ?? '';
+  const effectiveBranch = isAdmin ? branch : userBranch;
 
   try {
     const sql = getErpSql();
 
-    type Row = {
-      id: number; rma_number: string; filename: string; filepath: string;
-      email_from: string | null; email_subject: string | null;
-      received_at: string | null; uploaded_at: string | null;
-      r2_key: string | null;
+    const searchFilter = q
+      ? sql`AND (
+          soh.so_id::text              ILIKE ${'%' + q + '%'}
+          OR COALESCE(soh.cust_name,'')  ILIKE ${'%' + q + '%'}
+          OR COALESCE(soh.reference,'')  ILIKE ${'%' + q + '%'}
+          OR COALESCE(soh.po_number,'')  ILIKE ${'%' + q + '%'}
+          OR COALESCE(soh.cust_code,'')  ILIKE ${'%' + q + '%'}
+        )`
+      : sql``;
+
+    const branchFilter = effectiveBranch
+      ? sql`AND soh.system_id = ${effectiveBranch}`
+      : sql``;
+
+    type RawRow = {
+      so_id: string; system_id: string; cust_code: string | null; cust_name: string | null;
+      reference: string | null; po_number: string | null; so_status: string | null;
+      salesperson: string | null; order_date: string | null; expect_date: string | null;
+      address_1: string | null; city: string | null;
+      doc_count: string; latest_doc_received: string | null;
     };
 
-    if (isSearch) {
-      const rows = rma
-        ? await sql<Row[]>`
-            SELECT ci.id, ci.rma_number, ci.filename, ci.filepath,
-                   ci.email_from, ci.email_subject,
-                   ci.received_at::text, ci.uploaded_at::text, ci.r2_key
-            FROM credit_images ci
-            INNER JOIN agility_so_header soh
-              ON ci.rma_number = soh.so_id::text
-              AND UPPER(COALESCE(soh.so_status, '')) = 'O'
-              AND soh.is_deleted = false
-            WHERE ci.rma_number ILIKE ${rma + '%'}
-            ORDER BY ci.received_at DESC
-            LIMIT 200
-          `
-        : await sql<Row[]>`
-            SELECT ci.id, ci.rma_number, ci.filename, ci.filepath,
-                   ci.email_from, ci.email_subject,
-                   ci.received_at::text, ci.uploaded_at::text, ci.r2_key
-            FROM credit_images ci
-            INNER JOIN agility_so_header soh
-              ON ci.rma_number = soh.so_id::text
-              AND UPPER(COALESCE(soh.so_status, '')) = 'O'
-              AND soh.is_deleted = false
-            WHERE ci.rma_number ILIKE ${'%' + q + '%'}
-               OR ci.email_from ILIKE ${'%' + q + '%'}
-               OR ci.email_subject ILIKE ${'%' + q + '%'}
-            ORDER BY ci.received_at DESC
-            LIMIT 200
-          `;
-
-      const grouped = rows.reduce<Record<string, { rma_number: string; images: Row[] }>>((acc, row) => {
-        if (!acc[row.rma_number]) acc[row.rma_number] = { rma_number: row.rma_number, images: [] };
-        acc[row.rma_number].images.push(row);
-        return acc;
-      }, {});
-
-      return NextResponse.json({
-        mode: 'search',
-        credits: Object.values(grouped),
-        total: rows.length,
-      });
-    }
-
-    // Default: paginated flat list of open credits
-    const [rows, countResult] = await Promise.all([
-      sql<Row[]>`
-        SELECT ci.id, ci.rma_number, ci.filename, ci.filepath,
-               ci.email_from, ci.email_subject,
-               ci.received_at::text, ci.uploaded_at::text, ci.r2_key
-        FROM credit_images ci
-        INNER JOIN agility_ar_open ar
-          ON ci.rma_number = ar.ref_num
-          AND ar.open_flag = true
-          AND ar.is_deleted = false
-        ORDER BY ci.received_at DESC
-        LIMIT ${PAGE_SIZE} OFFSET ${offset}
+    const [rows, countRows] = await Promise.all([
+      sql<RawRow[]>`
+        SELECT
+          soh.so_id::text                  AS so_id,
+          soh.system_id,
+          TRIM(soh.cust_code)              AS cust_code,
+          soh.cust_name,
+          soh.reference,
+          soh.po_number,
+          soh.so_status,
+          soh.salesperson,
+          soh.order_date::text             AS order_date,
+          soh.expect_date::text            AS expect_date,
+          soh.shipto_address_1             AS address_1,
+          soh.shipto_city                  AS city,
+          COUNT(ci.id)::text               AS doc_count,
+          MAX(ci.received_at)::text        AS latest_doc_received
+        FROM agility_so_header soh
+        LEFT JOIN credit_images ci ON ci.rma_number = soh.so_id::text
+        WHERE soh.is_deleted = false
+          AND UPPER(COALESCE(soh.sale_type,'')) = 'CM'
+          AND UPPER(COALESCE(soh.so_status,'')) NOT IN ('I','C','X')
+          ${branchFilter}
+          ${searchFilter}
+        GROUP BY
+          soh.so_id, soh.system_id, soh.cust_code, soh.cust_name,
+          soh.reference, soh.po_number, soh.so_status, soh.salesperson,
+          soh.order_date, soh.expect_date, soh.shipto_address_1, soh.shipto_city
+        ORDER BY soh.order_date DESC NULLS LAST, soh.so_id DESC
+        LIMIT ${limit} OFFSET ${offset}
       `,
-      sql<[{ count: string }]>`
-        SELECT COUNT(*) AS count
-        FROM credit_images ci
-        INNER JOIN agility_ar_open ar
-          ON ci.rma_number = ar.ref_num
-          AND ar.open_flag = true
-          AND ar.is_deleted = false
+      sql<{ total: number }[]>`
+        SELECT COUNT(*)::int AS total
+        FROM agility_so_header soh
+        WHERE soh.is_deleted = false
+          AND UPPER(COALESCE(soh.sale_type,'')) = 'CM'
+          AND UPPER(COALESCE(soh.so_status,'')) NOT IN ('I','C','X')
+          ${branchFilter}
+          ${searchFilter}
       `,
     ]);
 
-    const total = parseInt(countResult[0]?.count ?? '0', 10);
+    const total = countRows[0]?.total ?? 0;
 
-    return NextResponse.json({
-      mode: 'list',
-      rows,
-      total,
-      page,
-      totalPages: Math.ceil(total / PAGE_SIZE),
-    });
+    const credits: CreditMemo[] = rows.map((r) => ({
+      so_id:               r.so_id,
+      system_id:           r.system_id,
+      cust_code:           r.cust_code?.trim()   || null,
+      cust_name:           r.cust_name?.trim()   || null,
+      reference:           r.reference?.trim()   || null,
+      po_number:           r.po_number?.trim()   || null,
+      so_status:           r.so_status?.trim()   || null,
+      salesperson:         r.salesperson?.trim() || null,
+      order_date:          r.order_date,
+      expect_date:         r.expect_date,
+      address_1:           r.address_1?.trim()   || null,
+      city:                r.city?.trim()        || null,
+      doc_count:           parseInt(r.doc_count ?? '0', 10),
+      latest_doc_received: r.latest_doc_received,
+    }));
+
+    return NextResponse.json({ credits, total, page, limit });
   } catch (err) {
     console.error('[credits GET]', err);
     return NextResponse.json({ error: 'Query failed' }, { status: 500 });
