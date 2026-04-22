@@ -2,13 +2,14 @@
  * One-time import: sync historical Hubbell PO/WO → Agility job matches into hubbell_emails.
  *
  * Source: scripts/hubbell_matches_data.json
- * Each record maps a Hubbell doc_id (PO or WO number) to an Agility SO via agility_job_seq.
+ * Strategy: agility_job_seq is NOT the so_id — instead we fetch all Hubbell SOs and
+ * match each JSON job_seq group to the SO whose shipto_address best matches the PDF address.
  *
  * Run with:
  *   npx tsx scripts/import-hubbell-matches.ts
  *
  * Requires POSTGRES_URL_NON_POOLING (or POSTGRES_URL / BIDS_DATABASE_URL) in env.
- * Safe to re-run — uses message_id ON CONFLICT DO NOTHING to skip duplicates.
+ * Safe to re-run — deletes previous json_import records first, then re-inserts.
  */
 
 import { readFileSync as _readFileSync, existsSync } from 'fs';
@@ -21,10 +22,10 @@ try {
     for (const line of _readFileSync(envFile, 'utf-8').split('\n')) {
       const trimmed = line.trim();
       if (!trimmed || trimmed.startsWith('#')) continue;
-      const eq = trimmed.indexOf('=');
-      if (eq < 0) continue;
-      const key = trimmed.slice(0, eq).trim();
-      const val = trimmed.slice(eq + 1).trim().replace(/^["']|["']$/g, '');
+      const eqIdx = trimmed.indexOf('=');
+      if (eqIdx < 0) continue;
+      const key = trimmed.slice(0, eqIdx).trim();
+      const val = trimmed.slice(eqIdx + 1).trim().replace(/^["']|["']$/g, '');
       if (!process.env[key]) process.env[key] = val;
     }
   }
@@ -56,8 +57,6 @@ const erpUrl =
 
 const bidsSql = postgres(dbUrl, { max: 1, prepare: false });
 const db = drizzle(bidsSql, { schema });
-
-// ERP uses the same Supabase instance — public schema
 const erpSql = postgres(erpUrl!, { max: 1, prepare: false });
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -89,6 +88,31 @@ type SoRow = {
   shipto_zip: string | null;
 };
 
+// ─── Address matching helpers ─────────────────────────────────────────────────
+
+function normalizeAddr(s: string | null | undefined): string {
+  return (s ?? '')
+    .toLowerCase()
+    .replace(/\bstreet\b/g, 'st').replace(/\bavenue\b/g, 'ave')
+    .replace(/\bdrive\b/g, 'dr').replace(/\blane\b/g, 'ln')
+    .replace(/\broad\b/g, 'rd').replace(/\bcourt\b/g, 'ct')
+    .replace(/\bcircle\b/g, 'cir').replace(/\bplace\b/g, 'pl')
+    .replace(/[^a-z0-9\s]/g, '').replace(/\s+/g, ' ').trim();
+}
+
+function addrSimilarity(a: string | null, b: string | null): number {
+  const na = normalizeAddr(a);
+  const nb = normalizeAddr(b);
+  if (!na || !nb) return 0;
+  if (na === nb) return 1;
+
+  const wordsA = new Set(na.split(' '));
+  const wordsB = new Set(nb.split(' '));
+  const intersection = [...wordsA].filter(w => wordsB.has(w)).length;
+  const union = new Set([...wordsA, ...wordsB]).size;
+  return intersection / union;
+}
+
 // ─── Main ─────────────────────────────────────────────────────────────────────
 
 async function main() {
@@ -97,9 +121,10 @@ async function main() {
     readFileSync(join(process.cwd(), 'scripts/hubbell_matches_data.json'), 'utf-8')
   );
   const matches: MatchRecord[] = raw.po_wo_to_job_matches;
-  console.log(`  ${matches.length} records, ${new Set(matches.map(m => m.agility_job_seq)).size} unique job seqs`);
+  const uniqueJobSeqs = [...new Set(matches.map(m => m.agility_job_seq))];
+  console.log(`  ${matches.length} records, ${uniqueJobSeqs.length} unique job seqs`);
 
-  // ── Step 0: Delete any previously imported records (full re-import) ─────────
+  // ── Step 0: Delete previous import records ──────────────────────────────────
   console.log('\nCleaning up previous import records...');
   const deleted = await db
     .delete(schema.hubbellEmails)
@@ -107,11 +132,9 @@ async function main() {
     .returning({ id: schema.hubbellEmails.id });
   console.log(`  Deleted ${deleted.length} existing import records`);
 
-  // ── Step 1: Fetch SO details from ERP ───────────────────────────────────────
-  const uniqueJobSeqs = [...new Set(matches.map(m => String(m.agility_job_seq)))];
-  console.log(`\nQuerying agility_so_header for ${uniqueJobSeqs.length} job seqs...`);
-
-  const soRows = await erpSql<SoRow[]>`
+  // ── Step 1: Fetch ALL Hubbell SOs from ERP ──────────────────────────────────
+  console.log('\nFetching all Hubbell SOs from agility_so_header...');
+  const allHubbellSos = await erpSql<SoRow[]>`
     SELECT
       so_id::text,
       TRIM(cust_code)  AS cust_code,
@@ -121,20 +144,61 @@ async function main() {
       shipto_state,
       shipto_zip
     FROM agility_so_header
-    WHERE so_id::text = ANY(${uniqueJobSeqs})
-      AND TRIM(cust_code) ILIKE 'HUBB%'
+    WHERE TRIM(cust_code) IN ('HUBB1200', 'HUBB1700', 'HUBB1400')
+      AND is_deleted = false
+      AND shipto_address_1 IS NOT NULL
   `;
+  console.log(`  Found ${allHubbellSos.length} Hubbell SOs`);
 
-  const soMap = new Map(soRows.map(r => [r.so_id, r]));
-  console.log(`  Found ${soMap.size} / ${uniqueJobSeqs.length} SOs in ERP`);
+  // ── Step 2: Build job_seq → SO map via address matching ─────────────────────
+  console.log('\nMatching job seqs to SOs by address...');
 
-  const missingSeqs = uniqueJobSeqs.filter(s => !soMap.has(s));
-  if (missingSeqs.length > 0) {
-    console.warn(`  WARNING: ${missingSeqs.length} job seqs not found in agility_so_header:`);
-    console.warn('  ', missingSeqs.slice(0, 20).join(', '));
+  // Build one representative address per job_seq (take first record in group)
+  const jobSeqAddress = new Map<number, { address: string | null; city: string | null; state: string | null; zip: string | null }>();
+  for (const m of matches) {
+    if (!jobSeqAddress.has(m.agility_job_seq)) {
+      jobSeqAddress.set(m.agility_job_seq, {
+        address: m.ship_to_address,
+        city:    m.ship_to_city,
+        state:   m.ship_to_state,
+        zip:     m.ship_to_zip != null ? String(m.ship_to_zip) : null,
+      });
+    }
   }
 
-  // ── Step 2: Build and insert hubbell_emails rows ────────────────────────────
+  // For each job_seq, find the best-matching Hubbell SO by address + city
+  const jobSeqToSo = new Map<number, SoRow>();
+  let matched = 0;
+  let unmatched = 0;
+
+  for (const [jobSeq, addr] of jobSeqAddress) {
+    let bestSo: SoRow | null = null;
+    let bestScore = 0;
+
+    for (const so of allHubbellSos) {
+      const addrScore = addrSimilarity(addr.address, so.shipto_address_1);
+      const cityMatch = normalizeAddr(addr.city) === normalizeAddr(so.shipto_city) ? 0.3 : 0;
+      const score = addrScore + cityMatch;
+      if (score > bestScore) {
+        bestScore = score;
+        bestSo = so;
+      }
+    }
+
+    // Require at least 60% address word overlap to accept the match
+    if (bestSo && bestScore >= 0.6) {
+      jobSeqToSo.set(jobSeq, bestSo);
+      matched++;
+    } else {
+      unmatched++;
+      const addrStr = addr.address ?? '(no address)';
+      console.log(`  No match for job_seq ${jobSeq}: "${addrStr}, ${addr.city}" (best score: ${bestScore.toFixed(2)})`);
+    }
+  }
+
+  console.log(`  Matched: ${matched} / ${uniqueJobSeqs.length} job seqs`);
+
+  // ── Step 3: Insert hubbell_emails rows ──────────────────────────────────────
   console.log('\nInserting hubbell_emails records...');
 
   let inserted = 0;
@@ -147,24 +211,20 @@ async function main() {
     const values = [];
 
     for (const m of batch) {
-      const so = soMap.get(String(m.agility_job_seq));
+      const so = jobSeqToSo.get(m.agility_job_seq);
       if (!so) { noSo++; continue; }
 
-      // Synthetic message-id ensures idempotent re-runs
       const messageId = `import-hubbell-${m.doc_type}-${m.doc_id}@beisser.cloud`;
 
-      // Use address from ERP SO (more reliable than PDF) if available,
-      // fall back to the PDF-extracted address
-      const address   = so.shipto_address_1 ?? m.ship_to_address ?? null;
-      const city      = so.shipto_city      ?? m.ship_to_city    ?? null;
-      const state     = so.shipto_state     ?? m.ship_to_state   ?? null;
-      const zip       = so.shipto_zip       ?? (m.ship_to_zip != null ? String(m.ship_to_zip) : null);
-
-      // Format doc_id as zero-padded number matching Hubbell's naming convention
-      // PO: 6 digits (e.g., 1597 → "001597"), WO: 8 digits (e.g., 1004 → "00001004")
       const docFormatted = m.doc_type === 'wo'
         ? String(m.doc_id).padStart(8, '0')
         : String(m.doc_id).padStart(6, '0');
+
+      // Prefer ERP shipto address (canonical), fall back to PDF address
+      const address = so.shipto_address_1 ?? m.ship_to_address ?? null;
+      const city    = so.shipto_city      ?? m.ship_to_city    ?? null;
+      const state   = so.shipto_state     ?? m.ship_to_state   ?? null;
+      const zip     = so.shipto_zip       ?? (m.ship_to_zip != null ? String(m.ship_to_zip) : null);
 
       values.push({
         messageId,
@@ -215,8 +275,8 @@ async function main() {
   console.log('── Results ──────────────────────────────');
   console.log(`  Inserted:  ${inserted}`);
   console.log(`  Skipped (duplicates): ${skipped}`);
-  console.log(`  No SO found: ${noSo}`);
-  console.log(`  Total processed: ${matches.length - noSo}`);
+  console.log(`  No SO matched: ${noSo}`);
+  console.log(`  Total inserted: ${inserted}`);
   console.log('─────────────────────────────────────────');
   console.log('\nDone.');
 
