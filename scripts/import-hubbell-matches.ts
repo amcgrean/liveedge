@@ -11,6 +11,25 @@
  * Safe to re-run — uses message_id ON CONFLICT DO NOTHING to skip duplicates.
  */
 
+import { readFileSync as _readFileSync, existsSync } from 'fs';
+import { join as _join } from 'path';
+
+// Load .env.local so the script works outside of Next.js context
+try {
+  const envFile = _join(process.cwd(), '.env.local');
+  if (existsSync(envFile)) {
+    for (const line of _readFileSync(envFile, 'utf-8').split('\n')) {
+      const trimmed = line.trim();
+      if (!trimmed || trimmed.startsWith('#')) continue;
+      const eq = trimmed.indexOf('=');
+      if (eq < 0) continue;
+      const key = trimmed.slice(0, eq).trim();
+      const val = trimmed.slice(eq + 1).trim().replace(/^["']|["']$/g, '');
+      if (!process.env[key]) process.env[key] = val;
+    }
+  }
+} catch {}
+
 import postgres from 'postgres';
 import { drizzle } from 'drizzle-orm/postgres-js';
 import * as schema from '../db/schema';
