@@ -2,22 +2,21 @@
 
 import React, { useEffect, useState } from 'react';
 import Link from 'next/link';
-import { MapPin, Package, Wrench, ChevronRight, RefreshCw, Inbox } from 'lucide-react';
+import { MapPin, Package, Wrench, RefreshCw, Inbox, ChevronRight } from 'lucide-react';
 
 type JobRow = {
-  so_id: string;
   cust_code: string | null;
   cust_name: string | null;
   shipto_address_1: string | null;
   shipto_city: string | null;
   shipto_state: string | null;
   shipto_zip: string | null;
-  email_count: string;
+  ar_balance: string | null;
+  so_ids: string[];
   po_count: string;
   wo_count: string;
   total_amount: string;
   last_received: string;
-  ar_balance: string | null;
 };
 
 function fmtAmount(v: string | null | undefined): string {
@@ -52,7 +51,7 @@ export default function JobsIndexClient() {
 
   useEffect(() => { load(); }, []);
 
-  const COL_COUNT = 7;
+  const COL_COUNT = 6;
 
   return (
     <div className="space-y-5 max-w-5xl">
@@ -60,7 +59,7 @@ export default function JobsIndexClient() {
         <div>
           <h1 className="text-xl font-bold text-white">Hubbell Jobs</h1>
           <p className="text-sm text-slate-400 mt-0.5">
-            Jobs with confirmed PO/WO emails — click a job to reconcile emails with sales orders.
+            One row per job site — click an SO to reconcile its emails.
           </p>
         </div>
         <div className="flex items-center gap-3">
@@ -89,13 +88,12 @@ export default function JobsIndexClient() {
         <table className="w-full text-sm">
           <thead>
             <tr className="border-b border-white/10 bg-slate-900/60">
-              <th className="px-4 py-3 text-left text-xs font-semibold text-slate-400 uppercase tracking-wider">Customer / Address</th>
+              <th className="px-4 py-3 text-left text-xs font-semibold text-slate-400 uppercase tracking-wider">Job Site</th>
               <th className="px-4 py-3 text-center text-xs font-semibold text-slate-400 uppercase tracking-wider">POs</th>
               <th className="px-4 py-3 text-center text-xs font-semibold text-slate-400 uppercase tracking-wider">WOs</th>
               <th className="px-4 py-3 text-right text-xs font-semibold text-slate-400 uppercase tracking-wider">Email Total</th>
               <th className="px-4 py-3 text-right text-xs font-semibold text-slate-400 uppercase tracking-wider">AR Balance</th>
               <th className="px-4 py-3 text-left text-xs font-semibold text-slate-400 uppercase tracking-wider">Last Email</th>
-              <th className="px-4 py-3" />
             </tr>
           </thead>
           <tbody className="divide-y divide-white/5">
@@ -115,59 +113,61 @@ export default function JobsIndexClient() {
                 </td>
               </tr>
             ) : (
-              jobs.map((job) => (
-                <tr key={job.so_id} className="hover:bg-white/5 transition group">
-                  <td className="px-4 py-3">
-                    <p className="text-white font-medium">{job.cust_name ?? '—'}</p>
-                    {job.shipto_address_1 && (
-                      <div className="flex items-center gap-1 mt-0.5">
-                        <MapPin className="w-3 h-3 text-slate-500 shrink-0" />
-                        <span className="text-xs text-slate-400">
-                          {[job.shipto_address_1, job.shipto_city, job.shipto_state].filter(Boolean).join(', ')}
-                        </span>
+              jobs.map((job, i) => {
+                const arBal = parseFloat(job.ar_balance ?? '');
+                return (
+                  <tr key={i} className="align-top">
+                    <td className="px-4 py-3">
+                      <p className="text-white font-medium">{job.cust_name ?? '—'}</p>
+                      {job.shipto_address_1 && (
+                        <div className="flex items-center gap-1 mt-0.5">
+                          <MapPin className="w-3 h-3 text-slate-500 shrink-0" />
+                          <span className="text-xs text-slate-400">
+                            {[job.shipto_address_1, job.shipto_city, job.shipto_state].filter(Boolean).join(', ')}
+                          </span>
+                        </div>
+                      )}
+                      {/* SO chips — one per sales order at this site */}
+                      <div className="flex flex-wrap gap-1.5 mt-1.5">
+                        {job.so_ids.map((soId) => (
+                          <Link
+                            key={soId}
+                            href={`/admin/hubbell/jobs/${soId}`}
+                            className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-mono bg-slate-800 text-slate-300 hover:bg-cyan-900/40 hover:text-cyan-300 transition"
+                          >
+                            #{soId}
+                            <ChevronRight className="w-3 h-3" />
+                          </Link>
+                        ))}
                       </div>
-                    )}
-                    <span className="text-xs text-slate-600 font-mono">#{job.so_id}</span>
-                  </td>
-                  <td className="px-4 py-3 text-center">
-                    <div className="flex items-center justify-center gap-1">
-                      <Package className="w-3.5 h-3.5 text-blue-400" />
-                      <span className="text-blue-300 font-medium">{job.po_count}</span>
-                    </div>
-                  </td>
-                  <td className="px-4 py-3 text-center">
-                    <div className="flex items-center justify-center gap-1">
-                      <Wrench className="w-3.5 h-3.5 text-purple-400" />
-                      <span className="text-purple-300 font-medium">{job.wo_count}</span>
-                    </div>
-                  </td>
-                  <td className="px-4 py-3 text-right font-mono text-sm text-green-300 font-medium">
-                    {fmtAmount(job.total_amount)}
-                  </td>
-                  <td className="px-4 py-3 text-right font-mono text-sm">
-                    {(() => {
-                      const bal = parseFloat(job.ar_balance ?? '');
-                      if (!bal || isNaN(bal)) return <span className="text-slate-500">—</span>;
-                      return (
-                        <span className={bal < 0 ? 'text-red-400' : 'text-amber-300'}>
-                          {fmtAmount(job.ar_balance)}
-                        </span>
-                      );
-                    })()}
-                  </td>
-                  <td className="px-4 py-3 text-xs text-slate-400">
-                    {fmtDate(job.last_received)}
-                  </td>
-                  <td className="px-4 py-3 text-right">
-                    <Link
-                      href={`/admin/hubbell/jobs/${job.so_id}`}
-                      className="flex items-center justify-end gap-1 text-xs text-cyan-500 hover:text-cyan-300 transition opacity-0 group-hover:opacity-100"
-                    >
-                      Reconcile <ChevronRight className="w-3.5 h-3.5" />
-                    </Link>
-                  </td>
-                </tr>
-              ))
+                    </td>
+                    <td className="px-4 py-3 text-center">
+                      <div className="flex items-center justify-center gap-1">
+                        <Package className="w-3.5 h-3.5 text-blue-400" />
+                        <span className="text-blue-300 font-medium">{job.po_count}</span>
+                      </div>
+                    </td>
+                    <td className="px-4 py-3 text-center">
+                      <div className="flex items-center justify-center gap-1">
+                        <Wrench className="w-3.5 h-3.5 text-purple-400" />
+                        <span className="text-purple-300 font-medium">{job.wo_count}</span>
+                      </div>
+                    </td>
+                    <td className="px-4 py-3 text-right font-mono text-sm text-green-300 font-medium">
+                      {fmtAmount(job.total_amount)}
+                    </td>
+                    <td className="px-4 py-3 text-right font-mono text-sm">
+                      {!arBal || isNaN(arBal)
+                        ? <span className="text-slate-500">—</span>
+                        : <span className={arBal < 0 ? 'text-red-400' : 'text-amber-300'}>{fmtAmount(job.ar_balance)}</span>
+                      }
+                    </td>
+                    <td className="px-4 py-3 text-xs text-slate-400">
+                      {fmtDate(job.last_received)}
+                    </td>
+                  </tr>
+                );
+              })
             )}
           </tbody>
         </table>
