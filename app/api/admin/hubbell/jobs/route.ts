@@ -75,11 +75,17 @@ export async function GET(req: NextRequest) {
       soh.shipto_zip,
       COALESCE(ar.balance, 0)::text AS ar_balance
     FROM agility_so_header soh
+    LEFT JOIN LATERAL (
+      SELECT cust_key FROM agility_customers
+      WHERE TRIM(cust_code) = TRIM(soh.cust_code) AND is_deleted = false
+      LIMIT 1
+    ) ac ON true
     LEFT JOIN (
       SELECT cust_key, SUM(open_amt) AS balance
       FROM agility_ar_open
+      WHERE is_deleted = false AND open_flag = true
       GROUP BY cust_key
-    ) ar ON ar.cust_key = TRIM(soh.cust_code)
+    ) ar ON ar.cust_key = ac.cust_key
     WHERE soh.so_id::text = ANY(${soIds})
       AND soh.is_deleted = false
   `;
