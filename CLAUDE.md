@@ -37,7 +37,7 @@ All LiveEdge API routes now query the optimized `agility_*` tables instead of th
 | `agility_suppliers` | `erp_mirror_suppname` + `erp_mirror_supp_ship_from` | Ship-from fields inline per row |
 | `agility_receiving_header` | `erp_mirror_receiving_header` | Same structure |
 | `agility_receiving_lines` | `erp_mirror_receiving_detail` | Same structure |
-| `agility_ar_open` | (new) | AR open items — `cust_key`, `ref_num`, `open_amt`, `open_flag` |
+| `agility_ar_open` | (new) | AR open items — `cust_key`, `ref_num`, `open_amt`, `open_flag`. **`cust_key` ≠ `cust_code`** — must resolve via `agility_customers` LATERAL join first (see AR query pattern below) |
 
 App views backed by agility_ tables (via the old erp_mirror_ as of 2026-04-04 — will be updated to point at agility_ tables):
 - `app_po_search` → `app_po_header` (matview) — enriched PO list for purchasing routes
@@ -379,6 +379,39 @@ Branch: `claude/auth-unification-FelEf` (merged to `main`)
 2. Hashed all plaintext passwords in `bids."user"` via `UPDATE bids."user" SET password = crypt(password, gen_salt('bf', 12)) WHERE password NOT LIKE '$2%'`
 3. Backfilled `password_hash` in `app_users` via `UPDATE public.app_users SET password_hash = u.password FROM bids."user" u WHERE estimating_user_id = u.id` (69/70 — `po-test` is OTP-only, no estimating user)
 4. `password_hash` column is now inert — auth no longer reads it
+
+#### Hubbell Email Reconciliation (2026-04-22) — COMPLETE
+
+Admin tool for reconciling Hubbell supply-house emails (PO confirmations / WO acknowledgements) against LiveEdge sales orders.
+
+**Pages:**
+- `/admin/hubbell` — Email inbox: all ingested Hubbell emails, tabbed by match status (Pending / Matched / Confirmed / No Match / Rejected), paginated at 50/page, search by subject/sender/PO#/SO#
+- `/admin/hubbell/[id]` — Email detail: extracted data, match candidates sorted by confidence, confirm/reject/reset actions
+- `/admin/hubbell/jobs` — Jobs index: one row per job site (customer + address), aggregates all confirmed emails; paginated at 50/page; click row to view orders
+- `/admin/hubbell/jobs/[soId]` — Job detail: SO header, reconciliation table (all SOs at same address vs emails received), unmatched email warnings
+
+**API routes:**
+- `GET /api/admin/hubbell/emails` — paginated inbox with status/search filtering
+- `GET/POST /api/admin/hubbell/emails/[id]` — detail + confirm/reject/reset actions
+- `GET /api/admin/hubbell/jobs` — aggregated jobs list
+- `GET /api/admin/hubbell/jobs/[soId]` — per-SO detail with related SOs and emails
+
+**DB table:** `bids.hubbell_emails` (Drizzle-managed, `db/schema.ts`)
+
+**AR balance query pattern** — `agility_ar_open.cust_key` is NOT the same as `agility_so_header.cust_code`. Always resolve via `agility_customers` first:
+```sql
+LEFT JOIN LATERAL (
+  SELECT cust_key FROM agility_customers
+  WHERE TRIM(cust_code) = TRIM(soh.cust_code) AND is_deleted = false
+  LIMIT 1
+) ac ON true
+LEFT JOIN (
+  SELECT cust_key, SUM(open_amt) AS balance
+  FROM agility_ar_open
+  WHERE is_deleted = false AND open_flag = true
+  GROUP BY cust_key
+) ar ON ar.cust_key = ac.cust_key
+```
 
 #### AR / Agility API Cleanup (2026-04-17) — COMPLETE
 Branch: `claude/review-customer-route-api-jVgJG`

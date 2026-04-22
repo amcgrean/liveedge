@@ -5,6 +5,17 @@ import { getErpSql } from '../../../../../db/supabase';
 import { hubbellEmails } from '../../../../../db/schema';
 import { and, isNotNull, inArray } from 'drizzle-orm';
 
+// Customer codes that represent the same entity and should be merged into one job row.
+// Key = alias code (lower-trimmed), value = canonical code to group under.
+const CUST_CODE_ALIASES: Record<string, string> = {
+  hubb1700: 'hubb1200',
+};
+
+function canonicalCustCode(code: string | null): string {
+  const c = (code ?? '').trim().toLowerCase();
+  return CUST_CODE_ALIASES[c] ?? c;
+}
+
 // GET /api/admin/hubbell/jobs
 // One row per job site (customer + address), aggregating all confirmed emails and SOs.
 // Uses two separate queries (bids DB + ERP DB) to avoid cross-schema permission issues.
@@ -50,7 +61,9 @@ export async function GET(req: NextRequest) {
 
   const soIds = [...statsMap.keys()];
 
-  // Step 3: Fetch SO details + AR balance from ERP
+  // Step 3: Fetch SO details + per-SO AR balance from ERP.
+  // AR is filtered to ref_num = so_id so we see what's open for this specific job,
+  // not the customer's entire AR balance.
   const erpSql = getErpSql();
 
   type SoRow = {
@@ -75,22 +88,18 @@ export async function GET(req: NextRequest) {
       soh.shipto_zip,
       COALESCE(ar.balance, 0)::text AS ar_balance
     FROM agility_so_header soh
-    LEFT JOIN LATERAL (
-      SELECT cust_key FROM agility_customers
-      WHERE TRIM(cust_code) = TRIM(soh.cust_code) AND is_deleted = false
-      LIMIT 1
-    ) ac ON true
     LEFT JOIN (
-      SELECT cust_key, SUM(open_amt) AS balance
+      SELECT ref_num, SUM(open_amt) AS balance
       FROM agility_ar_open
       WHERE is_deleted = false AND open_flag = true
-      GROUP BY cust_key
-    ) ar ON ar.cust_key = ac.cust_key
+      GROUP BY ref_num
+    ) ar ON ar.ref_num = soh.so_id::text
     WHERE soh.so_id::text = ANY(${soIds})
       AND soh.is_deleted = false
   `;
 
-  // Step 4: Group by job site (cust_code + shipto_address_1)
+  // Step 4: Group by job site (canonical cust_code + shipto_address_1).
+  // Aliased codes (e.g. hubb1700 → hubb1200) collapse into the same row.
   type JobGroup = {
     cust_code: string | null;
     cust_name: string | null;
@@ -98,7 +107,7 @@ export async function GET(req: NextRequest) {
     shipto_city: string | null;
     shipto_state: string | null;
     shipto_zip: string | null;
-    ar_balance: string | null;
+    arBalance: number;
     so_ids: string[];
     poCount: number;
     woCount: number;
@@ -111,7 +120,8 @@ export async function GET(req: NextRequest) {
   for (const so of soHeaders) {
     const s = statsMap.get(so.so_id);
     if (!s) continue;
-    const key = `${so.cust_code ?? ''}|${(so.shipto_address_1 ?? '').toLowerCase()}`;
+    const canonical = canonicalCustCode(so.cust_code);
+    const key = `${canonical}|${(so.shipto_address_1 ?? '').toLowerCase()}`;
     const g = groupMap.get(key) ?? {
       cust_code:        so.cust_code,
       cust_name:        so.cust_name,
@@ -119,7 +129,7 @@ export async function GET(req: NextRequest) {
       shipto_city:      so.shipto_city,
       shipto_state:     so.shipto_state,
       shipto_zip:       so.shipto_zip,
-      ar_balance:       so.ar_balance,
+      arBalance:        0,
       so_ids:           [],
       poCount:          0,
       woCount:          0,
@@ -130,6 +140,7 @@ export async function GET(req: NextRequest) {
     g.poCount      += s.poCount;
     g.woCount      += s.woCount;
     g.totalAmount  += s.totalAmount;
+    g.arBalance    += parseFloat(so.ar_balance ?? '0') || 0;
     if (s.lastReceived > g.lastReceived) g.lastReceived = s.lastReceived;
     groupMap.set(key, g);
   }
@@ -144,7 +155,7 @@ export async function GET(req: NextRequest) {
       shipto_city:      g.shipto_city,
       shipto_state:     g.shipto_state,
       shipto_zip:       g.shipto_zip,
-      ar_balance:       g.ar_balance,
+      ar_balance:       String(g.arBalance),
       so_ids:           g.so_ids,
       po_count:         String(g.poCount),
       wo_count:         String(g.woCount),
