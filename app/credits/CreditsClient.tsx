@@ -1,9 +1,9 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import {
   Search, ChevronLeft, ChevronRight, Loader2, Paperclip, FileText,
-  ExternalLink, ChevronDown, ChevronUp, Mail,
+  ExternalLink, ChevronDown, ChevronUp, Mail, Upload,
 } from 'lucide-react';
 import { usePageTracking } from '@/hooks/usePageTracking';
 import type { CreditMemo } from '../api/credits/route';
@@ -17,6 +17,8 @@ type ApiResponse = {
 };
 
 type ImagesResponse = { images: CreditImage[] };
+
+const ALLOWED_TYPES = ['image/jpeg', 'image/png', 'image/gif', 'image/webp', 'application/pdf'];
 
 function fmt(ts: string | null) {
   if (!ts) return '—';
@@ -36,17 +38,24 @@ function StatusBadge({ status }: { status: string | null }) {
   );
 }
 
-function ImagesPanel({ soId }: { soId: string }) {
+function ImagesPanel({ soId, onUploaded }: { soId: string; onUploaded: () => void }) {
   const [images, setImages] = useState<CreditImage[] | null>(null);
   const [error, setError] = useState('');
   const [viewingId, setViewingId] = useState<number | null>(null);
+  const [uploading, setUploading] = useState(false);
+  const [uploadError, setUploadError] = useState('');
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
-  useEffect(() => {
+  function loadImages() {
+    setImages(null);
+    setError('');
     fetch(`/api/credits/${soId}/images`)
       .then((r) => r.ok ? r.json() as Promise<ImagesResponse> : Promise.reject())
       .then((d) => setImages(d.images))
       .catch(() => setError('Could not load attachments.'));
-  }, [soId]);
+  }
+
+  useEffect(() => { loadImages(); }, [soId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   async function openImage(imgId: number) {
     setViewingId(imgId);
@@ -62,13 +71,80 @@ function ImagesPanel({ soId }: { soId: string }) {
     }
   }
 
-  if (error) return <p className="text-xs text-red-400 py-1">{error}</p>;
-  if (!images) return <Loader2 className="w-4 h-4 animate-spin text-gray-500" />;
-  if (!images.length) return <p className="text-xs text-gray-500 py-1">No attachments on record.</p>;
+  async function handleFileSelect(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!e.target) return;
+    e.target.value = '';
+    if (!file) return;
+    if (!ALLOWED_TYPES.includes(file.type)) {
+      setUploadError('Only PDF, JPG, PNG, GIF, and WebP files are allowed.');
+      return;
+    }
+
+    setUploading(true);
+    setUploadError('');
+    try {
+      // Step 1: get presigned PUT URL
+      const sp = new URLSearchParams({ filename: file.name, content_type: file.type });
+      const presignRes = await fetch(`/api/credits/${soId}/upload?${sp}`);
+      if (!presignRes.ok) throw new Error('Could not get upload URL');
+      const { upload_url, r2_key } = await presignRes.json() as { upload_url: string; r2_key: string };
+
+      // Step 2: PUT directly to R2
+      const putRes = await fetch(upload_url, {
+        method: 'PUT',
+        body: file,
+        headers: { 'Content-Type': file.type },
+      });
+      if (!putRes.ok) throw new Error('Upload to storage failed');
+
+      // Step 3: confirm — write credit_images row
+      const confirmRes = await fetch(`/api/credits/${soId}/upload`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ filename: file.name, r2_key, content_type: file.type }),
+      });
+      if (!confirmRes.ok) throw new Error('Could not save record');
+
+      loadImages();
+      onUploaded();
+    } catch (err: unknown) {
+      setUploadError(err instanceof Error ? err.message : 'Upload failed');
+    } finally {
+      setUploading(false);
+    }
+  }
 
   return (
     <div className="flex flex-col gap-2">
-      {images.map((img) => (
+      {/* Upload button */}
+      <div className="flex items-center gap-2">
+        <button
+          onClick={() => fileInputRef.current?.click()}
+          disabled={uploading}
+          className="flex items-center gap-1.5 px-3 py-1.5 text-xs bg-gray-700 hover:bg-gray-600 disabled:opacity-50 text-gray-200 rounded transition-colors"
+        >
+          {uploading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Upload className="w-3.5 h-3.5" />}
+          {uploading ? 'Uploading…' : 'Upload Document'}
+        </button>
+        <span className="text-xs text-gray-600">PDF, JPG, PNG — uploaded directly, no email needed</span>
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept=".pdf,.jpg,.jpeg,.png,.gif,.webp"
+          className="hidden"
+          onChange={handleFileSelect}
+        />
+      </div>
+      {uploadError && <p className="text-xs text-red-400">{uploadError}</p>}
+
+      {/* Image list */}
+      {error && <p className="text-xs text-red-400">{error}</p>}
+      {!error && !images && <Loader2 className="w-4 h-4 animate-spin text-gray-500" />}
+      {!error && images?.length === 0 && (
+        <p className="text-xs text-gray-500">No attachments on record. Use the button above to upload.</p>
+      )}
+      {images?.map((img) => (
         <div key={img.id} className="flex items-center gap-3 bg-gray-800/60 rounded px-3 py-2">
           <FileText className="w-4 h-4 text-gray-400 shrink-0" />
           <div className="flex-1 min-w-0">
@@ -111,11 +187,14 @@ export default function CreditsClient() {
   const [total, setTotal]       = useState(0);
   const [totalPages, setTotalPages] = useState(1);
   const [expandedSoId, setExpandedSoId] = useState<string | null>(null);
+  // Track doc counts locally so the Docs column updates after an upload without a full reload
+  const [docCountOverrides, setDocCountOverrides] = useState<Record<string, number>>({});
 
   const load = useCallback(async (p: number, query: string) => {
     setLoading(true);
     setError('');
     setExpandedSoId(null);
+    setDocCountOverrides({});
     try {
       const sp = new URLSearchParams({ page: String(p) });
       if (query) sp.set('q', query);
@@ -147,6 +226,10 @@ export default function CreditsClient() {
 
   function toggleImages(soId: string) {
     setExpandedSoId((prev) => (prev === soId ? null : soId));
+  }
+
+  function handleUploaded(soId: string, currentCount: number) {
+    setDocCountOverrides((prev) => ({ ...prev, [soId]: (prev[soId] ?? currentCount) + 1 }));
   }
 
   return (
@@ -227,67 +310,72 @@ export default function CreditsClient() {
                 </td>
               </tr>
             )}
-            {!loading && credits.map((cm) => (
-              <>
-                <tr key={cm.so_id} className={`hover:bg-gray-900/50 transition-colors ${expandedSoId === cm.so_id ? 'bg-gray-900/40' : ''}`}>
-                  <td className="px-4 py-3 font-mono text-cyan-400 font-medium whitespace-nowrap">
-                    {cm.so_id}
-                  </td>
-                  <td className="px-4 py-3 max-w-[200px]">
-                    <div className="truncate text-gray-200">{cm.cust_name ?? '—'}</div>
-                    {cm.cust_code && <div className="text-xs text-gray-500">{cm.cust_code}</div>}
-                  </td>
-                  <td className="px-4 py-3 hidden lg:table-cell max-w-[160px]">
-                    <div className="truncate text-gray-400 text-xs">{cm.reference ?? '—'}</div>
-                    {cm.po_number && <div className="text-xs text-gray-600 truncate">PO: {cm.po_number}</div>}
-                  </td>
-                  <td className="px-4 py-3 hidden md:table-cell max-w-[160px]">
-                    <div className="truncate text-gray-400 text-xs">
-                      {[cm.address_1, cm.city].filter(Boolean).join(', ') || '—'}
-                    </div>
-                  </td>
-                  <td className="px-4 py-3">
-                    <StatusBadge status={cm.so_status} />
-                  </td>
-                  <td className="px-4 py-3 hidden sm:table-cell text-xs text-gray-400">
-                    {cm.system_id ?? '—'}
-                  </td>
-                  <td className="px-4 py-3">
-                    {cm.doc_count > 0 ? (
+            {!loading && credits.map((cm) => {
+              const docCount = docCountOverrides[cm.so_id] ?? cm.doc_count;
+              return (
+                <>
+                  <tr key={cm.so_id} className={`hover:bg-gray-900/50 transition-colors ${expandedSoId === cm.so_id ? 'bg-gray-900/40' : ''}`}>
+                    <td className="px-4 py-3 font-mono text-cyan-400 font-medium whitespace-nowrap">
+                      {cm.so_id}
+                    </td>
+                    <td className="px-4 py-3 max-w-[200px]">
+                      <div className="truncate text-gray-200">{cm.cust_name ?? '—'}</div>
+                      {cm.cust_code && <div className="text-xs text-gray-500">{cm.cust_code}</div>}
+                    </td>
+                    <td className="px-4 py-3 hidden lg:table-cell max-w-[160px]">
+                      <div className="truncate text-gray-400 text-xs">{cm.reference ?? '—'}</div>
+                      {cm.po_number && <div className="text-xs text-gray-600 truncate">PO: {cm.po_number}</div>}
+                    </td>
+                    <td className="px-4 py-3 hidden md:table-cell max-w-[160px]">
+                      <div className="truncate text-gray-400 text-xs">
+                        {[cm.address_1, cm.city].filter(Boolean).join(', ') || '—'}
+                      </div>
+                    </td>
+                    <td className="px-4 py-3">
+                      <StatusBadge status={cm.so_status} />
+                    </td>
+                    <td className="px-4 py-3 hidden sm:table-cell text-xs text-gray-400">
+                      {cm.system_id ?? '—'}
+                    </td>
+                    <td className="px-4 py-3">
                       <button
                         onClick={() => toggleImages(cm.so_id)}
-                        className="flex items-center gap-1 text-cyan-400 hover:text-cyan-300 transition-colors"
-                        title="View attachments"
+                        className={`flex items-center gap-1 transition-colors ${
+                          docCount > 0
+                            ? 'text-cyan-400 hover:text-cyan-300'
+                            : 'text-gray-500 hover:text-gray-300'
+                        }`}
+                        title={docCount > 0 ? 'View / upload attachments' : 'Upload attachment'}
                       >
-                        <Paperclip className="w-3.5 h-3.5" />
-                        <span className="text-sm font-medium">{cm.doc_count}</span>
+                        {docCount > 0
+                          ? <Paperclip className="w-3.5 h-3.5" />
+                          : <FileText className="w-3.5 h-3.5" />}
+                        <span className="text-sm font-medium">{docCount > 0 ? docCount : 'None'}</span>
                         {expandedSoId === cm.so_id
                           ? <ChevronUp className="w-3 h-3" />
                           : <ChevronDown className="w-3 h-3" />}
                       </button>
-                    ) : (
-                      <span className="flex items-center gap-1 text-xs text-gray-600">
-                        <FileText className="w-3.5 h-3.5" />
-                        None
-                      </span>
-                    )}
-                  </td>
-                  <td className="px-4 py-3 hidden md:table-cell text-xs text-gray-500">
-                    {fmt(cm.created_date)}
-                  </td>
-                </tr>
-                {expandedSoId === cm.so_id && (
-                  <tr key={`${cm.so_id}-images`}>
-                    <td colSpan={8} className="px-6 py-3 bg-gray-900/60 border-t border-gray-800/50">
-                      <p className="text-xs text-gray-500 mb-2 font-medium uppercase tracking-wider">
-                        Attachments for CM {cm.so_id}
-                      </p>
-                      <ImagesPanel soId={cm.so_id} />
+                    </td>
+                    <td className="px-4 py-3 hidden md:table-cell text-xs text-gray-500">
+                      {fmt(cm.created_date)}
                     </td>
                   </tr>
-                )}
-              </>
-            ))}
+                  {expandedSoId === cm.so_id && (
+                    <tr key={`${cm.so_id}-images`}>
+                      <td colSpan={8} className="px-6 py-3 bg-gray-900/60 border-t border-gray-800/50">
+                        <p className="text-xs text-gray-500 mb-2 font-medium uppercase tracking-wider">
+                          Attachments for CM {cm.so_id}
+                        </p>
+                        <ImagesPanel
+                          soId={cm.so_id}
+                          onUploaded={() => handleUploaded(cm.so_id, cm.doc_count)}
+                        />
+                      </td>
+                    </tr>
+                  )}
+                </>
+              );
+            })}
           </tbody>
         </table>
       </div>
