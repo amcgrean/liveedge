@@ -30,15 +30,28 @@ type ResendEmailPayload = {
   };
 };
 
-function extractRmaNumber(subject: string | null, text: string | null): string {
+function extractRmaNumber(subject: string | null, text: string | null, toAddresses: string[]): string {
+  // Primary: extract from the TO address — most reliable because Resend routes
+  // each email to {so_id}@rma.beisser.cloud, so the local part IS the CM number.
+  for (const addr of toAddresses) {
+    const m = addr.match(/^([^@]+)@rma\.beisser\.cloud$/i);
+    if (m) {
+      const digits = m[1].match(/(\d{4,})/);
+      if (digits) return digits[1];
+    }
+  }
+
+  // Fallback: parse subject / first 500 chars of body
   const sources = [subject ?? '', text?.slice(0, 500) ?? ''];
   for (const src of sources) {
-    // Match: RMA 12345, RMA#12345, RMA-12345, Credit 12345
-    const m = src.match(/(?:RMA|rma)[#\s\-]?(\d{4,})/i)
-      ?? src.match(/(?:Credit|credit)[#\s\-]?(\d{4,})/i);
+    // RMA 12345, RMA#12345, CM-12345, Credit 12345, SO 12345
+    const m =
+      src.match(/(?:RMA|CM)[#\s\-]?(\d{4,})/i) ??
+      src.match(/(?:Credit|SO)[#\s\-]?(\d{4,})/i);
     if (m) return m[1];
   }
-  // Fall back to first standalone 4+ digit number
+
+  // Last resort: first standalone 4+ digit number in the subject
   const fallback = (subject ?? '').match(/\b(\d{4,})\b/);
   return fallback ? fallback[1] : 'UNKNOWN';
 }
@@ -97,7 +110,7 @@ export async function POST(req: NextRequest) {
   }
 
   const { from, subject, text, attachments } = payload.data;
-  const rmaNumber = extractRmaNumber(subject, text);
+  const rmaNumber = extractRmaNumber(subject, text, toAddresses);
   const receivedAt = payload.created_at ? new Date(payload.created_at) : new Date();
 
   if (!attachments?.length) {

@@ -3,9 +3,11 @@
 import { useState, useEffect, useCallback } from 'react';
 import {
   Search, ChevronLeft, ChevronRight, Loader2, Paperclip, FileText,
+  ExternalLink, ChevronDown, ChevronUp, Mail,
 } from 'lucide-react';
 import { usePageTracking } from '@/hooks/usePageTracking';
 import type { CreditMemo } from '../api/credits/route';
+import type { CreditImage } from '../api/credits/[id]/images/route';
 
 type ApiResponse = {
   credits: CreditMemo[];
@@ -13,6 +15,8 @@ type ApiResponse = {
   page: number;
   limit: number;
 };
+
+type ImagesResponse = { images: CreditImage[] };
 
 function fmt(ts: string | null) {
   if (!ts) return '—';
@@ -32,6 +36,70 @@ function StatusBadge({ status }: { status: string | null }) {
   );
 }
 
+function ImagesPanel({ soId }: { soId: string }) {
+  const [images, setImages] = useState<CreditImage[] | null>(null);
+  const [error, setError] = useState('');
+  const [viewingId, setViewingId] = useState<number | null>(null);
+
+  useEffect(() => {
+    fetch(`/api/credits/${soId}/images`)
+      .then((r) => r.ok ? r.json() as Promise<ImagesResponse> : Promise.reject())
+      .then((d) => setImages(d.images))
+      .catch(() => setError('Could not load attachments.'));
+  }, [soId]);
+
+  async function openImage(imgId: number) {
+    setViewingId(imgId);
+    try {
+      const r = await fetch(`/api/credits/${imgId}/image`);
+      if (!r.ok) throw new Error();
+      const { url } = await r.json() as { url: string };
+      window.open(url, '_blank', 'noopener,noreferrer');
+    } catch {
+      alert('Could not retrieve file URL.');
+    } finally {
+      setViewingId(null);
+    }
+  }
+
+  if (error) return <p className="text-xs text-red-400 py-1">{error}</p>;
+  if (!images) return <Loader2 className="w-4 h-4 animate-spin text-gray-500" />;
+  if (!images.length) return <p className="text-xs text-gray-500 py-1">No attachments on record.</p>;
+
+  return (
+    <div className="flex flex-col gap-2">
+      {images.map((img) => (
+        <div key={img.id} className="flex items-center gap-3 bg-gray-800/60 rounded px-3 py-2">
+          <FileText className="w-4 h-4 text-gray-400 shrink-0" />
+          <div className="flex-1 min-w-0">
+            <p className="text-xs text-gray-200 truncate font-medium">{img.filename}</p>
+            {img.email_from && (
+              <p className="text-xs text-gray-500 truncate flex items-center gap-1">
+                <Mail className="w-3 h-3" />{img.email_from}
+              </p>
+            )}
+          </div>
+          <span className="text-xs text-gray-600 shrink-0">{fmt(img.received_at)}</span>
+          {img.has_file ? (
+            <button
+              onClick={() => openImage(img.id)}
+              disabled={viewingId === img.id}
+              className="flex items-center gap-1 text-xs text-cyan-400 hover:text-cyan-300 disabled:opacity-50 shrink-0"
+            >
+              {viewingId === img.id
+                ? <Loader2 className="w-3 h-3 animate-spin" />
+                : <ExternalLink className="w-3 h-3" />}
+              View
+            </button>
+          ) : (
+            <span className="text-xs text-gray-600 shrink-0">No file</span>
+          )}
+        </div>
+      ))}
+    </div>
+  );
+}
+
 export default function CreditsClient() {
   usePageTracking();
 
@@ -42,10 +110,12 @@ export default function CreditsClient() {
   const [page, setPage]         = useState(1);
   const [total, setTotal]       = useState(0);
   const [totalPages, setTotalPages] = useState(1);
+  const [expandedSoId, setExpandedSoId] = useState<string | null>(null);
 
   const load = useCallback(async (p: number, query: string) => {
     setLoading(true);
     setError('');
+    setExpandedSoId(null);
     try {
       const sp = new URLSearchParams({ page: String(p) });
       if (query) sp.set('q', query);
@@ -73,6 +143,10 @@ export default function CreditsClient() {
   function clearSearch() {
     setQ('');
     load(1, '');
+  }
+
+  function toggleImages(soId: string) {
+    setExpandedSoId((prev) => (prev === soId ? null : soId));
   }
 
   return (
@@ -154,46 +228,65 @@ export default function CreditsClient() {
               </tr>
             )}
             {!loading && credits.map((cm) => (
-              <tr key={cm.so_id} className="hover:bg-gray-900/50 transition-colors">
-                <td className="px-4 py-3 font-mono text-cyan-400 font-medium whitespace-nowrap">
-                  {cm.so_id}
-                </td>
-                <td className="px-4 py-3 max-w-[200px]">
-                  <div className="truncate text-gray-200">{cm.cust_name ?? '—'}</div>
-                  {cm.cust_code && <div className="text-xs text-gray-500">{cm.cust_code}</div>}
-                </td>
-                <td className="px-4 py-3 hidden lg:table-cell max-w-[160px]">
-                  <div className="truncate text-gray-400 text-xs">{cm.reference ?? '—'}</div>
-                  {cm.po_number && <div className="text-xs text-gray-600 truncate">PO: {cm.po_number}</div>}
-                </td>
-                <td className="px-4 py-3 hidden md:table-cell max-w-[160px]">
-                  <div className="truncate text-gray-400 text-xs">
-                    {[cm.address_1, cm.city].filter(Boolean).join(', ') || '—'}
-                  </div>
-                </td>
-                <td className="px-4 py-3">
-                  <StatusBadge status={cm.so_status} />
-                </td>
-                <td className="px-4 py-3 hidden sm:table-cell text-xs text-gray-400">
-                  {cm.system_id ?? '—'}
-                </td>
-                <td className="px-4 py-3">
-                  {cm.doc_count > 0 ? (
-                    <div className="flex items-center gap-1 text-cyan-400">
-                      <Paperclip className="w-3.5 h-3.5" />
-                      <span className="text-sm font-medium">{cm.doc_count}</span>
+              <>
+                <tr key={cm.so_id} className={`hover:bg-gray-900/50 transition-colors ${expandedSoId === cm.so_id ? 'bg-gray-900/40' : ''}`}>
+                  <td className="px-4 py-3 font-mono text-cyan-400 font-medium whitespace-nowrap">
+                    {cm.so_id}
+                  </td>
+                  <td className="px-4 py-3 max-w-[200px]">
+                    <div className="truncate text-gray-200">{cm.cust_name ?? '—'}</div>
+                    {cm.cust_code && <div className="text-xs text-gray-500">{cm.cust_code}</div>}
+                  </td>
+                  <td className="px-4 py-3 hidden lg:table-cell max-w-[160px]">
+                    <div className="truncate text-gray-400 text-xs">{cm.reference ?? '—'}</div>
+                    {cm.po_number && <div className="text-xs text-gray-600 truncate">PO: {cm.po_number}</div>}
+                  </td>
+                  <td className="px-4 py-3 hidden md:table-cell max-w-[160px]">
+                    <div className="truncate text-gray-400 text-xs">
+                      {[cm.address_1, cm.city].filter(Boolean).join(', ') || '—'}
                     </div>
-                  ) : (
-                    <span className="flex items-center gap-1 text-xs text-gray-600">
-                      <FileText className="w-3.5 h-3.5" />
-                      None
-                    </span>
-                  )}
-                </td>
-                <td className="px-4 py-3 hidden md:table-cell text-xs text-gray-500">
-                  {fmt(cm.created_date)}
-                </td>
-              </tr>
+                  </td>
+                  <td className="px-4 py-3">
+                    <StatusBadge status={cm.so_status} />
+                  </td>
+                  <td className="px-4 py-3 hidden sm:table-cell text-xs text-gray-400">
+                    {cm.system_id ?? '—'}
+                  </td>
+                  <td className="px-4 py-3">
+                    {cm.doc_count > 0 ? (
+                      <button
+                        onClick={() => toggleImages(cm.so_id)}
+                        className="flex items-center gap-1 text-cyan-400 hover:text-cyan-300 transition-colors"
+                        title="View attachments"
+                      >
+                        <Paperclip className="w-3.5 h-3.5" />
+                        <span className="text-sm font-medium">{cm.doc_count}</span>
+                        {expandedSoId === cm.so_id
+                          ? <ChevronUp className="w-3 h-3" />
+                          : <ChevronDown className="w-3 h-3" />}
+                      </button>
+                    ) : (
+                      <span className="flex items-center gap-1 text-xs text-gray-600">
+                        <FileText className="w-3.5 h-3.5" />
+                        None
+                      </span>
+                    )}
+                  </td>
+                  <td className="px-4 py-3 hidden md:table-cell text-xs text-gray-500">
+                    {fmt(cm.created_date)}
+                  </td>
+                </tr>
+                {expandedSoId === cm.so_id && (
+                  <tr key={`${cm.so_id}-images`}>
+                    <td colSpan={8} className="px-6 py-3 bg-gray-900/60 border-t border-gray-800/50">
+                      <p className="text-xs text-gray-500 mb-2 font-medium uppercase tracking-wider">
+                        Attachments for CM {cm.so_id}
+                      </p>
+                      <ImagesPanel soId={cm.so_id} />
+                    </td>
+                  </tr>
+                )}
+              </>
             ))}
           </tbody>
         </table>
