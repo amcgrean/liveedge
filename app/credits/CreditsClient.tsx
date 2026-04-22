@@ -21,11 +21,12 @@ function fmt(ts: string | null) {
 
 function StatusBadge({ status }: { status: string | null }) {
   const s = (status ?? '').toUpperCase();
+  const isOpen = s === 'O' || s === 'B' || s === '';
   const cls =
-    s === 'O' ? 'bg-cyan-900/40 text-cyan-300 border-cyan-700/50' :
+    isOpen ? 'bg-cyan-900/40 text-cyan-300 border-cyan-700/50' :
     s === 'S' ? 'bg-yellow-900/40 text-yellow-300 border-yellow-700/50' :
                 'bg-gray-800 text-gray-400 border-gray-700';
-  const label = s === 'O' ? 'Open' : s === 'S' ? 'Staged' : (s || '—');
+  const label = isOpen ? 'Open' : s === 'S' ? 'Staged' : (s || '—');
   return (
     <span className={`text-xs px-2 py-0.5 rounded border font-medium ${cls}`}>{label}</span>
   );
