@@ -33,6 +33,7 @@ try {
 import postgres from 'postgres';
 import { drizzle } from 'drizzle-orm/postgres-js';
 import * as schema from '../db/schema';
+import { eq } from 'drizzle-orm';
 import { readFileSync } from 'fs';
 import { join } from 'path';
 
@@ -98,6 +99,14 @@ async function main() {
   const matches: MatchRecord[] = raw.po_wo_to_job_matches;
   console.log(`  ${matches.length} records, ${new Set(matches.map(m => m.agility_job_seq)).size} unique job seqs`);
 
+  // ── Step 0: Delete any previously imported records (full re-import) ─────────
+  console.log('\nCleaning up previous import records...');
+  const deleted = await db
+    .delete(schema.hubbellEmails)
+    .where(eq(schema.hubbellEmails.confirmedBy, 'json_import'))
+    .returning({ id: schema.hubbellEmails.id });
+  console.log(`  Deleted ${deleted.length} existing import records`);
+
   // ── Step 1: Fetch SO details from ERP ───────────────────────────────────────
   const uniqueJobSeqs = [...new Set(matches.map(m => String(m.agility_job_seq)))];
   console.log(`\nQuerying agility_so_header for ${uniqueJobSeqs.length} job seqs...`);
@@ -113,6 +122,7 @@ async function main() {
       shipto_zip
     FROM agility_so_header
     WHERE so_id::text = ANY(${uniqueJobSeqs})
+      AND TRIM(cust_code) ILIKE 'HUBB%'
   `;
 
   const soMap = new Map(soRows.map(r => [r.so_id, r]));
