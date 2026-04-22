@@ -15,11 +15,14 @@ export interface CreditMemo {
   expect_date: string | null;
   address_1: string | null;
   city: string | null;
+  doc_count: number;
+  latest_doc_received: string | null;
 }
 
 // GET /api/credits?q=&branch=&page=1
-// Returns open credit memos (sale_type = 'CM', not invoiced/closed/cancelled)
-// Branch-scoped: non-admins see only their branch.
+// Returns open credit memos (sale_type='CM', not invoiced/closed/cancelled)
+// from agility_so_header. Branch-scoped: non-admins see only their branch.
+// LEFT JOINs credit_images for doc count per CM.
 export async function GET(req: NextRequest) {
   const session = await auth();
   if (!session?.user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
@@ -31,13 +34,12 @@ export async function GET(req: NextRequest) {
   const limit  = 50;
   const offset = (page - 1) * limit;
 
-  // Non-admins are pinned to their own branch
   const isAdmin =
     (session.user as { role?: string }).role === 'admin' ||
     ((session.user as { roles?: string[] }).roles ?? []).some((r) =>
       ['admin', 'supervisor', 'ops'].includes(r)
     );
-  const userBranch = (session.user as { branch?: string }).branch ?? '';
+  const userBranch      = (session.user as { branch?: string }).branch ?? '';
   const effectiveBranch = isAdmin ? branch : userBranch;
 
   try {
@@ -45,11 +47,11 @@ export async function GET(req: NextRequest) {
 
     const searchFilter = q
       ? sql`AND (
-          soh.so_id::text ILIKE ${'%' + q + '%'}
-          OR COALESCE(soh.cust_name,'')   ILIKE ${'%' + q + '%'}
-          OR COALESCE(soh.reference,'')   ILIKE ${'%' + q + '%'}
-          OR COALESCE(soh.po_number,'')   ILIKE ${'%' + q + '%'}
-          OR COALESCE(soh.cust_code,'')   ILIKE ${'%' + q + '%'}
+          soh.so_id::text              ILIKE ${'%' + q + '%'}
+          OR COALESCE(soh.cust_name,'')  ILIKE ${'%' + q + '%'}
+          OR COALESCE(soh.reference,'')  ILIKE ${'%' + q + '%'}
+          OR COALESCE(soh.po_number,'')  ILIKE ${'%' + q + '%'}
+          OR COALESCE(soh.cust_code,'')  ILIKE ${'%' + q + '%'}
         )`
       : sql``;
 
@@ -62,29 +64,37 @@ export async function GET(req: NextRequest) {
       reference: string | null; po_number: string | null; so_status: string | null;
       salesperson: string | null; order_date: string | null; expect_date: string | null;
       address_1: string | null; city: string | null;
+      doc_count: string; latest_doc_received: string | null;
     };
 
     const [rows, countRows] = await Promise.all([
       sql<RawRow[]>`
         SELECT
-          soh.so_id::text,
+          soh.so_id::text                  AS so_id,
           soh.system_id,
-          TRIM(soh.cust_code)       AS cust_code,
+          TRIM(soh.cust_code)              AS cust_code,
           soh.cust_name,
           soh.reference,
           soh.po_number,
           soh.so_status,
           soh.salesperson,
-          soh.order_date::text      AS order_date,
-          soh.expect_date::text     AS expect_date,
-          soh.shipto_address_1      AS address_1,
-          soh.shipto_city           AS city
+          soh.order_date::text             AS order_date,
+          soh.expect_date::text            AS expect_date,
+          soh.shipto_address_1             AS address_1,
+          soh.shipto_city                  AS city,
+          COUNT(ci.id)::text               AS doc_count,
+          MAX(ci.received_at)::text        AS latest_doc_received
         FROM agility_so_header soh
+        LEFT JOIN credit_images ci ON ci.rma_number = soh.so_id::text
         WHERE soh.is_deleted = false
           AND UPPER(COALESCE(soh.sale_type,'')) = 'CM'
           AND UPPER(COALESCE(soh.so_status,'')) NOT IN ('I','C','X')
           ${branchFilter}
           ${searchFilter}
+        GROUP BY
+          soh.so_id, soh.system_id, soh.cust_code, soh.cust_name,
+          soh.reference, soh.po_number, soh.so_status, soh.salesperson,
+          soh.order_date, soh.expect_date, soh.shipto_address_1, soh.shipto_city
         ORDER BY soh.order_date DESC NULLS LAST, soh.so_id DESC
         LIMIT ${limit} OFFSET ${offset}
       `,
@@ -102,18 +112,20 @@ export async function GET(req: NextRequest) {
     const total = countRows[0]?.total ?? 0;
 
     const credits: CreditMemo[] = rows.map((r) => ({
-      so_id:       r.so_id,
-      system_id:   r.system_id,
-      cust_code:   r.cust_code?.trim()    || null,
-      cust_name:   r.cust_name?.trim()    || null,
-      reference:   r.reference?.trim()    || null,
-      po_number:   r.po_number?.trim()    || null,
-      so_status:   r.so_status?.trim()    || null,
-      salesperson: r.salesperson?.trim()  || null,
-      order_date:  r.order_date,
-      expect_date: r.expect_date,
-      address_1:   r.address_1?.trim()    || null,
-      city:        r.city?.trim()         || null,
+      so_id:               r.so_id,
+      system_id:           r.system_id,
+      cust_code:           r.cust_code?.trim()    || null,
+      cust_name:           r.cust_name?.trim()    || null,
+      reference:           r.reference?.trim()    || null,
+      po_number:           r.po_number?.trim()    || null,
+      so_status:           r.so_status?.trim()    || null,
+      salesperson:         r.salesperson?.trim()  || null,
+      order_date:          r.order_date,
+      expect_date:         r.expect_date,
+      address_1:           r.address_1?.trim()    || null,
+      city:                r.city?.trim()         || null,
+      doc_count:           parseInt(r.doc_count ?? '0', 10),
+      latest_doc_received: r.latest_doc_received,
     }));
 
     return NextResponse.json({ credits, total, page, limit });

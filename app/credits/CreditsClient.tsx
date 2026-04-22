@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { Search, RefreshCw, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Search, RefreshCw, ChevronLeft, ChevronRight, Paperclip, FileText } from 'lucide-react';
 import { usePageTracking } from '@/hooks/usePageTracking';
 import type { CreditMemo } from '../api/credits/route';
 import { cn } from '@/lib/utils';
@@ -56,9 +56,9 @@ export default function CreditsClient({ userBranch, isAdmin }: Props) {
   }) => {
     setLoading(true);
     setError('');
-    const qVal  = opts?.q      ?? q;
-    const br    = opts?.branch ?? branch;
-    const pg    = opts?.page   ?? page;
+    const qVal = opts?.q      ?? q;
+    const br   = opts?.branch ?? branch;
+    const pg   = opts?.page   ?? page;
     const params = new URLSearchParams({ q: qVal, branch: br, page: String(pg) });
     try {
       const res = await fetch(`/api/credits?${params}`);
@@ -73,18 +73,13 @@ export default function CreditsClient({ userBranch, isAdmin }: Props) {
     }
   }, [q, branch, page]);
 
-  useEffect(() => {
-    fetchCredits();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  useEffect(() => { fetchCredits(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleSearch = (val: string) => {
     setQ(val);
     setPage(1);
     if (searchTimer.current) clearTimeout(searchTimer.current);
-    searchTimer.current = setTimeout(() => {
-      fetchCredits({ q: val, page: 1 });
-    }, 350);
+    searchTimer.current = setTimeout(() => { fetchCredits({ q: val, page: 1 }); }, 350);
   };
 
   const handleBranch = (val: string) => {
@@ -105,7 +100,8 @@ export default function CreditsClient({ userBranch, isAdmin }: Props) {
         <div>
           <h1 className="text-2xl font-bold text-white">RMA Credits</h1>
           <p className="text-sm text-slate-400 mt-1">
-            Open credit memos from ERP — {loading ? 'Loading…' : `${total.toLocaleString()} open credits`}
+            Open credit memos from ERP —{' '}
+            {loading ? 'Loading…' : `${total.toLocaleString()} open credit${total !== 1 ? 's' : ''}`}
           </p>
         </div>
         <button
@@ -161,13 +157,14 @@ export default function CreditsClient({ userBranch, isAdmin }: Props) {
               <th className="text-left px-4 py-2.5 text-xs font-semibold uppercase tracking-wider text-slate-500 hidden lg:table-cell">Salesperson</th>
               <th className="text-left px-4 py-2.5 text-xs font-semibold uppercase tracking-wider text-slate-500 hidden lg:table-cell">Order Date</th>
               <th className="text-left px-4 py-2.5 text-xs font-semibold uppercase tracking-wider text-slate-500">Status</th>
+              <th className="text-left px-4 py-2.5 text-xs font-semibold uppercase tracking-wider text-slate-500">Docs</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-white/5">
             {loading ? (
-              <tr><td colSpan={7} className="text-center py-12 text-slate-500">Loading…</td></tr>
+              <tr><td colSpan={8} className="text-center py-12 text-slate-500">Loading…</td></tr>
             ) : credits.length === 0 ? (
-              <tr><td colSpan={7} className="text-center py-12 text-slate-500">No open credits found.</td></tr>
+              <tr><td colSpan={8} className="text-center py-12 text-slate-500">No open credits found.</td></tr>
             ) : (
               credits.map((cm) => (
                 <tr key={cm.so_id} className="hover:bg-slate-800/50 transition">
@@ -193,6 +190,19 @@ export default function CreditsClient({ userBranch, isAdmin }: Props) {
                     {cm.order_date ?? '—'}
                   </td>
                   <td className="px-4 py-3">{statusBadge(cm.so_status)}</td>
+                  <td className="px-4 py-3">
+                    {cm.doc_count > 0 ? (
+                      <div className="flex items-center gap-1 text-cyan-400">
+                        <Paperclip className="w-3.5 h-3.5" />
+                        <span className="text-sm font-medium">{cm.doc_count}</span>
+                      </div>
+                    ) : (
+                      <span className="flex items-center gap-1 text-xs text-slate-600">
+                        <FileText className="w-3.5 h-3.5" />
+                        None
+                      </span>
+                    )}
+                  </td>
                 </tr>
               ))
             )}
