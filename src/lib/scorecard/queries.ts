@@ -790,9 +790,6 @@ export async function fetchDaysToPay(params: ScorecardParams): Promise<DaysToPay
 // Aggregate KPIs (company / branch / rep — no customer_id filter)
 // ---------------------------------------------------------------------------
 
-// sales_rep column name in agility_so_header — adjust if the actual column differs
-const REP_COL = 'sales_rep';
-
 export async function fetchAggregateKpis(
   params: AggregateParams,
   displayTitle: string,
@@ -823,7 +820,8 @@ export async function fetchAggregateKpis(
   let rows: Row[];
 
   if (params.repCode) {
-    // Rep-scoped: join agility_so_header to get rep filter
+    // rep_1 = assigned rep, rep_3 = who wrote the order
+    const repCol = params.repField ?? 'rep_1';
     rows = params.branchIds.length > 0
       ? await sql<Row[]>`
           WITH f AS (
@@ -840,7 +838,7 @@ export async function fetchAggregateKpis(
             WHERE csf.is_deleted = false AND NOT csf.is_sale_type_excluded
               AND csf.invoice_date >= ${dateFrom}::timestamp
               AND csf.invoice_date < ${dateTo}::timestamp
-              AND soh.${sql(REP_COL)} = ${params.repCode}
+              AND soh.${sql(repCol)} = ${params.repCode}
               AND csf.branch_id = ANY(${params.branchIds}::text[])
           )
           SELECT
@@ -883,7 +881,7 @@ export async function fetchAggregateKpis(
             WHERE csf.is_deleted = false AND NOT csf.is_sale_type_excluded
               AND csf.invoice_date >= ${dateFrom}::timestamp
               AND csf.invoice_date < ${dateTo}::timestamp
-              AND soh.${sql(REP_COL)} = ${params.repCode}
+              AND soh.${sql(repCol)} = ${params.repCode}
           )
           SELECT
             SUM(sales_amount) FILTER (WHERE is_base)::text AS sales_base,
@@ -1043,6 +1041,7 @@ export async function fetchAggregateThreeYear(
   let r: Row | undefined;
 
   if (params.repCode) {
+    const repCol = params.repField ?? 'rep_1';
     [r] = params.branchIds.length > 0
       ? await sql<Row[]>`
           SELECT
@@ -1075,7 +1074,7 @@ export async function fetchAggregateThreeYear(
           WHERE csf.is_deleted = false AND NOT csf.is_sale_type_excluded
             AND csf.invoice_date >= ${dateFrom}::timestamp
             AND csf.invoice_date < ${dateTo}::timestamp
-            AND soh.${sql(REP_COL)} = ${params.repCode}
+            AND soh.${sql(repCol)} = ${params.repCode}
             AND csf.branch_id = ANY(${params.branchIds}::text[])
         `
       : await sql<Row[]>`
@@ -1109,7 +1108,7 @@ export async function fetchAggregateThreeYear(
           WHERE csf.is_deleted = false AND NOT csf.is_sale_type_excluded
             AND csf.invoice_date >= ${dateFrom}::timestamp
             AND csf.invoice_date < ${dateTo}::timestamp
-            AND soh.${sql(REP_COL)} = ${params.repCode}
+            AND soh.${sql(repCol)} = ${params.repCode}
         `;
   } else {
     [r] = params.branchIds.length > 0
@@ -1211,6 +1210,7 @@ export async function fetchAggregateProductMajors(
   let rows: Row[];
 
   if (params.repCode) {
+    const repCol = params.repField ?? 'rep_1';
     rows = params.branchIds.length > 0
       ? await sql<Row[]>`
           SELECT COALESCE(csf.product_major_code, '') AS product_major_code,
@@ -1224,7 +1224,7 @@ export async function fetchAggregateProductMajors(
           WHERE csf.is_deleted = false AND NOT csf.is_sale_type_excluded
             AND csf.invoice_date >= ${dateFrom}::timestamp
             AND csf.invoice_date < ${dateTo}::timestamp
-            AND soh.${sql(REP_COL)} = ${params.repCode}
+            AND soh.${sql(repCol)} = ${params.repCode}
             AND csf.branch_id = ANY(${params.branchIds}::text[])
           GROUP BY csf.product_major_code, csf.product_major
           ORDER BY COALESCE(SUM(csf.sales_amount) FILTER (WHERE csf.${baseFilter}), 0) DESC
@@ -1241,7 +1241,7 @@ export async function fetchAggregateProductMajors(
           WHERE csf.is_deleted = false AND NOT csf.is_sale_type_excluded
             AND csf.invoice_date >= ${dateFrom}::timestamp
             AND csf.invoice_date < ${dateTo}::timestamp
-            AND soh.${sql(REP_COL)} = ${params.repCode}
+            AND soh.${sql(repCol)} = ${params.repCode}
           GROUP BY csf.product_major_code, csf.product_major
           ORDER BY COALESCE(SUM(csf.sales_amount) FILTER (WHERE csf.${baseFilter}), 0) DESC
         `;
@@ -1313,6 +1313,7 @@ export async function fetchAggregateProductMinors(
 
   let rows: Row[];
   if (params.repCode) {
+    const repCol = params.repField ?? 'rep_1';
     rows = params.branchIds.length > 0
       ? await sql<Row[]>`
           SELECT COALESCE(csf.product_minor_code, '') AS product_minor_code,
@@ -1327,7 +1328,7 @@ export async function fetchAggregateProductMinors(
             AND csf.product_major_code = ${majorCode}
             AND csf.invoice_date >= ${dateFrom}::timestamp
             AND csf.invoice_date < ${dateTo}::timestamp
-            AND soh.${sql(REP_COL)} = ${params.repCode}
+            AND soh.${sql(repCol)} = ${params.repCode}
             AND csf.branch_id = ANY(${params.branchIds}::text[])
           GROUP BY csf.product_minor_code, csf.product_minor
           ORDER BY COALESCE(SUM(csf.sales_amount) FILTER (WHERE csf.${baseFilter}), 0) DESC
@@ -1345,7 +1346,7 @@ export async function fetchAggregateProductMinors(
             AND csf.product_major_code = ${majorCode}
             AND csf.invoice_date >= ${dateFrom}::timestamp
             AND csf.invoice_date < ${dateTo}::timestamp
-            AND soh.${sql(REP_COL)} = ${params.repCode}
+            AND soh.${sql(repCol)} = ${params.repCode}
           GROUP BY csf.product_minor_code, csf.product_minor
           ORDER BY COALESCE(SUM(csf.sales_amount) FILTER (WHERE csf.${baseFilter}), 0) DESC
         `;
@@ -1418,6 +1419,7 @@ export async function fetchAggregateSaleTypes(
 
   let rows: Row[];
   if (params.repCode) {
+    const repCol = params.repField ?? 'rep_1';
     rows = params.branchIds.length > 0
       ? await sql<Row[]>`
           SELECT COALESCE(csf.sale_type_reporting_category, 'Other') AS category,
@@ -1430,7 +1432,7 @@ export async function fetchAggregateSaleTypes(
           WHERE csf.is_deleted = false AND NOT csf.is_sale_type_excluded
             AND csf.invoice_date >= ${dateFrom}::timestamp
             AND csf.invoice_date < ${dateTo}::timestamp
-            AND soh.${sql(REP_COL)} = ${params.repCode}
+            AND soh.${sql(repCol)} = ${params.repCode}
             AND csf.branch_id = ANY(${params.branchIds}::text[])
           GROUP BY csf.sale_type_reporting_category
           ORDER BY COALESCE(SUM(csf.sales_amount) FILTER (WHERE csf.${baseFilter}), 0) DESC
@@ -1446,7 +1448,7 @@ export async function fetchAggregateSaleTypes(
           WHERE csf.is_deleted = false AND NOT csf.is_sale_type_excluded
             AND csf.invoice_date >= ${dateFrom}::timestamp
             AND csf.invoice_date < ${dateTo}::timestamp
-            AND soh.${sql(REP_COL)} = ${params.repCode}
+            AND soh.${sql(repCol)} = ${params.repCode}
           GROUP BY csf.sale_type_reporting_category
           ORDER BY COALESCE(SUM(csf.sales_amount) FILTER (WHERE csf.${baseFilter}), 0) DESC
         `;
@@ -1559,7 +1561,7 @@ export async function fetchBranchSummaries(
 
 // ---------------------------------------------------------------------------
 // Rep list (for rep index page)
-// Note: uses agility_so_header.sales_rep — adjust REP_COL if column differs
+// Shows both assigned book (rep_1) and written-up (rep_3) per rep in one query.
 // ---------------------------------------------------------------------------
 
 export async function fetchRepList(
@@ -1575,90 +1577,150 @@ export async function fetchRepList(
 
   type Row = {
     rep_code: string | null;
-    sales_base: string | null; sales_compare: string | null;
-    gp_base: string | null; gp_compare: string | null;
-    customer_count: string | null;
+    a_sales_base: string | null; a_sales_compare: string | null;
+    a_gp_base: string | null; a_customer_count: string | null;
+    w_sales_base: string | null; w_sales_compare: string | null;
+    w_gp_base: string | null;
   };
 
   const rows = branchIds.length > 0
     ? await sql<Row[]>`
+        WITH assigned AS (
+          SELECT soh.rep_1 AS rep_code,
+            SUM(csf.sales_amount) FILTER (
+              WHERE csf.invoice_date >= make_date(${baseYear}, 1, 1)
+                AND csf.invoice_date::date <= ${baseCutoff}::date
+            ) AS sales_base,
+            SUM(csf.sales_amount) FILTER (
+              WHERE csf.invoice_date >= make_date(${compareYear}, 1, 1)
+                AND csf.invoice_date::date <= ${compareCutoff}::date
+            ) AS sales_compare,
+            SUM(csf.gross_profit) FILTER (
+              WHERE csf.invoice_date >= make_date(${baseYear}, 1, 1)
+                AND csf.invoice_date::date <= ${baseCutoff}::date
+            ) AS gp_base,
+            COUNT(DISTINCT csf.customer_id) FILTER (
+              WHERE csf.invoice_date >= make_date(${baseYear}, 1, 1)
+                AND csf.invoice_date::date <= ${baseCutoff}::date
+            ) AS customer_count
+          FROM customer_scorecard_fact csf
+          JOIN agility_so_header soh ON soh.so_id::text = csf.sales_order_number
+          WHERE csf.is_deleted = false AND NOT csf.is_sale_type_excluded
+            AND csf.invoice_date >= ${dateFrom}::timestamp
+            AND csf.invoice_date < ${dateTo}::timestamp
+            AND csf.branch_id = ANY(${branchIds}::text[])
+            AND soh.rep_1 IS NOT NULL
+          GROUP BY soh.rep_1
+        ),
+        written AS (
+          SELECT soh.rep_3 AS rep_code,
+            SUM(csf.sales_amount) FILTER (
+              WHERE csf.invoice_date >= make_date(${baseYear}, 1, 1)
+                AND csf.invoice_date::date <= ${baseCutoff}::date
+            ) AS sales_base,
+            SUM(csf.sales_amount) FILTER (
+              WHERE csf.invoice_date >= make_date(${compareYear}, 1, 1)
+                AND csf.invoice_date::date <= ${compareCutoff}::date
+            ) AS sales_compare,
+            SUM(csf.gross_profit) FILTER (
+              WHERE csf.invoice_date >= make_date(${baseYear}, 1, 1)
+                AND csf.invoice_date::date <= ${baseCutoff}::date
+            ) AS gp_base
+          FROM customer_scorecard_fact csf
+          JOIN agility_so_header soh ON soh.so_id::text = csf.sales_order_number
+          WHERE csf.is_deleted = false AND NOT csf.is_sale_type_excluded
+            AND csf.invoice_date >= ${dateFrom}::timestamp
+            AND csf.invoice_date < ${dateTo}::timestamp
+            AND csf.branch_id = ANY(${branchIds}::text[])
+            AND soh.rep_3 IS NOT NULL
+          GROUP BY soh.rep_3
+        )
         SELECT
-          soh.${sql(REP_COL)} AS rep_code,
-          SUM(csf.sales_amount) FILTER (
-            WHERE csf.invoice_date >= make_date(${baseYear}, 1, 1)
-              AND csf.invoice_date::date <= ${baseCutoff}::date
-          )::text AS sales_base,
-          SUM(csf.sales_amount) FILTER (
-            WHERE csf.invoice_date >= make_date(${compareYear}, 1, 1)
-              AND csf.invoice_date::date <= ${compareCutoff}::date
-          )::text AS sales_compare,
-          SUM(csf.gross_profit) FILTER (
-            WHERE csf.invoice_date >= make_date(${baseYear}, 1, 1)
-              AND csf.invoice_date::date <= ${baseCutoff}::date
-          )::text AS gp_base,
-          SUM(csf.gross_profit) FILTER (
-            WHERE csf.invoice_date >= make_date(${compareYear}, 1, 1)
-              AND csf.invoice_date::date <= ${compareCutoff}::date
-          )::text AS gp_compare,
-          COUNT(DISTINCT csf.customer_id) FILTER (
-            WHERE csf.invoice_date >= make_date(${baseYear}, 1, 1)
-              AND csf.invoice_date::date <= ${baseCutoff}::date
-          )::text AS customer_count
-        FROM customer_scorecard_fact csf
-        JOIN agility_so_header soh ON soh.so_id::text = csf.sales_order_number
-        WHERE csf.is_deleted = false AND NOT csf.is_sale_type_excluded
-          AND csf.invoice_date >= ${dateFrom}::timestamp
-          AND csf.invoice_date < ${dateTo}::timestamp
-          AND csf.branch_id = ANY(${branchIds}::text[])
-          AND soh.${sql(REP_COL)} IS NOT NULL
-        GROUP BY soh.${sql(REP_COL)}
-        ORDER BY COALESCE(SUM(csf.sales_amount) FILTER (
-          WHERE csf.invoice_date >= make_date(${baseYear}, 1, 1)
-            AND csf.invoice_date::date <= ${baseCutoff}::date
-        ), 0) DESC
+          COALESCE(a.rep_code, w.rep_code) AS rep_code,
+          a.sales_base::text AS a_sales_base,
+          a.sales_compare::text AS a_sales_compare,
+          a.gp_base::text AS a_gp_base,
+          a.customer_count::text AS a_customer_count,
+          w.sales_base::text AS w_sales_base,
+          w.sales_compare::text AS w_sales_compare,
+          w.gp_base::text AS w_gp_base
+        FROM assigned a
+        FULL OUTER JOIN written w ON a.rep_code = w.rep_code
+        WHERE COALESCE(a.rep_code, w.rep_code) IS NOT NULL
+        ORDER BY COALESCE(a.sales_base, 0) DESC
       `
     : await sql<Row[]>`
+        WITH assigned AS (
+          SELECT soh.rep_1 AS rep_code,
+            SUM(csf.sales_amount) FILTER (
+              WHERE csf.invoice_date >= make_date(${baseYear}, 1, 1)
+                AND csf.invoice_date::date <= ${baseCutoff}::date
+            ) AS sales_base,
+            SUM(csf.sales_amount) FILTER (
+              WHERE csf.invoice_date >= make_date(${compareYear}, 1, 1)
+                AND csf.invoice_date::date <= ${compareCutoff}::date
+            ) AS sales_compare,
+            SUM(csf.gross_profit) FILTER (
+              WHERE csf.invoice_date >= make_date(${baseYear}, 1, 1)
+                AND csf.invoice_date::date <= ${baseCutoff}::date
+            ) AS gp_base,
+            COUNT(DISTINCT csf.customer_id) FILTER (
+              WHERE csf.invoice_date >= make_date(${baseYear}, 1, 1)
+                AND csf.invoice_date::date <= ${baseCutoff}::date
+            ) AS customer_count
+          FROM customer_scorecard_fact csf
+          JOIN agility_so_header soh ON soh.so_id::text = csf.sales_order_number
+          WHERE csf.is_deleted = false AND NOT csf.is_sale_type_excluded
+            AND csf.invoice_date >= ${dateFrom}::timestamp
+            AND csf.invoice_date < ${dateTo}::timestamp
+            AND soh.rep_1 IS NOT NULL
+          GROUP BY soh.rep_1
+        ),
+        written AS (
+          SELECT soh.rep_3 AS rep_code,
+            SUM(csf.sales_amount) FILTER (
+              WHERE csf.invoice_date >= make_date(${baseYear}, 1, 1)
+                AND csf.invoice_date::date <= ${baseCutoff}::date
+            ) AS sales_base,
+            SUM(csf.sales_amount) FILTER (
+              WHERE csf.invoice_date >= make_date(${compareYear}, 1, 1)
+                AND csf.invoice_date::date <= ${compareCutoff}::date
+            ) AS sales_compare,
+            SUM(csf.gross_profit) FILTER (
+              WHERE csf.invoice_date >= make_date(${baseYear}, 1, 1)
+                AND csf.invoice_date::date <= ${baseCutoff}::date
+            ) AS gp_base
+          FROM customer_scorecard_fact csf
+          JOIN agility_so_header soh ON soh.so_id::text = csf.sales_order_number
+          WHERE csf.is_deleted = false AND NOT csf.is_sale_type_excluded
+            AND csf.invoice_date >= ${dateFrom}::timestamp
+            AND csf.invoice_date < ${dateTo}::timestamp
+            AND soh.rep_3 IS NOT NULL
+          GROUP BY soh.rep_3
+        )
         SELECT
-          soh.${sql(REP_COL)} AS rep_code,
-          SUM(csf.sales_amount) FILTER (
-            WHERE csf.invoice_date >= make_date(${baseYear}, 1, 1)
-              AND csf.invoice_date::date <= ${baseCutoff}::date
-          )::text AS sales_base,
-          SUM(csf.sales_amount) FILTER (
-            WHERE csf.invoice_date >= make_date(${compareYear}, 1, 1)
-              AND csf.invoice_date::date <= ${compareCutoff}::date
-          )::text AS sales_compare,
-          SUM(csf.gross_profit) FILTER (
-            WHERE csf.invoice_date >= make_date(${baseYear}, 1, 1)
-              AND csf.invoice_date::date <= ${baseCutoff}::date
-          )::text AS gp_base,
-          SUM(csf.gross_profit) FILTER (
-            WHERE csf.invoice_date >= make_date(${compareYear}, 1, 1)
-              AND csf.invoice_date::date <= ${compareCutoff}::date
-          )::text AS gp_compare,
-          COUNT(DISTINCT csf.customer_id) FILTER (
-            WHERE csf.invoice_date >= make_date(${baseYear}, 1, 1)
-              AND csf.invoice_date::date <= ${baseCutoff}::date
-          )::text AS customer_count
-        FROM customer_scorecard_fact csf
-        JOIN agility_so_header soh ON soh.so_id::text = csf.sales_order_number
-        WHERE csf.is_deleted = false AND NOT csf.is_sale_type_excluded
-          AND csf.invoice_date >= ${dateFrom}::timestamp
-          AND csf.invoice_date < ${dateTo}::timestamp
-          AND soh.${sql(REP_COL)} IS NOT NULL
-        GROUP BY soh.${sql(REP_COL)}
-        ORDER BY COALESCE(SUM(csf.sales_amount) FILTER (
-          WHERE csf.invoice_date >= make_date(${baseYear}, 1, 1)
-            AND csf.invoice_date::date <= ${baseCutoff}::date
-        ), 0) DESC
+          COALESCE(a.rep_code, w.rep_code) AS rep_code,
+          a.sales_base::text AS a_sales_base,
+          a.sales_compare::text AS a_sales_compare,
+          a.gp_base::text AS a_gp_base,
+          a.customer_count::text AS a_customer_count,
+          w.sales_base::text AS w_sales_base,
+          w.sales_compare::text AS w_sales_compare,
+          w.gp_base::text AS w_gp_base
+        FROM assigned a
+        FULL OUTER JOIN written w ON a.rep_code = w.rep_code
+        WHERE COALESCE(a.rep_code, w.rep_code) IS NOT NULL
+        ORDER BY COALESCE(a.sales_base, 0) DESC
       `;
 
   return rows.map((r) => ({
     repCode: r.rep_code ?? '',
-    salesBase: toNum(r.sales_base) ?? 0,
-    salesCompare: toNum(r.sales_compare) ?? 0,
-    gpBase: toNum(r.gp_base) ?? 0,
-    gpCompare: toNum(r.gp_compare) ?? 0,
-    customerCount: toInt(r.customer_count) ?? 0,
+    assignedSalesBase: toNum(r.a_sales_base) ?? 0,
+    assignedSalesCompare: toNum(r.a_sales_compare) ?? 0,
+    assignedGpBase: toNum(r.a_gp_base) ?? 0,
+    assignedCustomerCount: toInt(r.a_customer_count) ?? 0,
+    writtenSalesBase: toNum(r.w_sales_base) ?? 0,
+    writtenSalesCompare: toNum(r.w_sales_compare) ?? 0,
+    writtenGpBase: toNum(r.w_gp_base) ?? 0,
   }));
 }

@@ -15,8 +15,9 @@ export async function GET(request: Request) {
   const cutoffDate = searchParams.get('cutoffDate') ?? new Date().toISOString().slice(0, 10);
   const branchIds = searchParams.getAll('branch');
   const repCode = searchParams.get('rep') ?? undefined;
+  const repField = (searchParams.get('repField') ?? 'rep_1') as 'rep_1' | 'rep_3';
 
-  const params: AggregateParams = { branchIds, repCode, baseYear, compareYear, period, cutoffDate };
+  const params: AggregateParams = { branchIds, repCode, repField, baseYear, compareYear, period, cutoffDate };
   const minors = await fetchAggregateProductMinors(params, majorCode);
   return NextResponse.json({ minors });
 }

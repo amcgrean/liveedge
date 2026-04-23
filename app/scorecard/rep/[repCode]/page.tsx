@@ -4,7 +4,6 @@ import {
   fetchAggregateThreeYear,
   fetchAggregateProductMajors,
   fetchAggregateSaleTypes,
-  fetchCustomerList,
 } from '../../../../src/lib/scorecard/queries';
 import type { AggregateParams, ScorecardParams } from '../../../../src/lib/scorecard/types';
 import KpiTile from '../../[customerId]/components/KpiTile';
@@ -14,34 +13,26 @@ import SaleTypeTable from '../../[customerId]/components/SaleTypeTable';
 import BottomMetrics from '../../[customerId]/components/BottomMetrics';
 import AggregateFilterBar from '../../_components/AggregateFilterBar';
 import ScorecardTabs from '../../_components/ScorecardTabs';
-import { ChevronRight } from 'lucide-react';
 
-function fmt$(n: number): string {
-  if (n === 0) return '—';
-  return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 }).format(n);
-}
+const NO_DTP = { base: null, compare: null };
 
-function fmtPct(sales: number, gp: number): string {
-  if (sales === 0) return '—';
-  return `${((gp / sales) * 100).toFixed(1)}%`;
-}
-
-function deltaClass(base: number, compare: number) {
-  if (base > compare) return 'text-emerald-400';
-  if (base < compare) return 'text-red-400';
-  return 'text-slate-400';
+function SectionHeader({ label, sub }: { label: string; sub: string }) {
+  return (
+    <div className="flex items-baseline gap-3">
+      <h2 className="text-lg font-bold text-white">{label}</h2>
+      <span className="text-xs text-slate-400">{sub}</span>
+    </div>
+  );
 }
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
     <section className="bg-slate-800/40 border border-slate-700 rounded-lg p-4 space-y-3">
-      <h2 className="text-sm font-semibold text-slate-300 uppercase tracking-wide">{title}</h2>
+      <h3 className="text-sm font-semibold text-slate-300 uppercase tracking-wide">{title}</h3>
       {children}
     </section>
   );
 }
-
-const NO_DTP = { base: null, compare: null };
 
 export default async function RepScorecardPage({
   params: routeParams,
@@ -65,46 +56,49 @@ export default async function RepScorecardPage({
     ? Array.isArray(sp.branch) ? sp.branch : [sp.branch]
     : [];
 
-  const params: AggregateParams = {
-    branchIds,
-    repCode: decodedRep,
-    baseYear,
-    compareYear,
-    period,
-    cutoffDate,
-  };
+  const assignedParams: AggregateParams = { branchIds, repCode: decodedRep, repField: 'rep_1', baseYear, compareYear, period, cutoffDate };
+  const writtenParams: AggregateParams = { branchIds, repCode: decodedRep, repField: 'rep_3', baseYear, compareYear, period, cutoffDate };
 
-  const fakeCustomerParams: ScorecardParams = {
-    customerId: '',
-    branchIds,
-    baseYear,
-    compareYear,
-    period,
-    cutoffDate,
-  };
+  const fakeParams: ScorecardParams = { customerId: '', branchIds, baseYear, compareYear, period, cutoffDate };
 
-  // For top customers, we can't easily filter by rep in fetchCustomerList without a join.
-  // Show all-branch customers for this period; the rep-scoped KPIs are accurate.
-  const [kpis, threeYear, productMajors, saleTypes] = await Promise.all([
-    fetchAggregateKpis(params, decodedRep),
-    fetchAggregateThreeYear(params),
-    fetchAggregateProductMajors(params),
-    fetchAggregateSaleTypes(params),
+  // Run all 8 queries in parallel
+  const [
+    assignedKpis, assignedThreeYear, assignedMajors, assignedSaleTypes,
+    writtenKpis, writtenThreeYear, writtenMajors, writtenSaleTypes,
+  ] = await Promise.all([
+    fetchAggregateKpis(assignedParams, decodedRep),
+    fetchAggregateThreeYear(assignedParams),
+    fetchAggregateProductMajors(assignedParams),
+    fetchAggregateSaleTypes(assignedParams),
+    fetchAggregateKpis(writtenParams, decodedRep),
+    fetchAggregateThreeYear(writtenParams),
+    fetchAggregateProductMajors(writtenParams),
+    fetchAggregateSaleTypes(writtenParams),
   ]);
 
   const periodLabel = period === 'YTD' ? `YTD thru ${cutoffDate}` : 'Full Year';
-
-  const vaPctBase = kpis.base.sales && kpis.base.vaSales !== null ? kpis.base.vaSales / kpis.base.sales : null;
-  const vaPctCompare = kpis.compare.sales && kpis.compare.vaSales !== null ? kpis.compare.vaSales / kpis.compare.sales : null;
-  const nsPctBase = kpis.base.sales && kpis.base.nsSales !== null ? kpis.base.nsSales / kpis.base.sales : null;
-  const nsPctCompare = kpis.compare.sales && kpis.compare.nsSales !== null ? kpis.compare.nsSales / kpis.compare.sales : null;
-  const gmPctBase = kpis.base.sales && kpis.base.gp !== null ? kpis.base.gp / kpis.base.sales : null;
-  const gmPctCompare = kpis.compare.sales && kpis.compare.gp !== null ? kpis.compare.gp / kpis.compare.sales : null;
-
   const repListUrl = `/scorecard/rep?baseYear=${baseYear}&compareYear=${compareYear}&period=${period}&cutoffDate=${cutoffDate}${branchIds.map((b) => `&branch=${b}`).join('')}`;
 
+  function kpiPcts(kpis: typeof assignedKpis) {
+    return {
+      gmPctBase: kpis.base.sales ? (kpis.base.gp ?? 0) / kpis.base.sales : null,
+      gmPctCompare: kpis.compare.sales ? (kpis.compare.gp ?? 0) / kpis.compare.sales : null,
+      vaPctBase: kpis.base.sales && kpis.base.vaSales !== null ? kpis.base.vaSales / kpis.base.sales : null,
+      vaPctCompare: kpis.compare.sales && kpis.compare.vaSales !== null ? kpis.compare.vaSales / kpis.compare.sales : null,
+      nsPctBase: kpis.base.sales && kpis.base.nsSales !== null ? kpis.base.nsSales / kpis.base.sales : null,
+      nsPctCompare: kpis.compare.sales && kpis.compare.nsSales !== null ? kpis.compare.nsSales / kpis.compare.sales : null,
+    };
+  }
+
+  const aP = kpiPcts(assignedKpis);
+  const wP = kpiPcts(writtenKpis);
+
+  const minorsBase = `/api/scorecard/aggregate`;
+  const assignedExtra = { rep: decodedRep, repField: 'rep_1' };
+  const writtenExtra = { rep: decodedRep, repField: 'rep_3' };
+
   return (
-    <div className="p-4 md:p-6 space-y-5 max-w-7xl mx-auto">
+    <div className="p-4 md:p-6 space-y-6 max-w-7xl mx-auto">
       <style>{`
         @media print {
           body { background: white !important; color: black !important; }
@@ -122,10 +116,7 @@ export default async function RepScorecardPage({
       </div>
 
       <div className="space-y-0.5">
-        <h1 className="text-2xl font-bold text-white">
-          Rep: {decodedRep}
-          <span className="text-slate-400 font-normal text-base ml-2">Sales Rep Scorecard</span>
-        </h1>
+        <h1 className="text-2xl font-bold text-white">Rep: {decodedRep}</h1>
         <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-slate-400">
           <span>{baseYear} vs {compareYear}</span>
           <span className="text-slate-600">·</span>
@@ -143,36 +134,69 @@ export default async function RepScorecardPage({
         repCode={decodedRep}
       />
 
-      <Section title="3-Year Comparison">
-        <ComparisonTable entries={threeYear} />
-      </Section>
+      {/* ── Assigned Book (rep_1) ─────────────────────────────────── */}
+      <div className="space-y-4">
+        <div className="flex items-center gap-3 pt-2">
+          <div className="h-px flex-1 bg-slate-700" />
+          <SectionHeader label="Assigned Book" sub="Customers assigned to this rep (rep_1)" />
+          <div className="h-px flex-1 bg-slate-700" />
+        </div>
 
-      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
-        <KpiTile label="Sales" base={kpis.base.sales} compare={kpis.compare.sales} format="currency" />
-        <KpiTile label="Gross Profit" base={kpis.base.gp} compare={kpis.compare.gp} format="currency" />
-        <KpiTile label="Gross Margin %" base={gmPctBase} compare={gmPctCompare} format="percent" />
-        <KpiTile label="Value Add %" base={vaPctBase} compare={vaPctCompare} format="percent" />
-        <KpiTile label="Non-Stock %" base={nsPctBase} compare={nsPctCompare} format="percent" higherIsBetter={false} />
+        <Section title="3-Year Comparison">
+          <ComparisonTable entries={assignedThreeYear} />
+        </Section>
+
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
+          <KpiTile label="Sales" base={assignedKpis.base.sales} compare={assignedKpis.compare.sales} format="currency" />
+          <KpiTile label="Gross Profit" base={assignedKpis.base.gp} compare={assignedKpis.compare.gp} format="currency" />
+          <KpiTile label="Gross Margin %" base={aP.gmPctBase} compare={aP.gmPctCompare} format="percent" />
+          <KpiTile label="Value Add %" base={aP.vaPctBase} compare={aP.vaPctCompare} format="percent" />
+          <KpiTile label="Non-Stock %" base={aP.nsPctBase} compare={aP.nsPctCompare} format="percent" higherIsBetter={false} />
+        </div>
+
+        <Section title="Product Mix">
+          <ProductMajorTable rows={assignedMajors} params={fakeParams} baseYear={baseYear} compareYear={compareYear}
+            minorsApiPath={minorsBase} extraParams={assignedExtra} />
+        </Section>
+        <Section title="Sales by Type">
+          <SaleTypeTable rows={assignedSaleTypes} baseYear={baseYear} compareYear={compareYear} />
+        </Section>
+        <Section title="Detail Metrics">
+          <BottomMetrics kpis={assignedKpis} daysToPay={NO_DTP} baseYear={baseYear} compareYear={compareYear} />
+        </Section>
       </div>
 
-      <Section title="Product Mix">
-        <ProductMajorTable
-          rows={productMajors}
-          params={fakeCustomerParams}
-          baseYear={baseYear}
-          compareYear={compareYear}
-          minorsApiPath="/api/scorecard/aggregate"
-          extraParams={{ rep: decodedRep }}
-        />
-      </Section>
+      {/* ── Written Up (rep_3) ────────────────────────────────────── */}
+      <div className="space-y-4">
+        <div className="flex items-center gap-3 pt-4">
+          <div className="h-px flex-1 bg-slate-700" />
+          <SectionHeader label="Written Up" sub="Orders this rep entered, regardless of account assignment (rep_3)" />
+          <div className="h-px flex-1 bg-slate-700" />
+        </div>
 
-      <Section title="Sales by Type">
-        <SaleTypeTable rows={saleTypes} baseYear={baseYear} compareYear={compareYear} />
-      </Section>
+        <Section title="3-Year Comparison">
+          <ComparisonTable entries={writtenThreeYear} />
+        </Section>
 
-      <Section title="Detail Metrics">
-        <BottomMetrics kpis={kpis} daysToPay={NO_DTP} baseYear={baseYear} compareYear={compareYear} />
-      </Section>
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
+          <KpiTile label="Sales" base={writtenKpis.base.sales} compare={writtenKpis.compare.sales} format="currency" />
+          <KpiTile label="Gross Profit" base={writtenKpis.base.gp} compare={writtenKpis.compare.gp} format="currency" />
+          <KpiTile label="Gross Margin %" base={wP.gmPctBase} compare={wP.gmPctCompare} format="percent" />
+          <KpiTile label="Value Add %" base={wP.vaPctBase} compare={wP.vaPctCompare} format="percent" />
+          <KpiTile label="Non-Stock %" base={wP.nsPctBase} compare={wP.nsPctCompare} format="percent" higherIsBetter={false} />
+        </div>
+
+        <Section title="Product Mix">
+          <ProductMajorTable rows={writtenMajors} params={fakeParams} baseYear={baseYear} compareYear={compareYear}
+            minorsApiPath={minorsBase} extraParams={writtenExtra} />
+        </Section>
+        <Section title="Sales by Type">
+          <SaleTypeTable rows={writtenSaleTypes} baseYear={baseYear} compareYear={compareYear} />
+        </Section>
+        <Section title="Detail Metrics">
+          <BottomMetrics kpis={writtenKpis} daysToPay={NO_DTP} baseYear={baseYear} compareYear={compareYear} />
+        </Section>
+      </div>
     </div>
   );
 }

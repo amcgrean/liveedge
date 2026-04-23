@@ -93,6 +93,7 @@ export interface ScorecardPageData {
 export interface AggregateParams {
   branchIds: string[];  // empty = all branches
   repCode?: string;     // if set, scope to this sales rep
+  repField?: 'rep_1' | 'rep_3'; // rep_1=assigned rep, rep_3=who wrote the order; defaults to rep_1
   baseYear: number;
   compareYear: number;
   period: ScorecardPeriod;
@@ -110,9 +111,13 @@ export interface BranchSummaryRow {
 
 export interface RepListRow {
   repCode: string;
-  salesBase: number;
-  salesCompare: number;
-  gpBase: number;
-  gpCompare: number;
-  customerCount: number;
+  // assigned book (rep_1 — customer's primary rep)
+  assignedSalesBase: number;
+  assignedSalesCompare: number;
+  assignedGpBase: number;
+  assignedCustomerCount: number;
+  // written up (rep_3 — who entered the order)
+  writtenSalesBase: number;
+  writtenSalesCompare: number;
+  writtenGpBase: number;
 }
