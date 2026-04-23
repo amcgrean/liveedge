@@ -61,11 +61,9 @@ export async function GET(req: NextRequest) {
 
   const soIds = [...statsMap.keys()];
 
-  // Step 3: Fetch SO details + per-SO AR balance from ERP.
-  // AR is filtered to ref_num = so_id so we see what's open for this specific job,
-  // not the customer's entire AR balance.
   const erpSql = getErpSql();
 
+  // Step 3a: Fetch SO headers (no AR join — keep it simple).
   type SoRow = {
     so_id: string;
     cust_code: string | null;
@@ -74,37 +72,63 @@ export async function GET(req: NextRequest) {
     shipto_city: string | null;
     shipto_state: string | null;
     shipto_zip: string | null;
-    ar_balance: string | null;
   };
 
   const soHeaders = await erpSql<SoRow[]>`
     SELECT
       soh.so_id::text,
-      TRIM(soh.cust_code)  AS cust_code,
+      TRIM(soh.cust_code) AS cust_code,
       soh.cust_name,
       soh.shipto_address_1,
       soh.shipto_city,
       soh.shipto_state,
-      soh.shipto_zip,
-      COALESCE(ar.balance, 0)::text AS ar_balance
+      soh.shipto_zip
     FROM agility_so_header soh
-    LEFT JOIN LATERAL (
-      SELECT cust_key FROM agility_customers
-      WHERE TRIM(cust_code) = TRIM(soh.cust_code) AND is_deleted = false
-      LIMIT 1
-    ) ac ON true
-    LEFT JOIN (
-      SELECT cust_key, SUM(open_amt) AS balance
-      FROM agility_ar_open
-      WHERE is_deleted = false
-      GROUP BY cust_key
-    ) ar ON ar.cust_key = ac.cust_key
     WHERE soh.so_id::text = ANY(${soIds})
       AND soh.is_deleted = false
   `;
 
+  // Step 3b: Resolve cust_key for each unique cust_code (same pattern as /api/sales/customers/[code]/ar).
+  const uniqueCodes = [...new Set(soHeaders.map((s) => (s.cust_code ?? '').trim()).filter(Boolean))];
+  type CustKeyRow = { cust_code: string; cust_key: string };
+  const custKeyRows = uniqueCodes.length
+    ? await erpSql<CustKeyRow[]>`
+        SELECT DISTINCT ON (TRIM(cust_code))
+          TRIM(cust_code) AS cust_code,
+          cust_key::text  AS cust_key
+        FROM agility_customers
+        WHERE TRIM(cust_code) = ANY(${uniqueCodes})
+          AND is_deleted = false
+      `
+    : [];
+
+  // cust_code (lower) → cust_key string
+  const codeToKey = new Map(custKeyRows.map((r) => [r.cust_code.toLowerCase(), r.cust_key]));
+
+  // Step 3c: Fetch open AR totals by cust_key.
+  const custKeys = custKeyRows.map((r) => r.cust_key);
+  type ArRow = { cust_key: string; balance: string };
+  const arRows = custKeys.length
+    ? await erpSql<ArRow[]>`
+        SELECT cust_key::text AS cust_key, SUM(open_amt)::text AS balance
+        FROM agility_ar_open
+        WHERE cust_key::text = ANY(${custKeys})
+          AND is_deleted = false
+        GROUP BY cust_key
+      `
+    : [];
+
+  // cust_key string → open AR balance
+  const keyToBalance = new Map(arRows.map((r) => [r.cust_key, parseFloat(r.balance ?? '0') || 0]));
+
+  function arForCode(code: string | null): number {
+    const key = codeToKey.get((code ?? '').toLowerCase().trim());
+    return key ? (keyToBalance.get(key) ?? 0) : 0;
+  }
+
   // Step 4: Group by job site (canonical cust_code + shipto_address_1).
   // Aliased codes (e.g. hubb1700 → hubb1200) collapse into the same row.
+  // AR balance is per-customer (one lookup per unique cust_code, not summed per SO).
   type JobGroup = {
     cust_code: string | null;
     cust_name: string | null;
@@ -127,14 +151,16 @@ export async function GET(req: NextRequest) {
     if (!s) continue;
     const canonical = canonicalCustCode(so.cust_code);
     const key = `${canonical}|${(so.shipto_address_1 ?? '').toLowerCase()}`;
-    const g = groupMap.get(key) ?? {
+    const existing = groupMap.get(key);
+    const g = existing ?? {
       cust_code:        so.cust_code,
       cust_name:        so.cust_name,
       shipto_address_1: so.shipto_address_1,
       shipto_city:      so.shipto_city,
       shipto_state:     so.shipto_state,
       shipto_zip:       so.shipto_zip,
-      arBalance:        0,
+      // AR is per-customer — set once when creating the group, not accumulated per SO.
+      arBalance:        arForCode(so.cust_code),
       so_ids:           [],
       poCount:          0,
       woCount:          0,
@@ -142,10 +168,9 @@ export async function GET(req: NextRequest) {
       lastReceived:     new Date(0),
     };
     g.so_ids.push(so.so_id);
-    g.poCount      += s.poCount;
-    g.woCount      += s.woCount;
-    g.totalAmount  += s.totalAmount;
-    g.arBalance    += parseFloat(so.ar_balance ?? '0') || 0;
+    g.poCount     += s.poCount;
+    g.woCount     += s.woCount;
+    g.totalAmount += s.totalAmount;
     if (s.lastReceived > g.lastReceived) g.lastReceived = s.lastReceived;
     groupMap.set(key, g);
   }
