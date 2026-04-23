@@ -1,5 +1,6 @@
 import { fetchCustomerList } from '../../src/lib/scorecard/queries';
 import ScorecardListClient from './ScorecardListClient';
+import ScorecardTabs from './_components/ScorecardTabs';
 
 export default async function ScorecardIndexPage({
   searchParams,
@@ -18,12 +19,15 @@ export default async function ScorecardIndexPage({
   const customers = await fetchCustomerList(baseYear, compareYear, branchIds, search, 200);
 
   return (
-    <ScorecardListClient
-      customers={customers}
-      baseYear={baseYear}
-      compareYear={compareYear}
-      search={search}
-      branchIds={branchIds}
-    />
+    <div className="p-4 md:p-6 max-w-7xl mx-auto">
+      <ScorecardTabs />
+      <ScorecardListClient
+        customers={customers}
+        baseYear={baseYear}
+        compareYear={compareYear}
+        search={search}
+        branchIds={branchIds}
+      />
+    </div>
   );
 }

@@ -85,3 +85,34 @@ export interface ScorecardPageData {
   daysToPay: DaysToPayData;
   params: ScorecardParams;
 }
+
+// ---------------------------------------------------------------------------
+// Aggregate views (overview / branch / rep)
+// ---------------------------------------------------------------------------
+
+export interface AggregateParams {
+  branchIds: string[];  // empty = all branches
+  repCode?: string;     // if set, scope to this sales rep
+  baseYear: number;
+  compareYear: number;
+  period: ScorecardPeriod;
+  cutoffDate: string;
+}
+
+export interface BranchSummaryRow {
+  branchId: string;
+  salesBase: number;
+  salesCompare: number;
+  gpBase: number;
+  gpCompare: number;
+  customerCount: number;
+}
+
+export interface RepListRow {
+  repCode: string;
+  salesBase: number;
+  salesCompare: number;
+  gpBase: number;
+  gpCompare: number;
+  customerCount: number;
+}
