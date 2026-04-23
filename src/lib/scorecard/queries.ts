@@ -1,4 +1,4 @@
-import { getErpSql } from '../../../db/supabase';
+﻿import { getErpSql } from '../../../db/supabase';
 import type {
   ScorecardParams,
   AggregateParams,
@@ -113,7 +113,6 @@ export async function fetchCustomerList(
           array_agg(DISTINCT branch_id) FILTER (WHERE branch_id IS NOT NULL) AS branch_ids
         FROM customer_scorecard_fact
         WHERE is_deleted = false
-          AND NOT is_sale_type_excluded
           AND invoice_date >= ${dateFrom}::timestamp
           AND invoice_date < ${dateTo}::timestamp
           AND branch_id = ANY(${branchIds}::text[])
@@ -148,7 +147,6 @@ export async function fetchCustomerList(
           array_agg(DISTINCT branch_id) FILTER (WHERE branch_id IS NOT NULL) AS branch_ids
         FROM customer_scorecard_fact
         WHERE is_deleted = false
-          AND NOT is_sale_type_excluded
           AND invoice_date >= ${dateFrom}::timestamp
           AND invoice_date < ${dateTo}::timestamp
           AND (
@@ -252,7 +250,6 @@ export async function fetchKpis(params: ScorecardParams): Promise<KpiComparison>
               AND invoice_date::date <= ${compareCutoff}::date) AS is_compare
           FROM customer_scorecard_fact
           WHERE is_deleted = false
-            AND NOT is_sale_type_excluded
             AND customer_id = ${params.customerId}
             AND invoice_date >= ${dateFrom}::timestamp
             AND invoice_date < ${dateTo}::timestamp
@@ -297,7 +294,6 @@ export async function fetchKpis(params: ScorecardParams): Promise<KpiComparison>
               AND invoice_date::date <= ${compareCutoff}::date) AS is_compare
           FROM customer_scorecard_fact
           WHERE is_deleted = false
-            AND NOT is_sale_type_excluded
             AND customer_id = ${params.customerId}
             AND invoice_date >= ${dateFrom}::timestamp
             AND invoice_date < ${dateTo}::timestamp
@@ -403,7 +399,6 @@ export async function fetchThreeYear(params: ScorecardParams): Promise<ThreeYear
           )::text AS py2_gp
         FROM customer_scorecard_fact
         WHERE is_deleted = false
-          AND NOT is_sale_type_excluded
           AND customer_id = ${params.customerId}
           AND invoice_date >= ${String(prior2) + '-01-01'}::timestamp
           AND invoice_date < ${String(params.baseYear + 1) + '-01-01'}::timestamp
@@ -437,7 +432,6 @@ export async function fetchThreeYear(params: ScorecardParams): Promise<ThreeYear
           )::text AS py2_gp
         FROM customer_scorecard_fact
         WHERE is_deleted = false
-          AND NOT is_sale_type_excluded
           AND customer_id = ${params.customerId}
           AND invoice_date >= ${String(prior2) + '-01-01'}::timestamp
           AND invoice_date < ${String(params.baseYear + 1) + '-01-01'}::timestamp
@@ -500,7 +494,6 @@ export async function fetchProductMajors(params: ScorecardParams): Promise<Produ
           )::text AS gp_compare
         FROM customer_scorecard_fact
         WHERE is_deleted = false
-          AND NOT is_sale_type_excluded
           AND customer_id = ${params.customerId}
           AND invoice_date >= ${dateFrom}::timestamp
           AND invoice_date < ${dateTo}::timestamp
@@ -533,7 +526,6 @@ export async function fetchProductMajors(params: ScorecardParams): Promise<Produ
           )::text AS gp_compare
         FROM customer_scorecard_fact
         WHERE is_deleted = false
-          AND NOT is_sale_type_excluded
           AND customer_id = ${params.customerId}
           AND invoice_date >= ${dateFrom}::timestamp
           AND invoice_date < ${dateTo}::timestamp
@@ -603,7 +595,6 @@ export async function fetchProductMinors(
           )::text AS gp_compare
         FROM customer_scorecard_fact
         WHERE is_deleted = false
-          AND NOT is_sale_type_excluded
           AND customer_id = ${params.customerId}
           AND product_major_code = ${majorCode}
           AND invoice_date >= ${dateFrom}::timestamp
@@ -637,7 +628,6 @@ export async function fetchProductMinors(
           )::text AS gp_compare
         FROM customer_scorecard_fact
         WHERE is_deleted = false
-          AND NOT is_sale_type_excluded
           AND customer_id = ${params.customerId}
           AND product_major_code = ${majorCode}
           AND invoice_date >= ${dateFrom}::timestamp
@@ -675,6 +665,7 @@ export async function fetchSaleTypes(params: ScorecardParams): Promise<SaleTypeR
 
   type Row = {
     category: string | null;
+    is_excluded: boolean | null;
     sales_base: string | null;
     gp_base: string | null;
     sales_compare: string | null;
@@ -685,6 +676,7 @@ export async function fetchSaleTypes(params: ScorecardParams): Promise<SaleTypeR
     ? await sql<Row[]>`
         SELECT
           COALESCE(sale_type_reporting_category, 'Other') AS category,
+          BOOL_OR(is_sale_type_excluded) AS is_excluded,
           SUM(sales_amount) FILTER (
             WHERE invoice_date >= make_date(${params.baseYear}, 1, 1)
               AND invoice_date::date <= ${baseCutoff}::date
@@ -703,7 +695,6 @@ export async function fetchSaleTypes(params: ScorecardParams): Promise<SaleTypeR
           )::text AS gp_compare
         FROM customer_scorecard_fact
         WHERE is_deleted = false
-          AND NOT is_sale_type_excluded
           AND customer_id = ${params.customerId}
           AND invoice_date >= ${dateFrom}::timestamp
           AND invoice_date < ${dateTo}::timestamp
@@ -717,6 +708,7 @@ export async function fetchSaleTypes(params: ScorecardParams): Promise<SaleTypeR
     : await sql<Row[]>`
         SELECT
           COALESCE(sale_type_reporting_category, 'Other') AS category,
+          BOOL_OR(is_sale_type_excluded) AS is_excluded,
           SUM(sales_amount) FILTER (
             WHERE invoice_date >= make_date(${params.baseYear}, 1, 1)
               AND invoice_date::date <= ${baseCutoff}::date
@@ -735,7 +727,6 @@ export async function fetchSaleTypes(params: ScorecardParams): Promise<SaleTypeR
           )::text AS gp_compare
         FROM customer_scorecard_fact
         WHERE is_deleted = false
-          AND NOT is_sale_type_excluded
           AND customer_id = ${params.customerId}
           AND invoice_date >= ${dateFrom}::timestamp
           AND invoice_date < ${dateTo}::timestamp
@@ -748,6 +739,7 @@ export async function fetchSaleTypes(params: ScorecardParams): Promise<SaleTypeR
 
   return rows.map((r) => ({
     category: r.category ?? 'Other',
+    isExcluded: r.is_excluded ?? false,
     salesBase: toNum(r.sales_base) ?? 0,
     gpBase: toNum(r.gp_base) ?? 0,
     salesCompare: toNum(r.sales_compare) ?? 0,
@@ -787,7 +779,7 @@ export async function fetchDaysToPay(params: ScorecardParams): Promise<DaysToPay
 }
 
 // ---------------------------------------------------------------------------
-// Aggregate KPIs (company / branch / rep — no customer_id filter)
+// Aggregate KPIs (company / branch / rep â€” no customer_id filter)
 // ---------------------------------------------------------------------------
 
 export async function fetchAggregateKpis(
@@ -835,7 +827,7 @@ export async function fetchAggregateKpis(
                 AND csf.invoice_date::date <= ${compareCutoff}::date) AS is_compare
             FROM customer_scorecard_fact csf
             JOIN agility_so_header soh ON soh.so_id::text = csf.sales_order_number
-            WHERE csf.is_deleted = false AND NOT csf.is_sale_type_excluded
+            WHERE csf.is_deleted = false
               AND csf.invoice_date >= ${dateFrom}::timestamp
               AND csf.invoice_date < ${dateTo}::timestamp
               AND soh.${sql(repCol)} = ${params.repCode}
@@ -878,7 +870,7 @@ export async function fetchAggregateKpis(
                 AND csf.invoice_date::date <= ${compareCutoff}::date) AS is_compare
             FROM customer_scorecard_fact csf
             JOIN agility_so_header soh ON soh.so_id::text = csf.sales_order_number
-            WHERE csf.is_deleted = false AND NOT csf.is_sale_type_excluded
+            WHERE csf.is_deleted = false
               AND csf.invoice_date >= ${dateFrom}::timestamp
               AND csf.invoice_date < ${dateTo}::timestamp
               AND soh.${sql(repCol)} = ${params.repCode}
@@ -909,7 +901,7 @@ export async function fetchAggregateKpis(
           FROM f
         `;
   } else {
-    // No rep filter — direct fact table
+    // No rep filter â€” direct fact table
     rows = params.branchIds.length > 0
       ? await sql<Row[]>`
           WITH f AS (
@@ -921,7 +913,7 @@ export async function fetchAggregateKpis(
               (EXTRACT(YEAR FROM invoice_date)::int = ${params.compareYear}
                 AND invoice_date::date <= ${compareCutoff}::date) AS is_compare
             FROM customer_scorecard_fact
-            WHERE is_deleted = false AND NOT is_sale_type_excluded
+            WHERE is_deleted = false
               AND invoice_date >= ${dateFrom}::timestamp
               AND invoice_date < ${dateTo}::timestamp
               AND branch_id = ANY(${params.branchIds}::text[])
@@ -961,7 +953,7 @@ export async function fetchAggregateKpis(
               (EXTRACT(YEAR FROM invoice_date)::int = ${params.compareYear}
                 AND invoice_date::date <= ${compareCutoff}::date) AS is_compare
             FROM customer_scorecard_fact
-            WHERE is_deleted = false AND NOT is_sale_type_excluded
+            WHERE is_deleted = false
               AND invoice_date >= ${dateFrom}::timestamp
               AND invoice_date < ${dateTo}::timestamp
           )
@@ -1071,7 +1063,7 @@ export async function fetchAggregateThreeYear(
             )::text AS py2_gp
           FROM customer_scorecard_fact csf
           JOIN agility_so_header soh ON soh.so_id::text = csf.sales_order_number
-          WHERE csf.is_deleted = false AND NOT csf.is_sale_type_excluded
+          WHERE csf.is_deleted = false
             AND csf.invoice_date >= ${dateFrom}::timestamp
             AND csf.invoice_date < ${dateTo}::timestamp
             AND soh.${sql(repCol)} = ${params.repCode}
@@ -1105,7 +1097,7 @@ export async function fetchAggregateThreeYear(
             )::text AS py2_gp
           FROM customer_scorecard_fact csf
           JOIN agility_so_header soh ON soh.so_id::text = csf.sales_order_number
-          WHERE csf.is_deleted = false AND NOT csf.is_sale_type_excluded
+          WHERE csf.is_deleted = false
             AND csf.invoice_date >= ${dateFrom}::timestamp
             AND csf.invoice_date < ${dateTo}::timestamp
             AND soh.${sql(repCol)} = ${params.repCode}
@@ -1139,7 +1131,7 @@ export async function fetchAggregateThreeYear(
                 AND invoice_date < make_date(${prior2 + 1}, 1, 1)
             )::text AS py2_gp
           FROM customer_scorecard_fact
-          WHERE is_deleted = false AND NOT is_sale_type_excluded
+          WHERE is_deleted = false
             AND invoice_date >= ${dateFrom}::timestamp
             AND invoice_date < ${dateTo}::timestamp
             AND branch_id = ANY(${params.branchIds}::text[])
@@ -1171,7 +1163,7 @@ export async function fetchAggregateThreeYear(
                 AND invoice_date < make_date(${prior2 + 1}, 1, 1)
             )::text AS py2_gp
           FROM customer_scorecard_fact
-          WHERE is_deleted = false AND NOT is_sale_type_excluded
+          WHERE is_deleted = false
             AND invoice_date >= ${dateFrom}::timestamp
             AND invoice_date < ${dateTo}::timestamp
         `;
@@ -1221,7 +1213,7 @@ export async function fetchAggregateProductMajors(
             SUM(csf.gross_profit) FILTER (WHERE csf.${compareFilter})::text AS gp_compare
           FROM customer_scorecard_fact csf
           JOIN agility_so_header soh ON soh.so_id::text = csf.sales_order_number
-          WHERE csf.is_deleted = false AND NOT csf.is_sale_type_excluded
+          WHERE csf.is_deleted = false
             AND csf.invoice_date >= ${dateFrom}::timestamp
             AND csf.invoice_date < ${dateTo}::timestamp
             AND soh.${sql(repCol)} = ${params.repCode}
@@ -1238,7 +1230,7 @@ export async function fetchAggregateProductMajors(
             SUM(csf.gross_profit) FILTER (WHERE csf.${compareFilter})::text AS gp_compare
           FROM customer_scorecard_fact csf
           JOIN agility_so_header soh ON soh.so_id::text = csf.sales_order_number
-          WHERE csf.is_deleted = false AND NOT csf.is_sale_type_excluded
+          WHERE csf.is_deleted = false
             AND csf.invoice_date >= ${dateFrom}::timestamp
             AND csf.invoice_date < ${dateTo}::timestamp
             AND soh.${sql(repCol)} = ${params.repCode}
@@ -1255,7 +1247,7 @@ export async function fetchAggregateProductMajors(
             SUM(sales_amount) FILTER (WHERE ${compareFilter})::text AS sales_compare,
             SUM(gross_profit) FILTER (WHERE ${compareFilter})::text AS gp_compare
           FROM customer_scorecard_fact
-          WHERE is_deleted = false AND NOT is_sale_type_excluded
+          WHERE is_deleted = false
             AND invoice_date >= ${dateFrom}::timestamp
             AND invoice_date < ${dateTo}::timestamp
             AND branch_id = ANY(${params.branchIds}::text[])
@@ -1270,7 +1262,7 @@ export async function fetchAggregateProductMajors(
             SUM(sales_amount) FILTER (WHERE ${compareFilter})::text AS sales_compare,
             SUM(gross_profit) FILTER (WHERE ${compareFilter})::text AS gp_compare
           FROM customer_scorecard_fact
-          WHERE is_deleted = false AND NOT is_sale_type_excluded
+          WHERE is_deleted = false
             AND invoice_date >= ${dateFrom}::timestamp
             AND invoice_date < ${dateTo}::timestamp
           GROUP BY product_major_code, product_major
@@ -1324,7 +1316,7 @@ export async function fetchAggregateProductMinors(
             SUM(csf.gross_profit) FILTER (WHERE csf.${compareFilter})::text AS gp_compare
           FROM customer_scorecard_fact csf
           JOIN agility_so_header soh ON soh.so_id::text = csf.sales_order_number
-          WHERE csf.is_deleted = false AND NOT csf.is_sale_type_excluded
+          WHERE csf.is_deleted = false
             AND csf.product_major_code = ${majorCode}
             AND csf.invoice_date >= ${dateFrom}::timestamp
             AND csf.invoice_date < ${dateTo}::timestamp
@@ -1342,7 +1334,7 @@ export async function fetchAggregateProductMinors(
             SUM(csf.gross_profit) FILTER (WHERE csf.${compareFilter})::text AS gp_compare
           FROM customer_scorecard_fact csf
           JOIN agility_so_header soh ON soh.so_id::text = csf.sales_order_number
-          WHERE csf.is_deleted = false AND NOT csf.is_sale_type_excluded
+          WHERE csf.is_deleted = false
             AND csf.product_major_code = ${majorCode}
             AND csf.invoice_date >= ${dateFrom}::timestamp
             AND csf.invoice_date < ${dateTo}::timestamp
@@ -1360,7 +1352,7 @@ export async function fetchAggregateProductMinors(
             SUM(sales_amount) FILTER (WHERE ${compareFilter})::text AS sales_compare,
             SUM(gross_profit) FILTER (WHERE ${compareFilter})::text AS gp_compare
           FROM customer_scorecard_fact
-          WHERE is_deleted = false AND NOT is_sale_type_excluded
+          WHERE is_deleted = false
             AND product_major_code = ${majorCode}
             AND invoice_date >= ${dateFrom}::timestamp
             AND invoice_date < ${dateTo}::timestamp
@@ -1376,7 +1368,7 @@ export async function fetchAggregateProductMinors(
             SUM(sales_amount) FILTER (WHERE ${compareFilter})::text AS sales_compare,
             SUM(gross_profit) FILTER (WHERE ${compareFilter})::text AS gp_compare
           FROM customer_scorecard_fact
-          WHERE is_deleted = false AND NOT is_sale_type_excluded
+          WHERE is_deleted = false
             AND product_major_code = ${majorCode}
             AND invoice_date >= ${dateFrom}::timestamp
             AND invoice_date < ${dateTo}::timestamp
@@ -1410,6 +1402,7 @@ export async function fetchAggregateSaleTypes(
 
   type Row = {
     category: string | null;
+    is_excluded: boolean | null;
     sales_base: string | null; gp_base: string | null;
     sales_compare: string | null; gp_compare: string | null;
   };
@@ -1423,13 +1416,14 @@ export async function fetchAggregateSaleTypes(
     rows = params.branchIds.length > 0
       ? await sql<Row[]>`
           SELECT COALESCE(csf.sale_type_reporting_category, 'Other') AS category,
+            BOOL_OR(csf.is_sale_type_excluded) AS is_excluded,
             SUM(csf.sales_amount) FILTER (WHERE csf.${baseFilter})::text AS sales_base,
             SUM(csf.gross_profit) FILTER (WHERE csf.${baseFilter})::text AS gp_base,
             SUM(csf.sales_amount) FILTER (WHERE csf.${compareFilter})::text AS sales_compare,
             SUM(csf.gross_profit) FILTER (WHERE csf.${compareFilter})::text AS gp_compare
           FROM customer_scorecard_fact csf
           JOIN agility_so_header soh ON soh.so_id::text = csf.sales_order_number
-          WHERE csf.is_deleted = false AND NOT csf.is_sale_type_excluded
+          WHERE csf.is_deleted = false
             AND csf.invoice_date >= ${dateFrom}::timestamp
             AND csf.invoice_date < ${dateTo}::timestamp
             AND soh.${sql(repCol)} = ${params.repCode}
@@ -1439,13 +1433,14 @@ export async function fetchAggregateSaleTypes(
         `
       : await sql<Row[]>`
           SELECT COALESCE(csf.sale_type_reporting_category, 'Other') AS category,
+            BOOL_OR(csf.is_sale_type_excluded) AS is_excluded,
             SUM(csf.sales_amount) FILTER (WHERE csf.${baseFilter})::text AS sales_base,
             SUM(csf.gross_profit) FILTER (WHERE csf.${baseFilter})::text AS gp_base,
             SUM(csf.sales_amount) FILTER (WHERE csf.${compareFilter})::text AS sales_compare,
             SUM(csf.gross_profit) FILTER (WHERE csf.${compareFilter})::text AS gp_compare
           FROM customer_scorecard_fact csf
           JOIN agility_so_header soh ON soh.so_id::text = csf.sales_order_number
-          WHERE csf.is_deleted = false AND NOT csf.is_sale_type_excluded
+          WHERE csf.is_deleted = false
             AND csf.invoice_date >= ${dateFrom}::timestamp
             AND csf.invoice_date < ${dateTo}::timestamp
             AND soh.${sql(repCol)} = ${params.repCode}
@@ -1456,12 +1451,13 @@ export async function fetchAggregateSaleTypes(
     rows = params.branchIds.length > 0
       ? await sql<Row[]>`
           SELECT COALESCE(sale_type_reporting_category, 'Other') AS category,
+            BOOL_OR(is_sale_type_excluded) AS is_excluded,
             SUM(sales_amount) FILTER (WHERE ${baseFilter})::text AS sales_base,
             SUM(gross_profit) FILTER (WHERE ${baseFilter})::text AS gp_base,
             SUM(sales_amount) FILTER (WHERE ${compareFilter})::text AS sales_compare,
             SUM(gross_profit) FILTER (WHERE ${compareFilter})::text AS gp_compare
           FROM customer_scorecard_fact
-          WHERE is_deleted = false AND NOT is_sale_type_excluded
+          WHERE is_deleted = false
             AND invoice_date >= ${dateFrom}::timestamp
             AND invoice_date < ${dateTo}::timestamp
             AND branch_id = ANY(${params.branchIds}::text[])
@@ -1470,12 +1466,13 @@ export async function fetchAggregateSaleTypes(
         `
       : await sql<Row[]>`
           SELECT COALESCE(sale_type_reporting_category, 'Other') AS category,
+            BOOL_OR(is_sale_type_excluded) AS is_excluded,
             SUM(sales_amount) FILTER (WHERE ${baseFilter})::text AS sales_base,
             SUM(gross_profit) FILTER (WHERE ${baseFilter})::text AS gp_base,
             SUM(sales_amount) FILTER (WHERE ${compareFilter})::text AS sales_compare,
             SUM(gross_profit) FILTER (WHERE ${compareFilter})::text AS gp_compare
           FROM customer_scorecard_fact
-          WHERE is_deleted = false AND NOT is_sale_type_excluded
+          WHERE is_deleted = false
             AND invoice_date >= ${dateFrom}::timestamp
             AND invoice_date < ${dateTo}::timestamp
           GROUP BY sale_type_reporting_category
@@ -1485,6 +1482,7 @@ export async function fetchAggregateSaleTypes(
 
   return rows.map((r) => ({
     category: r.category ?? 'Other',
+    isExcluded: r.is_excluded ?? false,
     salesBase: toNum(r.sales_base) ?? 0,
     gpBase: toNum(r.gp_base) ?? 0,
     salesCompare: toNum(r.sales_compare) ?? 0,
@@ -1538,7 +1536,6 @@ export async function fetchBranchSummaries(
       )::text AS customer_count
     FROM customer_scorecard_fact
     WHERE is_deleted = false
-      AND NOT is_sale_type_excluded
       AND invoice_date >= ${dateFrom}::timestamp
       AND invoice_date < ${dateTo}::timestamp
       AND branch_id IS NOT NULL
@@ -1605,7 +1602,7 @@ export async function fetchRepList(
             ) AS customer_count
           FROM customer_scorecard_fact csf
           JOIN agility_so_header soh ON soh.so_id::text = csf.sales_order_number
-          WHERE csf.is_deleted = false AND NOT csf.is_sale_type_excluded
+          WHERE csf.is_deleted = false
             AND csf.invoice_date >= ${dateFrom}::timestamp
             AND csf.invoice_date < ${dateTo}::timestamp
             AND csf.branch_id = ANY(${branchIds}::text[])
@@ -1628,7 +1625,7 @@ export async function fetchRepList(
             ) AS gp_base
           FROM customer_scorecard_fact csf
           JOIN agility_so_header soh ON soh.so_id::text = csf.sales_order_number
-          WHERE csf.is_deleted = false AND NOT csf.is_sale_type_excluded
+          WHERE csf.is_deleted = false
             AND csf.invoice_date >= ${dateFrom}::timestamp
             AND csf.invoice_date < ${dateTo}::timestamp
             AND csf.branch_id = ANY(${branchIds}::text[])
@@ -1670,7 +1667,7 @@ export async function fetchRepList(
             ) AS customer_count
           FROM customer_scorecard_fact csf
           JOIN agility_so_header soh ON soh.so_id::text = csf.sales_order_number
-          WHERE csf.is_deleted = false AND NOT csf.is_sale_type_excluded
+          WHERE csf.is_deleted = false
             AND csf.invoice_date >= ${dateFrom}::timestamp
             AND csf.invoice_date < ${dateTo}::timestamp
             AND soh.rep_1 IS NOT NULL
@@ -1692,7 +1689,7 @@ export async function fetchRepList(
             ) AS gp_base
           FROM customer_scorecard_fact csf
           JOIN agility_so_header soh ON soh.so_id::text = csf.sales_order_number
-          WHERE csf.is_deleted = false AND NOT csf.is_sale_type_excluded
+          WHERE csf.is_deleted = false
             AND csf.invoice_date >= ${dateFrom}::timestamp
             AND csf.invoice_date < ${dateTo}::timestamp
             AND soh.rep_3 IS NOT NULL

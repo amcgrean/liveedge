@@ -54,6 +54,7 @@ export interface SaleTypeRow {
   gpBase: number;
   salesCompare: number;
   gpCompare: number;
+  isExcluded: boolean;
 }
 
 export interface ThreeYearEntry {
