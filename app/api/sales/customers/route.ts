@@ -14,38 +14,54 @@ export async function GET(req: NextRequest) {
   try {
     const sql = getErpSql();
 
-    type Row = {
+    type CustRow = {
       cust_code: string;
       cust_name: string | null;
-      salesperson: string | null;
     };
 
-    const rows = await sql<Row[]>`
-      WITH cust AS (
-        SELECT cust_code, MAX(cust_name) AS cust_name
-        FROM agility_customers
-        WHERE is_deleted = false
-          ${q ? sql`AND (cust_code ILIKE ${'%' + q + '%'} OR cust_name ILIKE ${'%' + q + '%'})` : sql``}
-        GROUP BY cust_code
-        ORDER BY MAX(cust_name) ASC NULLS LAST
-        LIMIT ${limit}
-      )
-      SELECT c.cust_code, c.cust_name, rep.salesperson
-      FROM cust c
-      LEFT JOIN LATERAL (
-        SELECT UPPER(TRIM(salesperson)) AS salesperson
+    const custRows = await sql<CustRow[]>`
+      SELECT cust_code, MAX(cust_name) AS cust_name
+      FROM agility_customers
+      WHERE is_deleted = false
+        ${q ? sql`AND (cust_code ILIKE ${'%' + q + '%'} OR cust_name ILIKE ${'%' + q + '%'})` : sql``}
+      GROUP BY cust_code
+      ORDER BY MAX(cust_name) ASC NULLS LAST
+      LIMIT ${limit}
+    `;
+
+    if (custRows.length === 0) {
+      return NextResponse.json({ customers: [] });
+    }
+
+    const codes = custRows.map((r) => r.cust_code);
+
+    type RepRow = { cust_code: string; salesperson: string };
+    let reps: RepRow[] = [];
+    try {
+      reps = await sql<RepRow[]>`
+        SELECT DISTINCT ON (cust_code)
+          cust_code,
+          UPPER(TRIM(salesperson)) AS salesperson
         FROM agility_so_header
-        WHERE TRIM(cust_code) = TRIM(c.cust_code)
+        WHERE cust_code = ANY(${codes})
           AND is_deleted = false
           AND salesperson IS NOT NULL
           AND TRIM(salesperson) <> ''
-        ORDER BY created_date DESC NULLS LAST
-        LIMIT 1
-      ) rep ON true
-      ORDER BY c.cust_name ASC NULLS LAST
-    `;
+        ORDER BY cust_code, created_date DESC NULLS LAST
+      `;
+    } catch (repErr) {
+      console.error('[sales/customers GET reps]', repErr);
+    }
 
-    return NextResponse.json({ customers: rows });
+    const repMap = new Map(reps.map((r) => [r.cust_code, r.salesperson]));
+
+    const customers = custRows.map((r) => ({
+      cust_code: r.cust_code,
+      cust_name: r.cust_name,
+      salesperson: repMap.get(r.cust_code) ?? null,
+    }));
+
+    return NextResponse.json({ customers });
   } catch (err) {
     console.error('[sales/customers GET]', err);
     return NextResponse.json({ error: 'Query failed' }, { status: 500 });
