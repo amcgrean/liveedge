@@ -18,44 +18,7 @@ export async function GET(req: NextRequest, { params }: { params: Params }) {
   if (role !== 'admin') return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
 
   const { soId } = await params;
-  const db = getDb();
-
-  // All emails confirmed/matched to this SO, newest first
-  const allEmails = await db.select({
-    id:                   hubbellEmails.id,
-    fromEmail:            hubbellEmails.fromEmail,
-    fromName:             hubbellEmails.fromName,
-    subject:              hubbellEmails.subject,
-    emailType:            hubbellEmails.emailType,
-    matchStatus:          hubbellEmails.matchStatus,
-    matchConfidence:      hubbellEmails.matchConfidence,
-    extractedPoNumber:    hubbellEmails.extractedPoNumber,
-    extractedWoNumber:    hubbellEmails.extractedWoNumber,
-    extractedAmount:      hubbellEmails.extractedAmount,
-    extractedDescription: hubbellEmails.extractedDescription,
-    extractedAddress:     hubbellEmails.extractedAddress,
-    extractedCity:        hubbellEmails.extractedCity,
-    receivedAt:           hubbellEmails.receivedAt,
-  })
-    .from(hubbellEmails)
-    .where(eq(hubbellEmails.confirmedSoId, soId))
-    .orderBy(desc(hubbellEmails.receivedAt));
-
-  // Deduplicate by PO/WO number — keep the most recently received per unique order number.
-  type EmailRow = (typeof allEmails)[0];
-  const seenKeys = new Set<string>();
-  const emails: EmailRow[] = [];
-  let duplicateCount = 0;
-
-  for (const email of allEmails) {
-    const key = email.extractedPoNumber ?? email.extractedWoNumber ?? null;
-    if (key) {
-      if (seenKeys.has(key)) { duplicateCount++; continue; }
-      seenKeys.add(key);
-    }
-    emails.push(email);
-  }
-
+  const db  = getDb();
   const erpSql = getErpSql();
 
   type SoHeader = {
@@ -74,9 +37,29 @@ export async function GET(req: NextRequest, { params }: { params: Params }) {
     shipto_zip: string | null;
   };
 
-  let soHeader: SoHeader | null = null;
-  try {
-    const [row] = await erpSql<SoHeader[]>`
+  // Run emails (bids DB) and SO header (ERP) in parallel — they're independent.
+  const [allEmails, soHeaderRows] = await Promise.all([
+    db.select({
+      id:                   hubbellEmails.id,
+      fromEmail:            hubbellEmails.fromEmail,
+      fromName:             hubbellEmails.fromName,
+      subject:              hubbellEmails.subject,
+      emailType:            hubbellEmails.emailType,
+      matchStatus:          hubbellEmails.matchStatus,
+      matchConfidence:      hubbellEmails.matchConfidence,
+      extractedPoNumber:    hubbellEmails.extractedPoNumber,
+      extractedWoNumber:    hubbellEmails.extractedWoNumber,
+      extractedAmount:      hubbellEmails.extractedAmount,
+      extractedDescription: hubbellEmails.extractedDescription,
+      extractedAddress:     hubbellEmails.extractedAddress,
+      extractedCity:        hubbellEmails.extractedCity,
+      receivedAt:           hubbellEmails.receivedAt,
+    })
+      .from(hubbellEmails)
+      .where(eq(hubbellEmails.confirmedSoId, soId))
+      .orderBy(desc(hubbellEmails.receivedAt)),
+
+    erpSql<SoHeader[]>`
       SELECT
         so_id::text,
         TRIM(cust_code)   AS cust_code,
@@ -95,47 +78,54 @@ export async function GET(req: NextRequest, { params }: { params: Params }) {
       WHERE so_id::text = ${soId}
         AND is_deleted = false
       LIMIT 1
-    `;
-    soHeader = row ?? null;
-  } catch (err) {
-    console.error('[hubbell/jobs] SO header fetch failed', err);
+    `.catch((err) => { console.error('[hubbell/jobs] SO header fetch failed', err); return [] as SoHeader[]; }),
+  ]);
+
+  const soHeader: SoHeader | null = soHeaderRows[0] ?? null;
+
+  // Deduplicate emails by PO/WO number — keep the most recently received per unique order number.
+  type EmailRow = (typeof allEmails)[0];
+  const seenKeys = new Set<string>();
+  const emails: EmailRow[] = [];
+  let duplicateCount = 0;
+
+  for (const email of allEmails) {
+    const key = email.extractedPoNumber ?? email.extractedWoNumber ?? null;
+    if (key) {
+      if (seenKeys.has(key)) { duplicateCount++; continue; }
+      seenKeys.add(key);
+    }
+    emails.push(email);
   }
 
-  // All SOs for the same customer + same ship-to address — used for the
-  // reconciliation view where the admin matches WO/PO emails to specific SOs.
+  // Related SOs: same cust_code, same shipto_address_1 (exact match — faster than LIKE).
   type RelatedSo = SoHeader;
   let relatedSOs: RelatedSo[] = [];
 
   if (soHeader?.cust_code) {
-    const addrPrefix = (soHeader.shipto_address_1 ?? '').trim().toLowerCase().slice(0, 12);
-    try {
-      relatedSOs = await erpSql<RelatedSo[]>`
-        SELECT
-          so_id::text,
-          TRIM(cust_code)   AS cust_code,
-          cust_name,
-          reference,
-          TRIM(po_number)   AS po_number,
-          sale_type,
-          so_status,
-          salesperson,
-          expect_date::text AS expect_date,
-          shipto_address_1,
-          shipto_city,
-          shipto_state,
-          shipto_zip
-        FROM agility_so_header
-        WHERE TRIM(cust_code) = ${soHeader.cust_code.trim()}
-          AND is_deleted = false
-          ${addrPrefix
-            ? erpSql`AND LOWER(TRIM(shipto_address_1)) LIKE ${addrPrefix + '%'}`
-            : erpSql``}
-        ORDER BY so_id DESC
-        LIMIT 50
-      `;
-    } catch (err) {
-      console.error('[hubbell/jobs] Related SOs fetch failed', err);
-    }
+    const addr = (soHeader.shipto_address_1 ?? '').trim();
+    relatedSOs = await erpSql<RelatedSo[]>`
+      SELECT
+        so_id::text,
+        TRIM(cust_code)   AS cust_code,
+        cust_name,
+        reference,
+        TRIM(po_number)   AS po_number,
+        sale_type,
+        so_status,
+        salesperson,
+        expect_date::text AS expect_date,
+        shipto_address_1,
+        shipto_city,
+        shipto_state,
+        shipto_zip
+      FROM agility_so_header
+      WHERE TRIM(cust_code) = ${soHeader.cust_code.trim()}
+        AND TRIM(shipto_address_1) = ${addr}
+        AND is_deleted = false
+      ORDER BY so_id DESC
+      LIMIT 50
+    `.catch((err) => { console.error('[hubbell/jobs] Related SOs fetch failed', err); return [] as RelatedSo[]; });
   }
 
   // Summary stats — amounts counted once per unique PO/WO
