@@ -32,9 +32,11 @@ interface Props {
   params: ScorecardParams;
   baseYear: number;
   compareYear: number;
+  minorsApiPath?: string;                  // defaults to /api/scorecard/${customerId}
+  extraParams?: Record<string, string>;    // additional query params for the minors fetch
 }
 
-export default function ProductMajorTable({ rows, params, baseYear, compareYear }: Props) {
+export default function ProductMajorTable({ rows, params, baseYear, compareYear, minorsApiPath, extraParams }: Props) {
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
   const [minors, setMinors] = useState<Record<string, ProductMinorRow[]>>({});
   const [loading, setLoading] = useState<Record<string, boolean>>({});
@@ -65,7 +67,11 @@ export default function ProductMajorTable({ rows, params, baseYear, compareYear 
         cutoffDate: params.cutoffDate,
       });
       params.branchIds.forEach((b) => sp.append('branch', b));
-      const res = await fetch(`/api/scorecard/${encodeURIComponent(params.customerId)}/minors?${sp}`);
+      if (extraParams) {
+        Object.entries(extraParams).forEach(([k, v]) => sp.set(k, v));
+      }
+      const basePath = minorsApiPath ?? `/api/scorecard/${encodeURIComponent(params.customerId)}`;
+      const res = await fetch(`${basePath}/minors?${sp}`);
       if (res.ok) {
         const data = await res.json() as { minors: ProductMinorRow[] };
         setMinors((p) => ({ ...p, [code]: data.minors }));
