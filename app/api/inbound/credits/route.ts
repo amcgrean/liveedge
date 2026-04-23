@@ -4,7 +4,9 @@ import { getErpSql } from '../../../../db/supabase';
 import { S3Client, PutObjectCommand } from '@aws-sdk/client-s3';
 
 // POST /api/inbound/credits
-// Resend inbound webhook — fires on email.received for *@rma.beisser.cloud
+// Resend inbound webhook — fires on email.received for:
+//   credits@beisser.cloud  (current — IT whitelisted beisser.cloud domain)
+//   *@rma.beisser.cloud    (legacy subdomain — kept for transition period)
 // Verifies signature via Svix, uploads attachments to R2, upserts credit_images rows.
 
 type ResendAttachment = {
@@ -86,8 +88,8 @@ async function fetchAttachmentBuffer(att: ResendAttachment, emailId: string | un
 }
 
 function extractRmaNumber(subject: string | null, text: string | null, toAddresses: string[]): string {
-  // Primary: extract from the TO address — most reliable because Resend routes
-  // each email to {so_id}@rma.beisser.cloud, so the local part IS the CM number.
+  // Legacy: if using {so_id}@rma.beisser.cloud, the local part IS the CM number.
+  // With credits@beisser.cloud the local part is just "credits" — falls through.
   for (const addr of toAddresses) {
     const m = addr.match(/^([^@]+)@rma\.beisser\.cloud$/i);
     if (m) {
@@ -96,7 +98,7 @@ function extractRmaNumber(subject: string | null, text: string | null, toAddress
     }
   }
 
-  // Fallback: parse subject / first 500 chars of body
+  // Primary for credits@beisser.cloud: parse subject / first 500 chars of body
   const sources = [subject ?? '', text?.slice(0, 500) ?? ''];
   for (const src of sources) {
     // RMA 12345, RMA#12345, CM-12345, Credit 12345, SO 12345
@@ -158,9 +160,15 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ ok: true, skipped: true });
   }
 
-  // Only handle emails addressed to *@rma.beisser.cloud — ignore events from other inbound domains
+  // Only handle emails addressed to credits@beisser.cloud or *@rma.beisser.cloud (legacy).
+  // The hubbell@beisser.cloud guard in /api/inbound/hubbell is a separate exact match,
+  // so there is no collision even though both addresses share the beisser.cloud domain.
   const toAddresses = payload.data.to ?? [];
-  if (!toAddresses.some(addr => /@rma\.beisser\.cloud$/i.test(addr))) {
+  const isCreditsEmail = toAddresses.some(addr =>
+    /^credits@beisser\.cloud$/i.test(addr) ||
+    /@rma\.beisser\.cloud$/i.test(addr)
+  );
+  if (!isCreditsEmail) {
     return NextResponse.json({ ok: true, skipped: true });
   }
 
