@@ -95,7 +95,7 @@ export default async function BranchScorecardPage({
     fetchAggregateThreeYear(params),
     fetchAggregateProductMajors(params),
     fetchAggregateSaleTypes(params),
-    fetchCustomerList(baseYear, compareYear, [branchId], '', 15),
+    fetchCustomerList(baseYear, compareYear, [branchId], '', 15, period, cutoffDate),
   ]);
 
   const topCustomerExportData = topCustomers.map((c) => ({
@@ -204,8 +204,8 @@ export default async function BranchScorecardPage({
             <thead>
               <tr className="border-b border-slate-700">
                 <th className="pb-2 text-left text-slate-400 font-medium">Customer</th>
-                <th className="pb-2 text-right text-slate-300 font-semibold pr-4">{baseYear} Sales</th>
-                <th className="pb-2 text-right text-slate-300 font-semibold pr-4">{compareYear} Sales</th>
+                <th className="pb-2 text-right text-slate-300 font-semibold pr-4">{baseYear}{period === 'YTD' ? ' YTD' : ''} Sales</th>
+                <th className="pb-2 text-right text-slate-300 font-semibold pr-4">{compareYear}{period === 'YTD' ? ' YTD' : ''} Sales</th>
                 <th className="pb-2 text-right text-slate-300 font-semibold">GM%</th>
               </tr>
             </thead>
@@ -234,7 +234,7 @@ export default async function BranchScorecardPage({
         </div>
         <div className="pt-1 text-right">
           <Link
-            href={`/scorecard?baseYear=${baseYear}&compareYear=${compareYear}&branch=${branchId}`}
+            href={`/scorecard?baseYear=${baseYear}&compareYear=${compareYear}&branch=${branchId}&period=${period}&cutoffDate=${cutoffDate}`}
             className="text-xs text-cyan-400 hover:underline"
           >
             View all customers →

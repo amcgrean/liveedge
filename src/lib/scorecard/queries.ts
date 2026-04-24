@@ -86,8 +86,11 @@ export async function fetchCustomerList(
   branchIds: string[],
   search: string,
   limit = 200,
+  period = 'Full Year',
+  cutoffDate = '',
 ): Promise<CustomerListRow[]> {
   const sql = getErpSql();
+  const { baseCutoff, compareCutoff } = getCutoffs(baseYear, compareYear, cutoffDate || `${baseYear}-12-31`, period);
   const { dateFrom, dateTo } = yearRange(baseYear, compareYear);
 
   type Row = {
@@ -106,15 +109,15 @@ export async function fetchCustomerList(
           MAX(customer_name) AS customer_name,
           SUM(sales_amount) FILTER (
             WHERE invoice_date >= make_date(${baseYear}, 1, 1)
-              AND invoice_date < make_date(${baseYear + 1}, 1, 1)
+              AND invoice_date::date <= ${baseCutoff}::date
           )::numeric(18,2)::text AS sales_base,
           SUM(sales_amount) FILTER (
             WHERE invoice_date >= make_date(${compareYear}, 1, 1)
-              AND invoice_date < make_date(${compareYear + 1}, 1, 1)
+              AND invoice_date::date <= ${compareCutoff}::date
           )::numeric(18,2)::text AS sales_compare,
           SUM(gross_profit) FILTER (
             WHERE invoice_date >= make_date(${baseYear}, 1, 1)
-              AND invoice_date < make_date(${baseYear + 1}, 1, 1)
+              AND invoice_date::date <= ${baseCutoff}::date
           )::numeric(18,2)::text AS gp_base,
           array_agg(DISTINCT branch_id) FILTER (WHERE branch_id IS NOT NULL) AS branch_ids
         FROM customer_scorecard_fact
@@ -130,7 +133,7 @@ export async function fetchCustomerList(
         GROUP BY customer_id
         ORDER BY SUM(sales_amount) FILTER (
           WHERE invoice_date >= make_date(${baseYear}, 1, 1)
-            AND invoice_date < make_date(${baseYear + 1}, 1, 1)
+            AND invoice_date::date <= ${baseCutoff}::date
         ) DESC NULLS LAST
         LIMIT ${limit}
       `
@@ -140,15 +143,15 @@ export async function fetchCustomerList(
           MAX(customer_name) AS customer_name,
           SUM(sales_amount) FILTER (
             WHERE invoice_date >= make_date(${baseYear}, 1, 1)
-              AND invoice_date < make_date(${baseYear + 1}, 1, 1)
+              AND invoice_date::date <= ${baseCutoff}::date
           )::numeric(18,2)::text AS sales_base,
           SUM(sales_amount) FILTER (
             WHERE invoice_date >= make_date(${compareYear}, 1, 1)
-              AND invoice_date < make_date(${compareYear + 1}, 1, 1)
+              AND invoice_date::date <= ${compareCutoff}::date
           )::numeric(18,2)::text AS sales_compare,
           SUM(gross_profit) FILTER (
             WHERE invoice_date >= make_date(${baseYear}, 1, 1)
-              AND invoice_date < make_date(${baseYear + 1}, 1, 1)
+              AND invoice_date::date <= ${baseCutoff}::date
           )::numeric(18,2)::text AS gp_base,
           array_agg(DISTINCT branch_id) FILTER (WHERE branch_id IS NOT NULL) AS branch_ids
         FROM customer_scorecard_fact
@@ -163,7 +166,7 @@ export async function fetchCustomerList(
         GROUP BY customer_id
         ORDER BY SUM(sales_amount) FILTER (
           WHERE invoice_date >= make_date(${baseYear}, 1, 1)
-            AND invoice_date < make_date(${baseYear + 1}, 1, 1)
+            AND invoice_date::date <= ${baseCutoff}::date
         ) DESC NULLS LAST
         LIMIT ${limit}
       `;

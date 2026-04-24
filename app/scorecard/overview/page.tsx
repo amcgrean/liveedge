@@ -172,9 +172,9 @@ export default async function OverviewPage({
             <thead>
               <tr className="border-b border-slate-700">
                 <th className="pb-2 text-left text-slate-400 font-medium">Branch</th>
-                <th className="pb-2 text-right text-slate-300 font-semibold pr-4">{baseYear} Sales</th>
-                <th className="pb-2 text-right text-slate-300 font-semibold pr-4">{compareYear} Sales</th>
-                <th className="pb-2 text-right text-slate-300 font-semibold pr-4">{baseYear} GP</th>
+                <th className="pb-2 text-right text-slate-300 font-semibold pr-4">{baseYear}{period === 'YTD' ? ' YTD' : ''} Sales</th>
+                <th className="pb-2 text-right text-slate-300 font-semibold pr-4">{compareYear}{period === 'YTD' ? ' YTD' : ''} Sales</th>
+                <th className="pb-2 text-right text-slate-300 font-semibold pr-4">{baseYear}{period === 'YTD' ? ' YTD' : ''} GP</th>
                 <th className="pb-2 text-right text-slate-300 font-semibold pr-4">GM%</th>
                 <th className="pb-2 text-right text-slate-300 font-semibold">Customers</th>
               </tr>
