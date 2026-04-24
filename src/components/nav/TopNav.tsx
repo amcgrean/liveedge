@@ -250,7 +250,6 @@ function getDomains(tvBranch: string): Domain[] {
         { href: '/sales/transactions',  label: 'Transactions' },
         { href: '/sales/products',      label: 'Products & Stock' },
         { href: '/sales/tracker',       label: 'Sales Tracker',    requireAnyRole: ['sales', 'ops', 'supervisor'] },
-        { href: '/sales/rep-dashboard', label: 'Rep Dashboard',    requireAnyRole: ['sales'] },
         { href: '/credits',             label: 'RMA Credits' },
       ],
     },

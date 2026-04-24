@@ -90,7 +90,6 @@ Branch-scoped routes respect the active branch cookie; admin users see all branc
 | `/api/sales/orders/[so_number]/shipments` | GET | Shipment history | Invoice/ship dates from `agility_shipments` |
 | `/api/sales/orders/[so_number]/push-to-erp` | POST | Manual Agility sync | Calls `agilityApi.call()` passthrough |
 | `/api/sales/metrics` | GET | Branch sales KPIs | YTD/month revenue, order counts. Also used by `/sales/reports` |
-| `/api/sales/rep-metrics` | GET | Salesperson performance | Per-rep metrics. Used by `/sales/rep-dashboard` |
 | `/api/sales/reports` | GET | Custom report data | Exportable |
 | `/api/sales/history` | GET | Customer purchase history | Invoiced/closed orders |
 | `/api/sales/products` | GET | Item master search | Reads `agility_items`. Stale mirror — use `/api/erp/price-check` for live pricing |
@@ -364,7 +363,6 @@ Branch-scoped routes respect the active branch cookie; admin users see all branc
 | Purchase History | `/sales/history` | `/api/sales/history` |
 | Products & Stock | `/sales/products` | `/api/sales/products` |
 | Reports | `/sales/reports` | `/api/sales/metrics`, `/api/sales/reports` |
-| Rep Dashboard | `/sales/rep-dashboard` | `/api/sales/rep-metrics` |
 
 ### Purchasing
 | Page | Route | API Used |
