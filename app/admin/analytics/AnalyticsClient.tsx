@@ -53,7 +53,7 @@ function label(path: string) {
 
 type PageRow = {
   path: string;
-  user_id: number;
+  user_id: string;
   username: string | null;
   full_name: string | null;
   visit_count: number;
@@ -61,7 +61,7 @@ type PageRow = {
 };
 
 type TopPage = { path: string; total_visits: number; unique_users: number };
-type TopUser = { user_id: number; username: string | null; full_name: string | null; total_visits: number; pages_visited: number };
+type TopUser = { user_id: string; username: string | null; full_name: string | null; total_visits: number; pages_visited: number };
 
 type AnalyticsData = {
   rows: PageRow[];

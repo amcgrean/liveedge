@@ -17,10 +17,11 @@ export async function GET(req: NextRequest) {
   try {
     const db = getDb();
 
-    // Raw SQL via drizzle's execute — bids.page_visits joined to bids."user"
+    // Raw SQL via drizzle's execute — bids.page_visits joined to public.app_users
+    // page_visits.user_id is TEXT storing the app_users.id (integer) as a string
     type PageRow = {
       path: string;
-      user_id: number;
+      user_id: string;
       username: string | null;
       full_name: string | null;
       visit_count: number;
@@ -35,12 +36,12 @@ export async function GET(req: NextRequest) {
       `SELECT
          pv.path,
          pv.user_id,
-         u.username,
-         u.full_name,
+         au.username,
+         au.display_name AS full_name,
          pv.visit_count,
          pv.last_visited_at::text
        FROM bids.page_visits pv
-       LEFT JOIN bids."user" u ON u.id = pv.user_id
+       LEFT JOIN public.app_users au ON au.id::text = pv.user_id
        ${orderExpr}
        LIMIT ${limit}`
     );
@@ -58,7 +59,7 @@ export async function GET(req: NextRequest) {
       .slice(0, 20);
 
     // Aggregate: top users by total visits
-    const byUser = new Map<number, { user_id: number; username: string | null; full_name: string | null; total_visits: number; pages_visited: number }>();
+    const byUser = new Map<string, { user_id: string; username: string | null; full_name: string | null; total_visits: number; pages_visited: number }>();
     for (const r of rows) {
       const cur = byUser.get(r.user_id) ?? {
         user_id: r.user_id, username: r.username, full_name: r.full_name,
