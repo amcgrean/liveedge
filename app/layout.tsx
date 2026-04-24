@@ -2,14 +2,18 @@ import type { Metadata, Viewport } from 'next';
 import './globals.css';
 import { SessionProvider } from 'next-auth/react';
 import { auth } from '../auth';
+import { ServiceWorkerRegister } from '@/components/pwa/ServiceWorkerRegister';
 
 export const metadata: Metadata = {
   title: 'Beisser LiveEdge',
   description: 'Beisser Lumber internal operations platform — estimating, yard, dispatch, purchasing, and sales tools.',
   manifest: '/manifest.webmanifest',
   icons: {
-    icon: '/icons/beisser_B_full_color_RGB.png',
-    apple: '/icons/beisser_B_full_color_RGB.png',
+    icon: [
+      { url: '/icons/icon-192.png', sizes: '192x192', type: 'image/png' },
+      { url: '/icons/icon-512.png', sizes: '512x512', type: 'image/png' },
+    ],
+    apple: [{ url: '/icons/icon-192.png', sizes: '192x192', type: 'image/png' }],
   },
   appleWebApp: {
     capable: true,
@@ -34,6 +38,7 @@ export default async function RootLayout({
     <html lang="en">
       <body>
         <SessionProvider session={session}>{children}</SessionProvider>
+        <ServiceWorkerRegister />
       </body>
     </html>
   );

@@ -29,6 +29,12 @@ out/
 next-env.d.ts
 tsconfig.tsbuildinfo
 
+# Serwist PWA build artifacts
+public/sw.js
+public/sw.js.map
+public/swe-worker-*.js
+public/swe-worker-*.js.map
+
 # Claude Code local files
 .claude/
 AGENTS.md
