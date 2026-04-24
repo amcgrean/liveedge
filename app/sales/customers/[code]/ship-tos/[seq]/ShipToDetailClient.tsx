@@ -5,9 +5,9 @@ import Link from 'next/link';
 import { ArrowLeft, MapPin, Package, Ruler, FileText, ExternalLink } from 'lucide-react';
 import { usePageTracking } from '@/hooks/usePageTracking';
 
-type JobDetail = {
+type ShipToDetail = {
   customer: { cust_code: string; cust_name: string | null };
-  job: {
+  shipTo: {
     seq_num: number | null;
     shipto_name: string | null;
     address_1: string | null;
@@ -56,26 +56,26 @@ const SO_STATUS: Record<string, { label: string; color: string }> = {
   C: { label: 'Closed',    color: 'text-gray-500' },
 };
 
-export default function JobDetailClient({ code, seq }: { code: string; seq: string }) {
+export default function ShipToDetailClient({ code, seq }: { code: string; seq: string }) {
   usePageTracking();
-  const [data, setData] = useState<JobDetail | null>(null);
+  const [data, setData] = useState<ShipToDetail | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
   useEffect(() => {
     setLoading(true);
-    fetch(`/api/sales/customers/${encodeURIComponent(code)}/jobs/${encodeURIComponent(seq)}`)
+    fetch(`/api/sales/customers/${encodeURIComponent(code)}/ship-tos/${encodeURIComponent(seq)}`)
       .then((r) => {
-        if (!r.ok) throw new Error('Job not found');
+        if (!r.ok) throw new Error('Ship-to not found');
         return r.json();
       })
-      .then((d: JobDetail) => setData(d))
-      .catch(() => setError('Job not found or data unavailable.'))
+      .then((d: ShipToDetail) => setData(d))
+      .catch(() => setError('Ship-to not found or data unavailable.'))
       .finally(() => setLoading(false));
   }, [code, seq]);
 
   if (loading) {
-    return <div className="max-w-5xl mx-auto px-4 py-16 text-center text-gray-500">Loading job...</div>;
+    return <div className="max-w-5xl mx-auto px-4 py-16 text-center text-gray-500">Loading ship-to...</div>;
   }
 
   if (error || !data) {
@@ -84,18 +84,18 @@ export default function JobDetailClient({ code, seq }: { code: string; seq: stri
         <Link href={`/sales/customers/${encodeURIComponent(code)}`} className="flex items-center gap-2 text-sm text-gray-400 hover:text-white mb-6">
           <ArrowLeft className="w-4 h-4" /> Back to Customer
         </Link>
-        <div className="text-red-400">{error || 'Job not found.'}</div>
+        <div className="text-red-400">{error || 'Ship-to not found.'}</div>
       </div>
     );
   }
 
-  const { customer, job, orders, takeoffs, quotes } = data;
-  const jobTitle = job.shipto_name
-    || job.address_1
-    || (job.seq_num == null ? 'No ship-to assigned' : `Ship-To #${job.seq_num}`);
-  const addressParts = [job.address_1, [job.city, job.state].filter(Boolean).join(', '), job.zip].filter(Boolean);
-  const mapQuery = job.lat && job.lon
-    ? `${job.lat},${job.lon}`
+  const { customer, shipTo, orders, takeoffs, quotes } = data;
+  const shipToTitle = shipTo.shipto_name
+    || shipTo.address_1
+    || (shipTo.seq_num == null ? 'No ship-to assigned' : `Ship-To #${shipTo.seq_num}`);
+  const addressParts = [shipTo.address_1, [shipTo.city, shipTo.state].filter(Boolean).join(', '), shipTo.zip].filter(Boolean);
+  const mapQuery = shipTo.lat && shipTo.lon
+    ? `${shipTo.lat},${shipTo.lon}`
     : addressParts.length
     ? addressParts.join(', ')
     : null;
@@ -113,7 +113,7 @@ export default function JobDetailClient({ code, seq }: { code: string; seq: stri
       <div className="mb-6">
         <h1 className="text-xl sm:text-2xl font-bold text-white break-words flex items-start gap-2">
           <MapPin className="w-5 h-5 text-cyan-400 shrink-0 mt-1" />
-          {jobTitle}
+          {shipToTitle}
         </h1>
         <div className="text-sm text-gray-400 mt-1 break-words pl-7">
           <Link
@@ -151,7 +151,7 @@ export default function JobDetailClient({ code, seq }: { code: string; seq: stri
       {/* Orders */}
       <Section title="Orders" count={orders.length}>
         {orders.length === 0 ? (
-          <EmptyState text="No orders for this job." />
+          <EmptyState text="No orders for this ship-to." />
         ) : (
           <>
             {/* Mobile cards */}
