@@ -46,15 +46,17 @@ export async function GET(req: NextRequest) {
           WITH filtered AS (
             SELECT
               so_id,
-              COALESCE(expect_date, synced_at)::date AS order_date,
+              created_date::date AS order_date,
               COALESCE(NULLIF(TRIM(sale_type), ''), 'UNKNOWN') AS sale_type,
               COALESCE(NULLIF(TRIM(ship_via), ''), 'UNKNOWN') AS ship_via,
               cust_name,
-              UPPER(COALESCE(so_status, '—')) AS so_status
+              UPPER(COALESCE(so_status, '')) AS so_status
             FROM agility_so_header
             WHERE is_deleted = false
               AND system_id = ${effectiveBranch}
-              AND COALESCE(expect_date, synced_at) >= ${since}::date
+              AND created_date >= ${since}::date
+              AND created_date <= CURRENT_DATE
+              AND UPPER(COALESCE(so_status, '')) != 'C'
           )
           SELECT json_build_object(
             'daily_orders', (
@@ -101,14 +103,16 @@ export async function GET(req: NextRequest) {
           WITH filtered AS (
             SELECT
               so_id,
-              COALESCE(expect_date, synced_at)::date AS order_date,
+              created_date::date AS order_date,
               COALESCE(NULLIF(TRIM(sale_type), ''), 'UNKNOWN') AS sale_type,
               COALESCE(NULLIF(TRIM(ship_via), ''), 'UNKNOWN') AS ship_via,
               cust_name,
-              UPPER(COALESCE(so_status, '—')) AS so_status
+              UPPER(COALESCE(so_status, '')) AS so_status
             FROM agility_so_header
             WHERE is_deleted = false
-              AND COALESCE(expect_date, synced_at) >= ${since}::date
+              AND created_date >= ${since}::date
+              AND created_date <= CURRENT_DATE
+              AND UPPER(COALESCE(so_status, '')) != 'C'
           )
           SELECT json_build_object(
             'daily_orders', (

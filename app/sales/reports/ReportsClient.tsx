@@ -18,12 +18,12 @@ type DailyRow = { order_date: string; count: number };
 
 const SO_STATUS: Record<string, { label: string; cls: string }> = {
   O: { label: 'Open',      cls: 'bg-blue-900/60 text-blue-300 border-blue-700/60' },
+  B: { label: 'Blank',     cls: 'bg-slate-800 text-slate-400 border-slate-600' },
   K: { label: 'Picking',   cls: 'bg-yellow-900/60 text-yellow-300 border-yellow-700/60' },
   S: { label: 'Staged',    cls: 'bg-orange-900/60 text-orange-300 border-orange-700/60' },
   D: { label: 'Delivered', cls: 'bg-cyan-900/60 text-cyan-300 border-cyan-700/60' },
   I: { label: 'Invoiced',  cls: 'bg-emerald-900/60 text-emerald-300 border-emerald-700/60' },
   P: { label: 'Picked',    cls: 'bg-indigo-900/60 text-indigo-300 border-indigo-700/60' },
-  C: { label: 'Closed',    cls: 'bg-slate-800 text-slate-400 border-slate-600' },
 };
 
 const BRANCH_OPTIONS = [
