@@ -38,34 +38,40 @@ export async function GET(req: NextRequest) {
   const detailLimit = Math.min(500, parseInt(searchParams.get('detail_limit') ?? '250', 10) || 250);
 
   const windowDays = windowParam === '7d' ? 7 : windowParam === '90d' ? 90 : 30;
+  // Compute start date in JS — same pattern as sales/reports to avoid INTERVAL arithmetic
+  const since = new Date(Date.now() - windowDays * 86_400_000).toISOString().slice(0, 10);
 
   try {
     const sql = getErpSql();
 
     type SummaryRow = { grp: string; cnt: number };
 
-    // Parallel queries for summaries + detail
+    // Parallel queries for summaries + detail.
+    // The detail query uses a correlated subquery for line_count instead of
+    // a JOIN on agility_so_lines — the JOIN pattern multiplies rows
+    // (shipments × lines per SO) before GROUP BY, causing slow scans on
+    // large windows.
     const [byDate, bySaleType, byShipVia, detail] = await Promise.all([
       sql<{ ship_date: string; cnt: number }[]>`
         SELECT CAST(sh.ship_date AS DATE)::text AS ship_date, COUNT(DISTINCT soh.so_id) AS cnt
         FROM agility_shipments sh
         JOIN agility_so_header soh ON soh.system_id = sh.system_id AND soh.so_id = sh.so_id
         WHERE soh.is_deleted = false
-          AND CAST(sh.ship_date AS DATE) >= CURRENT_DATE - (${windowDays} * INTERVAL '1 day')
-          AND CAST(sh.ship_date AS DATE) < CURRENT_DATE + INTERVAL '1 day'
+          AND CAST(sh.ship_date AS DATE) >= ${since}::date
+          AND CAST(sh.ship_date AS DATE) <= CURRENT_DATE
           ${saleTypeParam !== 'all' ? sql`AND UPPER(COALESCE(soh.sale_type,'')) = ${saleTypeParam.toUpperCase()}` : sql``}
           ${branchParam ? sql`AND soh.system_id = ${branchParam}` : sql``}
           AND UPPER(COALESCE(soh.sale_type,'')) NOT IN ('DIRECT','WILLCALL','XINSTALL','HOLD')
         GROUP BY CAST(sh.ship_date AS DATE)
-        ORDER BY CAST(sh.ship_date AS DATE) DESC
+        ORDER BY CAST(sh.ship_date AS DATE) ASC
       `,
       sql<SummaryRow[]>`
         SELECT COALESCE(soh.sale_type,'Unknown') AS grp, COUNT(DISTINCT soh.so_id) AS cnt
         FROM agility_shipments sh
         JOIN agility_so_header soh ON soh.system_id = sh.system_id AND soh.so_id = sh.so_id
         WHERE soh.is_deleted = false
-          AND CAST(sh.ship_date AS DATE) >= CURRENT_DATE - (${windowDays} * INTERVAL '1 day')
-          AND CAST(sh.ship_date AS DATE) < CURRENT_DATE + INTERVAL '1 day'
+          AND CAST(sh.ship_date AS DATE) >= ${since}::date
+          AND CAST(sh.ship_date AS DATE) <= CURRENT_DATE
           ${branchParam ? sql`AND soh.system_id = ${branchParam}` : sql``}
           AND UPPER(COALESCE(soh.sale_type,'')) NOT IN ('DIRECT','WILLCALL','XINSTALL','HOLD')
         GROUP BY soh.sale_type
@@ -76,12 +82,12 @@ export async function GET(req: NextRequest) {
         FROM agility_shipments sh
         JOIN agility_so_header soh ON soh.system_id = sh.system_id AND soh.so_id = sh.so_id
         WHERE soh.is_deleted = false
-          AND CAST(sh.ship_date AS DATE) >= CURRENT_DATE - (${windowDays} * INTERVAL '1 day')
-          AND CAST(sh.ship_date AS DATE) < CURRENT_DATE + INTERVAL '1 day'
+          AND CAST(sh.ship_date AS DATE) >= ${since}::date
+          AND CAST(sh.ship_date AS DATE) <= CURRENT_DATE
           ${saleTypeParam !== 'all' ? sql`AND UPPER(COALESCE(soh.sale_type,'')) = ${saleTypeParam.toUpperCase()}` : sql``}
           ${branchParam ? sql`AND soh.system_id = ${branchParam}` : sql``}
           AND UPPER(COALESCE(soh.sale_type,'')) NOT IN ('DIRECT','WILLCALL','XINSTALL','HOLD')
-        GROUP BY COALESCE(sh.ship_via, soh.ship_via,'Unknown')
+        GROUP BY COALESCE(sh.ship_via, soh.ship_via, 'Unknown')
         ORDER BY cnt DESC
         LIMIT 20
       `,
@@ -92,17 +98,21 @@ export async function GET(req: NextRequest) {
           soh.so_id::text AS so_id,
           soh.sale_type,
           COALESCE(sh.ship_via, soh.ship_via) AS ship_via,
-          COUNT(DISTINCT shd.sequence)::int AS line_count
+          COALESCE((
+            SELECT COUNT(*)::int
+            FROM agility_so_lines sol
+            WHERE sol.system_id = soh.system_id
+              AND sol.so_id = soh.so_id
+              AND sol.is_deleted = false
+          ), 0) AS line_count
         FROM agility_shipments sh
         JOIN agility_so_header soh ON soh.system_id = sh.system_id AND soh.so_id = sh.so_id
-        LEFT JOIN agility_so_lines shd ON shd.system_id = soh.system_id AND shd.so_id = soh.so_id AND shd.is_deleted = false
         WHERE soh.is_deleted = false
-          AND CAST(sh.ship_date AS DATE) >= CURRENT_DATE - (${windowDays} * INTERVAL '1 day')
-          AND CAST(sh.ship_date AS DATE) < CURRENT_DATE + INTERVAL '1 day'
+          AND CAST(sh.ship_date AS DATE) >= ${since}::date
+          AND CAST(sh.ship_date AS DATE) <= CURRENT_DATE
           ${saleTypeParam !== 'all' ? sql`AND UPPER(COALESCE(soh.sale_type,'')) = ${saleTypeParam.toUpperCase()}` : sql``}
           ${branchParam ? sql`AND soh.system_id = ${branchParam}` : sql``}
           AND UPPER(COALESCE(soh.sale_type,'')) NOT IN ('DIRECT','WILLCALL','XINSTALL','HOLD')
-        GROUP BY CAST(sh.ship_date AS DATE), soh.system_id, soh.so_id, soh.sale_type, COALESCE(sh.ship_via, soh.ship_via)
         ORDER BY CAST(sh.ship_date AS DATE) DESC, soh.so_id DESC
         LIMIT ${detailLimit}
       `,
