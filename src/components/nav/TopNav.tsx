@@ -259,10 +259,15 @@ function getDomains(tvBranch: string): Domain[] {
       label: 'Management',
       icon: <BarChart3 className="w-4 h-4" />,
       dropdown: true,
-      isActive: (p) => p.startsWith('/sales/reports') || p.startsWith('/scorecard'),
+      isActive: (p) => p.startsWith('/management') || p.startsWith('/sales/reports') || p.startsWith('/scorecard'),
       links: [
-        { href: '/sales/reports', label: 'Reports' },
-        { href: '/scorecard',     label: 'Customer Scorecard' },
+        { href: '/management',          label: 'Management Hub' },
+        { href: '/scorecard/overview',  label: 'Company Overview' },
+        { href: '/scorecard/branch/20GR', label: 'By Branch' },
+        { href: '/scorecard/rep',       label: 'By Sales Rep' },
+        { href: '/scorecard/product',   label: 'Product Groups' },
+        { href: '/scorecard',           label: 'Customer Scorecard' },
+        { href: '/sales/reports',       label: 'Sales Reports' },
       ],
     },
     {

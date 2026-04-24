@@ -2,6 +2,7 @@ import Link from 'next/link';
 import { fetchRepList } from '../../../src/lib/scorecard/queries';
 import ScorecardTabs from '../_components/ScorecardTabs';
 import AggregateFilterBar from '../_components/AggregateFilterBar';
+import ExportTableButton from '../../../src/components/shared/ExportTableButton';
 import { ChevronRight } from 'lucide-react';
 
 function fmt$(n: number): string {
@@ -41,6 +42,16 @@ export default async function RepListPage({
 
   const periodLabel = period === 'YTD' ? `YTD thru ${cutoffDate}` : 'Full Year';
 
+  const repExportData = reps.map((r) => ({
+    Rep: r.repCode,
+    [`${baseYear} Assigned Sales`]: r.assignedSalesBase,
+    [`${compareYear} Assigned Sales`]: r.assignedSalesCompare,
+    'Assigned GM%': r.assignedSalesBase ? `${((r.assignedGpBase / r.assignedSalesBase) * 100).toFixed(1)}%` : '—',
+    [`${baseYear} Written Sales`]: r.writtenSalesBase,
+    [`${compareYear} Written Sales`]: r.writtenSalesCompare,
+    'Written GM%': r.writtenSalesBase ? `${((r.writtenGpBase / r.writtenSalesBase) * 100).toFixed(1)}%` : '—',
+  }));
+
   return (
     <div className="p-4 md:p-6 space-y-5 max-w-7xl mx-auto">
       <ScorecardTabs />
@@ -69,6 +80,9 @@ export default async function RepListPage({
         branchIds={branchIds}
       />
 
+      <div className="flex justify-end mb-2 print:hidden">
+        <ExportTableButton data={repExportData} filename={`rep-scorecard-${baseYear}`} />
+      </div>
       <div className="overflow-x-auto">
         <table className="w-full text-sm">
           <thead>

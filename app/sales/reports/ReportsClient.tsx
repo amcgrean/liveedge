@@ -4,6 +4,8 @@ import React, { useState, useEffect, useCallback } from 'react';
 import Link from 'next/link';
 import { BarChart2, RefreshCw, TrendingUp, Users, Truck, Activity, ChevronLeft } from 'lucide-react';
 import { usePageTracking } from '@/hooks/usePageTracking';
+import HouseLoader from '@/components/scorecard/HouseLoader';
+import ExportTableButton from '@/components/shared/ExportTableButton';
 
 interface ReportsData {
   period_days: number;
@@ -288,14 +290,25 @@ export default function ReportsClient({ isAdmin, userBranch }: Props) {
       </div>
 
       {loading && !data && (
-        <div className="flex items-center justify-center py-24 text-slate-500">
-          <RefreshCw className="w-5 h-5 animate-spin mr-2" />
+        <div className="flex items-center justify-center py-24 text-slate-500 gap-3">
+          <HouseLoader size={48} />
           <span className="text-sm">Loading analytics…</span>
         </div>
       )}
 
       {data && (
         <>
+          {/* Export all data */}
+          <div className="flex justify-end">
+            <ExportTableButton
+              data={data.daily_orders.map((d) => ({
+                Date: d.order_date,
+                Orders: d.count,
+              }))}
+              filename={`daily-orders-${period}d`}
+            />
+          </div>
+
           {/* KPI summary */}
           <div>
             <SectionTitle>Summary · Last {period} days</SectionTitle>
@@ -368,6 +381,15 @@ export default function ReportsClient({ isAdmin, userBranch }: Props) {
                   <span className="ml-auto text-xs text-slate-500 tabular-nums shrink-0">
                     {saleTypeTotal.toLocaleString()}
                   </span>
+                  <ExportTableButton
+                    data={data.by_sale_type.map((s) => ({
+                      'Sale Type': s.sale_type,
+                      Count: s.count,
+                      'Prior Year': prevSaleTypeMap.get(s.sale_type) ?? '',
+                      'Share %': saleTypeTotal > 0 ? `${((s.count / saleTypeTotal) * 100).toFixed(1)}%` : '—',
+                    }))}
+                    filename="by-sale-type"
+                  />
                 </div>
                 {data.by_sale_type.length === 0 ? (
                   <p className="text-slate-500 text-sm text-center py-4">No data</p>
@@ -396,6 +418,14 @@ export default function ReportsClient({ isAdmin, userBranch }: Props) {
                   <span className="ml-auto text-xs text-slate-500 tabular-nums shrink-0">
                     {shipTotal.toLocaleString()}
                   </span>
+                  <ExportTableButton
+                    data={data.by_ship_via.map((s) => ({
+                      'Ship Via': s.ship_via,
+                      Count: s.count,
+                      'Share %': shipTotal > 0 ? `${((s.count / shipTotal) * 100).toFixed(1)}%` : '—',
+                    }))}
+                    filename="by-ship-via"
+                  />
                 </div>
                 {data.by_ship_via.length === 0 ? (
                   <p className="text-slate-500 text-sm text-center py-4">No data</p>
@@ -423,6 +453,15 @@ export default function ReportsClient({ isAdmin, userBranch }: Props) {
                   <span className="ml-auto text-xs text-slate-500 tabular-nums shrink-0">
                     {statusTotal.toLocaleString()}
                   </span>
+                  <ExportTableButton
+                    data={data.status_breakdown.map((s) => ({
+                      'Status Code': s.so_status,
+                      'Status Label': SO_STATUS[s.so_status]?.label ?? s.so_status,
+                      Count: s.cnt,
+                      'Share %': statusTotal > 0 ? `${((s.cnt / statusTotal) * 100).toFixed(1)}%` : '—',
+                    }))}
+                    filename="order-status"
+                  />
                 </div>
                 {data.status_breakdown.length === 0 ? (
                   <p className="text-slate-500 text-sm text-center py-4">No data</p>
@@ -465,6 +504,17 @@ export default function ReportsClient({ isAdmin, userBranch }: Props) {
                 <span className="ml-auto text-xs text-slate-500">
                   last {period} days · {customerTotal.toLocaleString()} total
                 </span>
+                <ExportTableButton
+                  data={data.top_customers.map((c, i) => ({
+                    Rank: i + 1,
+                    Customer: c.cust_name ?? 'Unknown',
+                    'This Period': c.order_count,
+                    'Prior Year': prevCustomerMap.get(c.cust_name) ?? '',
+                    'Share %': customerTotal > 0 ? `${((c.order_count / customerTotal) * 100).toFixed(1)}%` : '—',
+                  }))}
+                  filename={`top-customers-${period}d`}
+                  className="ml-1"
+                />
               </div>
               <div className="overflow-x-auto">
                 <table className="w-full text-sm">

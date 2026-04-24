@@ -6,6 +6,7 @@ import { useRouter } from 'next/navigation';
 import { Search, BarChart2, ChevronRight } from 'lucide-react';
 import { usePageTracking } from '@/hooks/usePageTracking';
 import type { CustomerListRow } from '@/lib/scorecard/types';
+import ExportTableButton from '@/components/shared/ExportTableButton';
 
 const BRANCHES = [
   { id: '10FD', label: 'Fort Dodge' },
@@ -105,6 +106,21 @@ export default function ScorecardListClient({
             Year-over-year performance by customer
           </p>
         </div>
+        {customers.length > 0 && (
+          <ExportTableButton
+            data={customers.map((c) => ({
+              'Customer ID': c.customerId,
+              Customer: c.customerName,
+              [`${activeBaseYear} Sales`]: c.salesBase,
+              [`${activeCompareYear} Sales`]: c.salesCompare,
+              [`${activeBaseYear} GP`]: c.gpBase,
+              'GM%': c.salesBase > 0 ? `${((c.gpBase / c.salesBase) * 100).toFixed(1)}%` : '—',
+              Branches: c.branchIds.join(', '),
+            }))}
+            filename={`customer-scorecard-${activeBaseYear}`}
+            className="print:hidden"
+          />
+        )}
       </div>
 
       {/* Filters */}
