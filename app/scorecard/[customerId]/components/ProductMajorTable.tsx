@@ -1,7 +1,8 @@
 'use client';
 
 import React, { useState } from 'react';
-import { ChevronRight, Loader2, ExternalLink } from 'lucide-react';
+import { ChevronRight, ExternalLink } from 'lucide-react';
+import HouseLoader from '@/components/scorecard/HouseLoader';
 import type {
   ProductMajorRow,
   ProductMinorRow,
@@ -38,33 +39,42 @@ function MiniBar({ value, max }: { value: number; max: number }) {
   );
 }
 
+function LoadingRow({ colSpan = 7, label }: { colSpan?: number; label: string }) {
+  return (
+    <tr>
+      <td colSpan={colSpan} className="py-4">
+        <div className="flex items-center justify-center gap-3 text-slate-500 text-xs">
+          <HouseLoader size={38} />
+          <span className="text-slate-600">{label}</span>
+        </div>
+      </td>
+    </tr>
+  );
+}
+
 interface Props {
   rows: ProductMajorRow[];
   params: ScorecardParams;
   baseYear: number;
   compareYear: number;
-  minorsApiPath?: string;                  // defaults to /api/scorecard/${customerId}
-  extraParams?: Record<string, string>;    // additional query params for the minors fetch
+  minorsApiPath?: string;
+  extraParams?: Record<string, string>;
 }
 
 export default function ProductMajorTable({ rows, params, baseYear, compareYear, minorsApiPath, extraParams }: Props) {
-  // Major → Minor
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
   const [minors, setMinors] = useState<Record<string, ProductMinorRow[]>>({});
   const [loading, setLoading] = useState<Record<string, boolean>>({});
 
-  // Minor → Items
   const [expandedItems, setExpandedItems] = useState<Record<string, boolean>>({});
   const [itemsData, setItemsData] = useState<Record<string, ProductItemRow[]>>({});
   const [loadingItems, setLoadingItems] = useState<Record<string, boolean>>({});
 
-  // Item → Orders (customer scorecard only)
   const [expandedOrders, setExpandedOrders] = useState<Record<string, boolean>>({});
   const [ordersData, setOrdersData] = useState<Record<string, ProductOrderRow[]>>({});
   const [loadingOrders, setLoadingOrders] = useState<Record<string, boolean>>({});
 
   const basePath = minorsApiPath ?? `/api/scorecard/${encodeURIComponent(params.customerId)}`;
-  // Orders are only available on customer-level scorecards (not aggregate)
   const ordersEnabled = !basePath.includes('aggregate');
 
   const maxBase = Math.max(...rows.map((r) => r.salesBase), 1);
@@ -87,18 +97,11 @@ export default function ProductMajorTable({ rows, params, baseYear, compareYear,
   }
 
   async function toggleMinors(majorCode: string) {
-    if (expanded[majorCode]) {
-      setExpanded((p) => ({ ...p, [majorCode]: false }));
-      return;
-    }
-    if (minors[majorCode]) {
-      setExpanded((p) => ({ ...p, [majorCode]: true }));
-      return;
-    }
+    if (expanded[majorCode]) { setExpanded((p) => ({ ...p, [majorCode]: false })); return; }
+    if (minors[majorCode]) { setExpanded((p) => ({ ...p, [majorCode]: true })); return; }
     setLoading((p) => ({ ...p, [majorCode]: true }));
     try {
-      const sp = buildSp({ majorCode });
-      const res = await fetch(`${basePath}/minors?${sp}`);
+      const res = await fetch(`${basePath}/minors?${buildSp({ majorCode })}`);
       if (res.ok) {
         const data = await res.json() as { minors: ProductMinorRow[] };
         setMinors((p) => ({ ...p, [majorCode]: data.minors }));
@@ -111,18 +114,11 @@ export default function ProductMajorTable({ rows, params, baseYear, compareYear,
 
   async function toggleItems(majorCode: string, minorCode: string) {
     const key = `${majorCode}:${minorCode}`;
-    if (expandedItems[key]) {
-      setExpandedItems((p) => ({ ...p, [key]: false }));
-      return;
-    }
-    if (itemsData[key]) {
-      setExpandedItems((p) => ({ ...p, [key]: true }));
-      return;
-    }
+    if (expandedItems[key]) { setExpandedItems((p) => ({ ...p, [key]: false })); return; }
+    if (itemsData[key]) { setExpandedItems((p) => ({ ...p, [key]: true })); return; }
     setLoadingItems((p) => ({ ...p, [key]: true }));
     try {
-      const sp = buildSp({ majorCode, minorCode });
-      const res = await fetch(`${basePath}/items?${sp}`);
+      const res = await fetch(`${basePath}/items?${buildSp({ majorCode, minorCode })}`);
       if (res.ok) {
         const data = await res.json() as { items: ProductItemRow[] };
         setItemsData((p) => ({ ...p, [key]: data.items }));
@@ -135,18 +131,11 @@ export default function ProductMajorTable({ rows, params, baseYear, compareYear,
 
   async function toggleOrders(majorCode: string, minorCode: string, itemNumber: string) {
     const key = `${majorCode}:${minorCode}:${itemNumber}`;
-    if (expandedOrders[key]) {
-      setExpandedOrders((p) => ({ ...p, [key]: false }));
-      return;
-    }
-    if (ordersData[key]) {
-      setExpandedOrders((p) => ({ ...p, [key]: true }));
-      return;
-    }
+    if (expandedOrders[key]) { setExpandedOrders((p) => ({ ...p, [key]: false })); return; }
+    if (ordersData[key]) { setExpandedOrders((p) => ({ ...p, [key]: true })); return; }
     setLoadingOrders((p) => ({ ...p, [key]: true }));
     try {
-      const sp = buildSp({ majorCode, minorCode, itemNumber });
-      const res = await fetch(`${basePath}/orders?${sp}`);
+      const res = await fetch(`${basePath}/orders?${buildSp({ majorCode, minorCode, itemNumber })}`);
       if (res.ok) {
         const data = await res.json() as { orders: ProductOrderRow[] };
         setOrdersData((p) => ({ ...p, [key]: data.orders }));
@@ -174,6 +163,7 @@ export default function ProductMajorTable({ rows, params, baseYear, compareYear,
         <tbody>
           {rows.map((r) => (
             <React.Fragment key={r.productMajorCode}>
+
               {/* ── Major row ── */}
               <tr
                 className="border-b border-slate-800 hover:bg-slate-800/30 cursor-pointer transition"
@@ -181,13 +171,9 @@ export default function ProductMajorTable({ rows, params, baseYear, compareYear,
               >
                 <td className="py-2 text-slate-200 flex items-center gap-1">
                   {loading[r.productMajorCode]
-                    ? <Loader2 className="w-3.5 h-3.5 animate-spin text-slate-400" />
+                    ? <HouseLoader size={16} />
                     : (
-                      <ChevronRight
-                        className={`w-3.5 h-3.5 text-slate-500 transition-transform shrink-0 ${
-                          expanded[r.productMajorCode] ? 'rotate-90' : ''
-                        }`}
-                      />
+                      <ChevronRight className={`w-3.5 h-3.5 text-slate-500 transition-transform shrink-0 ${expanded[r.productMajorCode] ? 'rotate-90' : ''}`} />
                     )
                   }
                   <span>{r.productMajor}</span>
@@ -200,6 +186,11 @@ export default function ProductMajorTable({ rows, params, baseYear, compareYear,
                 <td className="py-2 text-right font-mono tabular-nums text-slate-400 pr-3">{fmt$(r.gpCompare)}</td>
                 <td className="py-2 text-right font-mono tabular-nums text-slate-400">{fmtPct(r.salesCompare, r.gpCompare)}</td>
               </tr>
+
+              {/* Loading placeholder — minors */}
+              {loading[r.productMajorCode] && (
+                <LoadingRow label="Loading product minors…" />
+              )}
 
               {/* ── Minor rows ── */}
               {expanded[r.productMajorCode] && (minors[r.productMajorCode] ?? []).map((m) => {
@@ -214,13 +205,9 @@ export default function ProductMajorTable({ rows, params, baseYear, compareYear,
                     >
                       <td className="py-1.5 pl-7 text-slate-400 text-xs flex items-center gap-1">
                         {minorItemsLoading
-                          ? <Loader2 className="w-3 h-3 animate-spin text-slate-500" />
+                          ? <HouseLoader size={14} />
                           : (
-                            <ChevronRight
-                              className={`w-3 h-3 text-slate-600 transition-transform shrink-0 ${
-                                minorItemsExpanded ? 'rotate-90' : ''
-                              }`}
-                            />
+                            <ChevronRight className={`w-3 h-3 text-slate-600 transition-transform shrink-0 ${minorItemsExpanded ? 'rotate-90' : ''}`} />
                           )
                         }
                         {m.productMinor}
@@ -232,6 +219,11 @@ export default function ProductMajorTable({ rows, params, baseYear, compareYear,
                       <td className="py-1.5 text-right font-mono tabular-nums text-slate-500 text-xs pr-3">{fmt$(m.gpCompare)}</td>
                       <td className="py-1.5 text-right font-mono tabular-nums text-slate-500 text-xs">{fmtPct(m.salesCompare, m.gpCompare)}</td>
                     </tr>
+
+                    {/* Loading placeholder — items */}
+                    {minorItemsLoading && (
+                      <LoadingRow label="Loading items…" />
+                    )}
 
                     {/* ── Item rows ── */}
                     {minorItemsExpanded && (itemsData[minorKey] ?? []).map((item) => {
@@ -247,13 +239,9 @@ export default function ProductMajorTable({ rows, params, baseYear, compareYear,
                             <td className="py-1 pl-14 text-slate-500 text-xs flex items-center gap-1">
                               {ordersEnabled && (
                                 itemOrdersLoading
-                                  ? <Loader2 className="w-2.5 h-2.5 animate-spin text-slate-600" />
+                                  ? <HouseLoader size={12} />
                                   : (
-                                    <ChevronRight
-                                      className={`w-2.5 h-2.5 text-slate-700 transition-transform shrink-0 ${
-                                        itemOrdersExpanded ? 'rotate-90' : ''
-                                      }`}
-                                    />
+                                    <ChevronRight className={`w-2.5 h-2.5 text-slate-700 transition-transform shrink-0 ${itemOrdersExpanded ? 'rotate-90' : ''}`} />
                                   )
                               )}
                               <span className="text-slate-400">{item.itemDescription || item.itemNumber}</span>
@@ -272,7 +260,12 @@ export default function ProductMajorTable({ rows, params, baseYear, compareYear,
                             <td className="py-1 text-right font-mono tabular-nums text-slate-600 text-xs">{fmtPct(item.salesCompare, item.gpCompare)}</td>
                           </tr>
 
-                          {/* ── Order rows (base year, as sub-panel) ── */}
+                          {/* Loading placeholder — orders */}
+                          {itemOrdersLoading && (
+                            <LoadingRow label="Loading orders…" />
+                          )}
+
+                          {/* ── Order rows ── */}
                           {itemOrdersExpanded && (
                             <tr className="border-b border-slate-800/20 bg-slate-950">
                               <td colSpan={7} className="py-0">
