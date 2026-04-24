@@ -804,7 +804,7 @@ export default function DispatchClient({ isAdmin, userBranch, userName, userRole
 
   // Filtered lists
   const q = search.toLowerCase();
-  const unassignedStops = stops.filter((s) => !assignedSoIds.has(s.so_id));
+  const unassignedStops = stops.filter((s) => !assignedSoIds.has(s.so_id) && s.so_status?.toUpperCase() !== 'I');
   const filteredUnassigned = q
     ? unassignedStops.filter((s) =>
         s.so_id.includes(q) || s.customer_name?.toLowerCase().includes(q) || s.city?.toLowerCase().includes(q))
