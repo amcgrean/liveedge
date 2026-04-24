@@ -18,7 +18,10 @@ export interface CustomerShipTo {
 }
 
 // GET /api/sales/customers/[code]/ship-tos
-// Returns one row per ship-to address for a customer, with order counts.
+// Returns one row per ship-to for a customer, merging:
+//   - every ship-to in agility_customers (even with 0 orders), and
+//   - every distinct shipto_seq_num appearing in agility_so_header for this
+//     customer (catches orders whose ship-to was later deleted).
 // seq_num = -1 represents the "no ship-to assigned" bucket.
 export async function GET(
   _req: NextRequest,
@@ -48,45 +51,56 @@ export async function GET(
       lon: string | null;
     };
 
-    // Aggregate orders per shipto_seq_num. Use the SO's own shipto_* fields as
-    // the fallback display (in case no matching agility_customers row exists
-    // or the customer ship-to was deleted).
     const rows = await sql<ShipToRow[]>`
-      WITH so_jobs AS (
+      WITH orders_agg AS (
         SELECT
           COALESCE(shipto_seq_num, -1) AS seq_num,
-          MAX(shipto_address_1) AS so_address_1,
-          MAX(shipto_city)      AS so_city,
-          MAX(shipto_state)     AS so_state,
-          MAX(shipto_zip)       AS so_zip,
-          COUNT(*)::int         AS order_count,
-          SUM(CASE WHEN UPPER(COALESCE(so_status,'O')) IN ('O','K','S') THEN 1 ELSE 0 END)::int AS open_count,
+          MAX(shipto_address_1)        AS so_address_1,
+          MAX(shipto_city)             AS so_city,
+          MAX(shipto_state)            AS so_state,
+          MAX(shipto_zip)              AS so_zip,
+          COUNT(*)::int                AS order_count,
+          SUM(CASE WHEN UPPER(COALESCE(so_status,'O')) IN ('O','K','S','D')
+                   THEN 1 ELSE 0 END)::int AS open_count,
           MAX(COALESCE(expect_date, created_date))::text AS last_order_date,
           (array_agg(so_id::text ORDER BY COALESCE(expect_date, created_date) DESC NULLS LAST))[1] AS last_so_id
         FROM agility_so_header
         WHERE TRIM(cust_code) = TRIM(${code})
           AND is_deleted = false
         GROUP BY COALESCE(shipto_seq_num, -1)
+      ),
+      customer_shiptos AS (
+        SELECT
+          seq_num,
+          shipto_name,
+          address_1,
+          city,
+          state,
+          zip,
+          lat::text AS lat,
+          lon::text AS lon
+        FROM agility_customers
+        WHERE TRIM(cust_code) = TRIM(${code})
+          AND is_deleted = false
       )
       SELECT
-        sj.seq_num,
-        ac.shipto_name,
-        COALESCE(ac.address_1, sj.so_address_1) AS address_1,
-        COALESCE(ac.city,      sj.so_city)      AS city,
-        COALESCE(ac.state,     sj.so_state)     AS state,
-        COALESCE(ac.zip,       sj.so_zip)       AS zip,
-        sj.order_count,
-        sj.open_count,
-        sj.last_order_date,
-        sj.last_so_id,
-        ac.lat::text,
-        ac.lon::text
-      FROM so_jobs sj
-      LEFT JOIN agility_customers ac
-        ON TRIM(ac.cust_code) = TRIM(${code})
-        AND ac.seq_num = sj.seq_num
-        AND ac.is_deleted = false
-      ORDER BY sj.last_order_date DESC NULLS LAST, sj.seq_num
+        COALESCE(cs.seq_num, oa.seq_num)                          AS seq_num,
+        cs.shipto_name,
+        COALESCE(cs.address_1, oa.so_address_1)                   AS address_1,
+        COALESCE(cs.city,      oa.so_city)                        AS city,
+        COALESCE(cs.state,     oa.so_state)                       AS state,
+        COALESCE(cs.zip,       oa.so_zip)                         AS zip,
+        COALESCE(oa.order_count, 0)                               AS order_count,
+        COALESCE(oa.open_count, 0)                                AS open_count,
+        oa.last_order_date,
+        oa.last_so_id,
+        cs.lat,
+        cs.lon
+      FROM customer_shiptos cs
+      FULL OUTER JOIN orders_agg oa
+        ON oa.seq_num = cs.seq_num
+      ORDER BY oa.last_order_date DESC NULLS LAST,
+               COALESCE(cs.seq_num, oa.seq_num)
     `;
 
     const shiptos: CustomerShipTo[] = rows.map((r) => ({
@@ -107,6 +121,6 @@ export async function GET(
     return NextResponse.json({ shiptos });
   } catch (err) {
     console.error('[sales/customers/ship-tos GET]', err);
-    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
+    return NextResponse.json({ error: 'Internal server error', message: String(err) }, { status: 500 });
   }
 }

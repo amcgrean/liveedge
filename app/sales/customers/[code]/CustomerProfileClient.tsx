@@ -70,6 +70,8 @@ export default function CustomerProfileClient({ code, userName }: { code: string
   const [shiptos, setShiptos] = useState<ShipToSummary[]>([]);
   const [notes, setNotes] = useState<Note[]>([]);
   const [shiptosLoading, setShiptosLoading] = useState(false);
+  const [shiptosError, setShiptosError] = useState('');
+  const [openCount, setOpenCount] = useState(0);
   const [loading, setLoading] = useState(true);
   const [notesLoading, setNotesLoading] = useState(false);
   const [error, setError] = useState('');
@@ -86,9 +88,11 @@ export default function CustomerProfileClient({ code, userName }: { code: string
         if (!r.ok) throw new Error('Not found');
         return r.json();
       })
-      .then((d: { customer: Customer; open_orders: Order[]; history: Order[]; ship_to: ShipTo[] }) => {
+      .then((d: { customer: Customer; open_orders: Order[]; history: Order[]; ship_to: ShipTo[]; open_count?: number }) => {
         setCustomer(d.customer);
-        setOrders([...(d.open_orders ?? []), ...(d.history ?? [])]);
+        const openList = d.open_orders ?? [];
+        setOrders([...openList, ...(d.history ?? [])]);
+        setOpenCount(d.open_count ?? openList.length);
         setShiptosBasic(d.ship_to ?? []);
       })
       .catch(() => setError('Customer not found or data unavailable.'))
@@ -97,10 +101,15 @@ export default function CustomerProfileClient({ code, userName }: { code: string
 
   const loadShiptos = useCallback(() => {
     setShiptosLoading(true);
+    setShiptosError('');
     fetch(`/api/sales/customers/${encodeURIComponent(code)}/ship-tos`)
-      .then((r) => r.json())
-      .then((d: { shiptos: ShipToSummary[] }) => setShiptos(d.shiptos ?? []))
-      .catch(() => {})
+      .then(async (r) => {
+        const body = await r.json().catch(() => ({}));
+        if (!r.ok) throw new Error(body?.error || `HTTP ${r.status}`);
+        return body as { shiptos: ShipToSummary[] };
+      })
+      .then((d) => setShiptos(d.shiptos ?? []))
+      .catch((e: Error) => setShiptosError(e.message || 'Failed to load ship-tos'))
       .finally(() => setShiptosLoading(false));
   }, [code]);
 
@@ -155,7 +164,6 @@ export default function CustomerProfileClient({ code, userName }: { code: string
     );
   }
 
-  const openOrders = orders.filter((o) => o.so_status === 'O' || o.so_status === 'K');
   const tabs: { id: Tab; label: string; badge?: string | number }[] = [
     { id: 'overview', label: 'Overview' },
     { id: 'shiptos',  label: 'Ship-Tos', badge: shiptosBasic.length || undefined },
@@ -180,7 +188,7 @@ export default function CustomerProfileClient({ code, userName }: { code: string
         </div>
         <div className="flex gap-4 text-sm">
           <div className="text-center">
-            <div className="text-xl font-bold text-white">{openOrders.length}</div>
+            <div className="text-xl font-bold text-white">{openCount}</div>
             <div className="text-gray-500 text-xs">Open Orders</div>
           </div>
         </div>
@@ -299,7 +307,10 @@ export default function CustomerProfileClient({ code, userName }: { code: string
       {tab === 'shiptos' && (
         <div>
           {shiptosLoading && <p className="text-gray-500 text-sm">Loading ship-tos...</p>}
-          {!shiptosLoading && shiptos.length === 0 && (
+          {shiptosError && (
+            <p className="text-red-400 text-sm mb-3">Error loading ship-tos: {shiptosError}</p>
+          )}
+          {!shiptosLoading && !shiptosError && shiptos.length === 0 && (
             <p className="text-gray-500 text-sm">No ship-tos found for this customer.</p>
           )}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
