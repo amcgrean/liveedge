@@ -7,18 +7,22 @@ import { usePageTracking } from '@/hooks/usePageTracking';
 
 interface ReportsData {
   period_days: number;
-  daily_orders: { order_date: string; count: number }[];
-  by_sale_type: { sale_type: string; count: number }[];
-  by_ship_via: { ship_via: string; count: number }[];
-  top_customers: { cust_name: string | null; order_count: number }[];
-  status_breakdown: { so_status: string; cnt: number }[];
+  daily_orders:       { order_date: string; count: number }[];
+  by_sale_type:       { sale_type: string; count: number }[];
+  by_ship_via:        { ship_via: string; count: number }[];
+  top_customers:      { cust_name: string | null; order_count: number }[];
+  status_breakdown:   { so_status: string; cnt: number }[];
+  prev_total:         number;
+  prev_by_sale_type:  { sale_type: string; count: number }[];
+  prev_top_customers: { cust_name: string | null; order_count: number }[];
 }
 
 type DailyRow = { order_date: string; count: number };
 
+// B = blank/no-status in Agility = effectively Open. C (Cancelled) is excluded at the query level.
 const SO_STATUS: Record<string, { label: string; cls: string }> = {
   O: { label: 'Open',      cls: 'bg-blue-900/60 text-blue-300 border-blue-700/60' },
-  B: { label: 'Blank',     cls: 'bg-slate-800 text-slate-400 border-slate-600' },
+  B: { label: 'Open',      cls: 'bg-blue-900/60 text-blue-300 border-blue-700/60' },
   K: { label: 'Picking',   cls: 'bg-yellow-900/60 text-yellow-300 border-yellow-700/60' },
   S: { label: 'Staged',    cls: 'bg-orange-900/60 text-orange-300 border-orange-700/60' },
   D: { label: 'Delivered', cls: 'bg-cyan-900/60 text-cyan-300 border-cyan-700/60' },
@@ -53,23 +57,51 @@ function SectionTitle({ children }: { children: React.ReactNode }) {
   );
 }
 
-function KpiTile({ label, value, sub }: { label: string; value: string | number; sub?: string }) {
+function yoyDelta(current: number, prev: number) {
+  if (prev === 0) return null;
+  return ((current - prev) / prev) * 100;
+}
+
+function DeltaBadge({ current, prev }: { current: number; prev: number | undefined }) {
+  if (prev == null || prev === 0) return null;
+  const pct = ((current - prev) / prev) * 100;
+  const up = pct >= 0;
+  return (
+    <span className={`text-[10px] font-semibold tabular-nums ${up ? 'text-emerald-400' : 'text-red-400'}`}>
+      {up ? '▲' : '▼'}{Math.abs(pct).toFixed(1)}%
+    </span>
+  );
+}
+
+function KpiTile({
+  label, value, sub, current, prev,
+}: {
+  label: string;
+  value: string | number;
+  sub?: string;
+  current?: number;
+  prev?: number;
+}) {
+  const delta = current != null && prev != null ? yoyDelta(current, prev) : null;
+  const up = delta != null && delta >= 0;
   return (
     <div className="bg-slate-800/60 border border-slate-700 rounded-lg p-4 flex flex-col gap-1 min-w-0">
       <p className="text-xs font-medium text-slate-400 uppercase tracking-wide truncate">{label}</p>
       <p className="text-2xl font-bold text-white tabular-nums">{value}</p>
-      {sub && <p className="text-xs text-slate-500 truncate">{sub}</p>}
+      <div className="flex items-center justify-between gap-1 mt-0.5">
+        {sub && <p className="text-xs text-slate-500 truncate">{sub}</p>}
+        {delta != null && (
+          <span className={`text-xs font-semibold shrink-0 ${up ? 'text-emerald-400' : 'text-red-400'}`}>
+            {up ? '▲' : '▼'}{Math.abs(delta).toFixed(1)}% vs prior yr
+          </span>
+        )}
+      </div>
     </div>
   );
 }
 
 function BreakdownRow({
-  label,
-  value,
-  total,
-  max,
-  barColor = 'bg-cyan-600',
-  badge,
+  label, value, total, max, barColor = 'bg-cyan-600', badge, prevValue,
 }: {
   label: string;
   value: number;
@@ -77,14 +109,16 @@ function BreakdownRow({
   max: number;
   barColor?: string;
   badge?: React.ReactNode;
+  prevValue?: number;
 }) {
-  const barPct = max > 0 ? (value / max) * 100 : 0;
+  const barPct   = max > 0 ? (value / max) * 100 : 0;
   const sharePct = total > 0 ? ((value / total) * 100).toFixed(1) : '0.0';
   return (
     <div className="space-y-1">
       <div className="flex items-center gap-2">
         {badge}
         <span className="text-sm text-slate-200 truncate flex-1">{label}</span>
+        <DeltaBadge current={value} prev={prevValue} />
         <span className="text-xs text-slate-500 tabular-nums">{sharePct}%</span>
         <span className="text-sm font-semibold text-white tabular-nums w-12 text-right">
           {value.toLocaleString()}
@@ -104,8 +138,7 @@ function DailyBars({ data }: { data: DailyRow[] }) {
       {data.map((d) => {
         const heightPct = (d.count / max) * 100;
         const label = new Date(d.order_date + 'T00:00:00').toLocaleDateString('en-US', {
-          month: 'short',
-          day: 'numeric',
+          month: 'short', day: 'numeric',
         });
         return (
           <div
@@ -152,30 +185,50 @@ export default function ReportsClient({ isAdmin, userBranch }: Props) {
 
   useEffect(() => { fetchData(period, branch); }, [fetchData, period, branch]);
 
+  // Derived stats — current period
   const totalOrders = data?.daily_orders.reduce((s, d) => s + d.count, 0) ?? 0;
-  const activeDays = data?.daily_orders.filter((d) => d.count > 0).length ?? 0;
-  const avgPerDay = activeDays > 0 ? (totalOrders / activeDays).toFixed(1) : '—';
-  const peakDay = data?.daily_orders.reduce(
+  const activeDays  = data?.daily_orders.filter((d) => d.count > 0).length ?? 0;
+  const avgPerDay   = activeDays > 0 ? (totalOrders / activeDays).toFixed(1) : '—';
+  const peakDay     = data?.daily_orders.reduce(
     (best, d) => (!best || d.count > best.count ? d : best),
     null as DailyRow | null,
   );
-  const openCount = data?.status_breakdown.find((s) => s.so_status === 'O')?.cnt ?? 0;
 
-  const statusTotal   = data?.status_breakdown.reduce((s, d) => s + d.cnt,         0) ?? 0;
-  const shipTotal     = data?.by_ship_via.reduce((s, d) => s + d.count,             0) ?? 0;
-  const saleTypeTotal = data?.by_sale_type.reduce((s, d) => s + d.count,            0) ?? 0;
-  const customerTotal = data?.top_customers.reduce((s, d) => s + d.order_count,     0) ?? 0;
-  const maxShip       = Math.max(...(data?.by_ship_via.map((d) => d.count)       ?? [1]), 1);
-  const maxSaleType   = Math.max(...(data?.by_sale_type.map((d) => d.count)      ?? [1]), 1);
-  const maxStatus     = Math.max(...(data?.status_breakdown.map((d) => d.cnt)    ?? [1]), 1);
+  // Open orders = any status that isn't a terminal state (B = blank/open in Agility, O = Open)
+  const openCount = data?.status_breakdown
+    .filter((s) => s.so_status === 'O' || s.so_status === 'B')
+    .reduce((sum, s) => sum + s.cnt, 0) ?? 0;
+
+  // Prior year lookup maps
+  const prevSaleTypeMap = new Map(
+    (data?.prev_by_sale_type ?? []).map((s) => [s.sale_type, s.count]),
+  );
+  const prevCustomerMap = new Map(
+    (data?.prev_top_customers ?? []).map((c) => [c.cust_name, c.order_count]),
+  );
+
+  // Breakdown totals / maxes
+  const statusTotal   = data?.status_breakdown.reduce((s, d) => s + d.cnt,       0) ?? 0;
+  const shipTotal     = data?.by_ship_via.reduce((s, d) => s + d.count,           0) ?? 0;
+  const saleTypeTotal = data?.by_sale_type.reduce((s, d) => s + d.count,          0) ?? 0;
+  const customerTotal = data?.top_customers.reduce((s, d) => s + d.order_count,   0) ?? 0;
+  const maxShip       = Math.max(...(data?.by_ship_via.map((d) => d.count)      ?? [1]), 1);
+  const maxSaleType   = Math.max(...(data?.by_sale_type.map((d) => d.count)     ?? [1]), 1);
+  const maxStatus     = Math.max(...(data?.status_breakdown.map((d) => d.cnt)   ?? [1]), 1);
   const maxCustomer   = Math.max(...(data?.top_customers.map((d) => d.order_count) ?? [1]), 1);
 
-  const branchLabel = BRANCH_OPTIONS.find((b) => b.value === branch)?.label ?? 'All Branches';
+  // Prior year avg/day for KPI comparison
+  const prevActiveDays = period; // approximate — prior year had the same window length
+  const prevAvgPerDay  = data && data.prev_total > 0
+    ? data.prev_total / prevActiveDays
+    : undefined;
+  const currentAvgNum  = activeDays > 0 ? totalOrders / activeDays : 0;
 
-  const firstDate = data?.daily_orders[0]?.order_date;
-  const lastDate  = data?.daily_orders[data.daily_orders.length - 1]?.order_date;
+  const branchLabel = BRANCH_OPTIONS.find((b) => b.value === branch)?.label ?? 'All Branches';
   const fmtDate = (s: string) =>
     new Date(s + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+  const firstDate = data?.daily_orders[0]?.order_date;
+  const lastDate  = data?.daily_orders[data?.daily_orders.length - 1]?.order_date;
 
   return (
     <div className="p-4 md:p-6 space-y-5 max-w-7xl mx-auto">
@@ -186,8 +239,7 @@ export default function ReportsClient({ isAdmin, userBranch }: Props) {
             href="/sales"
             className="inline-flex items-center gap-1 text-xs text-slate-400 hover:text-cyan-400 transition mb-2"
           >
-            <ChevronLeft className="w-3 h-3" />
-            Sales Hub
+            <ChevronLeft className="w-3 h-3" /> Sales Hub
           </Link>
           <h1 className="text-2xl font-bold text-white flex items-center gap-2">
             <BarChart2 className="w-6 h-6 text-cyan-400" />
@@ -199,16 +251,13 @@ export default function ReportsClient({ isAdmin, userBranch }: Props) {
         </div>
 
         <div className="flex items-center gap-2 flex-wrap">
-          {/* Period selector */}
           <div className="flex bg-slate-900 border border-slate-700 rounded-lg overflow-hidden">
             {PERIOD_OPTIONS.map((o) => (
               <button
                 key={o.value}
                 onClick={() => setPeriod(o.value)}
                 className={`px-3 py-1.5 text-sm font-medium transition ${
-                  period === o.value
-                    ? 'bg-cyan-600 text-white'
-                    : 'text-slate-400 hover:text-white'
+                  period === o.value ? 'bg-cyan-600 text-white' : 'text-slate-400 hover:text-white'
                 }`}
               >
                 {o.label}
@@ -216,7 +265,6 @@ export default function ReportsClient({ isAdmin, userBranch }: Props) {
             ))}
           </div>
 
-          {/* Branch filter (admin only) */}
           {isAdmin && (
             <select
               value={branch}
@@ -239,7 +287,6 @@ export default function ReportsClient({ isAdmin, userBranch }: Props) {
         </div>
       </div>
 
-      {/* Loading skeleton */}
       {loading && !data && (
         <div className="flex items-center justify-center py-24 text-slate-500">
           <RefreshCw className="w-5 h-5 animate-spin mr-2" />
@@ -257,11 +304,15 @@ export default function ReportsClient({ isAdmin, userBranch }: Props) {
                 label="Total Orders"
                 value={totalOrders.toLocaleString()}
                 sub={`${activeDays} active days`}
+                current={totalOrders}
+                prev={data.prev_total}
               />
               <KpiTile
                 label="Avg / Day"
                 value={avgPerDay}
                 sub="on active days"
+                current={currentAvgNum}
+                prev={prevAvgPerDay}
               />
               <KpiTile
                 label="Peak Day"
@@ -271,7 +322,7 @@ export default function ReportsClient({ isAdmin, userBranch }: Props) {
               <KpiTile
                 label="Open Orders"
                 value={openCount.toLocaleString()}
-                sub="status = Open"
+                sub="not yet invoiced"
               />
             </div>
           </div>
@@ -305,7 +356,7 @@ export default function ReportsClient({ isAdmin, userBranch }: Props) {
             </div>
           </div>
 
-          {/* Breakdown cards */}
+          {/* Breakdowns */}
           <div>
             <SectionTitle>Breakdowns</SectionTitle>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -330,6 +381,7 @@ export default function ReportsClient({ isAdmin, userBranch }: Props) {
                         total={saleTypeTotal}
                         max={maxSaleType}
                         barColor="bg-emerald-600"
+                        prevValue={prevSaleTypeMap.get(s.sale_type)}
                       />
                     ))}
                   </div>
@@ -390,9 +442,7 @@ export default function ReportsClient({ isAdmin, userBranch }: Props) {
                           max={maxStatus}
                           barColor="bg-cyan-600"
                           badge={
-                            <span
-                              className={`inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold border shrink-0 ${info.cls}`}
-                            >
+                            <span className={`inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold border shrink-0 ${info.cls}`}>
                               {s.so_status}
                             </span>
                           }
@@ -405,7 +455,7 @@ export default function ReportsClient({ isAdmin, userBranch }: Props) {
             </div>
           </div>
 
-          {/* Top customers table */}
+          {/* Top customers */}
           <div>
             <SectionTitle>Top Customers</SectionTitle>
             <div className="bg-slate-800/60 border border-slate-700 rounded-lg overflow-hidden">
@@ -423,45 +473,51 @@ export default function ReportsClient({ isAdmin, userBranch }: Props) {
                       <th className="px-4 py-2.5 text-left text-xs font-medium text-slate-400 w-10">#</th>
                       <th className="px-4 py-2.5 text-left text-xs font-medium text-slate-400">Customer</th>
                       <th className="px-4 py-2.5 text-left text-xs font-medium text-slate-400">Share</th>
-                      <th className="px-4 py-2.5 text-right text-xs font-medium text-slate-400 pr-4">Orders</th>
+                      <th className="px-4 py-2.5 text-right text-xs font-medium text-slate-400">This Period</th>
+                      <th className="px-4 py-2.5 text-right text-xs font-medium text-slate-400 pr-4">Prior Year</th>
                     </tr>
                   </thead>
                   <tbody>
                     {data.top_customers.length === 0 && (
                       <tr>
-                        <td colSpan={4} className="py-8 text-center text-slate-500 text-sm">
-                          No data
-                        </td>
+                        <td colSpan={5} className="py-8 text-center text-slate-500 text-sm">No data</td>
                       </tr>
                     )}
                     {data.top_customers.map((c, i) => {
-                      const barPct = maxCustomer > 0 ? (c.order_count / maxCustomer) * 100 : 0;
-                      const sharePct =
-                        customerTotal > 0
-                          ? ((c.order_count / customerTotal) * 100).toFixed(1)
-                          : '0.0';
+                      const barPct   = maxCustomer > 0 ? (c.order_count / maxCustomer) * 100 : 0;
+                      const sharePct = customerTotal > 0
+                        ? ((c.order_count / customerTotal) * 100).toFixed(1)
+                        : '0.0';
+                      const prevCount = prevCustomerMap.get(c.cust_name) ?? undefined;
+                      const delta     = prevCount != null ? yoyDelta(c.order_count, prevCount) : null;
                       return (
-                        <tr
-                          key={i}
-                          className="border-b border-slate-800 hover:bg-slate-800/40 transition"
-                        >
+                        <tr key={i} className="border-b border-slate-800 hover:bg-slate-800/40 transition">
                           <td className="px-4 py-2.5 text-xs text-slate-600 tabular-nums">{i + 1}</td>
-                          <td className="px-4 py-2.5 font-medium text-white">
-                            {c.cust_name ?? 'Unknown'}
-                          </td>
+                          <td className="px-4 py-2.5 font-medium text-white">{c.cust_name ?? 'Unknown'}</td>
                           <td className="px-4 py-2.5">
                             <div className="flex items-center gap-2">
                               <div className="w-20 h-1.5 bg-slate-700/50 rounded-full overflow-hidden">
-                                <div
-                                  className="h-full bg-cyan-600 rounded-full"
-                                  style={{ width: `${barPct}%` }}
-                                />
+                                <div className="h-full bg-cyan-600 rounded-full" style={{ width: `${barPct}%` }} />
                               </div>
                               <span className="text-xs text-slate-500 tabular-nums">{sharePct}%</span>
                             </div>
                           </td>
-                          <td className="px-4 py-2.5 text-right font-mono font-semibold text-cyan-400 tabular-nums pr-4">
+                          <td className="px-4 py-2.5 text-right font-mono font-semibold text-cyan-400 tabular-nums">
                             {c.order_count.toLocaleString()}
+                          </td>
+                          <td className="px-4 py-2.5 text-right pr-4">
+                            {prevCount != null ? (
+                              <div className="flex items-center justify-end gap-1.5">
+                                <span className={`text-[10px] font-semibold ${delta != null && delta >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
+                                  {delta != null ? (delta >= 0 ? '▲' : '▼') : ''}{delta != null ? `${Math.abs(delta).toFixed(0)}%` : ''}
+                                </span>
+                                <span className="text-xs text-slate-500 tabular-nums font-mono">
+                                  {prevCount.toLocaleString()}
+                                </span>
+                              </div>
+                            ) : (
+                              <span className="text-xs text-slate-600">—</span>
+                            )}
                           </td>
                         </tr>
                       );
