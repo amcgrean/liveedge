@@ -8,6 +8,7 @@ import {
   fetchCustomerList,
 } from '../../../../src/lib/scorecard/queries';
 import type { AggregateParams, ScorecardParams } from '../../../../src/lib/scorecard/types';
+import ExportTableButton from '../../../../src/components/shared/ExportTableButton';
 import KpiTile from '../../[customerId]/components/KpiTile';
 import ComparisonTable from '../../[customerId]/components/ComparisonTable';
 import ProductMajorTable from '../../[customerId]/components/ProductMajorTable';
@@ -97,6 +98,23 @@ export default async function BranchScorecardPage({
     fetchCustomerList(baseYear, compareYear, [branchId], '', 15),
   ]);
 
+  const topCustomerExportData = topCustomers.map((c) => ({
+    Customer: c.customerName,
+    'Customer ID': c.customerId,
+    [`${baseYear} Sales`]: c.salesBase,
+    [`${compareYear} Sales`]: c.salesCompare,
+    [`${baseYear} GP`]: c.gpBase,
+    'GM%': c.salesBase ? `${((c.gpBase / c.salesBase) * 100).toFixed(1)}%` : '—',
+  }));
+
+  const threeYearExportData = threeYear.map((e) => ({
+    Year: e.year,
+    Label: e.label,
+    Sales: e.sales,
+    'Gross Profit': e.gp,
+    'GM%': e.sales ? `${((e.gp / e.sales) * 100).toFixed(1)}%` : '—',
+  }));
+
   const periodLabel = period === 'YTD' ? `YTD thru ${cutoffDate}` : 'Full Year';
 
   const vaPctBase = kpis.base.sales && kpis.base.vaSales !== null ? kpis.base.vaSales / kpis.base.sales : null;
@@ -162,6 +180,9 @@ export default async function BranchScorecardPage({
       />
 
       <Section title="3-Year Comparison">
+        <div className="flex justify-end mb-2 print:hidden">
+          <ExportTableButton data={threeYearExportData} filename={`${BRANCH_LABELS[branchId] ?? branchId}-3year`} />
+        </div>
         <ComparisonTable entries={threeYear} />
       </Section>
 
@@ -175,6 +196,9 @@ export default async function BranchScorecardPage({
 
       {/* Top customers for this branch */}
       <Section title="Top Customers">
+        <div className="flex justify-end mb-2 print:hidden">
+          <ExportTableButton data={topCustomerExportData} filename={`${BRANCH_LABELS[branchId] ?? branchId}-top-customers`} />
+        </div>
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead>

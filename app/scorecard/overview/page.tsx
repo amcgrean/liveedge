@@ -7,6 +7,7 @@ import {
   fetchBranchSummaries,
 } from '../../../src/lib/scorecard/queries';
 import type { AggregateParams, ScorecardParams } from '../../../src/lib/scorecard/types';
+import ExportTableButton from '../../../src/components/shared/ExportTableButton';
 import KpiTile from '../[customerId]/components/KpiTile';
 import ComparisonTable from '../[customerId]/components/ComparisonTable';
 import ProductMajorTable from '../[customerId]/components/ProductMajorTable';
@@ -97,6 +98,23 @@ export default async function OverviewPage({
   const gmPctBase = kpis.base.sales && kpis.base.gp !== null ? kpis.base.gp / kpis.base.sales : null;
   const gmPctCompare = kpis.compare.sales && kpis.compare.gp !== null ? kpis.compare.gp / kpis.compare.sales : null;
 
+  const branchExportData = branchSummaries.map((b) => ({
+    Branch: BRANCH_LABELS[b.branchId] ?? b.branchId,
+    [`${baseYear} Sales`]: b.salesBase,
+    [`${compareYear} Sales`]: b.salesCompare,
+    [`${baseYear} GP`]: b.gpBase,
+    'GM%': b.salesBase ? `${((b.gpBase / b.salesBase) * 100).toFixed(1)}%` : '—',
+    Customers: b.customerCount,
+  }));
+
+  const threeYearExportData = threeYear.map((e) => ({
+    Year: e.year,
+    Label: e.label,
+    Sales: e.sales,
+    'Gross Profit': e.gp,
+    'GM%': e.sales ? `${((e.gp / e.sales) * 100).toFixed(1)}%` : '—',
+  }));
+
   return (
     <div className="p-4 md:p-6 space-y-5 max-w-7xl mx-auto">
       <style>{`
@@ -130,6 +148,9 @@ export default async function OverviewPage({
       />
 
       <Section title="3-Year Comparison">
+        <div className="flex justify-end mb-2 print:hidden">
+          <ExportTableButton data={threeYearExportData} filename="3year-comparison" />
+        </div>
         <ComparisonTable entries={threeYear} />
       </Section>
 
@@ -143,6 +164,9 @@ export default async function OverviewPage({
 
       {/* Branch breakdown table */}
       <Section title="By Branch">
+        <div className="flex justify-end mb-2 print:hidden">
+          <ExportTableButton data={branchExportData} filename="branch-overview" />
+        </div>
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead>

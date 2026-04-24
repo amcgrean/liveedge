@@ -3,6 +3,7 @@ import type { AggregateParams } from '../../../src/lib/scorecard/types';
 import AggregateFilterBar from '../_components/AggregateFilterBar';
 import ScorecardTabs from '../_components/ScorecardTabs';
 import ProductScorecardTable from './components/ProductScorecardTable';
+import ExportTableButton from '../../../src/components/shared/ExportTableButton';
 
 export const metadata = { title: 'Product Group Scorecard — Beisser LiveEdge' };
 
@@ -28,6 +29,18 @@ export default async function ProductScorecardPage({
   const params: AggregateParams = { branchIds, baseYear, compareYear, period, cutoffDate };
   const majors = await fetchProductScorecardMajors(params);
 
+  const exportData = majors.map((r) => ({
+    'Product Group': r.productMajor,
+    Code: r.productMajorCode,
+    [`${baseYear} Sales`]: r.salesBase,
+    [`${baseYear} GP`]: r.gpBase,
+    'GM%': r.salesBase ? `${((r.gpBase / r.salesBase) * 100).toFixed(1)}%` : '—',
+    [`${baseYear} Orders`]: r.soCountBase,
+    [`${baseYear} Qty`]: r.qtyBase,
+    [`${compareYear} Sales`]: r.salesCompare,
+    [`${compareYear} GP`]: r.gpCompare,
+  }));
+
   return (
     <div className="max-w-screen-xl mx-auto px-4 py-6 space-y-5">
       <ScorecardTabs />
@@ -51,9 +64,12 @@ export default async function ProductScorecardPage({
       />
 
       <section className="bg-slate-800/40 border border-slate-700 rounded-lg p-4">
-        <h2 className="text-sm font-semibold text-slate-300 uppercase tracking-wide mb-3">
-          Product Mix — {baseYear}{branchIds.length > 0 ? ` · ${branchIds.join(', ')}` : ' · All Branches'}
-        </h2>
+        <div className="flex items-center justify-between mb-3">
+          <h2 className="text-sm font-semibold text-slate-300 uppercase tracking-wide">
+            Product Mix — {baseYear}{branchIds.length > 0 ? ` · ${branchIds.join(', ')}` : ' · All Branches'}
+          </h2>
+          <ExportTableButton data={exportData} filename={`product-groups-${baseYear}`} className="print:hidden" />
+        </div>
         {majors.length === 0 ? (
           <p className="text-sm text-slate-500 italic">No data for the selected period.</p>
         ) : (
