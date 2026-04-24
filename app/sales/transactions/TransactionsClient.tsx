@@ -6,6 +6,19 @@ import Link from 'next/link';
 import { Search, RefreshCw, ExternalLink, X, ChevronDown, ChevronUp } from 'lucide-react';
 import { usePageTracking } from '@/hooks/usePageTracking';
 
+interface HistoryOrder {
+  so_number: string;
+  system_id: string;
+  so_status: string;
+  sale_type: string | null;
+  salesperson: string | null;
+  invoice_date: string | null;
+  reference: string | null;
+  customer_name: string | null;
+  customer_code: string | null;
+  line_count: number;
+}
+
 interface Order {
   so_number: string;
   system_id: string;
@@ -69,6 +82,42 @@ export default function TransactionsClient({ isAdmin, userBranch, agentId }: Pro
   const router   = useRouter();
   const pathname = usePathname();
   const sp       = useSearchParams();
+
+  const [tab, setTab] = useState<'orders' | 'history'>(() =>
+    sp.get('tab') === 'history' ? 'history' : 'orders'
+  );
+
+  // ── History tab state ──────────────────────────────────────────────────────
+  const [hq,         setHq]         = useState('');
+  const [hCustNum,   setHCustNum]   = useState('');
+  const [hBranch,    setHBranch]    = useState(isAdmin ? '' : (userBranch ?? ''));
+  const [hDateFrom,  setHDateFrom]  = useState('');
+  const [hDateTo,    setHDateTo]    = useState('');
+  const [hOrders,    setHOrders]    = useState<HistoryOrder[]>([]);
+  const [hLoading,   setHLoading]   = useState(false);
+  const [hPage,      setHPage]      = useState(1);
+  const [hHasMore,   setHHasMore]   = useState(false);
+  const [hSearched,  setHSearched]  = useState(false);
+
+  const fetchHistory = useCallback(async (pg = 1) => {
+    setHLoading(true);
+    setHSearched(true);
+    try {
+      const p = new URLSearchParams({ limit: '50', page: String(pg) });
+      if (hq)       p.set('q',               hq);
+      if (hCustNum) p.set('customer_number', hCustNum);
+      if (hBranch)  p.set('branch',          hBranch);
+      if (hDateFrom) p.set('date_from',      hDateFrom);
+      if (hDateTo)   p.set('date_to',        hDateTo);
+      const res = await fetch(`/api/sales/history?${p}`);
+      if (!res.ok) return;
+      const data = await res.json();
+      const rows: HistoryOrder[] = data.history ?? [];
+      setHOrders(pg === 1 ? rows : (prev: HistoryOrder[]) => [...prev, ...rows]);
+      setHHasMore(rows.length === 50);
+      setHPage(pg);
+    } finally { setHLoading(false); }
+  }, [hq, hCustNum, hBranch, hDateFrom, hDateTo]);
 
   // Initialize filter state from URL params (or sensible defaults)
   const [q,         setQ]         = useState(() => sp.get('q') ?? '');
@@ -196,27 +245,46 @@ export default function TransactionsClient({ isAdmin, userBranch, agentId }: Pro
     { label: 'WC I Wrote',      params: { rep3: agentId, status: '', saleType: 'Willcall', rep1: '' } },
   ] : [];
 
+  const switchTab = (t: 'orders' | 'history') => {
+    setTab(t);
+    router.replace(pathname + (t === 'history' ? '?tab=history' : ''), { scroll: false });
+  };
+
   return (
     <div className="p-4 md:p-6 space-y-4">
       {/* Header */}
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <Link href="/sales" className="text-sm text-cyan-400 hover:underline">&larr; Sales Hub</Link>
-          <h1 className="text-2xl font-bold text-white mt-1">Sales Orders</h1>
-          <p className="text-sm text-slate-400">
-            {orders.length} order{orders.length !== 1 ? 's' : ''} shown
-            {chips.length > 0 && ' · filtered'}
-          </p>
+          <h1 className="text-2xl font-bold text-white mt-1">Transactions</h1>
         </div>
-        <button
-          onClick={() => applyFilters()}
-          className="flex items-center gap-2 px-3 py-2 rounded-lg bg-slate-800 text-slate-300 hover:text-white text-sm transition"
-        >
-          <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
-          Refresh
-        </button>
+        <div className="flex items-center gap-2">
+          {/* Tab switcher */}
+          <div className="flex gap-1 bg-slate-800 rounded-lg p-1">
+            {(['orders', 'history'] as const).map((t) => (
+              <button
+                key={t}
+                onClick={() => switchTab(t)}
+                className={`px-3 py-1.5 rounded-md text-sm font-medium transition ${
+                  tab === t ? 'bg-cyan-600 text-white' : 'text-slate-400 hover:text-white'
+                }`}
+              >
+                {t === 'orders' ? 'Sales Orders' : 'Purchase History'}
+              </button>
+            ))}
+          </div>
+          {tab === 'orders' && (
+            <button
+              onClick={() => applyFilters()}
+              className="flex items-center gap-2 px-3 py-2 rounded-lg bg-slate-800 text-slate-300 hover:text-white text-sm transition"
+            >
+              <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
+            </button>
+          )}
+        </div>
       </div>
 
+      {tab === 'orders' && (<>
       {/* Quick shortcuts */}
       {shortcuts.length > 0 && (
         <div className="flex gap-2 flex-wrap">
@@ -475,6 +543,127 @@ export default function TransactionsClient({ isAdmin, userBranch, agentId }: Pro
           </>
         )}
       </div>
+      </>)}
+
+      {tab === 'history' && (
+        <div className="space-y-4">
+          {/* History filters */}
+          <div className="bg-slate-900 border border-white/10 rounded-xl p-4 space-y-3">
+            <div className="flex flex-wrap gap-3">
+              <div className="flex-1 min-w-[200px] relative">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                <input
+                  value={hq}
+                  onChange={(e) => setHq(e.target.value)}
+                  onKeyDown={(e) => e.key === 'Enter' && fetchHistory(1)}
+                  placeholder="SO#, customer, reference…"
+                  className="w-full bg-slate-800 border border-white/10 rounded-lg pl-9 pr-3 py-2 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-cyan-500"
+                />
+              </div>
+              <input
+                value={hCustNum}
+                onChange={(e) => setHCustNum(e.target.value)}
+                placeholder="Customer # (exact)"
+                className="w-44 bg-slate-800 border border-white/10 rounded-lg px-3 py-2 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-cyan-500"
+              />
+              {isAdmin && (
+                <div className="flex gap-1">
+                  {BRANCH_OPTIONS.map(b => (
+                    <button key={b}
+                      onClick={() => setHBranch(b)}
+                      className={`px-2.5 py-1.5 rounded-lg text-xs font-medium transition ${hBranch === b ? 'bg-cyan-600 text-white' : 'bg-slate-800 text-slate-400 hover:text-white'}`}
+                    >{b || 'All'}</button>
+                  ))}
+                </div>
+              )}
+            </div>
+            <div className="flex flex-wrap gap-3 items-center">
+              <label className="text-xs text-slate-400">Invoice date</label>
+              <input type="date" value={hDateFrom} onChange={(e) => setHDateFrom(e.target.value)}
+                className="bg-slate-800 border border-white/10 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-cyan-500" />
+              <span className="text-xs text-slate-500">to</span>
+              <input type="date" value={hDateTo} onChange={(e) => setHDateTo(e.target.value)}
+                className="bg-slate-800 border border-white/10 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-cyan-500" />
+              <button onClick={() => fetchHistory(1)} disabled={hLoading}
+                className="px-4 py-2 bg-cyan-600 hover:bg-cyan-500 disabled:opacity-50 text-white rounded-lg text-sm font-medium transition">
+                {hLoading ? 'Searching…' : 'Search'}
+              </button>
+            </div>
+          </div>
+
+          {/* History results */}
+          <div className="bg-slate-900 border border-white/10 rounded-xl overflow-hidden">
+            <div className="px-4 py-3 border-b border-white/10 flex items-center justify-between">
+              <span className="text-sm text-slate-400">
+                {!hSearched ? 'Enter criteria above to search purchase history' : `${hOrders.length} records`}
+              </span>
+              {hLoading && <RefreshCw className="w-4 h-4 animate-spin text-cyan-400" />}
+            </div>
+            {!hSearched ? (
+              <div className="px-4 py-12 text-center text-slate-500 text-sm">
+                Search invoiced and closed orders above
+              </div>
+            ) : hOrders.length === 0 && !hLoading ? (
+              <div className="px-4 py-12 text-center text-slate-500 text-sm">No history found.</div>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="border-b border-white/10 text-left">
+                      <th className="px-4 py-3 text-xs font-semibold text-slate-400 uppercase tracking-wider">SO #</th>
+                      <th className="px-4 py-3 text-xs font-semibold text-slate-400 uppercase tracking-wider">Customer</th>
+                      <th className="px-4 py-3 text-xs font-semibold text-slate-400 uppercase tracking-wider">Reference</th>
+                      <th className="px-4 py-3 text-xs font-semibold text-slate-400 uppercase tracking-wider">Status</th>
+                      <th className="px-4 py-3 text-xs font-semibold text-slate-400 uppercase tracking-wider">Invoice Date</th>
+                      <th className="px-4 py-3 text-xs font-semibold text-slate-400 uppercase tracking-wider">Type</th>
+                      {isAdmin && <th className="px-4 py-3 text-xs font-semibold text-slate-400 uppercase tracking-wider">Branch</th>}
+                      <th className="px-4 py-3 text-xs font-semibold text-slate-400 uppercase tracking-wider">Lines</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {hOrders.map((o) => (
+                      <tr key={`${o.so_number}-${o.system_id}`} className="border-b border-white/5 hover:bg-slate-800/50">
+                        <td className="px-4 py-2.5 font-mono text-cyan-400 font-medium">
+                          <Link href={`/sales/orders/${encodeURIComponent(o.so_number)}`} className="hover:underline">{o.so_number}</Link>
+                        </td>
+                        <td className="px-4 py-2.5">
+                          {o.customer_code ? (
+                            <Link href={`/sales/customers/${encodeURIComponent(o.customer_code.trim())}`}
+                              className="text-white hover:text-cyan-400 transition flex items-center gap-1">
+                              <span className="truncate max-w-[160px] block">{o.customer_name ?? o.customer_code}</span>
+                              <ExternalLink className="w-3 h-3 opacity-50 shrink-0" />
+                            </Link>
+                          ) : <span className="text-slate-300">{o.customer_name ?? '—'}</span>}
+                        </td>
+                        <td className="px-4 py-2.5 text-slate-400 text-xs max-w-[140px] truncate">{o.reference ?? '—'}</td>
+                        <td className="px-4 py-2.5">
+                          <span className={`inline-flex px-2 py-0.5 rounded border text-xs font-medium ${
+                            o.so_status?.toUpperCase() === 'I'
+                              ? 'bg-green-500/20 text-green-300 border-green-800'
+                              : 'bg-slate-700 text-slate-400 border-slate-600'
+                          }`}>{o.so_status?.toUpperCase() ?? '?'}</span>
+                        </td>
+                        <td className="px-4 py-2.5 text-slate-300 text-xs whitespace-nowrap">{formatDate(o.invoice_date)}</td>
+                        <td className="px-4 py-2.5 text-slate-400 text-xs">{o.sale_type ?? '—'}</td>
+                        {isAdmin && <td className="px-4 py-2.5 text-slate-500 text-xs">{o.system_id}</td>}
+                        <td className="px-4 py-2.5 text-slate-400 text-xs">{o.line_count}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+            {hHasMore && (
+              <div className="px-4 py-3 border-t border-white/10 text-center">
+                <button onClick={() => fetchHistory(hPage + 1)} disabled={hLoading}
+                  className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg text-sm transition disabled:opacity-50">
+                  {hLoading ? 'Loading…' : 'Load more'}
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
