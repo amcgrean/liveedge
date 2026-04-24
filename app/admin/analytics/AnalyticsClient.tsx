@@ -76,7 +76,7 @@ export default function AnalyticsClient() {
   const [data, setData] = useState<AnalyticsData | null>(null);
   const [loading, setLoading] = useState(true);
   const [tab, setTab] = useState<Tab>('pages');
-  const [userFilter, setUserFilter] = useState<number | null>(null);
+  const [userFilter, setUserFilter] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
