@@ -5,7 +5,7 @@ import { legacyBid, legacyCustomer } from '../../../../../../../db/schema-legacy
 import { getErpSql } from '../../../../../../../db/supabase';
 import { desc, eq, inArray, or, ilike, type SQL } from 'drizzle-orm';
 
-export interface JobOrder {
+export interface ShipToOrder {
   so_number: string;
   system_id: string | null;
   so_status: string | null;
@@ -19,7 +19,7 @@ export interface JobOrder {
   line_count: number;
 }
 
-export interface JobTakeoff {
+export interface ShipToTakeoff {
   id: string;
   name: string;
   pdfFileName: string | null;
@@ -30,7 +30,7 @@ export interface JobTakeoff {
   href: string;
 }
 
-export interface JobQuote {
+export interface ShipToQuote {
   id: string;
   name: string;
   status: string | null;
@@ -38,12 +38,12 @@ export interface JobQuote {
   amount: number | null;
 }
 
-export interface JobDetailResponse {
+export interface ShipToDetailResponse {
   customer: {
     cust_code: string;
     cust_name: string | null;
   };
-  job: {
+  shipTo: {
     seq_num: number | null;
     shipto_name: string | null;
     address_1: string | null;
@@ -53,12 +53,12 @@ export interface JobDetailResponse {
     lat: number | null;
     lon: number | null;
   };
-  orders: JobOrder[];
-  takeoffs: JobTakeoff[];
-  quotes: JobQuote[];
+  orders: ShipToOrder[];
+  takeoffs: ShipToTakeoff[];
+  quotes: ShipToQuote[];
 }
 
-// GET /api/sales/customers/[code]/jobs/[seq]
+// GET /api/sales/customers/[code]/ship-tos/[seq]
 // seq = shipto_seq_num as string ("0", "1", ...); "-1" = the "no ship-to" bucket.
 export async function GET(
   _req: NextRequest,
@@ -78,7 +78,7 @@ export async function GET(
     const db = getDb();
 
     type CustRow = { cust_name: string | null };
-    type JobRow = {
+    type ShipToRow = {
       shipto_name: string | null;
       address_1: string | null;
       city: string | null;
@@ -106,7 +106,7 @@ export async function GET(
       ? sql`shipto_seq_num IS NULL`
       : sql`shipto_seq_num = ${seqNum}`;
 
-    const [custRows, jobRows, orderRows] = await Promise.all([
+    const [custRows, shipToRows, orderRows] = await Promise.all([
       sql<CustRow[]>`
         SELECT cust_name
         FROM agility_customers
@@ -115,8 +115,8 @@ export async function GET(
         LIMIT 1
       `,
       seqNum === -1
-        ? Promise.resolve<JobRow[]>([])
-        : sql<JobRow[]>`
+        ? Promise.resolve<ShipToRow[]>([])
+        : sql<ShipToRow[]>`
             SELECT shipto_name, address_1, city, state, zip, lat::text, lon::text
             FROM agility_customers
             WHERE TRIM(cust_code) = TRIM(${code})
@@ -167,7 +167,7 @@ export async function GET(
         `
       : [];
 
-    const shipTo = jobRows[0] ?? null;
+    const shipTo = shipToRows[0] ?? null;
     const fallback = fallbackRow[0] ?? null;
 
     // Resolve legacy customer → find their legacy bids → find takeoff sessions.
@@ -230,7 +230,7 @@ export async function GET(
         .limit(50);
     }
 
-    const takeoffs: JobTakeoff[] = sessionRows.map((s) => ({
+    const takeoffs: ShipToTakeoff[] = sessionRows.map((s) => ({
       id: s.id,
       name: s.name,
       pdfFileName: s.pdfFileName,
@@ -241,12 +241,12 @@ export async function GET(
       href: `/takeoff/${s.id}`,
     }));
 
-    const response: JobDetailResponse = {
+    const response: ShipToDetailResponse = {
       customer: {
         cust_code: code.trim(),
         cust_name: custRows[0].cust_name?.trim() || null,
       },
-      job: {
+      shipTo: {
         seq_num: seqNum === -1 ? null : seqNum,
         shipto_name: shipTo?.shipto_name?.trim() || null,
         address_1: (shipTo?.address_1 ?? fallback?.address_1)?.trim() || null,
@@ -276,7 +276,7 @@ export async function GET(
 
     return NextResponse.json(response);
   } catch (err) {
-    console.error('[sales/customers/jobs/[seq] GET]', err);
+    console.error('[sales/customers/ship-tos/[seq] GET]', err);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }

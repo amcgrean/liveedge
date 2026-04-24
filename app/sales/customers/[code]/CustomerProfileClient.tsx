@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import Link from 'next/link';
-import { ArrowLeft, Phone, Mail, MapPin, Send, Briefcase, ChevronRight, Package } from 'lucide-react';
+import { ArrowLeft, Phone, Mail, MapPin, Send, ChevronRight, Package } from 'lucide-react';
 import { usePageTracking } from '@/hooks/usePageTracking';
 
 type Customer = {
@@ -25,7 +25,7 @@ type Note = {
   id: number; note_type: string | null; body: string; rep_name: string | null; created_at: string | null;
 };
 
-type Job = {
+type ShipToSummary = {
   seq_num: number | null;
   shipto_name: string | null;
   address_1: string | null;
@@ -38,7 +38,7 @@ type Job = {
   last_so_id: string | null;
 };
 
-type Tab = 'overview' | 'jobs' | 'orders' | 'notes';
+type Tab = 'overview' | 'shiptos' | 'orders' | 'notes';
 
 const SO_STATUS: Record<string, { label: string; color: string }> = {
   O: { label: 'Open',      color: 'text-blue-400' },
@@ -51,14 +51,13 @@ const SO_STATUS: Record<string, { label: string; color: string }> = {
 
 const NOTE_TYPES = ['Call', 'Visit', 'Email', 'Quote Follow-Up', 'Issue', 'Other'];
 
-function jobHref(code: string, seq: number | null) {
+function shipToHref(code: string, seq: number | null) {
   const s = seq == null ? -1 : seq;
-  return `/sales/customers/${encodeURIComponent(code)}/jobs/${s}`;
+  return `/sales/customers/${encodeURIComponent(code)}/ship-tos/${s}`;
 }
 
-function jobAddress(j: Job | ShipTo): string {
-  const parts = [j.address_1, [j.city, j.state].filter(Boolean).join(', '), 'zip' in j ? j.zip : null]
-    .filter(Boolean);
+function shipToAddress(s: ShipToSummary | ShipTo): string {
+  const parts = [s.address_1, [s.city, s.state].filter(Boolean).join(', '), s.zip].filter(Boolean);
   return parts.join(' · ') || 'No address on file';
 }
 
@@ -67,11 +66,11 @@ export default function CustomerProfileClient({ code, userName }: { code: string
   const [tab, setTab] = useState<Tab>('overview');
   const [customer, setCustomer] = useState<Customer | null>(null);
   const [orders, setOrders] = useState<Order[]>([]);
-  const [shiptos, setShiptos] = useState<ShipTo[]>([]);
+  const [shiptosBasic, setShiptosBasic] = useState<ShipTo[]>([]);
+  const [shiptos, setShiptos] = useState<ShipToSummary[]>([]);
   const [notes, setNotes] = useState<Note[]>([]);
-  const [jobs, setJobs] = useState<Job[]>([]);
+  const [shiptosLoading, setShiptosLoading] = useState(false);
   const [loading, setLoading] = useState(true);
-  const [jobsLoading, setJobsLoading] = useState(false);
   const [notesLoading, setNotesLoading] = useState(false);
   const [error, setError] = useState('');
 
@@ -90,19 +89,19 @@ export default function CustomerProfileClient({ code, userName }: { code: string
       .then((d: { customer: Customer; open_orders: Order[]; history: Order[]; ship_to: ShipTo[] }) => {
         setCustomer(d.customer);
         setOrders([...(d.open_orders ?? []), ...(d.history ?? [])]);
-        setShiptos(d.ship_to ?? []);
+        setShiptosBasic(d.ship_to ?? []);
       })
       .catch(() => setError('Customer not found or data unavailable.'))
       .finally(() => setLoading(false));
   }, [code]);
 
-  const loadJobs = useCallback(() => {
-    setJobsLoading(true);
-    fetch(`/api/sales/customers/${encodeURIComponent(code)}/jobs`)
+  const loadShiptos = useCallback(() => {
+    setShiptosLoading(true);
+    fetch(`/api/sales/customers/${encodeURIComponent(code)}/ship-tos`)
       .then((r) => r.json())
-      .then((d: { jobs: Job[] }) => setJobs(d.jobs ?? []))
+      .then((d: { shiptos: ShipToSummary[] }) => setShiptos(d.shiptos ?? []))
       .catch(() => {})
-      .finally(() => setJobsLoading(false));
+      .finally(() => setShiptosLoading(false));
   }, [code]);
 
   const loadNotes = useCallback(() => {
@@ -115,9 +114,9 @@ export default function CustomerProfileClient({ code, userName }: { code: string
   }, [code]);
 
   useEffect(() => {
-    if (tab === 'jobs' && jobs.length === 0) loadJobs();
+    if (tab === 'shiptos' && shiptos.length === 0) loadShiptos();
     if (tab === 'notes') loadNotes();
-  }, [tab, jobs.length, loadJobs, loadNotes]);
+  }, [tab, shiptos.length, loadShiptos, loadNotes]);
 
   async function submitNote() {
     if (!noteBody.trim()) return;
@@ -159,7 +158,7 @@ export default function CustomerProfileClient({ code, userName }: { code: string
   const openOrders = orders.filter((o) => o.so_status === 'O' || o.so_status === 'K');
   const tabs: { id: Tab; label: string; badge?: string | number }[] = [
     { id: 'overview', label: 'Overview' },
-    { id: 'jobs',     label: 'Jobs' },
+    { id: 'shiptos',  label: 'Ship-Tos', badge: shiptosBasic.length || undefined },
     { id: 'orders',   label: 'Orders', badge: orders.length },
     { id: 'notes',    label: 'Notes' },
   ];
@@ -236,12 +235,19 @@ export default function CustomerProfileClient({ code, userName }: { code: string
             </div>
           )}
 
-          {/* Ship-to addresses */}
-          {shiptos.length > 0 && (
+          {/* Ship-to summary — full list on the Ship-Tos tab */}
+          {shiptosBasic.length > 0 && (
             <div className="bg-gray-900 border border-gray-800 rounded-lg p-4 sm:p-5 md:col-span-2">
-              <h3 className="text-sm font-semibold text-gray-400 uppercase tracking-wider mb-3">Ship-To Addresses</h3>
+              <div className="flex items-center justify-between mb-3 gap-2">
+                <h3 className="text-sm font-semibold text-gray-400 uppercase tracking-wider">
+                  Ship-To Addresses ({shiptosBasic.length})
+                </h3>
+                <button onClick={() => setTab('shiptos')} className="text-xs text-cyan-400 hover:underline shrink-0">
+                  View all →
+                </button>
+              </div>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                {shiptos.map((s, i) => (
+                {shiptosBasic.slice(0, 4).map((s, i) => (
                   <div key={i} className="flex gap-3 text-sm">
                     <MapPin className="w-4 h-4 text-gray-500 shrink-0 mt-0.5" />
                     <div className="min-w-0">
@@ -289,29 +295,29 @@ export default function CustomerProfileClient({ code, userName }: { code: string
         </div>
       )}
 
-      {/* Jobs tab — each ship-to = a job site */}
-      {tab === 'jobs' && (
+      {/* Ship-Tos tab — clickable list of customer ship-to addresses */}
+      {tab === 'shiptos' && (
         <div>
-          {jobsLoading && <p className="text-gray-500 text-sm">Loading jobs...</p>}
-          {!jobsLoading && jobs.length === 0 && (
-            <p className="text-gray-500 text-sm">No jobs found for this customer.</p>
+          {shiptosLoading && <p className="text-gray-500 text-sm">Loading ship-tos...</p>}
+          {!shiptosLoading && shiptos.length === 0 && (
+            <p className="text-gray-500 text-sm">No ship-tos found for this customer.</p>
           )}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            {jobs.map((j) => (
+            {shiptos.map((s) => (
               <Link
-                key={`${j.seq_num ?? 'none'}`}
-                href={jobHref(code, j.seq_num)}
+                key={`${s.seq_num ?? 'none'}`}
+                href={shipToHref(code, s.seq_num)}
                 className="group block bg-gray-900 border border-gray-800 rounded-lg p-4 hover:border-cyan-600 hover:bg-gray-800/50 active:bg-gray-800 transition-colors"
               >
                 <div className="flex items-start justify-between gap-3">
                   <div className="flex items-start gap-3 min-w-0 flex-1">
-                    <Briefcase className="w-4 h-4 text-cyan-400 shrink-0 mt-0.5" />
+                    <MapPin className="w-4 h-4 text-cyan-400 shrink-0 mt-0.5" />
                     <div className="min-w-0">
                       <div className="text-sm font-semibold text-white break-words">
-                        {j.shipto_name || j.address_1 || (j.seq_num == null ? 'No ship-to assigned' : `Ship-To #${j.seq_num}`)}
+                        {s.shipto_name || s.address_1 || (s.seq_num == null ? 'No ship-to assigned' : `Ship-To #${s.seq_num}`)}
                       </div>
                       <div className="text-xs text-gray-400 mt-0.5 break-words">
-                        {jobAddress(j)}
+                        {shipToAddress(s)}
                       </div>
                     </div>
                   </div>
@@ -320,14 +326,14 @@ export default function CustomerProfileClient({ code, userName }: { code: string
                 <div className="mt-3 flex items-center gap-3 text-xs flex-wrap">
                   <span className="inline-flex items-center gap-1 text-gray-300">
                     <Package className="w-3 h-3" />
-                    {j.order_count} order{j.order_count !== 1 ? 's' : ''}
+                    {s.order_count} order{s.order_count !== 1 ? 's' : ''}
                   </span>
-                  {j.open_count > 0 && (
-                    <span className="text-blue-400">{j.open_count} open</span>
+                  {s.open_count > 0 && (
+                    <span className="text-blue-400">{s.open_count} open</span>
                   )}
-                  {j.last_order_date && (
+                  {s.last_order_date && (
                     <span className="text-gray-500 ml-auto">
-                      Last: {new Date(j.last_order_date).toLocaleDateString()}
+                      Last: {new Date(s.last_order_date).toLocaleDateString()}
                     </span>
                   )}
                 </div>

@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '../../../../../../auth';
 import { getErpSql } from '../../../../../../db/supabase';
 
-export interface CustomerJob {
+export interface CustomerShipTo {
   seq_num: number | null;
   shipto_name: string | null;
   address_1: string | null;
@@ -17,8 +17,8 @@ export interface CustomerJob {
   lon: number | null;
 }
 
-// GET /api/sales/customers/[code]/jobs
-// Returns one row per ship-to address (job site) for a customer, with order counts.
+// GET /api/sales/customers/[code]/ship-tos
+// Returns one row per ship-to address for a customer, with order counts.
 // seq_num = -1 represents the "no ship-to assigned" bucket.
 export async function GET(
   _req: NextRequest,
@@ -33,7 +33,7 @@ export async function GET(
   try {
     const sql = getErpSql();
 
-    type JobRow = {
+    type ShipToRow = {
       seq_num: number | null;
       shipto_name: string | null;
       address_1: string | null;
@@ -51,7 +51,7 @@ export async function GET(
     // Aggregate orders per shipto_seq_num. Use the SO's own shipto_* fields as
     // the fallback display (in case no matching agility_customers row exists
     // or the customer ship-to was deleted).
-    const rows = await sql<JobRow[]>`
+    const rows = await sql<ShipToRow[]>`
       WITH so_jobs AS (
         SELECT
           COALESCE(shipto_seq_num, -1) AS seq_num,
@@ -89,7 +89,7 @@ export async function GET(
       ORDER BY sj.last_order_date DESC NULLS LAST, sj.seq_num
     `;
 
-    const jobs: CustomerJob[] = rows.map((r) => ({
+    const shiptos: CustomerShipTo[] = rows.map((r) => ({
       seq_num: r.seq_num,
       shipto_name: r.shipto_name?.trim() || null,
       address_1: r.address_1?.trim() || null,
@@ -104,9 +104,9 @@ export async function GET(
       lon: r.lon != null ? parseFloat(r.lon) : null,
     }));
 
-    return NextResponse.json({ jobs });
+    return NextResponse.json({ shiptos });
   } catch (err) {
-    console.error('[sales/customers/jobs GET]', err);
+    console.error('[sales/customers/ship-tos GET]', err);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }
