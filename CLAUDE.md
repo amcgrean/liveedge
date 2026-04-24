@@ -197,6 +197,25 @@ Full migration plan in `docs/migration-plan.md`. Six phases.
 - **Print CSS**: already comprehensive in `app/globals.css` (lines 63–130) — hides nav/buttons, white bg, page-break handling
 - **Error boundaries**: `app/error.tsx` + 6 route-level `error.tsx` files already in place; no additional work needed
 
+#### Services Nav Consolidation (2026-04-24) — COMPLETE
+Branches: `claude/fix-deployment-error-gVa5I` (deploy fix, PR #141 merged) + `claude/consolidate-services-nav-bids` (PR #143)
+
+**Deploy fix (PR #141):** The WIP commit `26e7640` stubbed `/estimating/page.tsx` to import a `./EstimatingHubClient` that was never committed, breaking production builds with `Module not found`. Reverted `/estimating/page.tsx` to render `TakeoffApp` with `?bid=` search param. The new `/estimating/[bidId]` route added in `26e7640` is preserved.
+
+**Bids consolidation (PR #143):** Services dropdown went from 9 items to 6 by collapsing 4 separate bid list entries into a single tabbed `/bids` hub:
+- `/bids` — `BidsHubClient.tsx` with 4 tabs, driven by `?tab=` query param (default `open`)
+  - **Open** — embeds `LegacyBidsClient` (legacy Incomplete, `/api/legacy-bids`)
+  - **Completed** — embeds `CompletedBidsClient` (legacy Complete + turnaround days)
+  - **All** — embeds `AllBidsClient` (unified legacy + estimator, `/api/all-bids`)
+  - **Projects** — embeds `BidsListClient` (estimator UUID bids with draft→submitted→won/lost/archived workflow buttons, `/api/bids`)
+- Each of the 4 list clients gained an `embedded?: boolean` prop: when true, they skip their own `<TopNav>` and outer wrapper so the hub mounts them as tab panels
+- Old list pages now redirect:
+  - `/legacy-bids/page.tsx` → `/bids?tab=open`
+  - `/legacy-bids/completed/page.tsx` → `/bids?tab=completed`
+  - `/all-bids/page.tsx` → `/bids?tab=all`
+- Detail and add routes (`/legacy-bids/[id]`, `/legacy-bids/add`) are **untouched** — internal links like `href={`/legacy-bids/${bid.id}`}` still work
+- Design is now inside Services (not a direct top-level link as the old CLAUDE.md suggested). Services dropdown: Estimating App · PDF Takeoff · Bids · EWP · Projects · Design
+
 #### Nav + Branding Overhaul (2026-04-15) — COMPLETE
 Branch: `claude/update-navbar-menu-cgiYe` (merged to `main`)
 
@@ -605,12 +624,11 @@ When the accounting AR view is built, add it under a dedicated route (e.g. `/acc
 - `SESSION_COOKIE_SECURE` — Secure flag on session cookie (`true` in prod, `false` in dev)
 
 ## Navigation Structure
-Current structure as of 2026-04-15 (7 domain dropdowns + user dropdown; Design is a direct link):
+Current structure as of 2026-04-24 (6 domain dropdowns + user dropdown; Design is inside Services):
 - **Yard ▾**: Picks Board, Open Picks, Picker Stats, Work Orders, Supervisor (all `/warehouse/*` paths, label renamed from "Warehouse")
 - **Dispatch ▾**: Dispatch Board, Delivery Tracker, Fleet Map
 - **Sales ▾**: Sales Hub, Customers, Transactions, Purchase History, Products & Stock, Reports, RMA Credits
-- **Services ▾**: Estimating App (`/estimating`), PDF Takeoff, Bids, EWP, Projects (renamed from "Estimating")
-- **Design** (direct → `/designs`)
+- **Services ▾**: Estimating App (`/estimating`), PDF Takeoff, **Bids** (tabbed hub at `/bids`), EWP, Projects, Design (6 items; bid list entries consolidated 2026-04-24)
 - **Purchasing ▾**: Buyer Workspace, Open POs, Command Center, PO Check-In, Review Queue (Receiving merged in)
 - **Admin ▾** (admin role only): Customers, Products/SKUs, Formulas, Bid Fields, Users, Notifications, Audit Log, ERP Sync, Page Analytics, Delivery Report, Picker Admin
 - **User dropdown** (under logged-in username + chevron): Report an Issue (`/it-issues`), Help & Docs (`/help`), Sign Out
