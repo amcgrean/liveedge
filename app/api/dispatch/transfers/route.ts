@@ -100,7 +100,7 @@ export async function GET(req: NextRequest) {
       ) lc ON true
       WHERE soh.is_deleted = false
         AND UPPER(COALESCE(soh.sale_type, '')) = ${TRANSFER_SALE_TYPE}
-        AND soh.so_status NOT IN ('C', 'X')
+        AND soh.so_status NOT IN ('C', 'X', 'I')
         ${branchFilter}
       ORDER BY soh.expect_date ASC NULLS LAST, soh.so_id
     `;
