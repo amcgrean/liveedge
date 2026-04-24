@@ -104,8 +104,11 @@ export default function CustomerProfileClient({ code, userName }: { code: string
     setShiptosError('');
     fetch(`/api/sales/customers/${encodeURIComponent(code)}/ship-tos`)
       .then(async (r) => {
-        const body = await r.json().catch(() => ({}));
-        if (!r.ok) throw new Error(body?.error || `HTTP ${r.status}`);
+        const body = await r.json().catch(() => ({} as Record<string, unknown>));
+        if (!r.ok) {
+          const b = body as { error?: string; message?: string };
+          throw new Error(b.message || b.error || `HTTP ${r.status}`);
+        }
         return body as { shiptos: ShipToSummary[] };
       })
       .then((d) => setShiptos(d.shiptos ?? []))
