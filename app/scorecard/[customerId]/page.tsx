@@ -2,6 +2,7 @@ import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import {
   fetchKpis,
+  fetchAllCustomersAvg,
   fetchThreeYear,
   fetchProductMajors,
   fetchSaleTypes,
@@ -62,8 +63,9 @@ export default async function ScorecardPage({
     cutoffDate,
   };
 
-  const [kpis, threeYear, productMajors, saleTypes, daysToPay] = await Promise.all([
+  const [kpis, avg, threeYear, productMajors, saleTypes, daysToPay] = await Promise.all([
     fetchKpis(scorecardParams),
+    fetchAllCustomersAvg(scorecardParams),
     fetchThreeYear(scorecardParams),
     fetchProductMajors(scorecardParams),
     fetchSaleTypes(scorecardParams),
@@ -188,12 +190,14 @@ export default async function ScorecardPage({
           base={gmPctBase}
           compare={gmPctCompare}
           format="percent"
+          avg={avg.gmPct}
         />
         <KpiTile
           label="Value Add %"
           base={vaPctBase}
           compare={vaPctCompare}
           format="percent"
+          avg={avg.vaPct}
         />
         <KpiTile
           label="Non-Stock %"
@@ -201,6 +205,7 @@ export default async function ScorecardPage({
           compare={nsPctCompare}
           format="percent"
           higherIsBetter={false}
+          avg={avg.nsPct}
         />
       </div>
 
