@@ -4,6 +4,7 @@ import type {
   AggregateParams,
   KpiComparison,
   KpiSet,
+  CustomerAvg,
   ProductMajorRow,
   ProductMinorRow,
   ProductItemRow,
@@ -351,6 +352,92 @@ export async function fetchKpis(params: ScorecardParams): Promise<KpiComparison>
     branchIds: (r as Row).branch_ids ?? [],
     shipToCount: toInt((r as Row).ship_to_count) ?? 0,
     customerName: (r as Row).customer_name ?? params.customerId,
+  };
+}
+
+// ---------------------------------------------------------------------------
+// All-customer average benchmarks (weighted: total GP / total sales)
+// ---------------------------------------------------------------------------
+
+export async function fetchAllCustomersAvg(params: ScorecardParams): Promise<CustomerAvg> {
+  const sql = getErpSql();
+  const { baseCutoff } = getCutoffs(
+    params.baseYear,
+    params.compareYear,
+    params.cutoffDate,
+    params.period,
+  );
+  const { dateFrom, dateTo } = yearRange(params.baseYear, params.compareYear);
+
+  type Row = {
+    total_sales: string | null;
+    total_gp: string | null;
+    total_va_sales: string | null;
+    total_ns_sales: string | null;
+  };
+
+  const [r] = params.branchIds.length > 0
+    ? await sql<Row[]>`
+        SELECT
+          SUM(sales_amount) FILTER (
+            WHERE EXTRACT(YEAR FROM invoice_date)::int = ${params.baseYear}
+              AND invoice_date::date <= ${baseCutoff}::date
+          )::text AS total_sales,
+          SUM(gross_profit) FILTER (
+            WHERE EXTRACT(YEAR FROM invoice_date)::int = ${params.baseYear}
+              AND invoice_date::date <= ${baseCutoff}::date
+          )::text AS total_gp,
+          SUM(sales_amount) FILTER (
+            WHERE EXTRACT(YEAR FROM invoice_date)::int = ${params.baseYear}
+              AND invoice_date::date <= ${baseCutoff}::date
+              AND is_value_add_major
+          )::text AS total_va_sales,
+          SUM(sales_amount) FILTER (
+            WHERE EXTRACT(YEAR FROM invoice_date)::int = ${params.baseYear}
+              AND invoice_date::date <= ${baseCutoff}::date
+              AND is_non_stock
+          )::text AS total_ns_sales
+        FROM customer_scorecard_fact
+        WHERE is_deleted = false
+          AND invoice_date >= ${dateFrom}::timestamp
+          AND invoice_date < ${dateTo}::timestamp
+          AND branch_id = ANY(${params.branchIds}::text[])
+      `
+    : await sql<Row[]>`
+        SELECT
+          SUM(sales_amount) FILTER (
+            WHERE EXTRACT(YEAR FROM invoice_date)::int = ${params.baseYear}
+              AND invoice_date::date <= ${baseCutoff}::date
+          )::text AS total_sales,
+          SUM(gross_profit) FILTER (
+            WHERE EXTRACT(YEAR FROM invoice_date)::int = ${params.baseYear}
+              AND invoice_date::date <= ${baseCutoff}::date
+          )::text AS total_gp,
+          SUM(sales_amount) FILTER (
+            WHERE EXTRACT(YEAR FROM invoice_date)::int = ${params.baseYear}
+              AND invoice_date::date <= ${baseCutoff}::date
+              AND is_value_add_major
+          )::text AS total_va_sales,
+          SUM(sales_amount) FILTER (
+            WHERE EXTRACT(YEAR FROM invoice_date)::int = ${params.baseYear}
+              AND invoice_date::date <= ${baseCutoff}::date
+              AND is_non_stock
+          )::text AS total_ns_sales
+        FROM customer_scorecard_fact
+        WHERE is_deleted = false
+          AND invoice_date >= ${dateFrom}::timestamp
+          AND invoice_date < ${dateTo}::timestamp
+      `;
+
+  const sales = toNum(r?.total_sales);
+  const gp = toNum(r?.total_gp);
+  const vaSales = toNum(r?.total_va_sales);
+  const nsSales = toNum(r?.total_ns_sales);
+
+  return {
+    gmPct: sales && sales !== 0 && gp !== null ? gp / sales : null,
+    vaPct: sales && sales !== 0 && vaSales !== null ? vaSales / sales : null,
+    nsPct: sales && sales !== 0 && nsSales !== null ? nsSales / sales : null,
   };
 }
 

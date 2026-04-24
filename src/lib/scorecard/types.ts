@@ -30,6 +30,12 @@ export interface KpiComparison {
   customerName: string;
 }
 
+export interface CustomerAvg {
+  gmPct: number | null;
+  vaPct: number | null;
+  nsPct: number | null;
+}
+
 export interface ProductMajorRow {
   productMajorCode: string;
   productMajor: string;
