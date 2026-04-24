@@ -28,120 +28,149 @@ export async function GET(req: NextRequest) {
     type TopCustomerRow = { cust_name: string | null; order_count: number };
     type StatusRow = { so_status: string; cnt: number };
 
-    const [dailyRows, saleTypeRows, shipViaRows, topRows, statusRows] = await Promise.all([
-      effectiveBranch
-        ? sql<DailyRow[]>`
+    type ResultRow = {
+      result: {
+        daily_orders: DailyRow[] | null;
+        by_sale_type: SaleTypeRow[] | null;
+        by_ship_via: ShipViaRow[] | null;
+        top_customers: TopCustomerRow[] | null;
+        status_breakdown: StatusRow[] | null;
+      };
+    };
+
+    // Single-scan CTE: filter agility_so_header once, then aggregate five ways.
+    // The previous implementation ran 5 parallel queries that each scanned the
+    // same rows; combining them cuts I/O and planner work to one round-trip.
+    const rows = await (effectiveBranch
+      ? sql<ResultRow[]>`
+          WITH filtered AS (
             SELECT
-              CAST(COALESCE(expect_date, synced_at) AS DATE)::text AS order_date,
-              COUNT(DISTINCT so_id)::int AS count
+              so_id,
+              COALESCE(expect_date, synced_at)::date AS order_date,
+              COALESCE(NULLIF(TRIM(sale_type), ''), 'UNKNOWN') AS sale_type,
+              COALESCE(NULLIF(TRIM(ship_via), ''), 'UNKNOWN') AS ship_via,
+              cust_name,
+              UPPER(COALESCE(so_status, '—')) AS so_status
             FROM agility_so_header
-            WHERE is_deleted = false AND system_id = ${effectiveBranch}
-              AND CAST(COALESCE(expect_date, synced_at) AS DATE) >= ${since}::date
-            GROUP BY CAST(COALESCE(expect_date, synced_at) AS DATE)
-            ORDER BY order_date
-          `
-        : sql<DailyRow[]>`
+            WHERE is_deleted = false
+              AND system_id = ${effectiveBranch}
+              AND COALESCE(expect_date, synced_at) >= ${since}::date
+          )
+          SELECT json_build_object(
+            'daily_orders', (
+              SELECT COALESCE(json_agg(d ORDER BY d.order_date), '[]'::json)
+              FROM (
+                SELECT order_date::text AS order_date, COUNT(*)::int AS count
+                FROM filtered GROUP BY order_date
+              ) d
+            ),
+            'by_sale_type', (
+              SELECT COALESCE(json_agg(s ORDER BY s.count DESC), '[]'::json)
+              FROM (
+                SELECT sale_type, COUNT(*)::int AS count
+                FROM filtered GROUP BY sale_type
+                ORDER BY count DESC LIMIT 15
+              ) s
+            ),
+            'by_ship_via', (
+              SELECT COALESCE(json_agg(s ORDER BY s.count DESC), '[]'::json)
+              FROM (
+                SELECT ship_via, COUNT(*)::int AS count
+                FROM filtered GROUP BY ship_via
+                ORDER BY count DESC LIMIT 10
+              ) s
+            ),
+            'top_customers', (
+              SELECT COALESCE(json_agg(t ORDER BY t.order_count DESC), '[]'::json)
+              FROM (
+                SELECT cust_name, COUNT(*)::int AS order_count
+                FROM filtered GROUP BY cust_name
+                ORDER BY order_count DESC LIMIT 10
+              ) t
+            ),
+            'status_breakdown', (
+              SELECT COALESCE(json_agg(s ORDER BY s.cnt DESC), '[]'::json)
+              FROM (
+                SELECT so_status, COUNT(*)::int AS cnt
+                FROM filtered GROUP BY so_status
+              ) s
+            )
+          ) AS result
+        `
+      : sql<ResultRow[]>`
+          WITH filtered AS (
             SELECT
-              CAST(COALESCE(expect_date, synced_at) AS DATE)::text AS order_date,
-              COUNT(DISTINCT so_id)::int AS count
+              so_id,
+              COALESCE(expect_date, synced_at)::date AS order_date,
+              COALESCE(NULLIF(TRIM(sale_type), ''), 'UNKNOWN') AS sale_type,
+              COALESCE(NULLIF(TRIM(ship_via), ''), 'UNKNOWN') AS ship_via,
+              cust_name,
+              UPPER(COALESCE(so_status, '—')) AS so_status
             FROM agility_so_header
             WHERE is_deleted = false
-              AND CAST(COALESCE(expect_date, synced_at) AS DATE) >= ${since}::date
-            GROUP BY CAST(COALESCE(expect_date, synced_at) AS DATE)
-            ORDER BY order_date
-          `,
+              AND COALESCE(expect_date, synced_at) >= ${since}::date
+          )
+          SELECT json_build_object(
+            'daily_orders', (
+              SELECT COALESCE(json_agg(d ORDER BY d.order_date), '[]'::json)
+              FROM (
+                SELECT order_date::text AS order_date, COUNT(*)::int AS count
+                FROM filtered GROUP BY order_date
+              ) d
+            ),
+            'by_sale_type', (
+              SELECT COALESCE(json_agg(s ORDER BY s.count DESC), '[]'::json)
+              FROM (
+                SELECT sale_type, COUNT(*)::int AS count
+                FROM filtered GROUP BY sale_type
+                ORDER BY count DESC LIMIT 15
+              ) s
+            ),
+            'by_ship_via', (
+              SELECT COALESCE(json_agg(s ORDER BY s.count DESC), '[]'::json)
+              FROM (
+                SELECT ship_via, COUNT(*)::int AS count
+                FROM filtered GROUP BY ship_via
+                ORDER BY count DESC LIMIT 10
+              ) s
+            ),
+            'top_customers', (
+              SELECT COALESCE(json_agg(t ORDER BY t.order_count DESC), '[]'::json)
+              FROM (
+                SELECT cust_name, COUNT(*)::int AS order_count
+                FROM filtered GROUP BY cust_name
+                ORDER BY order_count DESC LIMIT 10
+              ) t
+            ),
+            'status_breakdown', (
+              SELECT COALESCE(json_agg(s ORDER BY s.cnt DESC), '[]'::json)
+              FROM (
+                SELECT so_status, COUNT(*)::int AS cnt
+                FROM filtered GROUP BY so_status
+              ) s
+            )
+          ) AS result
+        `);
 
-      effectiveBranch
-        ? sql<SaleTypeRow[]>`
-            SELECT COALESCE(NULLIF(TRIM(sale_type),''), 'UNKNOWN') AS sale_type,
-                   COUNT(DISTINCT so_id)::int AS count
-            FROM agility_so_header
-            WHERE is_deleted = false AND system_id = ${effectiveBranch}
-              AND CAST(COALESCE(expect_date, synced_at) AS DATE) >= ${since}::date
-            GROUP BY sale_type
-            ORDER BY count DESC
-            LIMIT 15
-          `
-        : sql<SaleTypeRow[]>`
-            SELECT COALESCE(NULLIF(TRIM(sale_type),''), 'UNKNOWN') AS sale_type,
-                   COUNT(DISTINCT so_id)::int AS count
-            FROM agility_so_header
-            WHERE is_deleted = false
-              AND CAST(COALESCE(expect_date, synced_at) AS DATE) >= ${since}::date
-            GROUP BY sale_type
-            ORDER BY count DESC
-            LIMIT 15
-          `,
+    const result = rows[0]?.result ?? {
+      daily_orders: [],
+      by_sale_type: [],
+      by_ship_via: [],
+      top_customers: [],
+      status_breakdown: [],
+    };
 
-      effectiveBranch
-        ? sql<ShipViaRow[]>`
-            SELECT COALESCE(NULLIF(TRIM(ship_via),''), 'UNKNOWN') AS ship_via,
-                   COUNT(DISTINCT so_id)::int AS count
-            FROM agility_so_header
-            WHERE is_deleted = false AND system_id = ${effectiveBranch}
-              AND CAST(COALESCE(expect_date, synced_at) AS DATE) >= ${since}::date
-            GROUP BY ship_via
-            ORDER BY count DESC
-            LIMIT 10
-          `
-        : sql<ShipViaRow[]>`
-            SELECT COALESCE(NULLIF(TRIM(ship_via),''), 'UNKNOWN') AS ship_via,
-                   COUNT(DISTINCT so_id)::int AS count
-            FROM agility_so_header
-            WHERE is_deleted = false
-              AND CAST(COALESCE(expect_date, synced_at) AS DATE) >= ${since}::date
-            GROUP BY ship_via
-            ORDER BY count DESC
-            LIMIT 10
-          `,
-
-      effectiveBranch
-        ? sql<TopCustomerRow[]>`
-            SELECT cust_name, COUNT(DISTINCT so_id)::int AS order_count
-            FROM agility_so_header
-            WHERE is_deleted = false AND system_id = ${effectiveBranch}
-              AND CAST(COALESCE(expect_date, synced_at) AS DATE) >= ${since}::date
-            GROUP BY cust_name
-            ORDER BY order_count DESC
-            LIMIT 10
-          `
-        : sql<TopCustomerRow[]>`
-            SELECT cust_name, COUNT(DISTINCT so_id)::int AS order_count
-            FROM agility_so_header
-            WHERE is_deleted = false
-              AND CAST(COALESCE(expect_date, synced_at) AS DATE) >= ${since}::date
-            GROUP BY cust_name
-            ORDER BY order_count DESC
-            LIMIT 10
-          `,
-
-      effectiveBranch
-        ? sql<StatusRow[]>`
-            SELECT UPPER(COALESCE(so_status,'—')) AS so_status, COUNT(DISTINCT so_id)::int AS cnt
-            FROM agility_so_header
-            WHERE is_deleted = false AND system_id = ${effectiveBranch}
-              AND CAST(COALESCE(expect_date, synced_at) AS DATE) >= ${since}::date
-            GROUP BY UPPER(COALESCE(so_status,'—'))
-            ORDER BY cnt DESC
-          `
-        : sql<StatusRow[]>`
-            SELECT UPPER(COALESCE(so_status,'—')) AS so_status, COUNT(DISTINCT so_id)::int AS cnt
-            FROM agility_so_header
-            WHERE is_deleted = false
-              AND CAST(COALESCE(expect_date, synced_at) AS DATE) >= ${since}::date
-            GROUP BY UPPER(COALESCE(so_status,'—'))
-            ORDER BY cnt DESC
-          `,
-    ]);
-
-    return NextResponse.json({
+    const res = NextResponse.json({
       period_days: period,
-      daily_orders: dailyRows,
-      by_sale_type: saleTypeRows,
-      by_ship_via: shipViaRows,
-      top_customers: topRows,
-      status_breakdown: statusRows,
+      daily_orders: result.daily_orders ?? [],
+      by_sale_type: result.by_sale_type ?? [],
+      by_ship_via: result.by_ship_via ?? [],
+      top_customers: result.top_customers ?? [],
+      status_breakdown: result.status_breakdown ?? [],
     });
+    // Browser cache for 60s, SWR for 5 min — reports don't need to be real-time.
+    res.headers.set('Cache-Control', 'private, max-age=60, stale-while-revalidate=300');
+    return res;
   } catch (err) {
     console.error('[sales/reports GET]', err);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
