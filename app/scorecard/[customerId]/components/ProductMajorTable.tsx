@@ -30,14 +30,6 @@ function fmtQty(n: number): string {
   return new Intl.NumberFormat('en-US', { maximumFractionDigits: 1 }).format(n);
 }
 
-function MiniBar({ value, max }: { value: number; max: number }) {
-  const pct = max > 0 && value > 0 ? Math.max(2, Math.round((value / max) * 100)) : 0;
-  return (
-    <div className="w-16 bg-slate-700 rounded-full h-1.5 ml-1 inline-block align-middle print:hidden">
-      <div className="h-1.5 rounded-full bg-cyan-600" style={{ width: `${pct}%` }} />
-    </div>
-  );
-}
 
 function LoadingRow({ colSpan = 7, label }: { colSpan?: number; label: string }) {
   return (
@@ -77,7 +69,6 @@ export default function ProductMajorTable({ rows, params, baseYear, compareYear,
   const basePath = minorsApiPath ?? `/api/scorecard/${encodeURIComponent(params.customerId)}`;
   const ordersEnabled = !basePath.includes('aggregate');
 
-  const maxBase = Math.max(...rows.map((r) => r.salesBase), 1);
   const totalBase = rows.reduce((s, r) => s + r.salesBase, 0);
   const totalCompare = rows.reduce((s, r) => s + r.salesCompare, 0);
   const totalGpBase = rows.reduce((s, r) => s + r.gpBase, 0);
@@ -177,7 +168,7 @@ export default function ProductMajorTable({ rows, params, baseYear, compareYear,
                     )
                   }
                   <span>{r.productMajor}</span>
-                  {r.salesBase > 0 && <MiniBar value={r.salesBase} max={maxBase} />}
+                  <span className="text-slate-500 italic text-xs ml-0.5">({r.productMajorCode})</span>
                 </td>
                 <td className="py-2 text-right font-mono tabular-nums text-white pr-3">{fmt$(r.salesBase)}</td>
                 <td className="py-2 text-right font-mono tabular-nums text-white pr-3">{fmt$(r.gpBase)}</td>
@@ -210,7 +201,8 @@ export default function ProductMajorTable({ rows, params, baseYear, compareYear,
                             <ChevronRight className={`w-3 h-3 text-slate-600 transition-transform shrink-0 ${minorItemsExpanded ? 'rotate-90' : ''}`} />
                           )
                         }
-                        {m.productMinor}
+                        <span>{m.productMinor}</span>
+                        <span className="text-slate-500 italic ml-0.5">({m.productMinorCode})</span>
                       </td>
                       <td className="py-1.5 text-right font-mono tabular-nums text-slate-300 text-xs pr-3">{fmt$(m.salesBase)}</td>
                       <td className="py-1.5 text-right font-mono tabular-nums text-slate-300 text-xs pr-3">{fmt$(m.gpBase)}</td>

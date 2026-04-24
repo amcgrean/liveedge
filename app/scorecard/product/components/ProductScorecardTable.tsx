@@ -33,14 +33,6 @@ function delta(base: number, compare: number) {
   return <span className={`text-xs ml-1 ${cls}`}>{sign}{pct.toFixed(1)}%</span>;
 }
 
-function MiniBar({ value, max }: { value: number; max: number }) {
-  const pct = max > 0 && value > 0 ? Math.max(2, Math.round((value / max) * 100)) : 0;
-  return (
-    <div className="w-14 bg-slate-700 rounded-full h-1.5 ml-1 inline-block align-middle print:hidden">
-      <div className="h-1.5 rounded-full bg-cyan-600" style={{ width: `${pct}%` }} />
-    </div>
-  );
-}
 
 function LoadingRow() {
   return (
@@ -71,7 +63,6 @@ export default function ProductScorecardTable({ rows, params, baseYear, compareY
   const [itemsData, setItemsData] = useState<Record<string, ProductScorecardItemRow[]>>({});
   const [loadingItems, setLoadingItems] = useState<Record<string, boolean>>({});
 
-  const maxBase = Math.max(...rows.map((r) => r.salesBase), 1);
   const totalSalesBase = rows.reduce((s, r) => s + r.salesBase, 0);
   const totalGpBase = rows.reduce((s, r) => s + r.gpBase, 0);
   const totalSoBase = rows.reduce((s, r) => s + r.soCountBase, 0);
@@ -158,7 +149,7 @@ export default function ProductScorecardTable({ rows, params, baseYear, compareY
                     : <ChevronRight className={`w-3.5 h-3.5 text-slate-500 transition-transform shrink-0 ${expanded[r.productMajorCode] ? 'rotate-90' : ''}`} />
                   }
                   <span className="truncate">{r.productMajor}</span>
-                  {r.salesBase > 0 && <MiniBar value={r.salesBase} max={maxBase} />}
+                  <span className="text-slate-500 italic text-xs ml-0.5 shrink-0">({r.productMajorCode})</span>
                 </td>
                 <td className="py-2 text-right font-mono tabular-nums text-white pr-3">
                   {fmt$(r.salesBase)}{delta(r.salesBase, r.salesCompare)}
@@ -193,6 +184,7 @@ export default function ProductScorecardTable({ rows, params, baseYear, compareY
                           : <ChevronRight className={`w-3 h-3 text-slate-600 transition-transform shrink-0 ${minorExpanded ? 'rotate-90' : ''}`} />
                         }
                         <span className="truncate">{m.productMinor}</span>
+                        <span className="text-slate-500 italic ml-0.5 shrink-0">({m.productMinorCode})</span>
                       </td>
                       <td className="py-1.5 text-right font-mono tabular-nums text-slate-300 text-xs pr-3">
                         {fmt$(m.salesBase)}{delta(m.salesBase, m.salesCompare)}
