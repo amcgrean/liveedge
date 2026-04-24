@@ -1,11 +1,23 @@
 import { auth } from '../../auth';
 import { redirect } from 'next/navigation';
-import BidsListClient from './BidsListClient';
+import BidsHubClient from './BidsHubClient';
 
 export const metadata = { title: 'Bids | LiveEdge' };
 
-export default async function BidsPage() {
+type Tab = 'open' | 'completed' | 'all' | 'projects';
+
+function parseTab(v: string | string[] | undefined): Tab {
+  if (v === 'completed' || v === 'all' || v === 'projects' || v === 'open') return v;
+  return 'open';
+}
+
+interface Props {
+  searchParams: Promise<{ tab?: string }>;
+}
+
+export default async function BidsPage({ searchParams }: Props) {
   const session = await auth();
   if (!session) redirect('/login');
-  return <BidsListClient session={session} />;
+  const { tab } = await searchParams;
+  return <BidsHubClient session={session} initialTab={parseTab(tab)} />;
 }

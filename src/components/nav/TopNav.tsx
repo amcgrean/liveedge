@@ -281,15 +281,12 @@ function getDomains(tvBranch: string): Domain[] {
         p.startsWith('/projects') ||
         p.startsWith('/designs'),
       links: [
-        { href: '/estimating',            label: 'Estimating App' },
-        { href: '/takeoff',               label: 'PDF Takeoff' },
-        { href: '/legacy-bids',           label: 'Bids' },
-        { href: '/legacy-bids/completed', label: 'Completed Bids' },
-        { href: '/all-bids',              label: 'All Bids' },
-        { href: '/bids',                  label: 'Bid Projects' },
-        { href: '/ewp',                   label: 'EWP' },
-        { href: '/projects',              label: 'Projects' },
-        { href: '/designs',               label: 'Design' },
+        { href: '/estimating', label: 'Estimating App' },
+        { href: '/takeoff',    label: 'PDF Takeoff' },
+        { href: '/bids',       label: 'Bids' },
+        { href: '/ewp',        label: 'EWP' },
+        { href: '/projects',   label: 'Projects' },
+        { href: '/designs',    label: 'Design' },
       ],
     },
     {

@@ -51,9 +51,10 @@ const PLAN_TYPE_FILTERS = [
 
 interface Props {
   session: Session;
+  embedded?: boolean;
 }
 
-export default function LegacyBidsClient({ session }: Props) {
+export default function LegacyBidsClient({ session, embedded = false }: Props) {
   usePageTracking();
   const [bids, setBids] = useState<BidRow[]>([]);
   const [total, setTotal] = useState(0);
@@ -119,14 +120,12 @@ export default function LegacyBidsClient({ session }: Props) {
 
   const totalPages = Math.ceil(total / limit);
 
-  return (
-    <div className="min-h-screen bg-gray-950 text-gray-100">
-      <TopNav userName={session.user?.name} userRole={session.user?.role} />
-
-      <main className="max-w-7xl mx-auto px-4 sm:px-6 py-8">
+  const body = (
+    <>
         {/* Header */}
         <div className="flex items-center justify-between mb-6">
-          <h1 className="text-2xl font-bold">Bids</h1>
+          {!embedded && <h1 className="text-2xl font-bold">Bids</h1>}
+          {embedded && <div />}
           <Link
             href="/legacy-bids/add"
             className="flex items-center gap-2 px-4 py-2 bg-cyan-600 hover:bg-cyan-500 text-white rounded-lg transition-colors text-sm font-medium"
@@ -309,7 +308,15 @@ export default function LegacyBidsClient({ session }: Props) {
             </div>
           </div>
         )}
-      </main>
+    </>
+  );
+
+  if (embedded) return body;
+
+  return (
+    <div className="min-h-screen bg-gray-950 text-gray-100">
+      <TopNav userName={session.user?.name} userRole={session.user?.role} />
+      <main className="max-w-7xl mx-auto px-4 sm:px-6 py-8">{body}</main>
     </div>
   );
 }
