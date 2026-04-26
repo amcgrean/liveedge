@@ -1,12 +1,12 @@
 import Link from 'next/link';
-import { BarChart3, Building2, Users, Package, List, FileBarChart2, ChevronRight, TrendingUp, TrendingDown, Minus } from 'lucide-react';
+import { BarChart3, Building2, Users, Package, List, FileBarChart2, ChevronRight, TrendingUp, TrendingDown, Minus, Calendar } from 'lucide-react';
 import {
   fetchAggregateKpis,
   fetchAggregateThreeYear,
   fetchBranchSummaries,
   fetchAggregateSaleTypes,
 } from '../../src/lib/scorecard/queries';
-import type { AggregateParams } from '../../src/lib/scorecard/types';
+import type { AggregateParams, KpiComparison } from '../../src/lib/scorecard/types';
 import ExportTableButton from '../../src/components/shared/ExportTableButton';
 
 export const metadata = { title: 'Management — Beisser LiveEdge' };
@@ -134,6 +134,14 @@ const REPORT_TILES = [
     color: 'text-rose-400',
     bg: 'bg-rose-900/20 border-rose-800/40 hover:border-rose-600/60',
   },
+  {
+    href: '/management/forecast',
+    icon: Calendar,
+    label: 'Open Orders & Forecast',
+    desc: 'Open orders by sale type and branch · delivery forecast by day, ship via, and branch',
+    color: 'text-sky-400',
+    bg: 'bg-sky-900/20 border-sky-800/40 hover:border-sky-600/60',
+  },
 ];
 
 export default async function ManagementPage({
@@ -158,12 +166,40 @@ export default async function ManagementPage({
     cutoffDate,
   };
 
-  const [kpis, threeYear, branchSummaries, saleTypes] = await Promise.all([
+  // Use allSettled so a single failing query doesn't crash the entire page render.
+  const [kpisRes, threeYearRes, branchSummariesRes, saleTypesRes] = await Promise.allSettled([
     fetchAggregateKpis(params, 'All Branches'),
     fetchAggregateThreeYear(params),
     fetchBranchSummaries(baseYear, compareYear, cutoffDate, period),
     fetchAggregateSaleTypes(params),
   ]);
+
+  const failures: string[] = [];
+  const logFail = (name: string, r: PromiseSettledResult<unknown>) => {
+    if (r.status === 'rejected') {
+      failures.push(name);
+      console.error(`[management/page] ${name} failed:`, r.reason);
+    }
+  };
+  logFail('aggregate kpis', kpisRes);
+  logFail('three-year comparison', threeYearRes);
+  logFail('branch summaries', branchSummariesRes);
+  logFail('aggregate sale types', saleTypesRes);
+
+  const emptyKpis: KpiComparison = {
+    base: { sales: null, gp: null, vaSales: null, nsSales: null, nsGp: null,
+      grossSales: null, cmSales: null, soCount: null, cmCount: null, totalWeight: null },
+    compare: { sales: null, gp: null, vaSales: null, nsSales: null, nsGp: null,
+      grossSales: null, cmSales: null, soCount: null, cmCount: null, totalWeight: null },
+    branchIds: [],
+    shipToCount: 0,
+    customerName: 'All Branches',
+  };
+
+  const kpis = kpisRes.status === 'fulfilled' ? kpisRes.value : emptyKpis;
+  const threeYear = threeYearRes.status === 'fulfilled' ? threeYearRes.value : [];
+  const branchSummaries = branchSummariesRes.status === 'fulfilled' ? branchSummariesRes.value : [];
+  const saleTypes = saleTypesRes.status === 'fulfilled' ? saleTypesRes.value : [];
 
   const periodLabel = period === 'YTD' ? `YTD through ${cutoffDate}` : 'Full Year';
 
@@ -254,6 +290,12 @@ export default async function ManagementPage({
           </div>
         </form>
       </div>
+
+      {failures.length > 0 && (
+        <div className="p-3 bg-amber-900/30 border border-amber-700/60 rounded-lg text-amber-200 text-sm">
+          Some sections failed to load: {failures.join(', ')}. Showing available data.
+        </div>
+      )}
 
       {/* KPI tiles */}
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">

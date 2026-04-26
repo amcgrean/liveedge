@@ -226,14 +226,16 @@ function getDomains(tvBranch: string): Domain[] {
       dropdown: true,
       isActive: (p) =>
         ['/dispatch', '/delivery'].some((prefix) => p === prefix || p.startsWith(prefix + '/')) ||
-        p.startsWith('/ops/delivery'),
+        p.startsWith('/ops/delivery') ||
+        p === '/management/forecast',
       links: [
         { href: '/dispatch',               label: 'Dispatch Board' },
         { href: '/dispatch/transfers',     label: 'Branch Transfers' },
         { href: '/dispatch/drivers',       label: 'Driver Roster',   requireAnyRole: ['supervisor', 'ops', 'dispatch'] },
         { href: '/delivery',               label: 'Delivery Tracker' },
         { href: '/delivery/map',           label: 'Fleet Map' },
-        { href: '/ops/delivery-reporting', label: 'Delivery Report', requireAnyRole: ['supervisor', 'ops'] },
+        { href: '/ops/delivery-reporting', label: 'Delivery Report', sectionBefore: 'Reports', requireAnyRole: ['supervisor', 'ops'] },
+        { href: '/management/forecast',    label: 'Delivery Forecast' },
       ],
     },
     {
@@ -267,6 +269,7 @@ function getDomains(tvBranch: string): Domain[] {
         { href: '/scorecard/product',   label: 'Product Groups' },
         { href: '/scorecard',           label: 'Customer Scorecard' },
         { href: '/sales/reports',       label: 'Sales Reports' },
+        { href: '/management/forecast', label: 'Open Orders & Forecast' },
       ],
     },
     {
