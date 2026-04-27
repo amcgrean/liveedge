@@ -57,6 +57,32 @@ export async function POST(req: NextRequest) {
       status: 'Open',
       notes: (body.notes as string) ?? null,
     }).returning();
+
+    const apiKey = process.env.RESEND_API_KEY;
+    if (apiKey) {
+      const notes = (body.notes as string) ?? '';
+      fetch('https://api.resend.com/emails', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` },
+        body: JSON.stringify({
+          from: 'Beisser LiveEdge <noreply@app.beisser.cloud>',
+          to: ['amcgrean@beisserlumber.com'],
+          subject: `[IT Issue #${issue.id}] ${issueType} reported by ${session.user.name}`,
+          html: `<div style="font-family:Arial,sans-serif;max-width:560px;margin:0 auto">
+            <h2 style="color:#004526">New IT Issue Reported</h2>
+            <table style="border-collapse:collapse;width:100%">
+              <tr><td style="padding:6px 0;color:#555;width:110px">Issue #</td><td style="padding:6px 0;font-weight:bold">${issue.id}</td></tr>
+              <tr><td style="padding:6px 0;color:#555">Type</td><td style="padding:6px 0">${issueType}</td></tr>
+              <tr><td style="padding:6px 0;color:#555">Reported by</td><td style="padding:6px 0">${session.user.name}</td></tr>
+              <tr><td style="padding:6px 0;color:#555;vertical-align:top">Description</td><td style="padding:6px 0">${description}</td></tr>
+              ${notes ? `<tr><td style="padding:6px 0;color:#555;vertical-align:top">Notes</td><td style="padding:6px 0">${notes}</td></tr>` : ''}
+            </table>
+            <p style="margin-top:24px"><a href="https://app.beisser.cloud/it-issues/${issue.id}" style="background:#006834;color:#fff;padding:10px 20px;border-radius:6px;text-decoration:none;display:inline-block">View Issue #${issue.id}</a></p>
+          </div>`,
+        }),
+      }).catch((e) => console.error('[it-issues] email notify failed:', e));
+    }
+
     return NextResponse.json({ issue }, { status: 201 });
   } catch (err) {
     console.error('[it-issues API]', err);
