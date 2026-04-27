@@ -37,6 +37,8 @@ function toUserDto(r: AppUserRow) {
   // Derive a single-role label for the existing UI
   const role = roles.includes('admin')
     ? 'admin'
+    : roles.includes('management')
+    ? 'management'
     : roles.includes('estimator') || roles.includes('estimating')
     ? 'estimator'
     : roles.includes('purchasing')

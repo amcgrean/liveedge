@@ -2,7 +2,7 @@
 
 import React, { useEffect, useState, useCallback } from 'react';
 import { Plus, RefreshCw, Pencil, Trash2, X, Check, Shield, Eye, KeyRound,
-         ShoppingCart, Package, PackageCheck, Info } from 'lucide-react';
+         ShoppingCart, Package, PackageCheck, Info, BarChart3 } from 'lucide-react';
 import Link from 'next/link';
 import { formatDate } from '../../../src/lib/utils';
 import { useSession } from 'next-auth/react';
@@ -21,7 +21,8 @@ interface AppUser {
 }
 
 const ROLES = [
-  { value: 'admin',          label: 'Admin',              icon: <Shield className="w-3 h-3" />,       desc: 'Full access, admin panel' },
+  { value: 'admin',          label: 'Admin',              icon: <Shield className="w-3 h-3" />,       desc: 'Full access including admin panel' },
+  { value: 'management',     label: 'Management',         icon: <BarChart3 className="w-3 h-3" />,    desc: 'Full access to all modules, no admin panel' },
   { value: 'estimator',      label: 'Estimator',          icon: <Pencil className="w-3 h-3" />,       desc: 'Create & manage bids and takeoffs' },
   { value: 'designer',       label: 'Designer',           icon: <Pencil className="w-3 h-3" />,       desc: 'Design work' },
   { value: 'purchasing',     label: 'Purchasing',         icon: <ShoppingCart className="w-3 h-3" />, desc: 'PO check-in, open POs, receiving' },
@@ -182,6 +183,7 @@ export default function UsersClient() {
                     <td>
                       <span className={`flex items-center gap-1.5 w-fit px-2 py-0.5 rounded text-[11px] font-medium capitalize ${
                         u.role === 'admin'          ? 'bg-purple-900/40 text-purple-400 border border-purple-700' :
+                        u.role === 'management'     ? 'bg-gold-800/40 text-gold-300 border border-gold-700' :
                         u.role === 'purchasing'     ? 'bg-amber-900/30 text-amber-400 border border-amber-800' :
                         u.role === 'receiving_yard' ? 'bg-orange-900/30 text-orange-400 border border-orange-800' :
                         u.role === 'warehouse'      ? 'bg-green-900/30 text-green-400 border border-green-800' :
@@ -202,12 +204,12 @@ export default function UsersClient() {
                       </span>
                     </td>
                     <td className="text-slate-500 text-xs">{formatDate(u.createdAt)}</td>
-                    <td>
+                    <td className="whitespace-nowrap w-px">
                       <div className="flex items-center gap-1">
                         <Link href={`/admin/users/${u.id}/permissions`} className="p-1.5 rounded hover:bg-slate-800 text-slate-500 hover:text-cyan-400 transition" title="Permissions"><KeyRound className="w-3.5 h-3.5" /></Link>
-                        <button onClick={() => openEdit(u)} className="p-1.5 rounded hover:bg-slate-800 text-slate-500 hover:text-slate-200 transition"><Pencil className="w-3.5 h-3.5" /></button>
+                        <button onClick={() => openEdit(u)} className="p-1.5 rounded hover:bg-slate-800 text-slate-500 hover:text-slate-200 transition" title="Edit"><Pencil className="w-3.5 h-3.5" /></button>
                         {!isSelf && u.isActive && (
-                          <button onClick={() => handleDeactivate(u)} className="p-1.5 rounded hover:bg-red-900/20 text-slate-500 hover:text-red-400 transition"><Trash2 className="w-3.5 h-3.5" /></button>
+                          <button onClick={() => handleDeactivate(u)} className="p-1.5 rounded hover:bg-red-900/20 text-slate-500 hover:text-red-400 transition" title="Deactivate"><Trash2 className="w-3.5 h-3.5" /></button>
                         )}
                       </div>
                     </td>
