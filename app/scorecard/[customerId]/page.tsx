@@ -15,6 +15,12 @@ import ProductMajorTable from './components/ProductMajorTable';
 import SaleTypeTable from './components/SaleTypeTable';
 import BottomMetrics from './components/BottomMetrics';
 import FilterBar from './FilterBar';
+import {
+  ThreeYearChart,
+  ProductMixTreemap,
+  SaleTypeParetoChart,
+  DaysToPayCard,
+} from '../_components/ScorecardCharts';
 
 const BRANCH_LABELS: Record<string, string> = {
   '10FD': 'Fort Dodge',
@@ -166,6 +172,8 @@ export default async function ScorecardPage({
         branchIds={branchIds}
       />
 
+      <ThreeYearChart entries={threeYear} />
+
       {/* 3-year rolling table */}
       <Section title="3-Year Comparison">
         <ComparisonTable entries={threeYear} />
@@ -209,6 +217,13 @@ export default async function ScorecardPage({
         />
       </div>
 
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+        <div className="lg:col-span-2">
+          <ProductMixTreemap rows={productMajors} />
+        </div>
+        <DaysToPayCard daysToPay={daysToPay} customerAvg={avg} />
+      </div>
+
       {/* Product mix */}
       <Section title="Product Mix">
         <ProductMajorTable
@@ -218,6 +233,8 @@ export default async function ScorecardPage({
           compareYear={compareYear}
         />
       </Section>
+
+      <SaleTypeParetoChart rows={saleTypes} baseYear={baseYear} />
 
       {/* Sale type breakdown */}
       <Section title="Sales by Type">

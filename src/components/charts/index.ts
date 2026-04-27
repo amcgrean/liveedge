@@ -13,6 +13,10 @@ export { default as StatusFunnelBar } from './StatusFunnelBar';
 export type { StatusFunnelBarProps } from './StatusFunnelBar';
 export { default as HeatmapGrid } from './HeatmapGrid';
 export type { HeatmapGridProps } from './HeatmapGrid';
+export { default as ProductTreemap } from './ProductTreemap';
+export type { ProductTreemapProps } from './ProductTreemap';
+export { default as DaysToPayBullet } from './DaysToPayBullet';
+export type { DaysToPayBulletProps } from './DaysToPayBullet';
 export {
   CHART_COLORS,
   AXIS_PROPS,

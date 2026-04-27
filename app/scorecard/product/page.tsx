@@ -4,6 +4,7 @@ import AggregateFilterBar from '../_components/AggregateFilterBar';
 import ScorecardTabs from '../_components/ScorecardTabs';
 import ProductScorecardTable from './components/ProductScorecardTable';
 import ExportTableButton from '../../../src/components/shared/ExportTableButton';
+import { ProductScorecardTreemap, ProductScorecardPareto } from '../_components/ScorecardCharts';
 
 export const metadata = { title: 'Product Group Scorecard — Beisser LiveEdge' };
 
@@ -62,6 +63,11 @@ export default async function ProductScorecardPage({
         cutoffDate={cutoffDate}
         branchIds={branchIds}
       />
+
+      <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
+        <ProductScorecardTreemap rows={majors} />
+        <ProductScorecardPareto rows={majors} />
+      </div>
 
       <section className="bg-slate-800/40 border border-slate-700 rounded-lg p-4">
         <div className="flex items-center justify-between mb-3">

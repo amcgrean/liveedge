@@ -15,6 +15,12 @@ import SaleTypeTable from '../[customerId]/components/SaleTypeTable';
 import BottomMetrics from '../[customerId]/components/BottomMetrics';
 import AggregateFilterBar from '../_components/AggregateFilterBar';
 import ScorecardTabs from '../_components/ScorecardTabs';
+import {
+  ThreeYearChart,
+  BranchContributionPareto,
+  ProductMixTreemap,
+  SaleTypeParetoChart,
+} from '../_components/ScorecardCharts';
 
 const BRANCH_LABELS: Record<string, string> = {
   '10FD': 'Fort Dodge',
@@ -147,6 +153,8 @@ export default async function OverviewPage({
         branchIds={branchIds}
       />
 
+      <ThreeYearChart entries={threeYear} />
+
       <Section title="3-Year Comparison">
         <div className="flex justify-end mb-2 print:hidden">
           <ExportTableButton data={threeYearExportData} filename="3year-comparison" />
@@ -161,6 +169,8 @@ export default async function OverviewPage({
         <KpiTile label="Value Add %" base={vaPctBase} compare={vaPctCompare} format="percent" />
         <KpiTile label="Non-Stock %" base={nsPctBase} compare={nsPctCompare} format="percent" higherIsBetter={false} />
       </div>
+
+      <BranchContributionPareto rows={branchSummaries} />
 
       {/* Branch breakdown table */}
       <Section title="By Branch">
@@ -204,6 +214,8 @@ export default async function OverviewPage({
         </div>
       </Section>
 
+      <ProductMixTreemap rows={productMajors} />
+
       <Section title="Product Mix">
         <ProductMajorTable
           rows={productMajors}
@@ -213,6 +225,8 @@ export default async function OverviewPage({
           minorsApiPath="/api/scorecard/aggregate"
         />
       </Section>
+
+      <SaleTypeParetoChart rows={saleTypes} baseYear={baseYear} />
 
       <Section title="Sales by Type">
         <SaleTypeTable rows={saleTypes} baseYear={baseYear} compareYear={compareYear} />

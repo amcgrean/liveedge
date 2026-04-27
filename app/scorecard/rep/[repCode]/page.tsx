@@ -13,6 +13,7 @@ import SaleTypeTable from '../../[customerId]/components/SaleTypeTable';
 import BottomMetrics from '../../[customerId]/components/BottomMetrics';
 import AggregateFilterBar from '../../_components/AggregateFilterBar';
 import ScorecardTabs from '../../_components/ScorecardTabs';
+import { ThreeYearChart, ProductMixTreemap } from '../../_components/ScorecardCharts';
 
 const NO_DTP = { base: null, compare: null };
 
@@ -142,6 +143,8 @@ export default async function RepScorecardPage({
           <div className="h-px flex-1 bg-slate-700" />
         </div>
 
+        <ThreeYearChart entries={assignedThreeYear} />
+
         <Section title="3-Year Comparison">
           <ComparisonTable entries={assignedThreeYear} />
         </Section>
@@ -153,6 +156,8 @@ export default async function RepScorecardPage({
           <KpiTile label="Value Add %" base={aP.vaPctBase} compare={aP.vaPctCompare} format="percent" />
           <KpiTile label="Non-Stock %" base={aP.nsPctBase} compare={aP.nsPctCompare} format="percent" higherIsBetter={false} />
         </div>
+
+        <ProductMixTreemap rows={assignedMajors} />
 
         <Section title="Product Mix">
           <ProductMajorTable rows={assignedMajors} params={fakeParams} baseYear={baseYear} compareYear={compareYear}
@@ -174,6 +179,8 @@ export default async function RepScorecardPage({
           <div className="h-px flex-1 bg-slate-700" />
         </div>
 
+        <ThreeYearChart entries={writtenThreeYear} />
+
         <Section title="3-Year Comparison">
           <ComparisonTable entries={writtenThreeYear} />
         </Section>
@@ -185,6 +192,8 @@ export default async function RepScorecardPage({
           <KpiTile label="Value Add %" base={wP.vaPctBase} compare={wP.vaPctCompare} format="percent" />
           <KpiTile label="Non-Stock %" base={wP.nsPctBase} compare={wP.nsPctCompare} format="percent" higherIsBetter={false} />
         </div>
+
+        <ProductMixTreemap rows={writtenMajors} />
 
         <Section title="Product Mix">
           <ProductMajorTable rows={writtenMajors} params={fakeParams} baseYear={baseYear} compareYear={compareYear}

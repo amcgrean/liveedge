@@ -16,6 +16,12 @@ import SaleTypeTable from '../../[customerId]/components/SaleTypeTable';
 import BottomMetrics from '../../[customerId]/components/BottomMetrics';
 import AggregateFilterBar from '../../_components/AggregateFilterBar';
 import ScorecardTabs from '../../_components/ScorecardTabs';
+import {
+  ThreeYearChart,
+  TopCustomersPareto,
+  ProductMixTreemap,
+  SaleTypeParetoChart,
+} from '../../_components/ScorecardCharts';
 import { ChevronRight } from 'lucide-react';
 
 const BRANCH_LABELS: Record<string, string> = {
@@ -179,6 +185,8 @@ export default async function BranchScorecardPage({
         showBranchFilter={false}
       />
 
+      <ThreeYearChart entries={threeYear} />
+
       <Section title="3-Year Comparison">
         <div className="flex justify-end mb-2 print:hidden">
           <ExportTableButton data={threeYearExportData} filename={`${BRANCH_LABELS[branchId] ?? branchId}-3year`} />
@@ -193,6 +201,8 @@ export default async function BranchScorecardPage({
         <KpiTile label="Value Add %" base={vaPctBase} compare={vaPctCompare} format="percent" />
         <KpiTile label="Non-Stock %" base={nsPctBase} compare={nsPctCompare} format="percent" higherIsBetter={false} />
       </div>
+
+      <TopCustomersPareto rows={topCustomers} />
 
       {/* Top customers for this branch */}
       <Section title="Top Customers">
@@ -242,6 +252,8 @@ export default async function BranchScorecardPage({
         </div>
       </Section>
 
+      <ProductMixTreemap rows={productMajors} />
+
       <Section title="Product Mix">
         <ProductMajorTable
           rows={productMajors}
@@ -251,6 +263,8 @@ export default async function BranchScorecardPage({
           minorsApiPath="/api/scorecard/aggregate"
         />
       </Section>
+
+      <SaleTypeParetoChart rows={saleTypes} baseYear={baseYear} />
 
       <Section title="Sales by Type">
         <SaleTypeTable rows={saleTypes} baseYear={baseYear} compareYear={compareYear} />

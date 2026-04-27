@@ -3,6 +3,7 @@ import { fetchRepList } from '../../../src/lib/scorecard/queries';
 import ScorecardTabs from '../_components/ScorecardTabs';
 import AggregateFilterBar from '../_components/AggregateFilterBar';
 import ExportTableButton from '../../../src/components/shared/ExportTableButton';
+import { RepComparisonChart } from '../_components/ScorecardCharts';
 import { ChevronRight } from 'lucide-react';
 
 function fmt$(n: number): string {
@@ -79,6 +80,8 @@ export default async function RepListPage({
         cutoffDate={cutoffDate}
         branchIds={branchIds}
       />
+
+      <RepComparisonChart rows={reps} baseYear={baseYear} />
 
       <div className="flex justify-end mb-2 print:hidden">
         <ExportTableButton data={repExportData} filename={`rep-scorecard-${baseYear}`} />
