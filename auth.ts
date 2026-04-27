@@ -167,6 +167,7 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
 /** Map a roles[] array to the primary scalar `role` string. */
 function deriveRole(roles: string[]): string {
   if (roles.includes('admin')) return 'admin';
+  if (roles.includes('management')) return 'management';
   if (roles.some((r) => ['ops', 'sales', 'supervisor', 'purchasing', 'warehouse',
                          'estimating', 'estimator', 'designer', 'receiving_yard',
                          'dispatch', 'driver'].includes(r))) return 'estimator';

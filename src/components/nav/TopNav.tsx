@@ -355,6 +355,7 @@ function hasAnyRole(roles: string[], ...check: WHRole[]): boolean {
 
 function canSeeSection(domainId: string, role: string, roles: string[]): boolean {
   if (role === 'admin') return true;
+  if (role === 'management') return true; // management sees all non-admin sections
   const isWHUser = (WH_ROLES as readonly string[]).some((r) => roles.includes(r));
   switch (domainId) {
     case 'yard':
@@ -377,6 +378,7 @@ function canSeeSection(domainId: string, role: string, roles: string[]): boolean
 
 function canSeeLink(link: NavLink, role: string, roles: string[]): boolean {
   if (role === 'admin') return true;
+  if (role === 'management') return true; // management sees all nav links
   if (!link.requireAnyRole) return true;
   return link.requireAnyRole.some((r) => roles.includes(r));
 }

@@ -8,7 +8,7 @@ export default async function DeliveryLayout({ children }: { children: React.Rea
   const canAccess =
     session.user.role === 'admin' ||
     (session.user.roles ?? []).some((r) =>
-      ['admin', 'supervisor', 'ops', 'dispatch', 'sales', 'warehouse'].includes(r)
+      ['admin', 'supervisor', 'ops', 'dispatch', 'sales', 'warehouse', 'management'].includes(r)
     );
   if (!canAccess) redirect('/dashboard');
 

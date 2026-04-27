@@ -8,7 +8,7 @@ export default async function SalesLayout({ children }: { children: React.ReactN
   const canAccess =
     session.user.role === 'admin' ||
     (session.user.roles ?? []).some((r) =>
-      ['admin', 'supervisor', 'ops', 'sales'].includes(r)
+      ['admin', 'supervisor', 'ops', 'sales', 'management'].includes(r)
     );
   if (!canAccess) redirect('/dashboard');
 

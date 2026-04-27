@@ -8,7 +8,7 @@ export default async function WarehouseLayout({ children }: { children: React.Re
   const canAccess =
     session.user.role === 'admin' ||
     (session.user.roles ?? []).some((r) =>
-      ['admin', 'supervisor', 'ops', 'warehouse', 'sales'].includes(r)
+      ['admin', 'supervisor', 'ops', 'warehouse', 'sales', 'management'].includes(r)
     );
 
   if (!canAccess) redirect('/dashboard');
