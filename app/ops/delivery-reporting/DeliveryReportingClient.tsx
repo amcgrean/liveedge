@@ -314,11 +314,11 @@ export default function DeliveryReportingClient({ isAdmin, userBranch }: Props) 
       <div className="flex items-start justify-between flex-wrap gap-4">
         <div>
           <Link
-            href="/sales"
+            href="/management"
             className="inline-flex items-center gap-1 text-xs text-slate-400 hover:text-cyan-400 transition mb-2"
           >
             <ChevronLeft className="w-3 h-3" />
-            Sales Hub
+            Management
           </Link>
           <h1 className="text-2xl font-bold text-white flex items-center gap-2">
             <Truck className="w-6 h-6 text-cyan-400" />
@@ -509,7 +509,7 @@ export default function DeliveryReportingClient({ isAdmin, userBranch }: Props) 
                             >
                               <td className="px-4 py-2.5">
                                 <Link
-                                  href={`/sales/orders/${r.so_id}`}
+                                  href={`/sales/orders/${r.so_id}?from=%2Fops%2Fdelivery-reporting&fromLabel=Delivery+Reporting`}
                                   className="font-mono text-cyan-400 hover:text-cyan-300 text-xs font-semibold transition"
                                 >
                                   {r.so_id}
@@ -526,7 +526,7 @@ export default function DeliveryReportingClient({ isAdmin, userBranch }: Props) 
                               </td>
                               <td className="px-4 py-2.5 text-right pr-4">
                                 <Link
-                                  href={`/sales/orders/${r.so_id}`}
+                                  href={`/sales/orders/${r.so_id}?from=%2Fops%2Fdelivery-reporting&fromLabel=Delivery+Reporting`}
                                   className="inline-flex items-center gap-1 text-xs text-slate-500 hover:text-cyan-400 transition"
                                 >
                                   <ExternalLink className="w-3 h-3" />
@@ -906,7 +906,7 @@ export default function DeliveryReportingClient({ isAdmin, userBranch }: Props) 
                               )}
                               <td className="px-4 py-2.5">
                                 <Link
-                                  href={`/sales/orders/${r.so_id}`}
+                                  href={`/sales/orders/${r.so_id}?from=%2Fops%2Fdelivery-reporting&fromLabel=Delivery+Reporting`}
                                   className="font-mono text-cyan-400 hover:text-cyan-300 text-xs transition"
                                 >
                                   {r.so_id}

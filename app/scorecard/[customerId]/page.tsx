@@ -231,6 +231,8 @@ export default async function ScorecardPage({
           params={scorecardParams}
           baseYear={baseYear}
           compareYear={compareYear}
+          orderFrom={`/scorecard/${encodeURIComponent(customerId)}`}
+          orderFromLabel={kpis.customerName ?? customerId}
         />
       </Section>
 

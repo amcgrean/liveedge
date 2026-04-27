@@ -51,9 +51,11 @@ interface Props {
   compareYear: number;
   minorsApiPath?: string;
   extraParams?: Record<string, string>;
+  orderFrom?: string;
+  orderFromLabel?: string;
 }
 
-export default function ProductMajorTable({ rows, params, baseYear, compareYear, minorsApiPath, extraParams }: Props) {
+export default function ProductMajorTable({ rows, params, baseYear, compareYear, minorsApiPath, extraParams, orderFrom, orderFromLabel }: Props) {
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
   const [minors, setMinors] = useState<Record<string, ProductMinorRow[]>>({});
   const [loading, setLoading] = useState<Record<string, boolean>>({});
@@ -280,7 +282,7 @@ export default function ProductMajorTable({ rows, params, baseYear, compareYear,
                                           <tr key={o.soNumber} className="border-b border-slate-900 hover:bg-slate-900/50 transition">
                                             <td className="py-0.5">
                                               <a
-                                                href={`/sales/orders/${o.soNumber}`}
+                                                href={`/sales/orders/${o.soNumber}${orderFrom ? `?from=${encodeURIComponent(orderFrom)}${orderFromLabel ? `&fromLabel=${encodeURIComponent(orderFromLabel)}` : ''}` : ''}`}
                                                 className="text-cyan-600 hover:text-cyan-400 flex items-center gap-0.5 transition"
                                                 onClick={(e) => e.stopPropagation()}
                                               >

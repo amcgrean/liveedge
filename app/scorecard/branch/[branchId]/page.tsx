@@ -142,9 +142,13 @@ export default async function BranchScorecardPage({
 
       <ScorecardTabs />
 
-      <div className="print:hidden">
-        <Link href="/scorecard/overview" className="text-sm text-cyan-400 hover:underline">
-          ← Company Overview
+      <div className="print:hidden flex items-center gap-4">
+        <Link href="/management" className="text-sm text-cyan-400 hover:underline">
+          ← Management
+        </Link>
+        <span className="text-slate-600 text-sm">·</span>
+        <Link href="/scorecard/overview" className="text-sm text-slate-500 hover:text-cyan-400">
+          Company Overview
         </Link>
       </div>
 
@@ -261,6 +265,8 @@ export default async function BranchScorecardPage({
           baseYear={baseYear}
           compareYear={compareYear}
           minorsApiPath="/api/scorecard/aggregate"
+          orderFrom={`/scorecard/branch/${branchId}`}
+          orderFromLabel={`${BRANCH_LABELS[branchId] ?? branchId} Branch`}
         />
       </Section>
 

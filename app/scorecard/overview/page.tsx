@@ -133,6 +133,12 @@ export default async function OverviewPage({
 
       <ScorecardTabs />
 
+      <div className="print:hidden">
+        <Link href="/management" className="text-sm text-cyan-400 hover:underline">
+          ← Management
+        </Link>
+      </div>
+
       <div className="space-y-0.5">
         <h1 className="text-2xl font-bold text-white">Company Overview</h1>
         <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-slate-400">
@@ -223,6 +229,8 @@ export default async function OverviewPage({
           baseYear={baseYear}
           compareYear={compareYear}
           minorsApiPath="/api/scorecard/aggregate"
+          orderFrom="/scorecard/overview"
+          orderFromLabel="Company Overview"
         />
       </Section>
 
