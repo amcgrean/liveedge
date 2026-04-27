@@ -7,7 +7,7 @@ export default async function OpsDeliveryReportingLayout({ children }: { childre
 
   const canAccess =
     session.user.role === 'admin' ||
-    (session.user.roles ?? []).some((r) => ['admin', 'supervisor', 'ops'].includes(r));
+    (session.user.roles ?? []).some((r) => ['admin', 'supervisor', 'ops', 'management'].includes(r));
   if (!canAccess) redirect('/dashboard');
 
   return <>{children}</>;
