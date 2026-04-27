@@ -444,6 +444,54 @@ Branch: `claude/review-customer-route-api-jVgJG`
 #### Flask Sunset — NOT STARTED
 - DNS routing, archive Flask app
 
+#### Interactive Charts (2026-04-27) — COMPLETE
+PRs #159 (phase 1), #160 (phase 2), #161 (phase 3) — all merged into `main`.
+
+Adds **Recharts** (`recharts@^2.15`) and a small set of opinionated dark-theme chart wrappers in `src/components/charts/`. Tables stay alongside as the export source of truth — charts go above each section.
+
+**Components in `src/components/charts/`** (all `'use client'`, types exported from `index.ts`):
+- `ChartCard` — shared frame: `bg-slate-800/40` border, title/subtitle, `print:break-inside-avoid`
+- `TimeSeriesChart` — bars over time, optional `referenceY`, optional `Brush`, optional stacked-by-series (used for daily orders, deliveries-by-branch, forecast)
+- `ComboBarLineChart` — bars (left $ axis) + line (right % axis); the 3-year sales+GM% chart
+- `ComparisonBarChart` — paired horizontal bars (base vs compare year) with delta % chips
+- `ParetoChart` — descending bars + cumulative-% line + 80% reference line
+- `MixDonut` — donut with `topN + Other` rollup, total in center, prior-year delta in tooltip
+- `StatusFunnelBar` — pure CSS stacked bar in fixed pipeline order (`O/B → K → S → P → D → I`); not recharts
+- `HeatmapGrid` — pure CSS row × col grid with intensity shading; not recharts
+- `ProductTreemap` — recharts `<Treemap>` for product-major mix, hover surfaces GM%
+- `DaysToPayBullet` — pure CSS bullet bar with prior-year tick + threshold (red/green flip); not recharts
+- `theme.ts` — central `CHART_COLORS` palette (Beisser green = base year, Beisser gold = cumulative/reference, slate-500 = compare); branch + status colors mirror existing inline maps in `TopNav`/`ReportsClient`
+
+**Wired into:**
+- `/management` — 3-yr combo + branch comparison + sale-type Pareto
+- `/sales/reports` — daily order time-series with prior-yr ref line + Brush on 90d, sale-type donut, status pipeline funnel (replaces the custom HTML `DailyBars`)
+- `/ops/delivery-reporting` — stacked-by-branch daily time series + sale-type × branch heatmap + carrier donut (replaces the custom HTML `DailyBars` and `BreakdownRow` carrier list)
+- `/management/forecast` — open-orders Pareto + stacked-by-branch forecast time series
+- `/scorecard/overview` — 3-yr combo + branch contribution Pareto + product treemap + sale-type Pareto
+- `/scorecard/branch/[branchId]` — 3-yr combo + top-customers Pareto + product treemap + sale-type Pareto
+- `/scorecard/rep` — assigned-book vs written-up sales bars (top 12 reps)
+- `/scorecard/rep/[repCode]` — 3-yr combo + product treemap rendered per dual section (Assigned/Written)
+- `/scorecard/product` — product-mix treemap + product-concentration Pareto side-by-side
+- `/scorecard/[customerId]` — 3-yr combo + product treemap + days-to-pay bullet + sale-type Pareto
+
+**Server/client boundary pattern**: pages stay server components and pass already-resolved data to a `'use client'` adapter:
+- `app/management/_components/ManagementCharts.tsx` — accepts `threeYear`, `branchSummaries`, `saleTypes` props
+- `app/scorecard/_components/ScorecardCharts.tsx` — exports per-use-case adapters (`<ThreeYearChart>`, `<TopCustomersPareto>`, `<ProductMixTreemap>`, `<RepComparisonChart>`, `<DaysToPayCard>`, etc.)
+
+**API change**: `GET /api/ops/delivery-reporting` now returns `by_sale_type_branch: { sale_type, system_id, count }[]` aggregate (derived from the same `uniq` CTE — no extra query) for the heatmap pivot.
+
+**Print CSS** added in `app/globals.css` so recharts SVGs render with white background + dark gridlines on printed reports.
+
+**Conventions when adding charts:**
+- Use `e.sales !== 0` (not `e.sales > 0`) when computing GM% for time-series — match the table convention so years with negative net sales (credits exceed sales) show their actual ratio rather than collapsing to 0%
+- Normalize blank `so_status` (`''`) to `'B'` when building counts for `<StatusFunnelBar>` since the API uses `UPPER(COALESCE(so_status, ''))` and the codebase treats blank as Open
+- Keep tables alongside charts — they remain the CSV-export source of truth; chart components don't have export buttons
+- For pages already `'use client'`, import chart components directly. For server-component pages, create an `_components/<X>Charts.tsx` client adapter that accepts plain serializable props.
+
+**Out of scope (intentional):**
+- KPI sparklines on tiles — would need monthly history aggregation we don't expose yet
+- SVG download button on `<ChartCard>`
+
 #### Still Missing / Deferred
 - **Suggested Buys** (`/purchasing/suggested-buys`): `app_purchasing_queue` view confirmed missing. Check `agility_suggested_po_header` + `agility_suggested_po_lines` before building
 - **RMA Credits doc sync**: Email pipeline active — attachments upload to R2 and upsert `credit_images`. Doc counts show on `/credits` page via LEFT JOIN. Outstanding issue: `credit_images.rma_number` must match `agility_so_header.so_id::text` — if RMA# is not parsed correctly from email subject/body the JOIN produces 0. Troubleshoot in next session.
@@ -593,6 +641,7 @@ When the accounting AR view is built, add it under a dedicated route (e.g. `/acc
 - Cloudflare R2 (file storage via @aws-sdk/client-s3 + @aws-sdk/s3-request-presigner)
 - NextAuth v5 beta (credentials provider, JWT strategy)
 - pdfjs-dist 5.6, fabric 7.x (NOT v6 — mouse event API differs), jspdf 2.x
+- Recharts 2.15 (route-scoped, ~95 KB gz; SVG-based for crisp printing) — wrappers in `src/components/charts/`
 - Lucide React icons, papaparse, zod, date-fns
 
 ## Environment Variables
