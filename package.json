@@ -34,6 +34,7 @@
     "postgres": "^3.4.8",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
+    "recharts": "^2.15.4",
     "serwist": "^9.5.7",
     "svix": "^1.90.0",
     "tailwind-merge": "^3.0.0",

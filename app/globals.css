@@ -129,4 +129,21 @@ select.input-field option {
     max-width: 100% !important;
     padding: 0 !important;
   }
+
+  /* Recharts: render SVGs cleanly on white paper */
+  .recharts-surface {
+    background: white !important;
+  }
+  .recharts-cartesian-grid line,
+  .recharts-cartesian-axis-line {
+    stroke: #cbd5e1 !important;
+  }
+  .recharts-cartesian-axis-tick-value,
+  .recharts-legend-item-text {
+    fill: #1f2937 !important;
+    color: #1f2937 !important;
+  }
+  .recharts-tooltip-wrapper {
+    display: none !important;
+  }
 }

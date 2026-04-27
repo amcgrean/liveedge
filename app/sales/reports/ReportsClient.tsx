@@ -6,6 +6,12 @@ import { BarChart2, RefreshCw, TrendingUp, Users, Truck, Activity, ChevronLeft }
 import { usePageTracking } from '@/hooks/usePageTracking';
 import HouseLoader from '@/components/scorecard/HouseLoader';
 import ExportTableButton from '@/components/shared/ExportTableButton';
+import {
+  TimeSeriesChart,
+  MixDonut,
+  StatusFunnelBar,
+  CHART_COLORS,
+} from '@/components/charts';
 
 interface ReportsData {
   period_days: number;
@@ -133,38 +139,6 @@ function BreakdownRow({
   );
 }
 
-function DailyBars({ data }: { data: DailyRow[] }) {
-  const max = Math.max(...data.map((d) => d.count), 1);
-  return (
-    <div className="flex items-end gap-px h-28">
-      {data.map((d) => {
-        const heightPct = (d.count / max) * 100;
-        const label = new Date(d.order_date + 'T00:00:00').toLocaleDateString('en-US', {
-          month: 'short', day: 'numeric',
-        });
-        return (
-          <div
-            key={d.order_date}
-            className="group relative flex-1 flex flex-col justify-end h-full"
-            title={`${label}: ${d.count}`}
-          >
-            <div
-              className="w-full bg-cyan-600 group-hover:bg-cyan-400 rounded-sm transition-colors"
-              style={{ height: `${heightPct}%`, minHeight: d.count > 0 ? '2px' : '0' }}
-            />
-            <div className="absolute bottom-full mb-1.5 left-1/2 -translate-x-1/2 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-10">
-              <div className="bg-slate-900 border border-slate-700 rounded px-2 py-1 text-xs text-white whitespace-nowrap shadow-lg">
-                <span className="text-slate-400">{label}</span>
-                <span className="font-bold ml-1.5">{d.count}</span>
-              </div>
-            </div>
-          </div>
-        );
-      })}
-    </div>
-  );
-}
-
 export default function ReportsClient({ isAdmin, userBranch }: Props) {
   usePageTracking();
   const [data, setData] = useState<ReportsData | null>(null);
@@ -229,8 +203,6 @@ export default function ReportsClient({ isAdmin, userBranch }: Props) {
   const branchLabel = BRANCH_OPTIONS.find((b) => b.value === branch)?.label ?? 'All Branches';
   const fmtDate = (s: string) =>
     new Date(s + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-  const firstDate = data?.daily_orders[0]?.order_date;
-  const lastDate  = data?.daily_orders[data?.daily_orders.length - 1]?.order_date;
 
   return (
     <div className="p-4 md:p-6 space-y-5 max-w-7xl mx-auto">
@@ -343,7 +315,7 @@ export default function ReportsClient({ isAdmin, userBranch }: Props) {
           {/* Daily bar chart */}
           <div>
             <SectionTitle>Order Volume by Day</SectionTitle>
-            <div className="bg-slate-800/60 border border-slate-700 rounded-lg p-4">
+            <div className="bg-slate-800/60 border border-slate-700 rounded-lg p-4 print:break-inside-avoid">
               {data.daily_orders.length === 0 ? (
                 <p className="text-slate-500 text-sm text-center py-8">No data for this period</p>
               ) : (
@@ -355,19 +327,82 @@ export default function ReportsClient({ isAdmin, userBranch }: Props) {
                       <span className="text-white font-semibold tabular-nums">
                         {peakDay?.count ?? 0}
                       </span>
+                      {prevAvgPerDay !== undefined && (
+                        <>
+                          {' · '}
+                          <span className="inline-flex items-center gap-1">
+                            <span
+                              className="inline-block w-3 h-px"
+                              style={{ backgroundColor: CHART_COLORS.accent, borderTop: `1px dashed ${CHART_COLORS.accent}` }}
+                            />
+                            prior yr avg{' '}
+                            <span className="text-white font-semibold tabular-nums">
+                              {prevAvgPerDay.toFixed(1)}
+                            </span>
+                          </span>
+                        </>
+                      )}
                     </span>
                   </div>
-                  <DailyBars data={data.daily_orders} />
-                  {data.daily_orders.length > 1 && firstDate && lastDate && (
-                    <div className="flex justify-between mt-1.5">
-                      <span className="text-[10px] text-slate-600">{fmtDate(firstDate)}</span>
-                      <span className="text-[10px] text-slate-600">{fmtDate(lastDate)}</span>
-                    </div>
-                  )}
+                  <TimeSeriesChart
+                    data={data.daily_orders.map((d) => ({ date: d.order_date, count: d.count }))}
+                    series={[{ key: 'count', label: 'Orders', color: CHART_COLORS.base }]}
+                    referenceY={
+                      prevAvgPerDay !== undefined
+                        ? { value: prevAvgPerDay, label: 'Prior yr avg' }
+                        : undefined
+                    }
+                    brush={period >= 90}
+                    height={220}
+                  />
                 </>
               )}
             </div>
           </div>
+
+          {/* Mix + Status visualizations */}
+          {(data.by_sale_type.length > 0 || data.status_breakdown.length > 0) && (
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+              {data.by_sale_type.length > 0 && (
+                <div className="bg-slate-800/60 border border-slate-700 rounded-lg p-4 print:break-inside-avoid">
+                  <div className="flex items-center gap-2 mb-3">
+                    <TrendingUp className="w-4 h-4 text-emerald-400 shrink-0" />
+                    <span className="text-sm font-semibold text-white">Sale Type Mix</span>
+                    <span className="ml-auto text-xs text-slate-500">top 6 + Other</span>
+                  </div>
+                  <MixDonut
+                    rows={data.by_sale_type.map((s) => ({
+                      label: s.sale_type,
+                      value: s.count,
+                      prevValue: prevSaleTypeMap.get(s.sale_type),
+                    }))}
+                    centerLabel="Orders"
+                    height={240}
+                  />
+                </div>
+              )}
+              {data.status_breakdown.length > 0 && (
+                <div className="bg-slate-800/60 border border-slate-700 rounded-lg p-4 print:break-inside-avoid">
+                  <div className="flex items-center gap-2 mb-3">
+                    <Activity className="w-4 h-4 text-cyan-400 shrink-0" />
+                    <span className="text-sm font-semibold text-white">Pipeline</span>
+                    <span className="ml-auto text-xs text-slate-500">Open → Invoiced</span>
+                  </div>
+                  <StatusFunnelBar
+                    counts={data.status_breakdown.reduce<Record<string, number>>(
+                      (acc, s) => {
+                        const key = s.so_status?.trim() ? s.so_status : 'B';
+                        acc[key] = (acc[key] ?? 0) + s.cnt;
+                        return acc;
+                      },
+                      {},
+                    )}
+                    height={48}
+                  />
+                </div>
+              )}
+            </div>
+          )}
 
           {/* Breakdowns */}
           <div>

@@ -8,6 +8,7 @@ import {
 } from '../../src/lib/scorecard/queries';
 import type { AggregateParams, KpiComparison } from '../../src/lib/scorecard/types';
 import ExportTableButton from '../../src/components/shared/ExportTableButton';
+import ManagementCharts from './_components/ManagementCharts';
 
 export const metadata = { title: 'Management — Beisser LiveEdge' };
 
@@ -305,6 +306,15 @@ export default async function ManagementPage({
         <KpiCard label="Value Add %" base={vaPctBase} compare={vaPctCompare} format="percent" />
         <KpiCard label="Orders" base={kpis.base.soCount} compare={kpis.compare.soCount} format="number" />
       </div>
+
+      {/* Charts */}
+      <ManagementCharts
+        threeYear={threeYear}
+        branchSummaries={branchSummaries}
+        saleTypes={saleTypes}
+        baseYear={baseYear}
+        compareYear={compareYear}
+      />
 
       {/* 3-Year Comparison */}
       <Section
