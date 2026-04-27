@@ -28,6 +28,8 @@ export interface DeliveryReportPayload {
   /** Per-day per-branch deliveries — used to compute daily avg/high/low per branch. */
   by_date_branch: DailyBranchCell[];
   by_sale_type: { sale_type: string; count: number }[];
+  /** sale_type × branch counts — flat rows for client-side pivoting into a heatmap. */
+  by_sale_type_branch: { sale_type: string; system_id: string; count: number }[];
   by_ship_via:  { ship_via: string;  count: number }[];
   detail: DeliveryReportRow[];
 }
@@ -64,11 +66,12 @@ export async function GET(req: NextRequest) {
 
     type ResultRow = {
       result: {
-        by_date:        { date: string; count: number }[]            | null;
-        by_date_branch: DailyBranchCell[]                            | null;
-        by_sale_type:   { sale_type: string; count: number }[]       | null;
-        by_ship_via:    { ship_via: string;  count: number }[]       | null;
-        detail:         DeliveryReportRow[]                          | null;
+        by_date:             { date: string; count: number }[]                                | null;
+        by_date_branch:      DailyBranchCell[]                                                | null;
+        by_sale_type:        { sale_type: string; count: number }[]                           | null;
+        by_sale_type_branch: { sale_type: string; system_id: string; count: number }[]        | null;
+        by_ship_via:         { ship_via: string;  count: number }[]                           | null;
+        detail:              DeliveryReportRow[]                                              | null;
       };
     };
 
@@ -130,6 +133,13 @@ export async function GET(req: NextRequest) {
             FROM uniq GROUP BY sale_type_raw
           ) s
         ),
+        'by_sale_type_branch', (
+          SELECT COALESCE(json_agg(s ORDER BY s.sale_type ASC, s.system_id ASC), '[]'::json)
+          FROM (
+            SELECT sale_type_raw AS sale_type, system_id, COUNT(*)::int AS count
+            FROM uniq GROUP BY sale_type_raw, system_id
+          ) s
+        ),
         'by_ship_via', (
           SELECT COALESCE(json_agg(s ORDER BY s.count DESC), '[]'::json)
           FROM (
@@ -153,7 +163,7 @@ export async function GET(req: NextRequest) {
     `;
 
     const r = rows[0]?.result ?? {
-      by_date: [], by_date_branch: [], by_sale_type: [], by_ship_via: [], detail: [],
+      by_date: [], by_date_branch: [], by_sale_type: [], by_sale_type_branch: [], by_ship_via: [], detail: [],
     };
     const byDate = r.by_date ?? [];
 
@@ -164,6 +174,7 @@ export async function GET(req: NextRequest) {
       by_date: byDate,
       by_date_branch: r.by_date_branch ?? [],
       by_sale_type: r.by_sale_type ?? [],
+      by_sale_type_branch: r.by_sale_type_branch ?? [],
       by_ship_via: r.by_ship_via ?? [],
       detail: r.detail ?? [],
     };

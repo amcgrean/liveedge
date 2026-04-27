@@ -3,12 +3,18 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import Link from 'next/link';
 import {
-  Truck, RefreshCw, BarChart2, ChevronLeft, Download, Activity, Building2,
+  Truck, RefreshCw, BarChart2, ChevronLeft, Download, Activity, Building2, Layers,
 } from 'lucide-react';
 import type {
   DeliveryReportPayload, DeliveryReportRow,
 } from '../../api/ops/delivery-reporting/route';
 import { usePageTracking } from '@/hooks/usePageTracking';
+import {
+  TimeSeriesChart,
+  MixDonut,
+  HeatmapGrid,
+  CHART_COLORS,
+} from '@/components/charts';
 
 interface Props {
   isAdmin: boolean;
@@ -61,69 +67,6 @@ function KpiTile({ label, value, sub }: { label: string; value: string | number;
       <p className="text-xs font-medium text-slate-400 uppercase tracking-wide truncate">{label}</p>
       <p className="text-2xl font-bold text-white tabular-nums">{value}</p>
       {sub && <p className="text-xs text-slate-500 truncate">{sub}</p>}
-    </div>
-  );
-}
-
-function BreakdownRow({
-  label, value, total, max, barColor = 'bg-cyan-600',
-}: {
-  label: string; value: number; total: number; max: number; barColor?: string;
-}) {
-  const barPct = max > 0 ? (value / max) * 100 : 0;
-  const sharePct = total > 0 ? ((value / total) * 100).toFixed(1) : '0.0';
-  return (
-    <div className="space-y-1">
-      <div className="flex items-center gap-2">
-        <span className="text-sm text-slate-200 truncate flex-1">{label}</span>
-        <span className="text-xs text-slate-500 tabular-nums">{sharePct}%</span>
-        <span className="text-sm font-semibold text-white tabular-nums w-12 text-right">
-          {value.toLocaleString()}
-        </span>
-      </div>
-      <div className="h-1.5 bg-slate-700/50 rounded-full overflow-hidden">
-        <div className={`h-full rounded-full ${barColor}`} style={{ width: `${barPct}%` }} />
-      </div>
-    </div>
-  );
-}
-
-function DailyBars({
-  data, includeSaturdays,
-}: {
-  data: { date: string; count: number }[];
-  includeSaturdays: boolean;
-}) {
-  const max = Math.max(...data.map((d) => d.count), 1);
-  return (
-    <div className="flex items-end gap-px h-28">
-      {data.map((d) => {
-        const sat = isSaturday(d.date);
-        const dimmed = sat && !includeSaturdays;
-        const heightPct = (d.count / max) * 100;
-        const label = fmtDay(d.date);
-        return (
-          <div
-            key={d.date}
-            className="group relative flex-1 flex flex-col justify-end h-full"
-            title={`${label}${sat ? ' (Sat)' : ''}: ${d.count}${dimmed ? ' — excluded' : ''}`}
-          >
-            <div
-              className={`w-full rounded-sm transition-colors ${
-                dimmed ? 'bg-slate-700 group-hover:bg-slate-600' : 'bg-cyan-600 group-hover:bg-cyan-400'
-              }`}
-              style={{ height: `${heightPct}%`, minHeight: d.count > 0 ? '2px' : '0' }}
-            />
-            <div className="absolute bottom-full mb-1.5 left-1/2 -translate-x-1/2 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-10">
-              <div className="bg-slate-900 border border-slate-700 rounded px-2 py-1 text-xs text-white whitespace-nowrap shadow-lg">
-                <span className="text-slate-400">{label}{sat ? ' · Sat' : ''}</span>
-                <span className="font-bold ml-1.5">{d.count}</span>
-                {dimmed && <span className="text-slate-500 ml-1.5">excluded</span>}
-              </div>
-            </div>
-          </div>
-        );
-      })}
     </div>
   );
 }
@@ -229,7 +172,54 @@ export default function DeliveryReportingClient({ isAdmin, userBranch }: Props) 
   }, [data, includeSaturdays]);
 
   const shipTotal = data?.by_ship_via.reduce((s, d) => s + d.count, 0) ?? 0;
-  const maxShip   = Math.max(...(data?.by_ship_via.map((d) => d.count) ?? [1]), 1);
+
+  // Stacked-by-branch time series — pivot by_date_branch into one row per date with
+  // a numeric column per branch. Branches with at least one delivery in the window
+  // become series; Saturday filtering is applied client-side.
+  const { stackedByDate, branchSeries } = useMemo(() => {
+    if (!data) return { stackedByDate: [], branchSeries: [] };
+    const branches = Array.from(
+      new Set(data.by_date_branch.map((c) => c.system_id)),
+    ).sort();
+    const dateMap = new Map<string, Record<string, number>>();
+    for (const cell of data.by_date_branch) {
+      if (!includeSaturdays && isSaturday(cell.date)) continue;
+      let row = dateMap.get(cell.date);
+      if (!row) {
+        row = {};
+        dateMap.set(cell.date, row);
+      }
+      row[cell.system_id] = (row[cell.system_id] ?? 0) + cell.count;
+    }
+    const stacked = Array.from(dateMap, ([date, byBranch]) => {
+      const row: { date: string; [k: string]: number | string } = { date };
+      for (const b of branches) row[b] = byBranch[b] ?? 0;
+      return row;
+    }).sort((a, b) => a.date.localeCompare(b.date));
+    const series = branches.map((b) => ({
+      key: b,
+      label: BRANCH_LABEL[b] ?? b,
+      color: CHART_COLORS.branch[b] ?? CHART_COLORS.categorical[0],
+    }));
+    return { stackedByDate: stacked, branchSeries: series };
+  }, [data, includeSaturdays]);
+
+  // Sale Type × Branch heatmap — pivot from the new by_sale_type_branch aggregate.
+  const { saleTypeRows, saleTypeBranchCols, saleTypeBranchValues } = useMemo(() => {
+    const rows = data?.by_sale_type.map((s) => s.sale_type) ?? [];
+    const colSet = new Set<string>();
+    const values: Record<string, Record<string, number>> = {};
+    for (const cell of data?.by_sale_type_branch ?? []) {
+      colSet.add(cell.system_id);
+      if (!values[cell.sale_type]) values[cell.sale_type] = {};
+      values[cell.sale_type][cell.system_id] = cell.count;
+    }
+    return {
+      saleTypeRows: rows,
+      saleTypeBranchCols: Array.from(colSet).sort(),
+      saleTypeBranchValues: values,
+    };
+  }, [data]);
 
   const branchLabel = BRANCH_OPTIONS.find((b) => b.value === branch)?.label ?? 'All Branches';
 
@@ -438,13 +428,13 @@ export default function DeliveryReportingClient({ isAdmin, userBranch }: Props) 
             </div>
           )}
 
-          {/* Daily bar chart (Saturdays dimmed when excluded) */}
+          {/* Daily stacked-by-branch chart */}
           {data.by_date.length > 0 && (
             <div>
               <SectionTitle>Deliveries by Day</SectionTitle>
-              <div className="bg-slate-800/60 border border-slate-700 rounded-lg p-4">
+              <div className="bg-slate-800/60 border border-slate-700 rounded-lg p-4 print:break-inside-avoid">
                 <div className="flex items-center justify-between mb-3">
-                  <span className="text-xs text-slate-500">{data.by_date.length} days</span>
+                  <span className="text-xs text-slate-500">{stackedByDate.length} days</span>
                   <span className="text-xs text-slate-500">
                     avg{' '}
                     <span className="text-white font-semibold tabular-nums">
@@ -458,26 +448,47 @@ export default function DeliveryReportingClient({ isAdmin, userBranch }: Props) 
                     <span className="text-amber-300 font-semibold tabular-nums">
                       {overallStats.low}
                     </span>
+                    {!includeSaturdays && ' · Sat excluded'}
                   </span>
                 </div>
-                <DailyBars data={data.by_date} includeSaturdays={includeSaturdays} />
-                {data.by_date.length > 1 && (
-                  <div className="flex justify-between mt-1.5">
-                    <span className="text-[10px] text-slate-600">{fmtDay(data.by_date[0].date)}</span>
-                    <span className="text-[10px] text-slate-600">
-                      {fmtDay(data.by_date[data.by_date.length - 1].date)}
-                    </span>
-                  </div>
-                )}
+                <TimeSeriesChart
+                  data={stackedByDate}
+                  series={branchSeries}
+                  stacked
+                  brush={windowParam === '90d'}
+                  height={260}
+                />
               </div>
             </div>
           )}
 
-          {/* Ship Via mix — kept as secondary mix-of-business view */}
+          {/* Sale Type × Branch heatmap */}
+          {saleTypeRows.length > 0 && saleTypeBranchCols.length > 0 && (
+            <div>
+              <SectionTitle>Sale Type × Branch</SectionTitle>
+              <div className="bg-slate-800/60 border border-slate-700 rounded-lg p-4 print:break-inside-avoid">
+                <div className="flex items-center gap-2 mb-3">
+                  <Layers className="w-4 h-4 text-emerald-400 shrink-0" />
+                  <span className="text-sm font-semibold text-white">Mix by Branch</span>
+                  <span className="ml-auto text-xs text-slate-500">
+                    cell intensity scales with delivery count
+                  </span>
+                </div>
+                <HeatmapGrid
+                  rows={saleTypeRows}
+                  cols={saleTypeBranchCols}
+                  colLabels={BRANCH_LABEL}
+                  values={saleTypeBranchValues}
+                />
+              </div>
+            </div>
+          )}
+
+          {/* Ship Via mix donut */}
           {data.by_ship_via.length > 0 && (
             <div>
               <SectionTitle>By Ship Via</SectionTitle>
-              <div className="bg-slate-800/60 border border-slate-700 rounded-lg p-4">
+              <div className="bg-slate-800/60 border border-slate-700 rounded-lg p-4 print:break-inside-avoid">
                 <div className="flex items-center gap-2 mb-4">
                   <Activity className="w-4 h-4 text-purple-400 shrink-0" />
                   <span className="text-sm font-semibold text-white">Carrier Mix</span>
@@ -485,18 +496,11 @@ export default function DeliveryReportingClient({ isAdmin, userBranch }: Props) 
                     {shipTotal.toLocaleString()} total
                   </span>
                 </div>
-                <div className="space-y-3">
-                  {data.by_ship_via.map((s, i) => (
-                    <BreakdownRow
-                      key={i}
-                      label={s.ship_via}
-                      value={s.count}
-                      total={shipTotal}
-                      max={maxShip}
-                      barColor="bg-purple-600"
-                    />
-                  ))}
-                </div>
+                <MixDonut
+                  rows={data.by_ship_via.map((s) => ({ label: s.ship_via, value: s.count }))}
+                  centerLabel="Deliveries"
+                  height={260}
+                />
               </div>
             </div>
           )}

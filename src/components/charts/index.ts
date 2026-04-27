@@ -11,6 +11,8 @@ export { default as MixDonut } from './MixDonut';
 export type { MixDonutProps, MixDonutRow } from './MixDonut';
 export { default as StatusFunnelBar } from './StatusFunnelBar';
 export type { StatusFunnelBarProps } from './StatusFunnelBar';
+export { default as HeatmapGrid } from './HeatmapGrid';
+export type { HeatmapGridProps } from './HeatmapGrid';
 export {
   CHART_COLORS,
   AXIS_PROPS,

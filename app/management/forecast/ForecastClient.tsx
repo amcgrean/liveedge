@@ -1,12 +1,17 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import {
-  Calendar, RefreshCw, ChevronLeft, Truck, Layers, Download, AlertTriangle,
+  Calendar, RefreshCw, ChevronLeft, Truck, Layers, Download, AlertTriangle, BarChart3,
 } from 'lucide-react';
 import type { ForecastPayload, Branch } from '../../../src/lib/forecast/types';
 import { usePageTracking } from '@/hooks/usePageTracking';
+import {
+  TimeSeriesChart,
+  ParetoChart,
+  CHART_COLORS,
+} from '@/components/charts';
 
 interface Props {
   isAdmin: boolean;
@@ -94,6 +99,32 @@ export default function ForecastClient({ isAdmin, userBranch }: Props) {
   const branchesShown: Branch[] = branch
     ? [branch as Branch]
     : (data?.branches ?? ([] as readonly Branch[])).slice() as Branch[];
+
+  // F2: Pareto data — open orders by sale type, sorted desc, value = total across visible branches.
+  const openOrdersPareto = useMemo(() => {
+    if (!data) return [];
+    return data.open_orders.rows
+      .map((row) => ({ label: row.sale_type, value: row.total }))
+      .filter((r) => r.value > 0);
+  }, [data]);
+
+  // F1: Stacked-by-branch forecast time series — one row per day, one numeric column per visible branch.
+  const { forecastStacked, forecastSeries } = useMemo(() => {
+    if (!data || branchesShown.length === 0) {
+      return { forecastStacked: [], forecastSeries: [] };
+    }
+    const stacked = data.forecast.days.map((d) => {
+      const row: { date: string; [k: string]: number | string } = { date: d.date };
+      for (const b of branchesShown) row[b] = d.by_branch[b] ?? 0;
+      return row;
+    });
+    const series = branchesShown.map((b) => ({
+      key: b,
+      label: BRANCH_LABELS[b] ?? b,
+      color: CHART_COLORS.branch[b] ?? CHART_COLORS.categorical[0],
+    }));
+    return { forecastStacked: stacked, forecastSeries: series };
+  }, [data, branchesShown]);
 
   const exportOpen = () => {
     if (!data) return;
@@ -221,6 +252,26 @@ export default function ForecastClient({ isAdmin, userBranch }: Props) {
               </button>
             </div>
 
+            {openOrdersPareto.length > 0 && (
+              <div className="bg-slate-800/40 border border-slate-700 rounded-lg p-4 mb-3 print:break-inside-avoid">
+                <div className="flex items-center gap-2 mb-2">
+                  <BarChart3 className="w-4 h-4 text-emerald-400 shrink-0" />
+                  <span className="text-sm font-semibold text-white">
+                    Open Orders Concentration
+                  </span>
+                  <span className="ml-auto text-xs text-slate-500">
+                    bars = open orders, line = cumulative %
+                  </span>
+                </div>
+                <ParetoChart
+                  rows={openOrdersPareto}
+                  format={(n) => n.toLocaleString()}
+                  valueLabel="Open Orders"
+                  height={260}
+                />
+              </div>
+            )}
+
             <div className="bg-slate-800/40 border border-slate-700 rounded-lg overflow-hidden">
               {data.open_orders.rows.length === 0 ? (
                 <div className="flex flex-col items-center gap-2 text-slate-500 text-sm py-10">
@@ -308,7 +359,28 @@ export default function ForecastClient({ isAdmin, userBranch }: Props) {
                 No expected deliveries in the next {days} days.
               </div>
             ) : (
-              <div className="bg-slate-800/40 border border-slate-700 rounded-lg overflow-hidden">
+              <>
+                {forecastStacked.length > 0 && forecastSeries.length > 0 && (
+                  <div className="bg-slate-800/40 border border-slate-700 rounded-lg p-4 mb-3 print:break-inside-avoid">
+                    <div className="flex items-center gap-2 mb-2">
+                      <Calendar className="w-4 h-4 text-cyan-400 shrink-0" />
+                      <span className="text-sm font-semibold text-white">
+                        Forecast by Day · Stacked by Branch
+                      </span>
+                      <span className="ml-auto text-xs text-slate-500">
+                        next {days} days
+                      </span>
+                    </div>
+                    <TimeSeriesChart
+                      data={forecastStacked}
+                      series={forecastSeries}
+                      stacked
+                      height={260}
+                    />
+                  </div>
+                )}
+
+                <div className="bg-slate-800/40 border border-slate-700 rounded-lg overflow-hidden">
                 <div className="overflow-x-auto">
                   <table className="w-full text-sm">
                     <thead className="bg-slate-900/60">
@@ -439,6 +511,7 @@ export default function ForecastClient({ isAdmin, userBranch }: Props) {
                   </table>
                 </div>
               </div>
+              </>
             )}
           </section>
 
