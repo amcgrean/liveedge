@@ -54,16 +54,17 @@ export default function ParetoChart({
   return (
     <div style={{ width: '100%', height }}>
       <ResponsiveContainer>
-        <ComposedChart data={data} margin={{ top: 8, right: 16, left: 0, bottom: 28 }}>
+        <ComposedChart data={data} margin={{ top: 8, right: 16, left: 0, bottom: 40 }}>
           <CartesianGrid {...GRID_PROPS} vertical={false} />
           <XAxis
             dataKey="label"
             {...AXIS_PROPS}
-            angle={-25}
+            angle={-35}
             textAnchor="end"
-            height={48}
+            height={60}
             interval={0}
             tick={{ ...AXIS_PROPS.tick, fontSize: 10 }}
+            tickFormatter={(v: string) => v.length > 18 ? v.slice(0, 17) + '…' : v}
           />
           <YAxis
             yAxisId="left"
@@ -75,9 +76,10 @@ export default function ParetoChart({
             yAxisId="right"
             orientation="right"
             domain={[0, 100]}
+            ticks={[0, 25, 50, 75, 80, 100]}
             tickFormatter={(n: number) => `${n}%`}
             {...AXIS_PROPS}
-            width={40}
+            width={44}
           />
           <Tooltip
             contentStyle={TOOLTIP_STYLE}
@@ -116,12 +118,6 @@ export default function ParetoChart({
             y={80}
             stroke={CHART_COLORS.warn}
             strokeDasharray="4 4"
-            label={{
-              value: '80%',
-              position: 'right',
-              fill: CHART_COLORS.warn,
-              fontSize: 10,
-            }}
           />
         </ComposedChart>
       </ResponsiveContainer>
