@@ -9,11 +9,12 @@ type Customer = {
   cust_key: string; cust_code: string; cust_name: string | null;
   phone: string | null; email: string | null;
   terms: string | null; branch_code: string | null;
+  rep_1: string | null;
 };
 
 type Order = {
   so_number: string; so_status: string | null; expect_date: string | null;
-  reference: string | null; sale_type: string | null; salesperson: string | null; line_count: number;
+  reference: string | null; sale_type: string | null; rep_1: string | null; line_count: number;
 };
 
 type ShipTo = {
@@ -383,7 +384,7 @@ export default function CustomerProfileClient({ code, userName }: { code: string
                     )}
                     <div className="flex items-center gap-3 mt-2 text-xs text-gray-500 flex-wrap">
                       {o.sale_type && <span className="uppercase">{o.sale_type}</span>}
-                      {o.salesperson && <span>{o.salesperson}</span>}
+                      {o.rep_1 && <span>{o.rep_1}</span>}
                       {o.expect_date && <span>Expect {new Date(o.expect_date).toLocaleDateString()}</span>}
                       <span>{o.line_count} line{o.line_count !== 1 ? 's' : ''}</span>
                     </div>
@@ -419,7 +420,7 @@ export default function CustomerProfileClient({ code, userName }: { code: string
                             {SO_STATUS[o.so_status ?? '']?.label ?? o.so_status ?? '—'}
                           </td>
                           <td className="px-4 py-3 text-gray-400 uppercase text-xs hidden md:table-cell">{o.sale_type ?? '—'}</td>
-                          <td className="px-4 py-3 text-gray-400 hidden lg:table-cell">{o.salesperson ?? '—'}</td>
+                          <td className="px-4 py-3 text-gray-400 hidden lg:table-cell">{o.rep_1 ?? '—'}</td>
                           <td className="px-4 py-3 text-right text-gray-400">
                             {o.expect_date ? new Date(o.expect_date).toLocaleDateString() : '—'}
                           </td>

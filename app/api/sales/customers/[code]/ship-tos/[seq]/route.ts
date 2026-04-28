@@ -13,7 +13,7 @@ export interface ShipToOrder {
   ship_via: string | null;
   reference: string | null;
   po_number: string | null;
-  salesperson: string | null;
+  rep_1: string | null;
   expect_date: string | null;
   created_date: string | null;
   line_count: number;
@@ -87,6 +87,8 @@ export async function GET(
       lat: string | null;
       lon: string | null;
     };
+    // rep_1 = sales rep on the order (account rep). salesperson = driver/route on the
+    // order — surface rep_1 as the order's "Rep" column.
     type OrderRow = {
       so_number: string;
       system_id: string | null;
@@ -95,7 +97,7 @@ export async function GET(
       ship_via: string | null;
       reference: string | null;
       po_number: string | null;
-      salesperson: string | null;
+      rep_1: string | null;
       expect_date: string | null;
       created_date: string | null;
       line_count: number;
@@ -133,7 +135,7 @@ export async function GET(
           soh.ship_via,
           soh.reference,
           TRIM(soh.po_number)       AS po_number,
-          soh.salesperson,
+          UPPER(TRIM(soh.rep_1))    AS rep_1,
           soh.expect_date::text     AS expect_date,
           soh.created_date::text    AS created_date,
           COALESCE(
@@ -264,7 +266,7 @@ export async function GET(
         ship_via: r.ship_via,
         reference: r.reference,
         po_number: r.po_number,
-        salesperson: r.salesperson,
+        rep_1: r.rep_1,
         expect_date: r.expect_date,
         created_date: r.created_date,
         line_count: r.line_count,
