@@ -49,7 +49,6 @@ export interface HubData {
   recentActivity: HubActivity[];
   recentTransactions: HubTransaction[];
   username: string;
-  _debug?: { repUsed: string; agentIdInDb: string | null; branchReps: string[]; saleTypes: string[]; wcStatuses: string[] };
 }
 
 function relativeTime(ts: string): string {
@@ -87,38 +86,6 @@ export async function GET() {
   const rep = repRaw.toUpperCase().trim();
   if (!rep) return NextResponse.json(EMPTY);
   const username = userRows[0]?.username ?? '';
-
-  const [sampleRepsRes, saleTypesRes, wcStatusesRes] = await Promise.all([
-    // Debug: show sample of actual rep_1 values in this branch
-    sql<{ rep: string }[]>`
-      SELECT DISTINCT UPPER(TRIM(rep_1)) AS rep
-      FROM public.agility_so_header
-      WHERE is_deleted = false
-        AND rep_1 IS NOT NULL AND TRIM(rep_1) <> ''
-        ${branch ? sql`AND system_id = ${branch}` : sql``}
-      ORDER BY rep LIMIT 30
-    `,
-    // Debug: show what sale_type values exist so WC format can be confirmed
-    sql<{ sale_type: string; cnt: string }[]>`
-      SELECT UPPER(TRIM(COALESCE(sale_type, ''))) AS sale_type, COUNT(*)::text AS cnt
-      FROM public.agility_so_header
-      WHERE is_deleted = false
-        ${branch ? sql`AND system_id = ${branch}` : sql``}
-      GROUP BY UPPER(TRIM(COALESCE(sale_type, '')))
-      ORDER BY COUNT(*) DESC
-      LIMIT 20
-    `,
-    // Debug: show what so_status values will calls actually have
-    sql<{ so_status: string; cnt: string }[]>`
-      SELECT COALESCE(UPPER(TRIM(so_status)), '(blank)') AS so_status, COUNT(*)::text AS cnt
-      FROM public.agility_so_header
-      WHERE is_deleted = false
-        AND UPPER(TRIM(sale_type)) = 'WILLCALL'
-        ${branch ? sql`AND system_id = ${branch}` : sql``}
-      GROUP BY COALESCE(UPPER(TRIM(so_status)), '(blank)')
-      ORDER BY COUNT(*) DESC
-    `,
-  ]);
 
   type TopCustRow = { cust_code: string; cust_name: string | null; order_count: string };
   type BidActRow  = { bid_id: number; action: string; project_name: string; customer_name: string; ts: string };
@@ -301,13 +268,5 @@ export async function GET() {
     recentActivity: activityItems,
     recentTransactions: recentTxRes,
     username,
-    // Temporary debug — remove once agent_id matching is confirmed
-    _debug: {
-      repUsed: rep,
-      agentIdInDb: userRows[0]?.agent_id ?? null,
-      branchReps: sampleRepsRes.map((r: { rep: string }) => r.rep),
-      saleTypes: saleTypesRes.map((r: { sale_type: string; cnt: string }) => `${r.sale_type || '(blank)'}:${r.cnt}`),
-      wcStatuses: (wcStatusesRes as { so_status: string; cnt: string }[]).map((r) => `${r.so_status}:${r.cnt}`),
-    },
   } satisfies HubData);
 }

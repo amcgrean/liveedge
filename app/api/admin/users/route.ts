@@ -152,7 +152,7 @@ export async function POST(req: NextRequest) {
         ${displayName},
         ${username},
         ${passwordHash},
-        ${JSON.stringify(roles)},
+        ${JSON.stringify(roles)}::json,
         ${branch},
         true,
         ${agentId}
