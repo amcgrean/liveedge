@@ -14,13 +14,20 @@ export async function GET(req: NextRequest) {
   try {
     const sql = getErpSql();
 
+    // rep_1 is the sales rep assigned to the customer account (in agility_customers).
+    // agility_so_header.salesperson is the driver/route on a specific order — NOT the
+    // account rep — so we don't read it here.
     type CustRow = {
       cust_code: string;
       cust_name: string | null;
+      rep_1: string | null;
     };
 
     const custRows = await sql<CustRow[]>`
-      SELECT cust_code, MAX(cust_name) AS cust_name
+      SELECT
+        cust_code,
+        MAX(cust_name) AS cust_name,
+        UPPER(TRIM(MAX(rep_1))) AS rep_1
       FROM agility_customers
       WHERE is_deleted = false
         ${q ? sql`AND (cust_code ILIKE ${'%' + q + '%'} OR cust_name ILIKE ${'%' + q + '%'})` : sql``}
@@ -29,36 +36,10 @@ export async function GET(req: NextRequest) {
       LIMIT ${limit}
     `;
 
-    if (custRows.length === 0) {
-      return NextResponse.json({ customers: [] });
-    }
-
-    const codes = custRows.map((r) => r.cust_code);
-
-    type RepRow = { cust_code: string; salesperson: string };
-    let reps: RepRow[] = [];
-    try {
-      reps = await sql<RepRow[]>`
-        SELECT DISTINCT ON (cust_code)
-          cust_code,
-          UPPER(TRIM(salesperson)) AS salesperson
-        FROM agility_so_header
-        WHERE cust_code = ANY(${codes})
-          AND is_deleted = false
-          AND salesperson IS NOT NULL
-          AND TRIM(salesperson) <> ''
-        ORDER BY cust_code, created_date DESC NULLS LAST
-      `;
-    } catch (repErr) {
-      console.error('[sales/customers GET reps]', repErr);
-    }
-
-    const repMap = new Map(reps.map((r) => [r.cust_code, r.salesperson]));
-
     const customers = custRows.map((r) => ({
       cust_code: r.cust_code,
       cust_name: r.cust_name,
-      salesperson: repMap.get(r.cust_code) ?? null,
+      rep_1: r.rep_1 || null,
     }));
 
     return NextResponse.json({ customers });

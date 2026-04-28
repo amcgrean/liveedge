@@ -28,8 +28,11 @@ export async function GET(
       state: string | null;
       zip: string | null;
       phone: string | null;
+      rep_1: string | null;
     };
 
+    // rep_1 = sales rep on the order (account rep). salesperson = driver/route. We
+    // surface rep_1 as the order's "Rep" column.
     type OrderRow = {
       so_number: string;
       system_id: string;
@@ -39,7 +42,7 @@ export async function GET(
       expect_date: string | null;
       invoice_date: string | null;
       reference: string | null;
-      salesperson: string | null;
+      rep_1: string | null;
       line_count: number;
     };
 
@@ -55,7 +58,8 @@ export async function GET(
     // Fetch all open orders (no limit — typically small), plus recent history.
     const [custRows, openRows, historyRows, shiptoRows] = await Promise.all([
       sql<CustRow[]>`
-        SELECT DISTINCT ON (cust_code) cust_key, cust_name, address_1, city, state, zip, cust_phone AS phone
+        SELECT DISTINCT ON (cust_code) cust_key, cust_name, address_1, city, state, zip,
+               cust_phone AS phone, UPPER(TRIM(rep_1)) AS rep_1
         FROM agility_customers
         WHERE TRIM(cust_code) = TRIM(${code}) AND is_deleted = false
         ORDER BY cust_code, seq_num NULLS LAST
@@ -71,7 +75,7 @@ export async function GET(
           soh.expect_date::text   AS expect_date,
           NULL::text              AS invoice_date,
           soh.reference,
-          soh.salesperson,
+          UPPER(TRIM(soh.rep_1))  AS rep_1,
           COALESCE((SELECT COUNT(*)::int FROM agility_so_lines sl
                      WHERE sl.so_id = soh.so_id AND sl.is_deleted = false), 0) AS line_count
         FROM agility_so_header soh
@@ -91,7 +95,7 @@ export async function GET(
           soh.expect_date::text   AS expect_date,
           NULL::text              AS invoice_date,
           soh.reference,
-          soh.salesperson,
+          UPPER(TRIM(soh.rep_1))  AS rep_1,
           COALESCE((SELECT COUNT(*)::int FROM agility_so_lines sl
                      WHERE sl.so_id = soh.so_id AND sl.is_deleted = false), 0) AS line_count
         FROM agility_so_header soh

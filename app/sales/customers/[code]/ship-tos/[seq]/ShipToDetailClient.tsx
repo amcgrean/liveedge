@@ -25,7 +25,7 @@ type ShipToDetail = {
     ship_via: string | null;
     reference: string | null;
     po_number: string | null;
-    salesperson: string | null;
+    rep_1: string | null;
     expect_date: string | null;
     created_date: string | null;
     line_count: number;
@@ -207,7 +207,7 @@ export default function ShipToDetailClient({ code, seq }: { code: string; seq: s
                           {SO_STATUS[o.so_status ?? '']?.label ?? o.so_status ?? '—'}
                         </td>
                         <td className="px-4 py-3 text-gray-400 uppercase text-xs hidden md:table-cell">{o.sale_type ?? '—'}</td>
-                        <td className="px-4 py-3 text-gray-400 hidden lg:table-cell">{o.salesperson ?? '—'}</td>
+                        <td className="px-4 py-3 text-gray-400 hidden lg:table-cell">{o.rep_1 ?? '—'}</td>
                         <td className="px-4 py-3 text-right text-gray-400">
                           {o.expect_date ? new Date(o.expect_date).toLocaleDateString() : '—'}
                         </td>

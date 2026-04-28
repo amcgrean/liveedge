@@ -8,7 +8,7 @@ import { usePageTracking } from '@/hooks/usePageTracking';
 type Customer = {
   cust_code: string;
   cust_name: string | null;
-  salesperson: string | null;
+  rep_1: string | null;
 };
 
 export default function CustomersClient() {
@@ -91,10 +91,10 @@ export default function CustomersClient() {
                   </div>
                   <div className="mt-1 flex items-center justify-between gap-2 text-xs">
                     <span className="font-mono text-cyan-300">{c.cust_code}</span>
-                    {c.salesperson && (
+                    {c.rep_1 && (
                       <span className="inline-flex items-center gap-1 text-gray-400">
                         <User className="w-3 h-3" />
-                        {c.salesperson}
+                        {c.rep_1}
                       </span>
                     )}
                   </div>
