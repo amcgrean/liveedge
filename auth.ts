@@ -142,7 +142,8 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
         token.agentId = (user as { agentId?: string | null }).agentId ?? null;
       }
       if (!token.roles || (token.roles as string[]).length === 0) {
-        if (token.role === 'admin') token.roles = ['admin'];
+        const r = token.role as string | undefined;
+        if (r && r !== 'viewer') token.roles = [r];
       }
       return token;
     },
@@ -166,11 +167,18 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
 
 /** Map a roles[] array to the primary scalar `role` string. */
 function deriveRole(roles: string[]): string {
-  if (roles.includes('admin')) return 'admin';
-  if (roles.includes('management')) return 'management';
-  if (roles.some((r) => ['ops', 'sales', 'supervisor', 'purchasing', 'warehouse',
-                         'estimating', 'estimator', 'designer', 'receiving_yard',
-                         'dispatch', 'driver'].includes(r))) return 'estimator';
+  if (roles.includes('admin'))           return 'admin';
+  if (roles.includes('management'))      return 'management';
+  if (roles.includes('estimator') || roles.includes('estimating')) return 'estimator';
+  if (roles.includes('designer'))        return 'designer';
+  if (roles.includes('supervisor'))      return 'supervisor';
+  if (roles.includes('ops'))             return 'ops';
+  if (roles.includes('sales'))           return 'sales';
+  if (roles.includes('purchasing'))      return 'purchasing';
+  if (roles.includes('receiving_yard'))  return 'receiving_yard';
+  if (roles.includes('warehouse'))       return 'warehouse';
+  if (roles.includes('dispatch'))        return 'dispatch';
+  if (roles.includes('driver'))          return 'driver';
   return 'viewer';
 }
 

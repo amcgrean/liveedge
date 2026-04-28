@@ -365,9 +365,9 @@ function canSeeSection(domainId: string, role: string, roles: string[]): boolean
     case 'sales':
       return hasAnyRole(roles, 'sales', 'ops', 'supervisor');
     case 'management':
-      return hasAnyRole(roles, 'sales', 'ops', 'supervisor');
+      return hasAnyRole(roles, 'ops', 'supervisor');
     case 'estimating':
-      return (role === 'admin' || role === 'estimator') && !isWHUser;
+      return ((role === 'admin' || role === 'estimator') && !isWHUser) || hasAnyRole(roles, 'sales');
     case 'purchasing':
       // Covers both purchasing and receiving (merged)
       return role !== 'viewer';

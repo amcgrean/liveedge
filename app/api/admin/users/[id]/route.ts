@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '../../../../../auth';
 import { getErpSql } from '../../../../../db/supabase';
-import bcrypt from 'bcryptjs';
 
 function dbError(err: unknown) {
   console.error('[admin/users/[id]]', err);
@@ -53,6 +52,7 @@ export async function PUT(
     if (body.password.length < 8) {
       return NextResponse.json({ error: 'Password must be at least 8 characters' }, { status: 422 });
     }
+    const bcrypt = (await import('bcryptjs')).default;
     updates.password_hash = await bcrypt.hash(body.password, 12);
   }
 

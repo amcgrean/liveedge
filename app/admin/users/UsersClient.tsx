@@ -7,7 +7,7 @@ import Link from 'next/link';
 import { formatDate } from '../../../src/lib/utils';
 import { useSession } from 'next-auth/react';
 
-interface AppUser {
+export interface AppUser {
   id: string;
   name: string;         // display_name
   username: string | null;
@@ -38,10 +38,10 @@ const BRANCHES = ['10FD', '20GR', '25BW', '40CV'];
 
 const EMPTY = { name: '', username: '', agentId: '', email: '', role: 'estimator', password: '', branch: '' };
 
-export default function UsersClient() {
+export default function UsersClient({ initialUsers }: { initialUsers?: AppUser[] }) {
   const { data: session } = useSession();
-  const [users, setUsers] = useState<AppUser[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [users, setUsers] = useState<AppUser[]>(initialUsers ?? []);
+  const [loading, setLoading] = useState(!initialUsers);
   const [showForm, setShowForm] = useState(false);
   const [editTarget, setEditTarget] = useState<AppUser | null>(null);
   const [form, setForm] = useState(EMPTY);
@@ -56,7 +56,7 @@ export default function UsersClient() {
     } finally { setLoading(false); }
   }, []);
 
-  useEffect(() => { fetch_(); }, [fetch_]);
+  useEffect(() => { if (!initialUsers) fetch_(); }, [fetch_, initialUsers]);
 
   const openCreate = () => { setEditTarget(null); setForm(EMPTY); setFormError(''); setShowForm(true); };
   const openEdit = (u: AppUser) => {

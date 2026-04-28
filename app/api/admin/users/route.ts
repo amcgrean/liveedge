@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '../../../../auth';
 import { getErpSql } from '../../../../db/supabase';
-import bcrypt from 'bcryptjs';
 
 // All admin/users routes now operate on public.app_users (unified auth table).
 // bids."user" is kept as-is (read-only, FK references intact) but is no longer
@@ -132,6 +131,7 @@ export async function POST(req: NextRequest) {
     if (body.password.length < 8) {
       return NextResponse.json({ error: 'Password must be at least 8 characters' }, { status: 422 });
     }
+    const bcrypt = (await import('bcryptjs')).default;
     passwordHash = await bcrypt.hash(body.password, 12);
   } else if (username && !email?.includes('@')) {
     // Username-only users need a password
