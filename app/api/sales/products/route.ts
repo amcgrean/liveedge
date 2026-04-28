@@ -53,6 +53,12 @@ export async function GET(req: NextRequest) {
     ? (await getSelectedBranchCode() ?? '')
     : (session.user.branch ?? '');
 
+  // minorCode is NOT globally unique — the same code appears in multiple majors.
+  // Always require majorCode when minorCode is provided.
+  if (minorCode && !majorCode) {
+    return NextResponse.json({ products: [], total: 0 });
+  }
+
   const hasBrowseFilter = Boolean(majorCode);
   if (!hasBrowseFilter && q.length < 2) {
     return NextResponse.json({ products: [], total: 0 });
@@ -67,10 +73,11 @@ export async function GET(req: NextRequest) {
     const branchPlaceholder = effectiveBranch ? addParam(baseParams, effectiveBranch) : '';
     const joinOn = buildBranchJoinOn(branchPlaceholder, includeInactive);
 
-    // Remaining WHERE conditions go on ai.* (agility_items columns)
+    // WHERE conditions on ai.* (agility_items columns).
+    // Always filter by both major AND minor together — minor codes repeat across majors.
     const baseWhere: string[] = [];
     if (majorCode) baseWhere.push(`ai.product_major_code = ${addParam(baseParams, majorCode)}`);
-    if (minorCode) baseWhere.push(`ai.product_minor_code = ${addParam(baseParams, minorCode)}`);
+    if (majorCode && minorCode) baseWhere.push(`ai.product_minor_code = ${addParam(baseParams, minorCode)}`);
 
     const fromSql = `FROM public.agility_items ai JOIN public.agility_item_branch bi ON ${joinOn}`;
 
