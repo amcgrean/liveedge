@@ -1,12 +1,12 @@
 'use client';
 
-import React, { useCallback, useState, useTransition } from 'react';
+import React, { useCallback, useMemo, useState, useTransition } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { Search, BarChart2, ChevronRight } from 'lucide-react';
 import { usePageTracking } from '@/hooks/usePageTracking';
 import type { CustomerListRow } from '@/lib/scorecard/types';
-import ExportTableButton from '@/components/shared/ExportTableButton';
+import { SortableHeader, TableToolbar, useTableSort, type ColumnDef } from '@/components/data-table';
 
 const BRANCHES = [
   { id: '10FD', label: 'Fort Dodge' },
@@ -93,6 +93,62 @@ export default function ScorecardListClient({
     return `/scorecard/${encodeURIComponent(customerId)}?${sp.toString()}`;
   }
 
+  // Columns drive sort + export. Cells preserve the existing per-row link
+  // wrapper, delta coloring, and currency/percent formatting.
+  const columns: ColumnDef<CustomerListRow>[] = useMemo(() => [
+    {
+      key: 'customer',
+      header: 'Customer',
+      accessor: (c) => c.customerName,
+      exportFormat: () => '',  // exported via dedicated columns below
+    },
+    {
+      key: 'sales_base',
+      header: `${activeBaseYear} Sales`,
+      accessor: (c) => c.salesBase,
+      align: 'right',
+    },
+    {
+      key: 'sales_compare',
+      header: `${activeCompareYear} Sales`,
+      accessor: (c) => c.salesCompare,
+      align: 'right',
+    },
+    {
+      key: 'gp_base',
+      header: `${activeBaseYear} GP`,
+      accessor: (c) => c.gpBase,
+      align: 'right',
+    },
+    {
+      key: 'gp_pct',
+      header: 'GP%',
+      accessor: (c) => (c.salesBase > 0 ? (c.gpBase / c.salesBase) * 100 : null),
+      exportFormat: (v) => (v === null || v === undefined ? '' : `${(v as number).toFixed(1)}%`),
+      align: 'right',
+    },
+  ], [activeBaseYear, activeCompareYear]);
+
+  // Export columns include richer metadata (customer ID, branches) for the
+  // pasted Excel sheet, while the visible Customer column stays tidy.
+  const exportColumns: ColumnDef<CustomerListRow>[] = useMemo(() => [
+    { key: 'customer_id', header: 'Customer ID', accessor: (c) => c.customerId },
+    { key: 'customer',    header: 'Customer',    accessor: (c) => c.customerName },
+    { key: 'sales_base',    header: `${activeBaseYear} Sales`,    accessor: (c) => c.salesBase, align: 'right' },
+    { key: 'sales_compare', header: `${activeCompareYear} Sales`, accessor: (c) => c.salesCompare, align: 'right' },
+    { key: 'gp_base',       header: `${activeBaseYear} GP`,       accessor: (c) => c.gpBase, align: 'right' },
+    {
+      key: 'gp_pct',
+      header: 'GM%',
+      accessor: (c) => (c.salesBase > 0 ? (c.gpBase / c.salesBase) * 100 : null),
+      exportFormat: (v) => (v === null || v === undefined ? '—' : `${(v as number).toFixed(1)}%`),
+      align: 'right',
+    },
+    { key: 'branches', header: 'Branches', accessor: (c) => c.branchIds.join(', ') },
+  ], [activeBaseYear, activeCompareYear]);
+
+  const { sortedRows, sort, toggle } = useTableSort({ rows: customers, columns });
+
   return (
     <div className="space-y-5">
       {/* Header */}
@@ -107,18 +163,10 @@ export default function ScorecardListClient({
           </p>
         </div>
         {customers.length > 0 && (
-          <ExportTableButton
-            data={customers.map((c) => ({
-              'Customer ID': c.customerId,
-              Customer: c.customerName,
-              [`${activeBaseYear} Sales`]: c.salesBase,
-              [`${activeCompareYear} Sales`]: c.salesCompare,
-              [`${activeBaseYear} GP`]: c.gpBase,
-              'GM%': c.salesBase > 0 ? `${((c.gpBase / c.salesBase) * 100).toFixed(1)}%` : '—',
-              Branches: c.branchIds.join(', '),
-            }))}
+          <TableToolbar
+            rows={sortedRows}
+            columns={exportColumns}
             filename={`customer-scorecard-${activeBaseYear}`}
-            className="print:hidden"
           />
         )}
       </div>
@@ -200,29 +248,29 @@ export default function ScorecardListClient({
       <div className="overflow-x-auto">
         <table className="w-full text-sm">
           <thead>
-            <tr className="border-b border-slate-700 text-left">
-              <th className="pb-2 text-slate-400 font-medium">Customer</th>
-              <th className="pb-2 text-slate-400 font-medium text-right pr-4">
-                {activeBaseYear} Sales
-              </th>
-              <th className="pb-2 text-slate-400 font-medium text-right pr-4">
-                {activeCompareYear} Sales
-              </th>
-              <th className="pb-2 text-slate-400 font-medium text-right pr-4">
-                {activeBaseYear} GP
-              </th>
-              <th className="pb-2 text-slate-400 font-medium text-right">GP%</th>
+            <tr className="border-b border-slate-700 group">
+              {columns.map((c) => (
+                <SortableHeader
+                  key={c.key}
+                  columnKey={c.key}
+                  label={c.header}
+                  sort={sort}
+                  onToggle={toggle}
+                  align={c.align ?? 'left'}
+                  className={`pb-2 text-${c.align ?? 'left'} text-slate-400 font-medium ${c.align === 'right' ? 'pr-4' : ''}`}
+                />
+              ))}
             </tr>
           </thead>
           <tbody>
-            {customers.length === 0 && (
+            {sortedRows.length === 0 && (
               <tr>
-                <td colSpan={5} className="py-12 text-center text-slate-500">
+                <td colSpan={columns.length} className="py-12 text-center text-slate-500">
                   No customers found
                 </td>
               </tr>
             )}
-            {customers.map((c) => {
+            {sortedRows.map((c) => {
               const gpPct = c.salesBase > 0 ? (c.gpBase / c.salesBase) * 100 : null;
               return (
                 <tr
