@@ -458,6 +458,11 @@ export async function fetchThreeYear(params: ScorecardParams): Promise<ThreeYear
   );
   const prior1 = params.baseYear - 1;
   const prior2 = params.baseYear - 2;
+  const _d = new Date(baseCutoff);
+  const _cm = _d.getUTCMonth() + 1;
+  const _cd = _d.getUTCDate();
+  const prior1Cutoff = params.period === 'YTD' ? clampCutoff(prior1, _cm, _cd) : `${prior1}-12-31`;
+  const prior2Cutoff = params.period === 'YTD' ? clampCutoff(prior2, _cm, _cd) : `${prior2}-12-31`;
 
   type Row = {
     cy_sales: string | null; cy_gp: string | null;
@@ -478,19 +483,19 @@ export async function fetchThreeYear(params: ScorecardParams): Promise<ThreeYear
           )::text AS cy_gp,
           SUM(sales_amount) FILTER (
             WHERE invoice_date >= make_date(${prior1}, 1, 1)
-              AND invoice_date < make_date(${prior1 + 1}, 1, 1)
+              AND invoice_date::date <= ${prior1Cutoff}::date
           )::text AS py1_sales,
           SUM(gross_profit) FILTER (
             WHERE invoice_date >= make_date(${prior1}, 1, 1)
-              AND invoice_date < make_date(${prior1 + 1}, 1, 1)
+              AND invoice_date::date <= ${prior1Cutoff}::date
           )::text AS py1_gp,
           SUM(sales_amount) FILTER (
             WHERE invoice_date >= make_date(${prior2}, 1, 1)
-              AND invoice_date < make_date(${prior2 + 1}, 1, 1)
+              AND invoice_date::date <= ${prior2Cutoff}::date
           )::text AS py2_sales,
           SUM(gross_profit) FILTER (
             WHERE invoice_date >= make_date(${prior2}, 1, 1)
-              AND invoice_date < make_date(${prior2 + 1}, 1, 1)
+              AND invoice_date::date <= ${prior2Cutoff}::date
           )::text AS py2_gp
         FROM customer_scorecard_fact
         WHERE is_deleted = false
@@ -511,19 +516,19 @@ export async function fetchThreeYear(params: ScorecardParams): Promise<ThreeYear
           )::text AS cy_gp,
           SUM(sales_amount) FILTER (
             WHERE invoice_date >= make_date(${prior1}, 1, 1)
-              AND invoice_date < make_date(${prior1 + 1}, 1, 1)
+              AND invoice_date::date <= ${prior1Cutoff}::date
           )::text AS py1_sales,
           SUM(gross_profit) FILTER (
             WHERE invoice_date >= make_date(${prior1}, 1, 1)
-              AND invoice_date < make_date(${prior1 + 1}, 1, 1)
+              AND invoice_date::date <= ${prior1Cutoff}::date
           )::text AS py1_gp,
           SUM(sales_amount) FILTER (
             WHERE invoice_date >= make_date(${prior2}, 1, 1)
-              AND invoice_date < make_date(${prior2 + 1}, 1, 1)
+              AND invoice_date::date <= ${prior2Cutoff}::date
           )::text AS py2_sales,
           SUM(gross_profit) FILTER (
             WHERE invoice_date >= make_date(${prior2}, 1, 1)
-              AND invoice_date < make_date(${prior2 + 1}, 1, 1)
+              AND invoice_date::date <= ${prior2Cutoff}::date
           )::text AS py2_gp
         FROM customer_scorecard_fact
         WHERE is_deleted = false
@@ -538,8 +543,8 @@ export async function fetchThreeYear(params: ScorecardParams): Promise<ThreeYear
 
   return [
     { year: params.baseYear, label: `${params.baseYear} ${periodLabel}`, sales: toNum(r?.cy_sales) ?? 0, gp: toNum(r?.cy_gp) ?? 0 },
-    { year: prior1,           label: `12/31/${prior1}`,                  sales: toNum(r?.py1_sales) ?? 0, gp: toNum(r?.py1_gp) ?? 0 },
-    { year: prior2,           label: `12/31/${prior2}`,                  sales: toNum(r?.py2_sales) ?? 0, gp: toNum(r?.py2_gp) ?? 0 },
+    { year: prior1, label: params.period === 'YTD' ? `${prior1} YTD thru ${prior1Cutoff}` : `12/31/${prior1}`, sales: toNum(r?.py1_sales) ?? 0, gp: toNum(r?.py1_gp) ?? 0 },
+    { year: prior2, label: params.period === 'YTD' ? `${prior2} YTD thru ${prior2Cutoff}` : `12/31/${prior2}`, sales: toNum(r?.py2_sales) ?? 0, gp: toNum(r?.py2_gp) ?? 0 },
   ];
 }
 
@@ -1115,6 +1120,11 @@ export async function fetchAggregateThreeYear(
   );
   const prior1 = params.baseYear - 1;
   const prior2 = params.baseYear - 2;
+  const _d = new Date(baseCutoff);
+  const _cm = _d.getUTCMonth() + 1;
+  const _cd = _d.getUTCDate();
+  const prior1Cutoff = params.period === 'YTD' ? clampCutoff(prior1, _cm, _cd) : `${prior1}-12-31`;
+  const prior2Cutoff = params.period === 'YTD' ? clampCutoff(prior2, _cm, _cd) : `${prior2}-12-31`;
 
   type Row = {
     cy_sales: string | null; cy_gp: string | null;
@@ -1142,19 +1152,19 @@ export async function fetchAggregateThreeYear(
             )::text AS cy_gp,
             SUM(csf.sales_amount) FILTER (
               WHERE csf.invoice_date >= make_date(${prior1}, 1, 1)
-                AND csf.invoice_date < make_date(${prior1 + 1}, 1, 1)
+                AND csf.invoice_date::date <= ${prior1Cutoff}::date
             )::text AS py1_sales,
             SUM(csf.gross_profit) FILTER (
               WHERE csf.invoice_date >= make_date(${prior1}, 1, 1)
-                AND csf.invoice_date < make_date(${prior1 + 1}, 1, 1)
+                AND csf.invoice_date::date <= ${prior1Cutoff}::date
             )::text AS py1_gp,
             SUM(csf.sales_amount) FILTER (
               WHERE csf.invoice_date >= make_date(${prior2}, 1, 1)
-                AND csf.invoice_date < make_date(${prior2 + 1}, 1, 1)
+                AND csf.invoice_date::date <= ${prior2Cutoff}::date
             )::text AS py2_sales,
             SUM(csf.gross_profit) FILTER (
               WHERE csf.invoice_date >= make_date(${prior2}, 1, 1)
-                AND csf.invoice_date < make_date(${prior2 + 1}, 1, 1)
+                AND csf.invoice_date::date <= ${prior2Cutoff}::date
             )::text AS py2_gp
           FROM customer_scorecard_fact csf
           JOIN agility_so_header soh ON soh.so_id::text = csf.sales_order_number
@@ -1176,19 +1186,19 @@ export async function fetchAggregateThreeYear(
             )::text AS cy_gp,
             SUM(csf.sales_amount) FILTER (
               WHERE csf.invoice_date >= make_date(${prior1}, 1, 1)
-                AND csf.invoice_date < make_date(${prior1 + 1}, 1, 1)
+                AND csf.invoice_date::date <= ${prior1Cutoff}::date
             )::text AS py1_sales,
             SUM(csf.gross_profit) FILTER (
               WHERE csf.invoice_date >= make_date(${prior1}, 1, 1)
-                AND csf.invoice_date < make_date(${prior1 + 1}, 1, 1)
+                AND csf.invoice_date::date <= ${prior1Cutoff}::date
             )::text AS py1_gp,
             SUM(csf.sales_amount) FILTER (
               WHERE csf.invoice_date >= make_date(${prior2}, 1, 1)
-                AND csf.invoice_date < make_date(${prior2 + 1}, 1, 1)
+                AND csf.invoice_date::date <= ${prior2Cutoff}::date
             )::text AS py2_sales,
             SUM(csf.gross_profit) FILTER (
               WHERE csf.invoice_date >= make_date(${prior2}, 1, 1)
-                AND csf.invoice_date < make_date(${prior2 + 1}, 1, 1)
+                AND csf.invoice_date::date <= ${prior2Cutoff}::date
             )::text AS py2_gp
           FROM customer_scorecard_fact csf
           JOIN agility_so_header soh ON soh.so_id::text = csf.sales_order_number
@@ -1211,19 +1221,19 @@ export async function fetchAggregateThreeYear(
             )::text AS cy_gp,
             SUM(sales_amount) FILTER (
               WHERE invoice_date >= make_date(${prior1}, 1, 1)
-                AND invoice_date < make_date(${prior1 + 1}, 1, 1)
+                AND invoice_date::date <= ${prior1Cutoff}::date
             )::text AS py1_sales,
             SUM(gross_profit) FILTER (
               WHERE invoice_date >= make_date(${prior1}, 1, 1)
-                AND invoice_date < make_date(${prior1 + 1}, 1, 1)
+                AND invoice_date::date <= ${prior1Cutoff}::date
             )::text AS py1_gp,
             SUM(sales_amount) FILTER (
               WHERE invoice_date >= make_date(${prior2}, 1, 1)
-                AND invoice_date < make_date(${prior2 + 1}, 1, 1)
+                AND invoice_date::date <= ${prior2Cutoff}::date
             )::text AS py2_sales,
             SUM(gross_profit) FILTER (
               WHERE invoice_date >= make_date(${prior2}, 1, 1)
-                AND invoice_date < make_date(${prior2 + 1}, 1, 1)
+                AND invoice_date::date <= ${prior2Cutoff}::date
             )::text AS py2_gp
           FROM customer_scorecard_fact
           WHERE is_deleted = false
@@ -1243,19 +1253,19 @@ export async function fetchAggregateThreeYear(
             )::text AS cy_gp,
             SUM(sales_amount) FILTER (
               WHERE invoice_date >= make_date(${prior1}, 1, 1)
-                AND invoice_date < make_date(${prior1 + 1}, 1, 1)
+                AND invoice_date::date <= ${prior1Cutoff}::date
             )::text AS py1_sales,
             SUM(gross_profit) FILTER (
               WHERE invoice_date >= make_date(${prior1}, 1, 1)
-                AND invoice_date < make_date(${prior1 + 1}, 1, 1)
+                AND invoice_date::date <= ${prior1Cutoff}::date
             )::text AS py1_gp,
             SUM(sales_amount) FILTER (
               WHERE invoice_date >= make_date(${prior2}, 1, 1)
-                AND invoice_date < make_date(${prior2 + 1}, 1, 1)
+                AND invoice_date::date <= ${prior2Cutoff}::date
             )::text AS py2_sales,
             SUM(gross_profit) FILTER (
               WHERE invoice_date >= make_date(${prior2}, 1, 1)
-                AND invoice_date < make_date(${prior2 + 1}, 1, 1)
+                AND invoice_date::date <= ${prior2Cutoff}::date
             )::text AS py2_gp
           FROM customer_scorecard_fact
           WHERE is_deleted = false
@@ -1267,8 +1277,8 @@ export async function fetchAggregateThreeYear(
   const periodLabel = params.period === 'YTD' ? `YTD thru ${baseCutoff}` : 'Full Year';
   return [
     { year: params.baseYear, label: `${params.baseYear} ${periodLabel}`, sales: toNum(r?.cy_sales) ?? 0, gp: toNum(r?.cy_gp) ?? 0 },
-    { year: prior1, label: `12/31/${prior1}`, sales: toNum(r?.py1_sales) ?? 0, gp: toNum(r?.py1_gp) ?? 0 },
-    { year: prior2, label: `12/31/${prior2}`, sales: toNum(r?.py2_sales) ?? 0, gp: toNum(r?.py2_gp) ?? 0 },
+    { year: prior1, label: params.period === 'YTD' ? `${prior1} YTD thru ${prior1Cutoff}` : `12/31/${prior1}`, sales: toNum(r?.py1_sales) ?? 0, gp: toNum(r?.py1_gp) ?? 0 },
+    { year: prior2, label: params.period === 'YTD' ? `${prior2} YTD thru ${prior2Cutoff}` : `12/31/${prior2}`, sales: toNum(r?.py2_sales) ?? 0, gp: toNum(r?.py2_gp) ?? 0 },
   ];
 }
 
