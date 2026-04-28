@@ -1,10 +1,8 @@
--- Full-text search GIN index on agility_items.
--- Columns included depend on what exists in the table; primary_supplier and
--- default_location are optional and only added when present.
+-- Full-text search GIN index on agility_items master columns.
+-- Checks for optional columns (primary_supplier) at runtime.
 DO $$
 DECLARE
   has_primary_supplier boolean;
-  has_default_location boolean;
   fts_expr text;
 BEGIN
   SELECT EXISTS (
@@ -13,25 +11,13 @@ BEGIN
       AND column_name = 'primary_supplier'
   ) INTO has_primary_supplier;
 
-  SELECT EXISTS (
-    SELECT 1 FROM information_schema.columns
-    WHERE table_schema = 'public' AND table_name = 'agility_items'
-      AND column_name = 'default_location'
-  ) INTO has_default_location;
-
   fts_expr :=
     $s$ coalesce(item, '') || ' ' ||
         coalesce(description, '') || ' ' ||
         coalesce(ext_description, '') || ' ' ||
         coalesce(short_des, '') || ' ' ||
-        coalesce(size_, '') || ' ' ||
         coalesce(type, '') || ' ' ||
-        coalesce(stocking_uom, '') || ' ' ||
-        coalesce(handling_code, '') $s$;
-
-  IF has_default_location THEN
-    fts_expr := fts_expr || $s$ || ' ' || coalesce(default_location, '') $s$;
-  END IF;
+        coalesce(stocking_uom, '') $s$;
 
   IF has_primary_supplier THEN
     fts_expr := fts_expr || $s$ || ' ' || coalesce(primary_supplier, '') $s$;
@@ -48,26 +34,16 @@ BEGIN
   );
 END $$;
 
--- Composite index for product-group tile queries and browse filtering.
--- Covers: branch filter (item_branch), GROUP BY major, filter by minor.
--- Used by: GET /api/sales/products/groups, /majors, and item browse.
--- Drop old version (was incorrectly keyed on system_id) before recreating.
+-- Index on agility_items for product hierarchy browsing.
+-- Tile queries GROUP BY product_major_code / product_minor_code on this table.
 DROP INDEX IF EXISTS public.idx_agility_items_group_browse;
+CREATE INDEX IF NOT EXISTS idx_agility_items_major_browse
+  ON public.agility_items (product_major_code, product_minor_code)
+  WHERE product_major_code IS NOT NULL;
 
-DO $$
-BEGIN
-  IF EXISTS (
-    SELECT 1 FROM information_schema.columns
-    WHERE table_schema = 'public' AND table_name = 'agility_items'
-      AND column_name = 'product_major_code'
-  ) THEN
-    EXECUTE $sql$
-      CREATE INDEX IF NOT EXISTS idx_agility_items_group_browse
-        ON public.agility_items (item_branch, product_major_code, product_minor_code)
-        WHERE is_deleted = false
-          AND active_flag = true
-          AND stock = true
-          AND product_major_code IS NOT NULL
-    $sql$;
-  END IF;
-END $$;
+-- Index on agility_item_branch for fast branch-scoped item lookups.
+-- The IN subquery (item IN SELECT item_code FROM agility_item_branch WHERE system_id=?)
+-- and the JOIN both benefit from this.
+CREATE INDEX IF NOT EXISTS idx_agility_item_branch_branch
+  ON public.agility_item_branch (system_id, item_code)
+  WHERE is_deleted = false AND active_flag = true AND stock = true;

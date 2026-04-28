@@ -3,7 +3,8 @@ import { auth } from '../../../../../auth';
 import { getErpSql } from '../../../../../db/supabase';
 import { getSelectedBranchCode } from '@/lib/branch-context';
 import {
-  appendItemFilters,
+  addParam,
+  appendBranchItemFilter,
   formatProductLabel,
   isProductAdmin,
   parseIncludeInactive,
@@ -16,8 +17,8 @@ type MajorRow = {
 };
 
 // GET /api/sales/products/groups
-// Returns distinct product majors from agility_items, branch-scoped via the
-// nav cookie (beisser-branch) for admins.
+// Returns distinct product majors from agility_items, scoped to items that
+// exist in agility_item_branch for the selected branch.
 export async function GET(req: NextRequest) {
   const session = await auth();
   if (!session?.user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
@@ -32,9 +33,8 @@ export async function GET(req: NextRequest) {
     const sql = getErpSql();
 
     const params: unknown[] = [];
-    const where: string[] = [];
-    appendItemFilters(where, params, effectiveBranch, includeInactive);
-    where.push(`NULLIF(product_major_code, '') IS NOT NULL`);
+    const where: string[] = [`NULLIF(product_major_code, '') IS NOT NULL`];
+    appendBranchItemFilter(where, params, effectiveBranch, includeInactive);
 
     const rows = (await sql.unsafe(
       `SELECT product_major_code AS code,
