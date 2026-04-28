@@ -7,28 +7,14 @@ import {
   fetchAggregateSaleTypes,
 } from '../../src/lib/scorecard/queries';
 import type { AggregateParams, KpiComparison } from '../../src/lib/scorecard/types';
-import ExportTableButton from '../../src/components/shared/ExportTableButton';
 import ManagementCharts from './_components/ManagementCharts';
+import { ThreeYearTable, BranchSummaryTable, SalesByTypeTable } from './_components/ManagementTables';
 
 export const metadata = { title: 'Management — Beisser LiveEdge' };
-
-const BRANCH_LABELS: Record<string, string> = {
-  '10FD': 'Fort Dodge',
-  '20GR': 'Grimes',
-  '25BW': 'Birchwood',
-  '40CV': 'Coralville',
-};
-
-const BRANCH_LIST = Object.keys(BRANCH_LABELS);
 
 function fmt$(n: number | null): string {
   if (!n) return '—';
   return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 }).format(n);
-}
-
-function fmtPct(sales: number | null, gp: number | null): string {
-  if (!sales || !gp) return '—';
-  return `${((gp / sales) * 100).toFixed(1)}%`;
 }
 
 function delta(base: number | null, compare: number | null): number | null {
@@ -74,13 +60,10 @@ function KpiCard({ label, base, compare, format }: {
   );
 }
 
-function Section({ title, children, action }: { title: string; children: React.ReactNode; action?: React.ReactNode }) {
+function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
     <section className="bg-slate-800/40 border border-slate-700 rounded-lg p-4 space-y-3">
-      <div className="flex items-center justify-between gap-2">
-        <h2 className="text-sm font-semibold text-slate-300 uppercase tracking-wide">{title}</h2>
-        {action}
-      </div>
+      <h2 className="text-sm font-semibold text-slate-300 uppercase tracking-wide">{title}</h2>
       {children}
     </section>
   );
@@ -212,33 +195,6 @@ export default async function ManagementPage({
   // Build period/year query string for sub-page links
   const qs = `baseYear=${baseYear}&compareYear=${compareYear}&period=${period}&cutoffDate=${cutoffDate}`;
 
-  // Export data for tables
-  const branchExportData = branchSummaries.map((b) => ({
-    Branch: BRANCH_LABELS[b.branchId] ?? b.branchId,
-    [`${baseYear} Sales`]: b.salesBase,
-    [`${compareYear} Sales`]: b.salesCompare,
-    [`${baseYear} GP`]: b.gpBase,
-    'GM%': b.salesBase ? `${((b.gpBase / b.salesBase) * 100).toFixed(1)}%` : '—',
-    Customers: b.customerCount,
-  }));
-
-  const threeYearExportData = threeYear.map((e) => ({
-    Year: e.year,
-    Label: e.label,
-    Sales: e.sales,
-    'Gross Profit': e.gp,
-    'GM%': e.sales ? `${((e.gp / e.sales) * 100).toFixed(1)}%` : '—',
-  }));
-
-  const saleTypeExportData = saleTypes
-    .filter((s) => !s.isExcluded)
-    .map((s) => ({
-      'Sale Type': s.category,
-      [`${baseYear} Sales`]: s.salesBase,
-      [`${baseYear} GP`]: s.gpBase,
-      [`${compareYear} Sales`]: s.salesCompare,
-    }));
-
   return (
     <div className="p-4 md:p-6 space-y-6 max-w-7xl mx-auto">
       {/* Header */}
@@ -317,121 +273,18 @@ export default async function ManagementPage({
       />
 
       {/* 3-Year Comparison */}
-      <Section
-        title="3-Year Comparison"
-        action={<ExportTableButton data={threeYearExportData} filename="3year-comparison" />}
-      >
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b border-slate-700">
-                <th className="pb-2 text-left text-slate-400 font-medium">Year</th>
-                <th className="pb-2 text-right text-slate-300 font-semibold pr-4">Sales</th>
-                <th className="pb-2 text-right text-slate-300 font-semibold pr-4">Gross Profit</th>
-                <th className="pb-2 text-right text-slate-300 font-semibold">GM%</th>
-              </tr>
-            </thead>
-            <tbody>
-              {threeYear.map((e) => (
-                <tr key={e.year} className="border-b border-slate-800">
-                  <td className="py-2.5 font-medium text-white">{e.label}</td>
-                  <td className="py-2.5 pr-4 text-right font-mono tabular-nums text-emerald-400">{fmt$(e.sales)}</td>
-                  <td className="py-2.5 pr-4 text-right font-mono tabular-nums text-slate-300">{fmt$(e.gp)}</td>
-                  <td className="py-2.5 text-right font-mono tabular-nums text-slate-300">{fmtPct(e.sales, e.gp)}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+      <Section title="3-Year Comparison">
+        <ThreeYearTable rows={threeYear} />
       </Section>
 
       {/* Branch Summary */}
-      <Section
-        title="By Branch"
-        action={
-          <div className="flex items-center gap-2">
-            <ExportTableButton data={branchExportData} filename="branch-summary" />
-          </div>
-        }
-      >
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b border-slate-700">
-                <th className="pb-2 text-left text-slate-400 font-medium">Branch</th>
-                <th className="pb-2 text-right text-slate-300 font-semibold pr-4">{baseYear} Sales</th>
-                <th className="pb-2 text-right text-slate-300 font-semibold pr-4">{compareYear} Sales</th>
-                <th className="pb-2 text-right text-slate-300 font-semibold pr-4">{baseYear} GP</th>
-                <th className="pb-2 text-right text-slate-300 font-semibold pr-4">GM%</th>
-                <th className="pb-2 text-right text-slate-300 font-semibold">Customers</th>
-              </tr>
-            </thead>
-            <tbody>
-              {branchSummaries.map((b) => {
-                const branchUrl = `/scorecard/branch/${b.branchId}?${qs}`;
-                return (
-                  <tr key={b.branchId} className="border-b border-slate-800 hover:bg-slate-800/40 transition group">
-                    <td className="py-2.5 pr-4">
-                      <Link href={branchUrl} className="font-medium text-white group-hover:text-cyan-400 transition flex items-center gap-1">
-                        {BRANCH_LABELS[b.branchId] ?? b.branchId}
-                        <ChevronRight className="w-3.5 h-3.5 text-slate-600 group-hover:text-cyan-400 ml-auto" />
-                      </Link>
-                    </td>
-                    <td className={`py-2.5 pr-4 text-right font-mono tabular-nums ${b.salesBase >= b.salesCompare ? 'text-emerald-400' : 'text-red-400'}`}>
-                      {fmt$(b.salesBase)}
-                    </td>
-                    <td className="py-2.5 pr-4 text-right font-mono tabular-nums text-slate-400">{fmt$(b.salesCompare)}</td>
-                    <td className="py-2.5 pr-4 text-right font-mono tabular-nums text-slate-300">{fmt$(b.gpBase)}</td>
-                    <td className="py-2.5 pr-4 text-right font-mono tabular-nums text-slate-300">{fmtPct(b.salesBase, b.gpBase)}</td>
-                    <td className="py-2.5 text-right font-mono tabular-nums text-slate-400">{b.customerCount.toLocaleString()}</td>
-                  </tr>
-                );
-              })}
-              {BRANCH_LIST.map((id) => {
-                if (branchSummaries.find((b) => b.branchId === id)) return null;
-                return (
-                  <tr key={id} className="border-b border-slate-800">
-                    <td className="py-2.5 pr-4 text-slate-500">{BRANCH_LABELS[id]}</td>
-                    <td colSpan={5} className="py-2.5 text-center text-slate-600 text-xs">No data</td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
+      <Section title="By Branch">
+        <BranchSummaryTable rows={branchSummaries} baseYear={baseYear} compareYear={compareYear} qs={qs} />
       </Section>
 
       {/* Sales by Type */}
-      <Section
-        title="Sales by Type"
-        action={<ExportTableButton data={saleTypeExportData} filename="sales-by-type" />}
-      >
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b border-slate-700">
-                <th className="pb-2 text-left text-slate-400 font-medium">Sale Type</th>
-                <th className="pb-2 text-right text-slate-300 font-semibold pr-4">{baseYear} Sales</th>
-                <th className="pb-2 text-right text-slate-300 font-semibold pr-4">{baseYear} GP</th>
-                <th className="pb-2 text-right text-slate-300 font-semibold pr-4">GM%</th>
-                <th className="pb-2 text-right text-slate-300 font-semibold">{compareYear} Sales</th>
-              </tr>
-            </thead>
-            <tbody>
-              {saleTypes.filter((s) => !s.isExcluded).map((s) => (
-                <tr key={s.category} className="border-b border-slate-800">
-                  <td className="py-2.5 font-medium text-white">{s.category}</td>
-                  <td className={`py-2.5 pr-4 text-right font-mono tabular-nums ${s.salesBase >= s.salesCompare ? 'text-emerald-400' : 'text-red-400'}`}>
-                    {fmt$(s.salesBase)}
-                  </td>
-                  <td className="py-2.5 pr-4 text-right font-mono tabular-nums text-slate-300">{fmt$(s.gpBase)}</td>
-                  <td className="py-2.5 pr-4 text-right font-mono tabular-nums text-slate-300">{fmtPct(s.salesBase, s.gpBase)}</td>
-                  <td className="py-2.5 text-right font-mono tabular-nums text-slate-400">{fmt$(s.salesCompare)}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+      <Section title="Sales by Type">
+        <SalesByTypeTable rows={saleTypes} baseYear={baseYear} compareYear={compareYear} />
       </Section>
 
       {/* Report tiles */}

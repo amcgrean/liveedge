@@ -8,7 +8,6 @@ import {
   fetchCustomerList,
 } from '../../../../src/lib/scorecard/queries';
 import type { AggregateParams, ScorecardParams } from '../../../../src/lib/scorecard/types';
-import ExportTableButton from '../../../../src/components/shared/ExportTableButton';
 import KpiTile from '../../[customerId]/components/KpiTile';
 import ComparisonTable from '../../[customerId]/components/ComparisonTable';
 import ProductMajorTable from '../../[customerId]/components/ProductMajorTable';
@@ -16,13 +15,13 @@ import SaleTypeTable from '../../[customerId]/components/SaleTypeTable';
 import BottomMetrics from '../../[customerId]/components/BottomMetrics';
 import AggregateFilterBar from '../../_components/AggregateFilterBar';
 import ScorecardTabs from '../../_components/ScorecardTabs';
+import { TopCustomersTable } from '../../_components/AggregateTables';
 import {
   ThreeYearChart,
   TopCustomersPareto,
   ProductMixTreemap,
   SaleTypeParetoChart,
 } from '../../_components/ScorecardCharts';
-import { ChevronRight } from 'lucide-react';
 
 const BRANCH_LABELS: Record<string, string> = {
   '10FD': 'Fort Dodge',
@@ -32,22 +31,6 @@ const BRANCH_LABELS: Record<string, string> = {
 };
 
 const VALID_BRANCHES = Object.keys(BRANCH_LABELS);
-
-function fmt$(n: number): string {
-  if (n === 0) return '—';
-  return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 }).format(n);
-}
-
-function fmtPct(sales: number, gp: number): string {
-  if (sales === 0) return '—';
-  return `${((gp / sales) * 100).toFixed(1)}%`;
-}
-
-function deltaClass(base: number, compare: number) {
-  if (base > compare) return 'text-emerald-400';
-  if (base < compare) return 'text-red-400';
-  return 'text-slate-400';
-}
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
@@ -103,23 +86,6 @@ export default async function BranchScorecardPage({
     fetchAggregateSaleTypes(params),
     fetchCustomerList(baseYear, compareYear, [branchId], '', 15, period, cutoffDate),
   ]);
-
-  const topCustomerExportData = topCustomers.map((c) => ({
-    Customer: c.customerName,
-    'Customer ID': c.customerId,
-    [`${baseYear} Sales`]: c.salesBase,
-    [`${compareYear} Sales`]: c.salesCompare,
-    [`${baseYear} GP`]: c.gpBase,
-    'GM%': c.salesBase ? `${((c.gpBase / c.salesBase) * 100).toFixed(1)}%` : '—',
-  }));
-
-  const threeYearExportData = threeYear.map((e) => ({
-    Year: e.year,
-    Label: e.label,
-    Sales: e.sales,
-    'Gross Profit': e.gp,
-    'GM%': e.sales ? `${((e.gp / e.sales) * 100).toFixed(1)}%` : '—',
-  }));
 
   const periodLabel = period === 'YTD' ? `YTD thru ${cutoffDate}` : 'Full Year';
 
@@ -192,10 +158,7 @@ export default async function BranchScorecardPage({
       <ThreeYearChart entries={threeYear} />
 
       <Section title="3-Year Comparison">
-        <div className="flex justify-end mb-2 print:hidden">
-          <ExportTableButton data={threeYearExportData} filename={`${BRANCH_LABELS[branchId] ?? branchId}-3year`} />
-        </div>
-        <ComparisonTable entries={threeYear} />
+        <ComparisonTable entries={threeYear} exportFilename={`${BRANCH_LABELS[branchId] ?? branchId}-3year`} />
       </Section>
 
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
@@ -210,42 +173,15 @@ export default async function BranchScorecardPage({
 
       {/* Top customers for this branch */}
       <Section title="Top Customers">
-        <div className="flex justify-end mb-2 print:hidden">
-          <ExportTableButton data={topCustomerExportData} filename={`${BRANCH_LABELS[branchId] ?? branchId}-top-customers`} />
-        </div>
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b border-slate-700">
-                <th className="pb-2 text-left text-slate-400 font-medium">Customer</th>
-                <th className="pb-2 text-right text-slate-300 font-semibold pr-4">{baseYear}{period === 'YTD' ? ' YTD' : ''} Sales</th>
-                <th className="pb-2 text-right text-slate-300 font-semibold pr-4">{compareYear}{period === 'YTD' ? ' YTD' : ''} Sales</th>
-                <th className="pb-2 text-right text-slate-300 font-semibold">GM%</th>
-              </tr>
-            </thead>
-            <tbody>
-              {topCustomers.map((c) => {
-                const custUrl = `/scorecard/${encodeURIComponent(c.customerId)}?baseYear=${baseYear}&compareYear=${compareYear}&period=${period}&cutoffDate=${cutoffDate}&branch=${branchId}`;
-                return (
-                  <tr key={c.customerId} className="border-b border-slate-800 hover:bg-slate-800/40 transition group">
-                    <td className="py-2 pr-4">
-                      <Link href={custUrl} className="flex items-center gap-1 group-hover:text-cyan-400 transition">
-                        <span className="font-medium text-white">{c.customerName}</span>
-                        <span className="text-slate-500 text-xs ml-1">{c.customerId}</span>
-                        <ChevronRight className="w-3.5 h-3.5 text-slate-600 group-hover:text-cyan-400 ml-auto" />
-                      </Link>
-                    </td>
-                    <td className={`py-2 pr-4 text-right font-mono tabular-nums ${deltaClass(c.salesBase, c.salesCompare)}`}>
-                      {fmt$(c.salesBase)}
-                    </td>
-                    <td className="py-2 pr-4 text-right font-mono tabular-nums text-slate-400">{fmt$(c.salesCompare)}</td>
-                    <td className="py-2 text-right font-mono tabular-nums text-slate-300">{fmtPct(c.salesBase, c.gpBase)}</td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
+        <TopCustomersTable
+          rows={topCustomers}
+          baseYear={baseYear}
+          compareYear={compareYear}
+          period={period}
+          cutoffDate={cutoffDate}
+          branchId={branchId}
+          filename={`${BRANCH_LABELS[branchId] ?? branchId}-top-customers`}
+        />
         <div className="pt-1 text-right">
           <Link
             href={`/scorecard?baseYear=${baseYear}&compareYear=${compareYear}&branch=${branchId}&period=${period}&cutoffDate=${cutoffDate}`}

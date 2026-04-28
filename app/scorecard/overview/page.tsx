@@ -7,7 +7,6 @@ import {
   fetchBranchSummaries,
 } from '../../../src/lib/scorecard/queries';
 import type { AggregateParams, ScorecardParams } from '../../../src/lib/scorecard/types';
-import ExportTableButton from '../../../src/components/shared/ExportTableButton';
 import KpiTile from '../[customerId]/components/KpiTile';
 import ComparisonTable from '../[customerId]/components/ComparisonTable';
 import ProductMajorTable from '../[customerId]/components/ProductMajorTable';
@@ -15,6 +14,7 @@ import SaleTypeTable from '../[customerId]/components/SaleTypeTable';
 import BottomMetrics from '../[customerId]/components/BottomMetrics';
 import AggregateFilterBar from '../_components/AggregateFilterBar';
 import ScorecardTabs from '../_components/ScorecardTabs';
+import { BranchBreakdownTable } from '../_components/AggregateTables';
 import {
   ThreeYearChart,
   BranchContributionPareto,
@@ -28,22 +28,6 @@ const BRANCH_LABELS: Record<string, string> = {
   '25BW': 'Birchwood',
   '40CV': 'Coralville',
 };
-
-function fmt$(n: number): string {
-  if (n === 0) return '—';
-  return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 }).format(n);
-}
-
-function fmtPct(sales: number, gp: number): string {
-  if (sales === 0) return '—';
-  return `${((gp / sales) * 100).toFixed(1)}%`;
-}
-
-function deltaClass(base: number, compare: number) {
-  if (base > compare) return 'text-emerald-400';
-  if (base < compare) return 'text-red-400';
-  return 'text-slate-400';
-}
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
@@ -104,23 +88,6 @@ export default async function OverviewPage({
   const gmPctBase = kpis.base.sales && kpis.base.gp !== null ? kpis.base.gp / kpis.base.sales : null;
   const gmPctCompare = kpis.compare.sales && kpis.compare.gp !== null ? kpis.compare.gp / kpis.compare.sales : null;
 
-  const branchExportData = branchSummaries.map((b) => ({
-    Branch: BRANCH_LABELS[b.branchId] ?? b.branchId,
-    [`${baseYear} Sales`]: b.salesBase,
-    [`${compareYear} Sales`]: b.salesCompare,
-    [`${baseYear} GP`]: b.gpBase,
-    'GM%': b.salesBase ? `${((b.gpBase / b.salesBase) * 100).toFixed(1)}%` : '—',
-    Customers: b.customerCount,
-  }));
-
-  const threeYearExportData = threeYear.map((e) => ({
-    Year: e.year,
-    Label: e.label,
-    Sales: e.sales,
-    'Gross Profit': e.gp,
-    'GM%': e.sales ? `${((e.gp / e.sales) * 100).toFixed(1)}%` : '—',
-  }));
-
   return (
     <div className="p-4 md:p-6 space-y-5 max-w-7xl mx-auto">
       <style>{`
@@ -162,10 +129,7 @@ export default async function OverviewPage({
       <ThreeYearChart entries={threeYear} />
 
       <Section title="3-Year Comparison">
-        <div className="flex justify-end mb-2 print:hidden">
-          <ExportTableButton data={threeYearExportData} filename="3year-comparison" />
-        </div>
-        <ComparisonTable entries={threeYear} />
+        <ComparisonTable entries={threeYear} exportFilename="3year-comparison" />
       </Section>
 
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
@@ -180,44 +144,13 @@ export default async function OverviewPage({
 
       {/* Branch breakdown table */}
       <Section title="By Branch">
-        <div className="flex justify-end mb-2 print:hidden">
-          <ExportTableButton data={branchExportData} filename="branch-overview" />
-        </div>
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b border-slate-700">
-                <th className="pb-2 text-left text-slate-400 font-medium">Branch</th>
-                <th className="pb-2 text-right text-slate-300 font-semibold pr-4">{baseYear}{period === 'YTD' ? ' YTD' : ''} Sales</th>
-                <th className="pb-2 text-right text-slate-300 font-semibold pr-4">{compareYear}{period === 'YTD' ? ' YTD' : ''} Sales</th>
-                <th className="pb-2 text-right text-slate-300 font-semibold pr-4">{baseYear}{period === 'YTD' ? ' YTD' : ''} GP</th>
-                <th className="pb-2 text-right text-slate-300 font-semibold pr-4">GM%</th>
-                <th className="pb-2 text-right text-slate-300 font-semibold">Customers</th>
-              </tr>
-            </thead>
-            <tbody>
-              {branchSummaries.map((b) => {
-                const branchUrl = `/scorecard/branch/${b.branchId}?baseYear=${baseYear}&compareYear=${compareYear}&period=${period}&cutoffDate=${cutoffDate}`;
-                return (
-                  <tr key={b.branchId} className="border-b border-slate-800 hover:bg-slate-800/40 transition group">
-                    <td className="py-2.5 pr-4">
-                      <Link href={branchUrl} className="font-medium text-white group-hover:text-cyan-400 transition">
-                        {BRANCH_LABELS[b.branchId] ?? b.branchId}
-                      </Link>
-                    </td>
-                    <td className={`py-2.5 pr-4 text-right font-mono tabular-nums ${deltaClass(b.salesBase, b.salesCompare)}`}>
-                      {fmt$(b.salesBase)}
-                    </td>
-                    <td className="py-2.5 pr-4 text-right font-mono tabular-nums text-slate-400">{fmt$(b.salesCompare)}</td>
-                    <td className="py-2.5 pr-4 text-right font-mono tabular-nums text-slate-300">{fmt$(b.gpBase)}</td>
-                    <td className="py-2.5 pr-4 text-right font-mono tabular-nums text-slate-300">{fmtPct(b.salesBase, b.gpBase)}</td>
-                    <td className="py-2.5 text-right font-mono tabular-nums text-slate-400">{b.customerCount.toLocaleString()}</td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
+        <BranchBreakdownTable
+          rows={branchSummaries}
+          baseYear={baseYear}
+          compareYear={compareYear}
+          period={period}
+          cutoffDate={cutoffDate}
+        />
       </Section>
 
       <ProductMixTreemap rows={productMajors} />

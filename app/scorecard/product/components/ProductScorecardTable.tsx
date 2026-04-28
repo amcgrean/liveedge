@@ -1,8 +1,15 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { ChevronRight } from 'lucide-react';
 import HouseLoader from '@/components/scorecard/HouseLoader';
+import {
+  SortableHeader,
+  TableToolbar,
+  useTableSort,
+  type ColumnDef,
+  type DrillConfig,
+} from '@/components/data-table';
 import type {
   ProductScorecardMajorRow,
   ProductScorecardMinorRow,
@@ -52,9 +59,10 @@ interface Props {
   params: AggregateParams;
   baseYear: number;
   compareYear: number;
+  exportFilename?: string;
 }
 
-export default function ProductScorecardTable({ rows, params, baseYear, compareYear }: Props) {
+export default function ProductScorecardTable({ rows, params, baseYear, compareYear, exportFilename }: Props) {
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
   const [minors, setMinors] = useState<Record<string, ProductScorecardMinorRow[]>>({});
   const [loading, setLoading] = useState<Record<string, boolean>>({});
@@ -116,26 +124,102 @@ export default function ProductScorecardTable({ rows, params, baseYear, compareY
     }
   }
 
+  // Columns drive sort + export; the bespoke 3-level inline rendering below
+  // continues to handle visual layout.
+  const majorColumns: ColumnDef<ProductScorecardMajorRow>[] = useMemo(() => [
+    { key: 'product_major', header: 'Product Group', accessor: (r) => `${r.productMajor} (${r.productMajorCode})` },
+    { key: 'sales_base',    header: `${baseYear} Sales`, accessor: (r) => r.salesBase, align: 'right' },
+    { key: 'gp_base',       header: `${baseYear} GP`,    accessor: (r) => r.gpBase,    align: 'right' },
+    {
+      key: 'gm_base',
+      header: `${baseYear} GM%`,
+      accessor: (r) => (r.salesBase === 0 ? null : (r.gpBase / r.salesBase) * 100),
+      exportFormat: (v) => (v === null || v === undefined ? '' : `${(v as number).toFixed(1)}%`),
+      align: 'right',
+    },
+    { key: 'so_count',      header: 'SOs',     accessor: (r) => r.soCountBase,     align: 'right' },
+    { key: 'credit_count',  header: 'Credits', accessor: (r) => r.creditCountBase, align: 'right' },
+    { key: 'qty',           header: 'Qty Sold', accessor: (r) => r.qtyBase,        align: 'right' },
+    { key: 'sales_compare', header: `${compareYear} Sales`, accessor: (r) => r.salesCompare, align: 'right' },
+    {
+      key: 'gm_compare',
+      header: `${compareYear} GM%`,
+      accessor: (r) => (r.salesCompare === 0 ? null : (r.gpCompare / r.salesCompare) * 100),
+      exportFormat: (v) => (v === null || v === undefined ? '' : `${(v as number).toFixed(1)}%`),
+      align: 'right',
+    },
+  ], [baseYear, compareYear]);
+
+  const minorColumns: ColumnDef<ProductScorecardMinorRow>[] = useMemo(() => [
+    { key: 'product_minor', header: 'Product Minor', accessor: (m) => `${m.productMinor} (${m.productMinorCode})` },
+    { key: 'sales_base',    header: `${baseYear} Sales`, accessor: (m) => m.salesBase, align: 'right' },
+    { key: 'gp_base',       header: `${baseYear} GP`,    accessor: (m) => m.gpBase,    align: 'right' },
+    {
+      key: 'gm_base',
+      header: `${baseYear} GM%`,
+      accessor: (m) => (m.salesBase === 0 ? null : (m.gpBase / m.salesBase) * 100),
+      exportFormat: (v) => (v === null || v === undefined ? '' : `${(v as number).toFixed(1)}%`),
+      align: 'right',
+    },
+    { key: 'so_count',      header: 'SOs',     accessor: (m) => m.soCountBase,     align: 'right' },
+    { key: 'credit_count',  header: 'Credits', accessor: (m) => m.creditCountBase, align: 'right' },
+    { key: 'qty',           header: 'Qty Sold', accessor: (m) => m.qtyBase,        align: 'right' },
+    { key: 'sales_compare', header: `${compareYear} Sales`, accessor: (m) => m.salesCompare, align: 'right' },
+    {
+      key: 'gm_compare',
+      header: `${compareYear} GM%`,
+      accessor: (m) => (m.salesCompare === 0 ? null : (m.gpCompare / m.salesCompare) * 100),
+      exportFormat: (v) => (v === null || v === undefined ? '' : `${(v as number).toFixed(1)}%`),
+      align: 'right',
+    },
+  ], [baseYear, compareYear]);
+
+  // "Copy with Minors" reuses the existing /minors endpoint and shares the
+  // same cache the chevron-expand path uses, so no extra round-trips for
+  // parents the user has already opened.
+  const drillConfig: DrillConfig<ProductScorecardMajorRow, ProductScorecardMinorRow> = useMemo(() => ({
+    label: 'Minors',
+    columns: minorColumns,
+    rowKey: (m) => m.productMinorCode,
+    fetchChildren: async (row, signal) => {
+      if (minors[row.productMajorCode]) return minors[row.productMajorCode];
+      const res = await fetch(`/api/scorecard/product/minors?${buildSp({ majorCode: row.productMajorCode })}`, { signal });
+      if (!res.ok) return [];
+      const data = (await res.json()) as { minors: ProductScorecardMinorRow[] };
+      setMinors((p) => ({ ...p, [row.productMajorCode]: data.minors }));
+      return data.minors;
+    },
+  }), [minors, minorColumns, params]); // params change reruns buildSp
+
+  const { sortedRows, sort, toggle } = useTableSort({ rows, columns: majorColumns });
+
   return (
-    <div className="overflow-x-auto">
+    <div className="space-y-2">
+      <div className="flex justify-end">
+        <TableToolbar
+          rows={sortedRows}
+          columns={majorColumns}
+          drill={drillConfig}
+          filename={exportFilename ?? `product-scorecard-${baseYear}`}
+        />
+      </div>
+      <div className="overflow-x-auto">
       <table className="w-full text-sm print:text-xs">
         <thead>
-          <tr className="border-b border-slate-700">
-            <th className="pb-2 text-left text-slate-400 font-medium w-56">Product Group</th>
-            {/* Base year */}
-            <th className="pb-2 text-right text-slate-300 font-semibold pr-3">{baseYear} Sales</th>
-            <th className="pb-2 text-right text-slate-300 font-semibold pr-3">{baseYear} GP</th>
-            <th className="pb-2 text-right text-slate-300 font-semibold pr-3">{baseYear} GM%</th>
-            <th className="pb-2 text-right text-slate-300 font-semibold pr-3">SOs</th>
-            <th className="pb-2 text-right text-slate-300 font-semibold pr-3">Credits</th>
-            <th className="pb-2 text-right text-slate-300 font-semibold pr-3">Qty Sold</th>
-            {/* Compare year */}
-            <th className="pb-2 text-right text-slate-400 font-medium pr-3">{compareYear} Sales</th>
-            <th className="pb-2 text-right text-slate-400 font-medium">{compareYear} GM%</th>
+          <tr className="border-b border-slate-700 group">
+            <SortableHeader columnKey="product_major" label="Product Group" sort={sort} onToggle={toggle} align="left"  className="pb-2 text-left text-slate-400 font-medium w-56" />
+            <SortableHeader columnKey="sales_base"    label={`${baseYear} Sales`}    sort={sort} onToggle={toggle} align="right" className="pb-2 text-right text-slate-300 font-semibold pr-3" />
+            <SortableHeader columnKey="gp_base"       label={`${baseYear} GP`}       sort={sort} onToggle={toggle} align="right" className="pb-2 text-right text-slate-300 font-semibold pr-3" />
+            <SortableHeader columnKey="gm_base"       label={`${baseYear} GM%`}      sort={sort} onToggle={toggle} align="right" className="pb-2 text-right text-slate-300 font-semibold pr-3" />
+            <SortableHeader columnKey="so_count"      label="SOs"                     sort={sort} onToggle={toggle} align="right" className="pb-2 text-right text-slate-300 font-semibold pr-3" />
+            <SortableHeader columnKey="credit_count"  label="Credits"                 sort={sort} onToggle={toggle} align="right" className="pb-2 text-right text-slate-300 font-semibold pr-3" />
+            <SortableHeader columnKey="qty"           label="Qty Sold"                sort={sort} onToggle={toggle} align="right" className="pb-2 text-right text-slate-300 font-semibold pr-3" />
+            <SortableHeader columnKey="sales_compare" label={`${compareYear} Sales`}  sort={sort} onToggle={toggle} align="right" className="pb-2 text-right text-slate-400 font-medium pr-3" />
+            <SortableHeader columnKey="gm_compare"    label={`${compareYear} GM%`}    sort={sort} onToggle={toggle} align="right" className="pb-2 text-right text-slate-400 font-medium" />
           </tr>
         </thead>
         <tbody>
-          {rows.map((r) => (
+          {sortedRows.map((r) => (
             <React.Fragment key={r.productMajorCode}>
 
               {/* ── Major row ── */}
@@ -250,6 +334,7 @@ export default function ProductScorecardTable({ rows, params, baseYear, compareY
           </tr>
         </tbody>
       </table>
+      </div>
     </div>
   );
 }
