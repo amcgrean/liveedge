@@ -17,6 +17,10 @@ export async function GET(req: NextRequest) {
     // rep_1 is the sales rep assigned to the customer account (in agility_customers).
     // agility_so_header.salesperson is the driver/route on a specific order — NOT the
     // account rep — so we don't read it here.
+    //
+    // agility_customers has one row per ship-to. Pick the primary row (lowest seq_num)
+    // via DISTINCT ON so rep_1 is deterministic when different ship-tos have stale or
+    // divergent values.
     type CustRow = {
       cust_code: string;
       cust_name: string | null;
@@ -24,15 +28,15 @@ export async function GET(req: NextRequest) {
     };
 
     const custRows = await sql<CustRow[]>`
-      SELECT
-        cust_code,
-        MAX(cust_name) AS cust_name,
-        UPPER(TRIM(MAX(rep_1))) AS rep_1
-      FROM agility_customers
-      WHERE is_deleted = false
-        ${q ? sql`AND (cust_code ILIKE ${'%' + q + '%'} OR cust_name ILIKE ${'%' + q + '%'})` : sql``}
-      GROUP BY cust_code
-      ORDER BY MAX(cust_name) ASC NULLS LAST
+      SELECT cust_code, cust_name, UPPER(TRIM(rep_1)) AS rep_1
+      FROM (
+        SELECT DISTINCT ON (cust_code) cust_code, cust_name, rep_1
+        FROM agility_customers
+        WHERE is_deleted = false
+          ${q ? sql`AND (cust_code ILIKE ${'%' + q + '%'} OR cust_name ILIKE ${'%' + q + '%'})` : sql``}
+        ORDER BY cust_code, seq_num NULLS LAST
+      ) c
+      ORDER BY cust_name ASC NULLS LAST
       LIMIT ${limit}
     `;
 
