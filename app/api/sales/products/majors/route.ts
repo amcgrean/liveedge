@@ -4,7 +4,7 @@ import { getErpSql } from '../../../../../db/supabase';
 import { getSelectedBranchCode } from '@/lib/branch-context';
 import {
   addParam,
-  appendItemFilters,
+  appendBranchItemFilter,
   formatProductLabel,
   isProductAdmin,
   parseIncludeInactive,
@@ -17,8 +17,8 @@ type MinorRow = {
 };
 
 // GET /api/sales/products/majors?group=<major_code>
-// Returns distinct product minors within the given major, from agility_items.
-// (Despite the route name "majors", it returns the second level: product minors.)
+// Returns distinct product minors within the given major, scoped to items
+// that exist in agility_item_branch for the selected branch.
 export async function GET(req: NextRequest) {
   const session = await auth();
   if (!session?.user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
@@ -36,10 +36,11 @@ export async function GET(req: NextRequest) {
     const sql = getErpSql();
 
     const params: unknown[] = [];
-    const where: string[] = [];
-    appendItemFilters(where, params, effectiveBranch, includeInactive);
-    where.push(`product_major_code = ${addParam(params, majorCode)}`);
-    where.push(`NULLIF(product_minor_code, '') IS NOT NULL`);
+    const where: string[] = [
+      `product_major_code = ${addParam(params, majorCode)}`,
+      `NULLIF(product_minor_code, '') IS NOT NULL`,
+    ];
+    appendBranchItemFilter(where, params, effectiveBranch, includeInactive);
 
     const rows = (await sql.unsafe(
       `SELECT product_minor_code AS code,

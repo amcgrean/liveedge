@@ -4,7 +4,7 @@ import { getErpSql } from '../../../../db/supabase';
 import { getSelectedBranchCode } from '@/lib/branch-context';
 import {
   addParam,
-  appendItemFilters,
+  buildBranchJoinOn,
   buildIlikeClause,
   buildItemSelect,
   buildSearchVector,
@@ -35,14 +35,15 @@ type SearchMode = 'fts' | 'ilike' | null;
 
 // GET /api/sales/products?q=&group=<major_code>&major=<minor_code>&limit=50&offset=0
 // Branch is read from the nav cookie (beisser-branch) for admins, session for non-admins.
+// Item master comes from agility_items (ai); stock/branch data from agility_item_branch (bi).
 export async function GET(req: NextRequest) {
   const session = await auth();
   if (!session?.user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
   const { searchParams } = req.nextUrl;
   const q = searchParams.get('q')?.trim() ?? '';
-  const majorCode = searchParams.get('group')?.trim() ?? '';  // product_major_code
-  const minorCode = searchParams.get('major')?.trim() ?? '';  // product_minor_code
+  const majorCode = searchParams.get('group')?.trim() ?? '';
+  const minorCode = searchParams.get('major')?.trim() ?? '';
   const limit = Math.min(100, Math.max(10, parseInt(searchParams.get('limit') ?? '50', 10) || 50));
   const offset = Math.max(0, parseInt(searchParams.get('offset') ?? '0', 10) || 0);
 
@@ -61,37 +62,37 @@ export async function GET(req: NextRequest) {
     const sql = getErpSql();
     const columns = await getAgilityItemColumns(sql);
 
-    // Base WHERE for agility_items (active/stock/branch/deleted filters)
+    // Branch param is $1 in the JOIN ON clause (added first so it's always $1 or absent).
     const baseParams: unknown[] = [];
-    const baseWhere: string[] = [];
-    appendItemFilters(baseWhere, baseParams, effectiveBranch, includeInactive);
+    const branchPlaceholder = effectiveBranch ? addParam(baseParams, effectiveBranch) : '';
+    const joinOn = buildBranchJoinOn(branchPlaceholder, includeInactive);
 
-    if (majorCode) {
-      baseWhere.push(`product_major_code = ${addParam(baseParams, majorCode)}`);
-    }
-    if (minorCode) {
-      baseWhere.push(`product_minor_code = ${addParam(baseParams, minorCode)}`);
-    }
+    // Remaining WHERE conditions go on ai.* (agility_items columns)
+    const baseWhere: string[] = [];
+    if (majorCode) baseWhere.push(`ai.product_major_code = ${addParam(baseParams, majorCode)}`);
+    if (minorCode) baseWhere.push(`ai.product_minor_code = ${addParam(baseParams, minorCode)}`);
+
+    const fromSql = `FROM public.agility_items ai JOIN public.agility_item_branch bi ON ${joinOn}`;
 
     const runQuery = async (mode: SearchMode) => {
       const qParams = [...baseParams];
       const qWhere = [...baseWhere];
 
       if (q.length >= 2 && mode === 'fts') {
-        qWhere.push(`${buildSearchVector(columns)} @@ websearch_to_tsquery('english', ${addParam(qParams, q)})`);
+        qWhere.push(`${buildSearchVector(columns, 'ai')} @@ websearch_to_tsquery('english', ${addParam(qParams, q)})`);
       } else if (q.length >= 2 && mode === 'ilike') {
-        qWhere.push(buildIlikeClause(columns, addParam(qParams, `%${q}%`)));
+        qWhere.push(buildIlikeClause(columns, addParam(qParams, `%${q}%`), 'ai'));
       }
 
-      const whereSql = qWhere.join(' AND ');
+      const whereSql = qWhere.length > 0 ? `WHERE ${qWhere.join(' AND ')}` : '';
 
       const [countRows, rows] = await Promise.all([
         sql.unsafe(
-          `SELECT count(*)::int AS total FROM public.agility_items WHERE ${whereSql}`,
+          `SELECT count(*)::int AS total ${fromSql} ${whereSql}`,
           qParams as never[]
         ) as Promise<CountRow[]>,
         sql.unsafe(
-          `${buildItemSelect(columns)} FROM public.agility_items WHERE ${whereSql} ORDER BY item, system_id LIMIT ${limit} OFFSET ${offset}`,
+          `${buildItemSelect(columns)} ${fromSql} ${whereSql} ORDER BY ai.item, bi.system_id LIMIT ${limit} OFFSET ${offset}`,
           qParams as never[]
         ) as Promise<ProductRow[]>,
       ]);
@@ -104,7 +105,6 @@ export async function GET(req: NextRequest) {
       result = await runQuery('ilike');
     }
 
-    // TODO: cost from Agility API when pricing is exposed.
     return NextResponse.json({ products: result.products, total: result.total });
   } catch (err) {
     console.error('[sales/products GET]', err);
