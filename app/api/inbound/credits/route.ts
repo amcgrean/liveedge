@@ -191,12 +191,26 @@ export async function POST(req: NextRequest) {
   const sql = getErpSql();
   let uploaded = 0;
 
+  console.log(`[inbound/credits] ${attachments.length} attachment(s) in payload:`, attachments.map(a => ({
+    filename: a.filename,
+    content_type: a.content_type,
+    content_disposition: a.content_disposition,
+    has_content_id: !!a.content_id,
+    has_inline_content: !!a.content,
+    has_id: !!a.id,
+  })));
+
   for (const att of attachments) {
     const allowed = ['image/jpeg', 'image/png', 'image/gif', 'image/webp', 'application/pdf'];
     if (!allowed.includes(att.content_type)) continue;
-    // Skip HTML-embedded parts (email signatures, tracking pixels) — they carry a Content-ID
-    // used by the HTML body as a cid: reference. Real file attachments don't have one.
-    if (att.content_id) continue;
+    // Skip HTML-embedded parts (email signatures, tracking pixels).
+    // True inline parts have BOTH content_id (cid: reference) AND content_disposition === 'inline'.
+    // Outlook sometimes sets content_id on real file attachments when forwarding, so checking
+    // content_id alone is too aggressive — require both conditions to skip.
+    const isInlineEmbedded =
+      !!att.content_id &&
+      (att.content_disposition ?? '').toLowerCase().startsWith('inline');
+    if (isInlineEmbedded) continue;
 
     const safeFilename = att.filename.replace(/[^a-zA-Z0-9._-]/g, '_');
     const timestamp = Date.now();
