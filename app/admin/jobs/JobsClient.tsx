@@ -12,7 +12,7 @@ import { cn } from '../../../src/lib/utils';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
-type GpsFilter  = 'all' | 'matched' | 'unmatched';
+type GpsFilter  = 'all' | 'matched' | 'unmatched' | 'junk';
 type SortOption = 'newest' | 'oldest' | 'expect_date';
 
 interface QuickFilter {
@@ -51,7 +51,16 @@ const QUICK_FILTERS: QuickFilter[] = [
     gps: 'unmatched',
     sort: 'newest',
     status: '',
-    description: 'Jobs without GPS coordinates on file',
+    description: 'Real addresses without GPS coordinates (junk addresses excluded)',
+  },
+  {
+    id: 'junk_address',
+    label: 'Junk Addresses',
+    icon: <XCircle className="w-3.5 h-3.5" />,
+    gps: 'junk',
+    sort: 'newest',
+    status: '',
+    description: 'Will Call, General Purchase, names, and other placeholder addresses — not geocodeable',
   },
   {
     id: 'has_gps',
@@ -331,7 +340,8 @@ export default function JobsClient() {
             >
               <option value="all">All GPS</option>
               <option value="matched">GPS Matched</option>
-              <option value="unmatched">No GPS</option>
+              <option value="unmatched">No GPS (real addresses)</option>
+              <option value="junk">Junk Addresses</option>
             </select>
             <select
               value={sort}
