@@ -8,6 +8,7 @@ export default async function PurchasingLayout({ children }: { children: React.R
   // Allow: admin, estimator (ops staff), or users with purchasing role
   const canAccess =
     session.user.role === 'admin' ||
+    session.user.role === 'management' ||
     session.user.role === 'estimator' ||
     roles.includes('purchasing') ||
     roles.includes('receiving_yard') ||

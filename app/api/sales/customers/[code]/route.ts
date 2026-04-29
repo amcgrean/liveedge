@@ -3,7 +3,10 @@ import { auth } from '../../../../../auth';
 import { getErpSql } from '../../../../../db/supabase';
 
 // GET /api/sales/customers/[code]
-// Returns customer detail, recent open orders, ship-to addresses
+// Returns customer detail, all open orders, recent history, ship-to addresses.
+//
+// Open orders are returned in full (no LIMIT) so header counts are accurate.
+// History is capped at 50 rows.
 export async function GET(
   _req: NextRequest,
   { params }: { params: Promise<{ code: string }> }
@@ -27,6 +30,9 @@ export async function GET(
       phone: string | null;
     };
 
+    // rep_1 = sales rep on the order (account rep). salesperson = driver/route. We
+    // surface rep_1 as the order's "Rep" column. Note: rep_1 does NOT exist on
+    // agility_customers — only on agility_so_header.
     type OrderRow = {
       so_number: string;
       system_id: string;
@@ -36,6 +42,8 @@ export async function GET(
       expect_date: string | null;
       invoice_date: string | null;
       reference: string | null;
+      rep_1: string | null;
+      line_count: number;
     };
 
     type ShipToRow = {
@@ -46,20 +54,55 @@ export async function GET(
       state: string | null;
     };
 
-    const [custRows, orderRows, shiptoRows] = await Promise.all([
+    // Open statuses: O=open, K=picking, S=staged, D=delivered (not yet invoiced).
+    // Fetch all open orders (no limit — typically small), plus recent history.
+    const [custRows, openRows, historyRows, shiptoRows] = await Promise.all([
       sql<CustRow[]>`
-        SELECT DISTINCT ON (cust_code) cust_key, cust_name, address_1, city, state, zip, cust_phone AS phone
+        SELECT DISTINCT ON (cust_code) cust_key, cust_name, address_1, city, state, zip,
+               cust_phone AS phone
         FROM agility_customers
         WHERE TRIM(cust_code) = TRIM(${code}) AND is_deleted = false
         ORDER BY cust_code, seq_num NULLS LAST
         LIMIT 1
       `,
       sql<OrderRow[]>`
-        SELECT so_id AS so_number, system_id, so_status, sale_type, ship_via,
-               expect_date::text, NULL::text AS invoice_date, reference
-        FROM agility_so_header
-        WHERE TRIM(cust_code) = TRIM(${code}) AND is_deleted = false
-        ORDER BY expect_date DESC NULLS LAST
+        SELECT
+          soh.so_id::text         AS so_number,
+          soh.system_id,
+          soh.so_status,
+          soh.sale_type,
+          soh.ship_via,
+          soh.expect_date::text   AS expect_date,
+          NULL::text              AS invoice_date,
+          soh.reference,
+          UPPER(TRIM(soh.rep_1))  AS rep_1,
+          COALESCE((SELECT COUNT(*)::int FROM agility_so_lines sl
+                     WHERE sl.so_id = soh.so_id AND sl.is_deleted = false), 0) AS line_count
+        FROM agility_so_header soh
+        WHERE TRIM(soh.cust_code) = TRIM(${code})
+          AND soh.is_deleted = false
+          AND UPPER(COALESCE(soh.so_status,'')) IN ('O','K','S','D')
+          AND UPPER(COALESCE(soh.sale_type,'')) <> 'CREDIT'
+        ORDER BY COALESCE(soh.expect_date, soh.created_date) DESC NULLS LAST, soh.so_id DESC
+      `,
+      sql<OrderRow[]>`
+        SELECT
+          soh.so_id::text         AS so_number,
+          soh.system_id,
+          soh.so_status,
+          soh.sale_type,
+          soh.ship_via,
+          soh.expect_date::text   AS expect_date,
+          NULL::text              AS invoice_date,
+          soh.reference,
+          UPPER(TRIM(soh.rep_1))  AS rep_1,
+          COALESCE((SELECT COUNT(*)::int FROM agility_so_lines sl
+                     WHERE sl.so_id = soh.so_id AND sl.is_deleted = false), 0) AS line_count
+        FROM agility_so_header soh
+        WHERE TRIM(soh.cust_code) = TRIM(${code})
+          AND soh.is_deleted = false
+          AND UPPER(COALESCE(soh.so_status,'')) IN ('I','C')
+        ORDER BY COALESCE(soh.expect_date, soh.created_date) DESC NULLS LAST, soh.so_id DESC
         LIMIT 50
       `,
       sql<ShipToRow[]>`
@@ -67,7 +110,7 @@ export async function GET(
         FROM agility_customers
         WHERE TRIM(cust_code) = TRIM(${code}) AND is_deleted = false
         ORDER BY seq_num
-        LIMIT 20
+        LIMIT 50
       `,
     ]);
 
@@ -75,16 +118,13 @@ export async function GET(
       return NextResponse.json({ error: 'Customer not found' }, { status: 404 });
     }
 
-    const open = orderRows.filter((o) => o.so_status?.toUpperCase() === 'O');
-    const history = orderRows.filter((o) => ['I', 'C'].includes(o.so_status?.toUpperCase() ?? ''));
-
     return NextResponse.json({
       customer: custRows[0],
-      open_orders: open,
-      history,
+      open_orders: openRows,
+      history: historyRows,
       ship_to: shiptoRows,
-      open_count: open.length,
-      total_count: orderRows.length,
+      open_count: openRows.length,
+      total_count: openRows.length + historyRows.length,
     });
   } catch (err) {
     console.error('[sales/customers GET]', err);

@@ -81,7 +81,6 @@ Shows every page, the API routes it calls, and where each route's data comes fro
 | `/sales/products` | `/api/sales/products` | 🔵 ERP Mirror | `agility_items` — stale; no live price here |
 | `/sales/reports` | `/api/sales/metrics` | 🔵 ERP Mirror | |
 | | `/api/sales/reports` | 🔵 ERP Mirror | |
-| `/sales/rep-dashboard` | `/api/sales/rep-metrics` | 🔵 ERP Mirror | Per-rep metrics |
 
 ---
 

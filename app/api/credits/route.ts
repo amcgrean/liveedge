@@ -35,7 +35,7 @@ const SORT_SQL: Record<SortCol, string> = {
   created_date: 'soh.created_date',
 };
 
-// GET /api/credits?q=&branch=&page=1
+// GET /api/credits?q=&branch=&page=1&sort=created_date&dir=desc
 // Returns open credit memos (sale_type='Credit', not invoiced/closed/cancelled)
 // from agility_so_header. Branch-scoped: non-admins see only their branch.
 // LEFT JOINs credit_images for doc count per CM.

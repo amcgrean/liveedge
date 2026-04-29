@@ -6,9 +6,19 @@ import { usePathname } from 'next/navigation';
 import {
   Truck, ShoppingCart, FileText, Ruler, Wrench,
   PackageCheck, ClipboardCheck, Settings,
-  ArrowRight, Activity, Zap,
+  ArrowRight, Activity, Zap, Receipt,
 } from 'lucide-react';
 import type { HomeData } from './api/home/route';
+
+const SO_STATUS: Record<string, { label: string; color: string }> = {
+  O: { label: 'Open',      color: 'bg-blue-900/60 text-blue-300' },
+  K: { label: 'Picking',   color: 'bg-yellow-900/60 text-yellow-300' },
+  P: { label: 'Pulled',    color: 'bg-yellow-900/60 text-yellow-300' },
+  S: { label: 'Staged',    color: 'bg-orange-900/60 text-orange-300' },
+  D: { label: 'Delivered', color: 'bg-cyan-900/60 text-cyan-300' },
+  I: { label: 'Invoiced',  color: 'bg-green-900/60 text-green-300' },
+  C: { label: 'Closed',    color: 'bg-gray-800 text-gray-400' },
+};
 
 interface Props {
   userName: string | null;
@@ -225,7 +235,7 @@ export default function HomeClient({ userName, userRole, userBranch }: Props) {
         </div>
 
         {/* KPI strip */}
-        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
           <KpiTile
             label="Open Bids"
             value={loading ? null : (kpis?.openBids ?? 0)}
@@ -255,6 +265,12 @@ export default function HomeClient({ userName, userRole, userBranch }: Props) {
             value={loading ? null : (kpis?.openOrders ?? 0)}
             href="/sales"
             color="blue"
+          />
+          <KpiTile
+            label="Invoiced (30d)"
+            value={loading ? null : (kpis?.invoiced30d ?? 0)}
+            href="/sales/history"
+            color="green"
           />
         </div>
 
@@ -309,6 +325,71 @@ export default function HomeClient({ userName, userRole, userBranch }: Props) {
           </div>
         </section>
 
+        {/* Recent orders (ERP) */}
+        {data && data.recentOrders.length > 0 && (
+          <section>
+            <div className="flex items-center justify-between mb-3">
+              <div className="flex items-center gap-2">
+                <Receipt className="w-4 h-4 text-blue-400" />
+                <h2 className="text-sm font-semibold text-gray-400 uppercase tracking-wider">
+                  Recent Orders
+                  {data.branchScope && <span className="ml-2 text-gray-600 font-normal normal-case">· {data.branchScope}</span>}
+                </h2>
+              </div>
+              <Link href="/sales/transactions" className="text-xs text-cyan-400 hover:underline">
+                View all →
+              </Link>
+            </div>
+            <div className="bg-gray-900 border border-gray-800 rounded-xl overflow-hidden">
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="border-b border-gray-800 text-xs uppercase text-gray-500">
+                      <th className="px-4 py-2 text-left font-medium">SO #</th>
+                      <th className="px-4 py-2 text-left font-medium">Customer</th>
+                      <th className="px-4 py-2 text-left font-medium">Reference</th>
+                      <th className="px-4 py-2 text-left font-medium">Status</th>
+                      <th className="px-4 py-2 text-left font-medium">Rep</th>
+                      <th className="px-4 py-2 text-left font-medium">Ordered</th>
+                      <th className="px-4 py-2 text-left font-medium">Need By</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {data.recentOrders.map((o) => {
+                      const st = SO_STATUS[o.so_status ?? ''] ?? { label: o.so_status ?? '?', color: 'bg-gray-800 text-gray-400' };
+                      return (
+                        <tr key={`${o.system_id}-${o.so_id}`} className="border-b border-gray-800 last:border-0 hover:bg-gray-800/50">
+                          <td className="px-4 py-2">
+                            <Link href={`/sales/orders/${o.so_id}`} className="font-mono text-cyan-400 hover:underline">
+                              {o.so_id}
+                            </Link>
+                          </td>
+                          <td className="px-4 py-2">
+                            {o.cust_code ? (
+                              <Link href={`/sales/customers/${o.cust_code}`} className="text-gray-200 hover:text-white hover:underline">
+                                {o.cust_name ?? o.cust_code}
+                              </Link>
+                            ) : (
+                              <span className="text-gray-400">—</span>
+                            )}
+                          </td>
+                          <td className="px-4 py-2 text-gray-400 max-w-[160px] truncate">{o.reference ?? '—'}</td>
+                          <td className="px-4 py-2">
+                            <span className={`px-2 py-0.5 rounded text-xs ${st.color}`}>{st.label}</span>
+                          </td>
+                          <td className="px-4 py-2 text-gray-400 text-xs">{o.salesperson ?? '—'}</td>
+                          <td className="px-4 py-2 text-gray-500 text-xs">{o.created_date?.slice(0, 10) ?? '—'}</td>
+                          <td className="px-4 py-2 text-gray-500 text-xs">{o.expect_date?.slice(0, 10) ?? '—'}</td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </section>
+        )}
+
         {/* Recent activity */}
         <section>
           <div className="flex items-center gap-2 mb-3">
@@ -362,6 +443,7 @@ function KpiTile({
     yellow: 'border-yellow-500/30 text-yellow-300',
     orange: 'border-orange-500/30 text-orange-300',
     blue:   'border-blue-500/30 text-blue-300',
+    green:  'border-green-500/30 text-green-300',
   };
   const cls = colors[color] ?? colors.cyan;
 

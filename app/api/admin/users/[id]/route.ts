@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '../../../../../auth';
 import { getErpSql } from '../../../../../db/supabase';
-import bcrypt from 'bcryptjs';
 
 function dbError(err: unknown) {
   console.error('[admin/users/[id]]', err);
@@ -24,6 +23,7 @@ export async function PUT(
     name?: string;
     email?: string;
     username?: string;
+    agentId?: string;
     role?: string;
     roles?: string[];
     isActive?: boolean;
@@ -38,6 +38,7 @@ export async function PUT(
   if (body.name !== undefined)     updates.display_name = body.name.trim() || null;
   if (body.email !== undefined)    updates.email = body.email ? body.email.trim().toLowerCase() : null;
   if (body.username !== undefined) updates.username = body.username ? body.username.trim().toLowerCase() : null;
+  if (body.agentId !== undefined)  updates.agent_id = body.agentId ? body.agentId.trim().toLowerCase() : null;
   if (body.branch !== undefined)   updates.branch = body.branch?.trim() || null;
   if (body.isActive !== undefined) updates.is_active = body.isActive;
 
@@ -51,6 +52,7 @@ export async function PUT(
     if (body.password.length < 8) {
       return NextResponse.json({ error: 'Password must be at least 8 characters' }, { status: 422 });
     }
+    const bcrypt = (await import('bcryptjs')).default;
     updates.password_hash = await bcrypt.hash(body.password, 12);
   }
 
@@ -61,20 +63,20 @@ export async function PUT(
   try {
     const sql = getErpSql();
 
-    // Build parameterized SET clause
+    // Build parameterized SET clause — roles column is json type, needs explicit cast
     const setClauses = Object.keys(updates)
-      .map((k, i) => `${k} = $${i + 2}`)
+      .map((k, i) => k === 'roles' ? `${k} = $${i + 2}::json` : `${k} = $${i + 2}`)
       .join(', ');
     const values = [userId, ...Object.values(updates)] as (string | number | boolean | null)[];
 
     type UserRow = {
       id: number; email: string; display_name: string | null;
       username: string | null; roles: string[] | null; is_active: boolean;
-      created_at: string | null; branch: string | null;
+      created_at: string | null; branch: string | null; agent_id: string | null;
     };
     const rows = await sql.unsafe<UserRow[]>(
       `UPDATE app_users SET ${setClauses} WHERE id = $1
-       RETURNING id, email, display_name, username, roles, is_active, created_at::text, branch`,
+       RETURNING id, email, display_name, username, roles, is_active, created_at::text, branch, agent_id`,
       values
     );
 
@@ -88,6 +90,7 @@ export async function PUT(
         name:     r.display_name ?? r.username ?? r.email.split('@')[0],
         email:    r.email,
         username: r.username ?? null,
+        agentId:  r.agent_id ?? null,
         role:     rolesArr[0] ?? 'viewer',
         roles:    rolesArr,
         branch:   r.branch ?? null,

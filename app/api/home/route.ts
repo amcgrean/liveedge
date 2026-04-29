@@ -3,7 +3,7 @@ import { auth } from '../../../auth';
 import { getDb } from '../../../db/index';
 import { getErpSql, isErpConfigured } from '../../../db/supabase';
 import { legacyBid, legacyDesign, legacyBidActivity } from '../../../db/schema-legacy';
-import { eq, sql, and, desc } from 'drizzle-orm';
+import { eq, sql, desc } from 'drizzle-orm';
 
 export interface HomeKPIs {
   openBids: number;
@@ -11,6 +11,7 @@ export interface HomeKPIs {
   openPicks: number;
   openWorkOrders: number;
   openOrders: number;
+  invoiced30d: number;
 }
 
 export interface ActivityItem {
@@ -27,10 +28,24 @@ export interface TopPage {
   visit_count: number;
 }
 
+export interface RecentOrder {
+  so_id: string;
+  cust_name: string | null;
+  cust_code: string | null;
+  reference: string | null;
+  so_status: string | null;
+  salesperson: string | null;
+  created_date: string | null;
+  expect_date: string | null;
+  system_id: string | null;
+}
+
 export interface HomeData {
   kpis: HomeKPIs;
   recentActivity: ActivityItem[];
   topPages: TopPage[];
+  recentOrders: RecentOrder[];
+  branchScope: string | null; // null = all branches (admin/ops/supervisor); otherwise the user's branch code
 }
 
 // Friendly labels for top pages
@@ -69,6 +84,14 @@ export async function GET() {
   if (!session?.user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
   const userId = session.user.id ?? '';
+  const userRole = (session.user as { role?: string }).role ?? '';
+  const userRoles = ((session.user as { roles?: string[] }).roles ?? []) as string[];
+  const userBranch = (session.user as { branch?: string | null }).branch ?? null;
+
+  // Admin / ops / supervisor see all branches. Everyone else is scoped to their branch.
+  const seesAllBranches =
+    userRole === 'admin' || userRoles.some((r) => ['admin', 'ops', 'supervisor'].includes(r));
+  const branchScope = seesAllBranches ? null : (userBranch && userBranch.trim() ? userBranch : null);
 
   const kpis: HomeKPIs = {
     openBids: 0,
@@ -76,30 +99,27 @@ export async function GET() {
     openPicks: 0,
     openWorkOrders: 0,
     openOrders: 0,
+    invoiced30d: 0,
   };
   let recentActivity: ActivityItem[] = [];
   let topPages: TopPage[] = [];
+  let recentOrders: RecentOrder[] = [];
 
-  try {
-    const db = getDb();
+  const db = getDb();
 
-    // Open bids
-    const [bidsRes] = await db
-      .select({ count: sql<number>`count(*)::int` })
+  // --- Bids-schema queries (run in parallel) ---
+  const bidsPromise = Promise.all([
+    db.select({ count: sql<number>`count(*)::int` })
       .from(legacyBid)
-      .where(eq(legacyBid.status, 'Incomplete'));
-    kpis.openBids = bidsRes?.count ?? 0;
-
-    // Open designs
-    const [designsRes] = await db
-      .select({ count: sql<number>`count(*)::int` })
+      .where(eq(legacyBid.status, 'Incomplete'))
+      .then((r) => r[0]?.count ?? 0)
+      .catch(() => 0),
+    db.select({ count: sql<number>`count(*)::int` })
       .from(legacyDesign)
-      .where(eq(legacyDesign.status, 'Active'));
-    kpis.openDesigns = designsRes?.count ?? 0;
-
-    // Recent bid activity (last 10)
-    const activity = await db
-      .select({
+      .where(eq(legacyDesign.status, 'Active'))
+      .then((r) => r[0]?.count ?? 0)
+      .catch(() => 0),
+    db.select({
         id: legacyBidActivity.id,
         bidId: legacyBidActivity.bidId,
         action: legacyBidActivity.action,
@@ -107,62 +127,146 @@ export async function GET() {
       })
       .from(legacyBidActivity)
       .orderBy(desc(legacyBidActivity.timestamp))
-      .limit(10);
+      .limit(10)
+      .catch(() => [] as Array<{ id: number; bidId: number; action: string | null; timestamp: Date | null }>),
+    db.execute(
+      sql`SELECT path, visit_count FROM bids.page_visits WHERE user_id = ${userId} ORDER BY visit_count DESC LIMIT 6`
+    ).then(
+      (res) => res as unknown as { path: string; visit_count: number }[]
+    ).catch(() => [] as { path: string; visit_count: number }[]),
+  ]);
 
-    recentActivity = activity.map((a) => ({
-      id: a.id,
-      bidId: a.bidId,
-      action: a.action ?? '',
-      timestamp: a.timestamp?.toISOString() ?? '',
-      href: `/legacy-bids/${a.bidId}`,
-    }));
-
-    // Top pages from page_visits (table may not exist yet — handle gracefully)
-    try {
-      const pagesRes = await db.execute(
-        sql`SELECT path, visit_count FROM bids.page_visits WHERE user_id = ${userId} ORDER BY visit_count DESC LIMIT 6`
-      );
-      topPages = (pagesRes as unknown as { path: string; visit_count: number }[]).map((r) => ({
-        path: r.path,
-        label: pathLabel(r.path),
-        visit_count: r.visit_count,
-      }));
-    } catch {
-      // Table doesn't exist yet — no-op
+  // --- ERP queries (run in parallel) ---
+  const erpPromise = (async () => {
+    if (!isErpConfigured()) {
+      return { openPicks: 0, openWorkOrders: 0, openOrders: 0, invoiced30d: 0, recentOrders: [] as RecentOrder[] };
     }
-  } catch (err) {
-    console.error('[api/home bids]', err);
-  }
+    const erpSql = getErpSql();
+    const branchFilter = branchScope ? erpSql`AND soh.system_id = ${branchScope}` : erpSql``;
+    const branchFilterNoAlias = branchScope ? erpSql`AND system_id = ${branchScope}` : erpSql``;
 
-  // ERP KPIs (non-fatal if ERP not configured)
-  if (isErpConfigured()) {
-    try {
-      const erpSql = getErpSql();
+    const [picksRes, woRes, openOrdersRes, invoicedRes, recentOrdersRes] = await Promise.all([
+      // Open picks
+      erpSql<{ cnt: number }[]>`
+        SELECT COUNT(DISTINCT soh.so_id)::int AS cnt
+        FROM agility_so_header soh
+        JOIN agility_so_lines sol
+          ON sol.system_id = soh.system_id AND sol.so_id = soh.so_id
+          AND sol.is_deleted = false
+        LEFT JOIN (
+          SELECT system_id, so_id, MAX(invoice_date::date) AS invoice_date
+          FROM agility_shipments
+          WHERE is_deleted = false
+          GROUP BY system_id, so_id
+        ) sh ON sh.system_id = soh.system_id AND sh.so_id = soh.so_id
+        WHERE soh.is_deleted = false
+          AND UPPER(COALESCE(soh.so_status, '')) NOT IN ('C')
+          AND (
+            UPPER(COALESCE(soh.so_status, '')) IN ('K', 'P', 'S')
+            OR (UPPER(COALESCE(soh.so_status, '')) = 'I'
+                AND sh.invoice_date = (NOW() AT TIME ZONE 'America/Chicago')::date)
+            OR soh.expect_date::date = (NOW() AT TIME ZONE 'America/Chicago')::date
+          )
+          AND UPPER(COALESCE(soh.sale_type, '')) NOT IN ('DIRECT', 'WILLCALL', 'XINSTALL', 'HOLD')
+          AND soh.system_id NOT IN ('', 'SYSTEM')
+          ${branchFilter}
+      `.catch(() => [{ cnt: 0 }]),
 
-      // Open picks + work orders from dashboard_stats (all branches)
-      const statsRows = await erpSql<{ open_picks: number; open_work_orders: number }[]>`
-        SELECT
-          COALESCE(SUM(open_picks), 0)::int        AS open_picks,
-          COALESCE(SUM(open_work_orders), 0)::int  AS open_work_orders
-        FROM dashboard_stats
-        WHERE updated_at > NOW() - INTERVAL '10 minutes'
-      `;
-      if (statsRows[0]) {
-        kpis.openPicks = statsRows[0].open_picks;
-        kpis.openWorkOrders = statsRows[0].open_work_orders;
-      }
+      // Open work orders
+      erpSql<{ cnt: number }[]>`
+        SELECT COUNT(DISTINCT wh.wo_id)::int AS cnt
+        FROM agility_wo_header wh
+        LEFT JOIN agility_so_header soh
+          ON soh.so_id = wh.source_id::text AND soh.is_deleted = false
+        WHERE wh.is_deleted = false
+          AND UPPER(COALESCE(wh.wo_status, '')) NOT IN ('COMPLETED', 'CANCELED', 'C')
+          AND COALESCE(soh.system_id, '') NOT IN ('', 'SYSTEM')
+          ${branchFilter}
+      `.catch(() => [{ cnt: 0 }]),
 
-      // Open orders count
-      const [ordersRes] = await erpSql<{ cnt: number }[]>`
+      // Open orders (status 'O')
+      erpSql<{ cnt: number }[]>`
         SELECT COUNT(*)::int AS cnt
         FROM agility_so_header
-        WHERE is_deleted = false AND UPPER(COALESCE(so_status,'')) = 'O'
-      `;
-      kpis.openOrders = ordersRes?.cnt ?? 0;
-    } catch (err) {
-      console.error('[api/home erp]', err);
-    }
-  }
+        WHERE is_deleted = false
+          AND UPPER(COALESCE(so_status, '')) = 'O'
+          ${branchFilterNoAlias}
+      `.catch(() => [{ cnt: 0 }]),
 
-  return NextResponse.json({ kpis, recentActivity, topPages } satisfies HomeData);
+      // Invoiced in last 30 days
+      erpSql<{ cnt: number }[]>`
+        SELECT COUNT(*)::int AS cnt
+        FROM agility_so_header
+        WHERE is_deleted = false
+          AND UPPER(COALESCE(so_status, '')) = 'I'
+          AND created_date >= CURRENT_DATE - INTERVAL '30 days'
+          ${branchFilterNoAlias}
+      `.catch(() => [{ cnt: 0 }]),
+
+      // Recent orders (last 15, newest first, active statuses)
+      erpSql<RecentOrder[]>`
+        SELECT
+          so_id,
+          cust_name,
+          cust_code,
+          reference,
+          so_status,
+          UPPER(TRIM(salesperson)) AS salesperson,
+          created_date::text,
+          expect_date::text,
+          system_id
+        FROM agility_so_header
+        WHERE is_deleted = false
+          AND UPPER(COALESCE(so_status, '')) IN ('O', 'K', 'P', 'S')
+          AND system_id NOT IN ('', 'SYSTEM')
+          ${branchFilterNoAlias}
+        ORDER BY created_date DESC NULLS LAST, so_id DESC
+        LIMIT 15
+      `.catch(() => [] as RecentOrder[]),
+    ]);
+
+    return {
+      openPicks: picksRes[0]?.cnt ?? 0,
+      openWorkOrders: woRes[0]?.cnt ?? 0,
+      openOrders: openOrdersRes[0]?.cnt ?? 0,
+      invoiced30d: invoicedRes[0]?.cnt ?? 0,
+      recentOrders: (recentOrdersRes ?? []) as RecentOrder[],
+    };
+  })();
+
+  // Await both branches of work in parallel
+  const [
+    [openBidsCount, openDesignsCount, activityRows, pagesRows],
+    erpData,
+  ] = await Promise.all([bidsPromise, erpPromise]);
+
+  kpis.openBids = openBidsCount;
+  kpis.openDesigns = openDesignsCount;
+  kpis.openPicks = erpData.openPicks;
+  kpis.openWorkOrders = erpData.openWorkOrders;
+  kpis.openOrders = erpData.openOrders;
+  kpis.invoiced30d = erpData.invoiced30d;
+  recentOrders = erpData.recentOrders;
+
+  recentActivity = activityRows.map((a) => ({
+    id: a.id,
+    bidId: a.bidId,
+    action: a.action ?? '',
+    timestamp: a.timestamp?.toISOString() ?? '',
+    href: `/legacy-bids/${a.bidId}`,
+  }));
+
+  topPages = pagesRows.map((r) => ({
+    path: r.path,
+    label: pathLabel(r.path),
+    visit_count: r.visit_count,
+  }));
+
+  return NextResponse.json({
+    kpis,
+    recentActivity,
+    topPages,
+    recentOrders,
+    branchScope,
+  } satisfies HomeData);
 }

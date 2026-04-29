@@ -8,7 +8,7 @@ export default async function DispatchLayout({ children }: { children: React.Rea
   const canAccess =
     session.user.role === 'admin' ||
     (session.user.roles ?? []).some((r) =>
-      ['admin', 'supervisor', 'ops', 'warehouse', 'sales'].includes(r)
+      ['admin', 'supervisor', 'ops', 'warehouse', 'sales', 'management'].includes(r)
     );
   if (!canAccess) redirect('/dashboard');
 

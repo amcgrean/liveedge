@@ -79,9 +79,9 @@ function sourceBadge(source: 'legacy' | 'estimator') {
     : <span className="px-1.5 py-0.5 rounded text-[10px] font-medium bg-cyan-900/40 text-cyan-400 border border-cyan-700/30">Estimator</span>;
 }
 
-interface Props { session: Session; }
+interface Props { session: Session; embedded?: boolean; }
 
-export default function AllBidsClient({ session }: Props) {
+export default function AllBidsClient({ session, embedded = false }: Props) {
   usePageTracking();
   const [bids, setBids] = useState<UnifiedBid[]>([]);
   const [counts, setCounts] = useState<Counts>({ legacy: 0, estimator: 0, total: 0 });
@@ -115,16 +115,14 @@ export default function AllBidsClient({ session }: Props) {
 
   const formatDate = (d: string | null) => d ? new Date(d).toLocaleDateString() : '—';
 
-  return (
-    <div className="min-h-screen bg-gray-950 text-gray-100">
-      <TopNav userName={session.user?.name} userRole={(session.user as { role?: string }).role} />
-      <main className="max-w-7xl mx-auto px-4 sm:px-6 py-8">
+  const body = (
+    <>
         {/* Header */}
         <div className="flex items-center justify-between mb-6">
           <div>
-            <h1 className="text-2xl font-bold">All Bids</h1>
+            {!embedded && <h1 className="text-2xl font-bold">All Bids</h1>}
             <p className="text-sm text-gray-400 mt-0.5">
-              Unified view — Bid Tracker ({counts.legacy}) + Estimator ({counts.estimator})
+              Bid Tracker ({counts.legacy}) + Estimator ({counts.estimator})
             </p>
           </div>
           <button onClick={fetchBids} className="p-2 bg-gray-900 border border-gray-700 rounded-lg hover:border-cyan-500/50">
@@ -256,13 +254,16 @@ export default function AllBidsClient({ session }: Props) {
         <div className="mt-3 text-xs text-gray-600">
           {counts.total} bid{counts.total !== 1 ? 's' : ''} shown
           {counts.total > 0 && ` (${counts.legacy} legacy, ${counts.estimator} estimator)`}
-          <span className="ml-4">
-            <Link href="/legacy-bids" className="text-gray-500 hover:text-cyan-400">Bid Tracker →</Link>
-            <span className="mx-2">·</span>
-            <Link href="/bids" className="text-gray-500 hover:text-cyan-400">Estimator bids →</Link>
-          </span>
         </div>
-      </main>
+    </>
+  );
+
+  if (embedded) return body;
+
+  return (
+    <div className="min-h-screen bg-gray-950 text-gray-100">
+      <TopNav userName={session.user?.name} userRole={(session.user as { role?: string }).role} />
+      <main className="max-w-7xl mx-auto px-4 sm:px-6 py-8">{body}</main>
     </div>
   );
 }

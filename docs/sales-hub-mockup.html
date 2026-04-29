@@ -1,0 +1,809 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Sales Hub — Beisser LiveEdge (Mockup)</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --green:   #006834;
+      --green-l: #00894a;
+      --gold:    #9e8635;
+      --gold-l:  #c4a844;
+      --bg:      #0f172a;
+      --surface: #1e293b;
+      --surface2: #263347;
+      --border:  #334155;
+      --text:    #f1f5f9;
+      --muted:   #94a3b8;
+      --red:     #ef4444;
+      --amber:   #f59e0b;
+      --blue:    #3b82f6;
+      --violet:  #8b5cf6;
+      --cyan:    #06b6d4;
+    }
+
+    body {
+      font-family: ui-sans-serif, system-ui, -apple-system, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      font-size: 14px;
+      line-height: 1.5;
+    }
+
+    /* ── Nav bar (decorative) ── */
+    .nav {
+      background: #0a1120;
+      border-bottom: 1px solid var(--border);
+      height: 48px;
+      display: flex;
+      align-items: center;
+      padding: 0 20px;
+      gap: 8px;
+    }
+    .nav-logo {
+      width: 28px; height: 28px;
+      background: var(--green);
+      border-radius: 6px;
+      display: flex; align-items: center; justify-content: center;
+      font-weight: 800; font-size: 13px; color: white;
+    }
+    .nav-brand { font-weight: 700; font-size: 15px; color: var(--text); }
+    .nav-sep { color: var(--border); margin: 0 4px; }
+    .nav-links { display: flex; gap: 2px; margin-left: 16px; }
+    .nav-link {
+      padding: 4px 12px; border-radius: 6px;
+      color: var(--muted); font-size: 13px; cursor: pointer;
+      transition: background .15s;
+    }
+    .nav-link:hover { background: var(--surface2); color: var(--text); }
+    .nav-link.active { background: var(--surface2); color: var(--text); font-weight: 600; }
+    .nav-right { margin-left: auto; display: flex; align-items: center; gap: 12px; }
+    .branch-badge {
+      padding: 2px 10px; border-radius: 999px;
+      background: #1e3a5f; color: #60a5fa; font-size: 12px; font-weight: 600;
+    }
+    .user-pill {
+      display: flex; align-items: center; gap: 6px;
+      padding: 3px 10px; border-radius: 999px;
+      background: var(--surface2); font-size: 12px; color: var(--muted);
+    }
+    .user-dot {
+      width: 8px; height: 8px; border-radius: 50%;
+      background: var(--green);
+    }
+
+    /* ── Page shell ── */
+    .page { max-width: 1400px; margin: 0 auto; padding: 24px 20px 48px; }
+
+    /* ── Page header ── */
+    .page-header {
+      display: flex; align-items: flex-start; justify-content: space-between;
+      margin-bottom: 24px;
+    }
+    .page-header h1 { font-size: 22px; font-weight: 700; color: var(--text); }
+    .page-header .sub {
+      font-size: 13px; color: var(--muted); margin-top: 2px;
+    }
+    .page-header .date-badge {
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: 8px; padding: 6px 14px;
+      font-size: 13px; color: var(--muted);
+    }
+
+    /* ── Section label ── */
+    .section-label {
+      font-size: 11px; font-weight: 700; letter-spacing: .08em;
+      text-transform: uppercase; color: var(--muted);
+      margin-bottom: 10px; margin-top: 28px;
+    }
+
+    /* ── KPI Cards grid ── */
+    .kpi-grid {
+      display: grid;
+      grid-template-columns: repeat(5, 1fr);
+      gap: 12px;
+      margin-bottom: 8px;
+    }
+    @media (max-width: 1100px) { .kpi-grid { grid-template-columns: repeat(4, 1fr); } }
+    @media (max-width: 800px)  { .kpi-grid { grid-template-columns: repeat(2, 1fr); } }
+
+    .kpi-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 16px 18px 14px;
+      cursor: pointer;
+      transition: border-color .15s, background .15s, transform .1s;
+      position: relative;
+      overflow: hidden;
+    }
+    .kpi-card::before {
+      content: '';
+      position: absolute; top: 0; left: 0; right: 0; height: 3px;
+      border-radius: 12px 12px 0 0;
+      background: var(--card-accent, var(--green));
+    }
+    .kpi-card:hover {
+      border-color: var(--card-accent, var(--green));
+      background: var(--surface2);
+      transform: translateY(-1px);
+    }
+    .kpi-card .kpi-label {
+      font-size: 11px; font-weight: 600; letter-spacing: .04em;
+      text-transform: uppercase; color: var(--muted);
+      margin-bottom: 8px;
+      display: flex; align-items: center; gap: 6px;
+    }
+    .kpi-card .kpi-icon { font-size: 14px; opacity: .8; }
+    .kpi-card .kpi-number {
+      font-size: 32px; font-weight: 800; line-height: 1;
+      color: var(--text);
+      margin-bottom: 4px;
+    }
+    .kpi-card .kpi-sub {
+      font-size: 11px; color: var(--muted);
+    }
+    .kpi-card .kpi-cta {
+      position: absolute; bottom: 10px; right: 14px;
+      font-size: 11px; color: var(--card-accent, var(--green));
+      font-weight: 600; opacity: 0;
+      transition: opacity .15s;
+    }
+    .kpi-card:hover .kpi-cta { opacity: 1; }
+
+    /* card accent colors */
+    .accent-green  { --card-accent: var(--green-l); }
+    .accent-gold   { --card-accent: var(--gold-l); }
+    .accent-blue   { --card-accent: var(--blue); }
+    .accent-violet { --card-accent: var(--violet); }
+    .accent-amber  { --card-accent: var(--amber); }
+    .accent-red    { --card-accent: var(--red); }
+    .accent-cyan   { --card-accent: var(--cyan); }
+
+    /* ── Middle two-column layout ── */
+    .mid-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 16px;
+      margin-top: 4px;
+    }
+    @media (max-width: 900px) { .mid-grid { grid-template-columns: 1fr; } }
+
+    /* ── Card panel ── */
+    .panel {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      overflow: hidden;
+    }
+    .panel-header {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 14px 18px 12px;
+      border-bottom: 1px solid var(--border);
+    }
+    .panel-title {
+      font-size: 13px; font-weight: 700; color: var(--text);
+      display: flex; align-items: center; gap: 7px;
+    }
+    .panel-title-dot {
+      width: 8px; height: 8px; border-radius: 50%;
+      background: var(--panel-dot, var(--green));
+    }
+    .panel-action {
+      font-size: 11px; color: var(--muted); cursor: pointer;
+    }
+    .panel-action:hover { color: var(--text); }
+
+    /* ── Customer rows ── */
+    .customer-list { }
+    .customer-row {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 10px 18px;
+      border-bottom: 1px solid var(--border);
+      cursor: pointer;
+      transition: background .12s;
+    }
+    .customer-row:last-child { border-bottom: none; }
+    .customer-row:hover { background: var(--surface2); }
+    .cust-left { display: flex; align-items: center; gap: 10px; }
+    .cust-avatar {
+      width: 32px; height: 32px; border-radius: 8px;
+      background: var(--green); color: white;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 12px; font-weight: 700; flex-shrink: 0;
+    }
+    .cust-name { font-weight: 600; font-size: 13px; }
+    .cust-code { font-size: 11px; color: var(--muted); margin-top: 1px; }
+    .cust-right { text-align: right; }
+    .cust-orders { font-weight: 700; font-size: 14px; }
+    .cust-amt { font-size: 11px; color: var(--muted); margin-top: 1px; }
+
+    /* rank badge */
+    .rank {
+      width: 20px; height: 20px; border-radius: 50%;
+      background: var(--surface2); border: 1px solid var(--border);
+      display: flex; align-items: center; justify-content: center;
+      font-size: 10px; font-weight: 700; color: var(--muted);
+      flex-shrink: 0;
+    }
+    .rank-1 { background: #7c6010; border-color: var(--gold-l); color: var(--gold-l); }
+    .rank-2 { background: #374151; border-color: #6b7280; color: #9ca3af; }
+    .rank-3 { background: #3b2d1a; border-color: #92400e; color: #d97706; }
+
+    /* ── Activity feed ── */
+    .activity-list { }
+    .activity-item {
+      display: flex; align-items: flex-start; gap: 12px;
+      padding: 10px 18px;
+      border-bottom: 1px solid var(--border);
+    }
+    .activity-item:last-child { border-bottom: none; }
+    .act-icon {
+      width: 28px; height: 28px; border-radius: 8px;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 13px; flex-shrink: 0; margin-top: 1px;
+    }
+    .act-icon.order   { background: #0c2d1f; color: var(--green-l); }
+    .act-icon.quote   { background: #1e2a4a; color: var(--blue); }
+    .act-icon.design  { background: #27194a; color: var(--violet); }
+    .act-icon.wc      { background: #2a1f0c; color: var(--amber); }
+    .act-icon.service { background: #2a1212; color: var(--red); }
+    .act-body { flex: 1; }
+    .act-text { font-size: 12px; color: var(--text); }
+    .act-text strong { font-weight: 600; }
+    .act-meta { font-size: 11px; color: var(--muted); margin-top: 2px; }
+    .act-time { font-size: 11px; color: var(--muted); white-space: nowrap; flex-shrink: 0; }
+
+    /* ── Recent Transactions table ── */
+    .table-wrap { overflow-x: auto; }
+    table {
+      width: 100%; border-collapse: collapse;
+      font-size: 12px;
+    }
+    thead th {
+      text-align: left;
+      padding: 10px 14px;
+      font-size: 10px; font-weight: 700; letter-spacing: .06em;
+      text-transform: uppercase; color: var(--muted);
+      border-bottom: 1px solid var(--border);
+      white-space: nowrap;
+      background: var(--surface);
+    }
+    tbody tr {
+      border-bottom: 1px solid var(--border);
+      cursor: pointer;
+      transition: background .1s;
+    }
+    tbody tr:last-child { border-bottom: none; }
+    tbody tr:hover { background: var(--surface2); }
+    tbody td { padding: 9px 14px; color: var(--text); vertical-align: middle; }
+    .td-muted { color: var(--muted); }
+    .td-link  { color: var(--green-l); font-weight: 600; }
+
+    /* status badges */
+    .badge {
+      display: inline-flex; align-items: center; justify-content: center;
+      padding: 2px 8px; border-radius: 999px;
+      font-size: 10px; font-weight: 700; letter-spacing: .04em;
+      white-space: nowrap;
+    }
+    .badge-O { background: #0c2d1f; color: #4ade80; }  /* Open */
+    .badge-K { background: #1e2a4a; color: #60a5fa; }  /* Picking */
+    .badge-S { background: #2a1f0c; color: #fbbf24; }  /* Staged */
+    .badge-D { background: #27194a; color: #a78bfa; }  /* Delivered */
+    .badge-I { background: #1a2640; color: #38bdf8; }  /* Invoiced */
+    .badge-C { background: #1e2a1e; color: #6b7280; }  /* Closed */
+    .badge-WC { background: #2a1f0c; color: #fb923c; } /* Will Call */
+    .badge-Q  { background: #1e2a4a; color: #818cf8; } /* Quote */
+
+    .sale-type {
+      font-size: 10px; padding: 1px 6px; border-radius: 4px;
+      background: var(--surface2); color: var(--muted); font-weight: 600;
+    }
+
+    /* ── Annotation ── */
+    .demo-note {
+      display: flex; align-items: center; gap: 8px;
+      background: #1a1f2e; border: 1px dashed #3b4a6b;
+      border-radius: 8px; padding: 10px 16px;
+      margin-bottom: 20px;
+      font-size: 12px; color: #7c8fa8;
+    }
+    .demo-note strong { color: #a0b4d0; }
+  </style>
+</head>
+<body>
+
+<!-- Nav -->
+<nav class="nav">
+  <div class="nav-logo">B</div>
+  <span class="nav-brand">Beisser LiveEdge</span>
+  <div class="nav-links">
+    <div class="nav-link">Yard</div>
+    <div class="nav-link">Dispatch</div>
+    <div class="nav-link active">Sales</div>
+    <div class="nav-link">Services</div>
+    <div class="nav-link">Design</div>
+    <div class="nav-link">Purchasing</div>
+  </div>
+  <div class="nav-right">
+    <span class="branch-badge">20GR — Grimes</span>
+    <div class="user-pill">
+      <div class="user-dot"></div>
+      J. Anderson
+    </div>
+  </div>
+</nav>
+
+<!-- Page -->
+<div class="page">
+
+  <!-- Demo annotation -->
+  <div class="demo-note">
+    <span>🎨</span>
+    <span><strong>Mockup only</strong> — static demo of the proposed Sales Hub redesign. Numbers and names are placeholder data.</span>
+  </div>
+
+  <!-- Header -->
+  <div class="page-header">
+    <div>
+      <h1>Sales Hub</h1>
+      <div class="sub">Good morning, Jake — here's where things stand today.</div>
+    </div>
+    <div class="date-badge">Sat, Apr 19, 2026</div>
+  </div>
+
+  <!-- ── KPI Cards Row 1: My Orders & Will Calls ── -->
+  <div class="section-label">My Activity</div>
+  <div class="kpi-grid">
+
+    <div class="kpi-card accent-green">
+      <div class="kpi-label">
+        <span class="kpi-icon">📋</span> My Open Orders
+      </div>
+      <div class="kpi-number">14</div>
+      <div class="kpi-sub">You are Agent 1</div>
+      <div class="kpi-cta">View all →</div>
+    </div>
+
+    <div class="kpi-card accent-blue">
+      <div class="kpi-label">
+        <span class="kpi-icon">✍️</span> My Written Orders
+      </div>
+      <div class="kpi-number">9</div>
+      <div class="kpi-sub">You are Agent 3</div>
+      <div class="kpi-cta">View all →</div>
+    </div>
+
+    <div class="kpi-card accent-amber">
+      <div class="kpi-label">
+        <span class="kpi-icon">🏪</span> Branch Will Calls
+      </div>
+      <div class="kpi-number">31</div>
+      <div class="kpi-sub">Open at 20GR today</div>
+      <div class="kpi-cta">View all →</div>
+    </div>
+
+    <div class="kpi-card accent-amber" style="--card-accent: #f97316;">
+      <div class="kpi-label">
+        <span class="kpi-icon">📞</span> My Customers' WCs
+      </div>
+      <div class="kpi-number">7</div>
+      <div class="kpi-sub">Will calls for your accounts</div>
+      <div class="kpi-cta">View all →</div>
+    </div>
+
+    <div class="kpi-card accent-amber" style="--card-accent: #eab308;">
+      <div class="kpi-label">
+        <span class="kpi-icon">🗂️</span> Will Calls I Wrote
+      </div>
+      <div class="kpi-number">3</div>
+      <div class="kpi-sub">Open WCs you created</div>
+      <div class="kpi-cta">View all →</div>
+    </div>
+
+  </div>
+
+  <!-- ── KPI Cards Row 2: Related Work ── -->
+  <div class="kpi-grid" style="margin-top: 12px;">
+
+    <div class="kpi-card accent-violet">
+      <div class="kpi-label">
+        <span class="kpi-icon">📐</span> Open Quotes
+      </div>
+      <div class="kpi-number">5</div>
+      <div class="kpi-sub">From estimating</div>
+      <div class="kpi-cta">View all →</div>
+    </div>
+
+    <div class="kpi-card accent-violet" style="--card-accent: #a855f7;">
+      <div class="kpi-label">
+        <span class="kpi-icon">📏</span> Open Designs
+      </div>
+      <div class="kpi-number">2</div>
+      <div class="kpi-sub">In design queue</div>
+      <div class="kpi-cta">View all →</div>
+    </div>
+
+    <div class="kpi-card accent-red">
+      <div class="kpi-label">
+        <span class="kpi-icon">🔧</span> Service Requests
+      </div>
+      <div class="kpi-number">1</div>
+      <div class="kpi-sub">Open IT / service issues</div>
+      <div class="kpi-cta">View all →</div>
+    </div>
+
+    <div class="kpi-card accent-cyan">
+      <div class="kpi-label">
+        <span class="kpi-icon">📦</span> My Open POs
+      </div>
+      <div class="kpi-number">8</div>
+      <div class="kpi-sub">You are Buyer 1</div>
+      <div class="kpi-cta">View all →</div>
+    </div>
+
+    <div class="kpi-card accent-cyan" style="--card-accent: #0891b2;">
+      <div class="kpi-label">
+        <span class="kpi-icon">🛒</span> POs I Wrote
+      </div>
+      <div class="kpi-number">4</div>
+      <div class="kpi-sub">You are Buyer 2</div>
+      <div class="kpi-cta">View all →</div>
+    </div>
+
+  </div>
+
+  <!-- ── Middle: Customers + Activity ── -->
+  <div class="section-label" style="margin-top: 32px;">My Customers & Recent Activity</div>
+  <div class="mid-grid">
+
+    <!-- Top Customers -->
+    <div class="panel" style="--panel-dot: var(--green);">
+      <div class="panel-header">
+        <div class="panel-title">
+          <div class="panel-title-dot"></div>
+          Top Customers
+        </div>
+        <div>
+          <select style="background: var(--surface2); border: 1px solid var(--border); color: var(--muted); border-radius: 6px; padding: 3px 8px; font-size: 11px; cursor: pointer;">
+            <option>Last 30 days</option>
+            <option>Last 7 days</option>
+            <option>Last 90 days</option>
+          </select>
+        </div>
+      </div>
+      <div class="customer-list">
+
+        <div class="customer-row">
+          <div class="cust-left">
+            <div class="rank rank-1">1</div>
+            <div class="cust-avatar">MC</div>
+            <div>
+              <div class="cust-name">Midwest Construction LLC</div>
+              <div class="cust-code">MIDW001 · 20GR</div>
+            </div>
+          </div>
+          <div class="cust-right">
+            <div class="cust-orders">23 orders</div>
+            <div class="cust-amt">~$48,200</div>
+          </div>
+        </div>
+
+        <div class="customer-row">
+          <div class="cust-left">
+            <div class="rank rank-2">2</div>
+            <div class="cust-avatar" style="background:#1e40af;">RH</div>
+            <div>
+              <div class="cust-name">Reynolds Home Builders</div>
+              <div class="cust-code">REYN003 · 20GR</div>
+            </div>
+          </div>
+          <div class="cust-right">
+            <div class="cust-orders">17 orders</div>
+            <div class="cust-amt">~$31,500</div>
+          </div>
+        </div>
+
+        <div class="customer-row">
+          <div class="cust-left">
+            <div class="rank rank-3">3</div>
+            <div class="cust-avatar" style="background:#92400e;">PK</div>
+            <div>
+              <div class="cust-name">Pinnacle Kitchens & Bath</div>
+              <div class="cust-code">PINN007 · 20GR</div>
+            </div>
+          </div>
+          <div class="cust-right">
+            <div class="cust-orders">12 orders</div>
+            <div class="cust-amt">~$22,800</div>
+          </div>
+        </div>
+
+        <div class="customer-row">
+          <div class="cust-left">
+            <div class="rank">4</div>
+            <div class="cust-avatar" style="background:#065f46;">DG</div>
+            <div>
+              <div class="cust-name">Drake General Contracting</div>
+              <div class="cust-code">DRAK012 · 20GR</div>
+            </div>
+          </div>
+          <div class="cust-right">
+            <div class="cust-orders">9 orders</div>
+            <div class="cust-amt">~$17,100</div>
+          </div>
+        </div>
+
+        <div class="customer-row">
+          <div class="cust-left">
+            <div class="rank">5</div>
+            <div class="cust-avatar" style="background:#5b21b6;">VL</div>
+            <div>
+              <div class="cust-name">Valley Lumber & Framing</div>
+              <div class="cust-code">VALL018 · 20GR</div>
+            </div>
+          </div>
+          <div class="cust-right">
+            <div class="cust-orders">7 orders</div>
+            <div class="cust-amt">~$13,400</div>
+          </div>
+        </div>
+
+        <div class="customer-row">
+          <div class="cust-left">
+            <div class="rank">6</div>
+            <div class="cust-avatar" style="background:#7f1d1d;">HA</div>
+            <div>
+              <div class="cust-name">Hawkeye Ag Services</div>
+              <div class="cust-code">HAWK024 · 20GR</div>
+            </div>
+          </div>
+          <div class="cust-right">
+            <div class="cust-orders">5 orders</div>
+            <div class="cust-amt">~$9,800</div>
+          </div>
+        </div>
+
+        <div class="customer-row">
+          <div class="cust-left">
+            <div class="rank">7</div>
+            <div class="cust-avatar" style="background:#1e3a5f;">CB</div>
+            <div>
+              <div class="cust-name">Cedar Basin Properties</div>
+              <div class="cust-code">CEDA031 · 20GR</div>
+            </div>
+          </div>
+          <div class="cust-right">
+            <div class="cust-orders">4 orders</div>
+            <div class="cust-amt">~$6,200</div>
+          </div>
+        </div>
+
+      </div>
+    </div>
+
+    <!-- Recent Activity -->
+    <div class="panel" style="--panel-dot: var(--blue);">
+      <div class="panel-header">
+        <div class="panel-title">
+          <div class="panel-title-dot"></div>
+          Recent Activity
+        </div>
+        <div class="panel-action">View all</div>
+      </div>
+      <div class="activity-list">
+
+        <div class="activity-item">
+          <div class="act-icon order">📋</div>
+          <div class="act-body">
+            <div class="act-text"><strong>SO-284712</strong> moved to <span style="color:#fbbf24;">Staged</span></div>
+            <div class="act-meta">Midwest Construction LLC · $3,420</div>
+          </div>
+          <div class="act-time">8m ago</div>
+        </div>
+
+        <div class="activity-item">
+          <div class="act-icon wc">🏪</div>
+          <div class="act-body">
+            <div class="act-text">New will call <strong>SO-284808</strong> written for your customer</div>
+            <div class="act-meta">Reynolds Home Builders</div>
+          </div>
+          <div class="act-time">24m ago</div>
+        </div>
+
+        <div class="activity-item">
+          <div class="act-icon quote">📐</div>
+          <div class="act-body">
+            <div class="act-text">Quote <strong>BID-1041</strong> ready for review</div>
+            <div class="act-meta">Drake General Contracting · Framing + Siding</div>
+          </div>
+          <div class="act-time">1h ago</div>
+        </div>
+
+        <div class="activity-item">
+          <div class="act-icon order">📋</div>
+          <div class="act-body">
+            <div class="act-text"><strong>SO-284655</strong> invoiced</div>
+            <div class="act-meta">Pinnacle Kitchens & Bath · $1,890</div>
+          </div>
+          <div class="act-time">2h ago</div>
+        </div>
+
+        <div class="activity-item">
+          <div class="act-icon design">📏</div>
+          <div class="act-body">
+            <div class="act-text">Design <strong>D-2604-008</strong> completed</div>
+            <div class="act-meta">Valley Lumber & Framing</div>
+          </div>
+          <div class="act-time">3h ago</div>
+        </div>
+
+        <div class="activity-item">
+          <div class="act-icon order">📋</div>
+          <div class="act-body">
+            <div class="act-text"><strong>SO-284589</strong> picking started</div>
+            <div class="act-meta">Hawkeye Ag Services · $4,110</div>
+          </div>
+          <div class="act-time">4h ago</div>
+        </div>
+
+        <div class="activity-item">
+          <div class="act-icon wc">🏪</div>
+          <div class="act-body">
+            <div class="act-text">Will call <strong>SO-284501</strong> picked up by customer</div>
+            <div class="act-meta">Cedar Basin Properties</div>
+          </div>
+          <div class="act-time">Yesterday</div>
+        </div>
+
+        <div class="activity-item">
+          <div class="act-icon service">🔧</div>
+          <div class="act-body">
+            <div class="act-text">Service request <strong>#IT-221</strong> opened</div>
+            <div class="act-meta">Printer offline — front counter</div>
+          </div>
+          <div class="act-time">Yesterday</div>
+        </div>
+
+      </div>
+    </div>
+
+  </div>
+
+  <!-- ── Recent Transactions ── -->
+  <div class="section-label" style="margin-top: 32px;">Recent Transactions</div>
+  <div class="panel">
+    <div class="panel-header">
+      <div class="panel-title">
+        <div class="panel-title-dot" style="background: var(--gold-l);"></div>
+        My Last 10 Orders
+      </div>
+      <div class="panel-action">Full history →</div>
+    </div>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>SO #</th>
+            <th>Customer</th>
+            <th>Reference / PO</th>
+            <th>Type</th>
+            <th>Status</th>
+            <th>Expect Date</th>
+            <th>Est. Total</th>
+            <th>Agent</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td class="td-link">284808</td>
+            <td>Reynolds Home Builders</td>
+            <td class="td-muted">RHB-3301</td>
+            <td><span class="badge badge-WC">WC</span></td>
+            <td><span class="badge badge-O">Open</span></td>
+            <td>Apr 19</td>
+            <td>$1,240</td>
+            <td class="td-muted">1</td>
+          </tr>
+          <tr>
+            <td class="td-link">284712</td>
+            <td>Midwest Construction LLC</td>
+            <td class="td-muted">MC-8801</td>
+            <td><span class="sale-type">REG</span></td>
+            <td><span class="badge badge-S">Staged</span></td>
+            <td>Apr 19</td>
+            <td>$3,420</td>
+            <td class="td-muted">1</td>
+          </tr>
+          <tr>
+            <td class="td-link">284701</td>
+            <td>Drake General Contracting</td>
+            <td class="td-muted">—</td>
+            <td><span class="sale-type">REG</span></td>
+            <td><span class="badge badge-K">Picking</span></td>
+            <td>Apr 20</td>
+            <td>$5,780</td>
+            <td class="td-muted">3</td>
+          </tr>
+          <tr>
+            <td class="td-link">284655</td>
+            <td>Pinnacle Kitchens & Bath</td>
+            <td class="td-muted">PKB-442</td>
+            <td><span class="sale-type">REG</span></td>
+            <td><span class="badge badge-I">Invoiced</span></td>
+            <td>Apr 18</td>
+            <td>$1,890</td>
+            <td class="td-muted">1</td>
+          </tr>
+          <tr>
+            <td class="td-link">284589</td>
+            <td>Hawkeye Ag Services</td>
+            <td class="td-muted">HAG-2201</td>
+            <td><span class="sale-type">DEL</span></td>
+            <td><span class="badge badge-K">Picking</span></td>
+            <td>Apr 21</td>
+            <td>$4,110</td>
+            <td class="td-muted">1</td>
+          </tr>
+          <tr>
+            <td class="td-link">284501</td>
+            <td>Cedar Basin Properties</td>
+            <td class="td-muted">CBP-109</td>
+            <td><span class="badge badge-WC">WC</span></td>
+            <td><span class="badge badge-D">Delivered</span></td>
+            <td>Apr 18</td>
+            <td>$870</td>
+            <td class="td-muted">3</td>
+          </tr>
+          <tr>
+            <td class="td-link">284488</td>
+            <td>Valley Lumber & Framing</td>
+            <td class="td-muted">VLF-7710</td>
+            <td><span class="sale-type">REG</span></td>
+            <td><span class="badge badge-O">Open</span></td>
+            <td>Apr 22</td>
+            <td>$6,300</td>
+            <td class="td-muted">1</td>
+          </tr>
+          <tr>
+            <td class="td-link">284402</td>
+            <td>Midwest Construction LLC</td>
+            <td class="td-muted">MC-8798</td>
+            <td><span class="sale-type">DEL</span></td>
+            <td><span class="badge badge-I">Invoiced</span></td>
+            <td>Apr 17</td>
+            <td>$2,155</td>
+            <td class="td-muted">1</td>
+          </tr>
+          <tr>
+            <td class="td-link">284390</td>
+            <td>Reynolds Home Builders</td>
+            <td class="td-muted">RHB-3299</td>
+            <td><span class="sale-type">REG</span></td>
+            <td><span class="badge badge-C">Closed</span></td>
+            <td>Apr 16</td>
+            <td>$4,480</td>
+            <td class="td-muted">3</td>
+          </tr>
+          <tr>
+            <td class="td-link">284315</td>
+            <td>Drake General Contracting</td>
+            <td class="td-muted">—</td>
+            <td><span class="badge badge-Q">Quote</span></td>
+            <td><span class="badge badge-O">Open</span></td>
+            <td>Apr 16</td>
+            <td>$11,200</td>
+            <td class="td-muted">1</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+</div><!-- /page -->
+</body>
+</html>

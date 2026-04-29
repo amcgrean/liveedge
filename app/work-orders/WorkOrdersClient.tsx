@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { TopNav } from '../../src/components/nav/TopNav';
 import type { OpenWorkOrder } from '../api/work-orders/open/route';
 import { usePageTracking } from '@/hooks/usePageTracking';
@@ -56,6 +56,45 @@ interface Assignment {
   notes: string | null;
 }
 
+const PAGE_SIZE = 50;
+
+function WorkOrderTableSkeleton({ isAdmin }: { isAdmin: boolean }) {
+  return (
+    <div className="animate-pulse">
+      {Array.from({ length: 10 }).map((_, i) => (
+        <div key={i} className="border-b border-gray-800 px-4 py-3 flex gap-4 items-center">
+          <div className="h-3.5 bg-gray-800 rounded w-16 shrink-0" />
+          <div className="h-3.5 bg-gray-800 rounded w-16 shrink-0" />
+          <div className="h-3.5 bg-gray-800 rounded w-44 shrink-0" />
+          <div className="h-3.5 bg-gray-800 rounded w-32 shrink-0" />
+          <div className="h-3.5 bg-gray-800 rounded w-16 shrink-0" />
+          {isAdmin && <div className="h-3.5 bg-gray-800 rounded w-12 shrink-0" />}
+          <div className="h-3.5 bg-gray-800 rounded w-24 shrink-0" />
+          <div className="h-3.5 bg-gray-800 rounded w-14 shrink-0" />
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function AssignedTableSkeleton() {
+  return (
+    <div className="animate-pulse">
+      {Array.from({ length: 6 }).map((_, i) => (
+        <div key={i} className="border-b border-gray-800 px-4 py-3 flex gap-4 items-center">
+          <div className="h-3.5 bg-gray-800 rounded w-16 shrink-0" />
+          <div className="h-3.5 bg-gray-800 rounded w-16 shrink-0" />
+          <div className="h-3.5 bg-gray-800 rounded w-44 shrink-0" />
+          <div className="h-3.5 bg-gray-800 rounded w-24 shrink-0" />
+          <div className="h-3.5 bg-gray-800 rounded w-16 shrink-0" />
+          <div className="h-3.5 bg-gray-800 rounded w-20 shrink-0" />
+          <div className="h-3.5 bg-gray-800 rounded w-20 shrink-0" />
+        </div>
+      ))}
+    </div>
+  );
+}
+
 export default function WorkOrdersClient({ isAdmin, userBranch, builders, userName, userRole }: Props) {
   usePageTracking();
   const [tab, setTab] = useState<Tab>('board');
@@ -66,6 +105,7 @@ export default function WorkOrdersClient({ isAdmin, userBranch, builders, userNa
   const [workOrders, setWorkOrders] = useState<OpenWorkOrder[]>([]);
   const [loadingBoard, setLoadingBoard] = useState(false);
   const [boardError, setBoardError] = useState('');
+  const [boardPage, setBoardPage] = useState(0);
 
   // Search state
   const [soQuery, setSoQuery] = useState('');
@@ -85,6 +125,7 @@ export default function WorkOrdersClient({ isAdmin, userBranch, builders, userNa
   const loadBoard = useCallback(async () => {
     setLoadingBoard(true);
     setBoardError('');
+    setBoardPage(0);
     try {
       const params = new URLSearchParams({ limit: '500' });
       if (branchFilter) params.set('branch', branchFilter);
@@ -171,7 +212,13 @@ export default function WorkOrdersClient({ isAdmin, userBranch, builders, userNa
 
   // Collect departments from loaded work orders
   const departments = [...new Set(workOrders.map((w) => w.department).filter(Boolean))].sort();
-  const branches = [...new Set(workOrders.map((w) => w.branch_code).filter(Boolean))].sort();
+
+  // Pagination
+  const totalPages = Math.ceil(workOrders.length / PAGE_SIZE);
+  const pagedWorkOrders = useMemo(
+    () => workOrders.slice(boardPage * PAGE_SIZE, (boardPage + 1) * PAGE_SIZE),
+    [workOrders, boardPage]
+  );
 
   return (
     <>
@@ -249,11 +296,17 @@ export default function WorkOrdersClient({ isAdmin, userBranch, builders, userNa
 
             <div className="bg-gray-900 border border-gray-700 rounded-xl overflow-hidden">
               <div className="px-4 py-3 border-b border-gray-700 text-sm text-gray-400">
-                {loadingBoard
-                  ? 'Loading…'
-                  : `${workOrders.length} open work order${workOrders.length !== 1 ? 's' : ''}${branchFilter ? ` — ${branchFilter}` : ''}`
+                {loadingBoard && workOrders.length === 0
+                  ? <div className="animate-pulse h-4 bg-gray-800 rounded w-40" />
+                  : `${workOrders.length} open work order${workOrders.length !== 1 ? 's' : ''}${branchFilter ? ` — ${branchFilter}` : ''}${totalPages > 1 ? ` · page ${boardPage + 1} of ${totalPages}` : ''}`
                 }
               </div>
+
+              {/* Skeleton on initial load */}
+              {loadingBoard && workOrders.length === 0 && (
+                <WorkOrderTableSkeleton isAdmin={isAdmin} />
+              )}
+
               {workOrders.length > 0 && (
                 <div className="overflow-x-auto">
                   <table className="w-full text-sm">
@@ -270,7 +323,7 @@ export default function WorkOrdersClient({ isAdmin, userBranch, builders, userNa
                       </tr>
                     </thead>
                     <tbody>
-                      {workOrders.map((wo) => (
+                      {pagedWorkOrders.map((wo) => (
                         <tr key={wo.wo_id} className="border-b border-gray-800 hover:bg-gray-800/40 transition-colors">
                           <td className="px-4 py-2.5 font-mono text-cyan-300 whitespace-nowrap">{wo.wo_id}</td>
                           <td className="px-4 py-2.5 font-mono text-gray-300 whitespace-nowrap">{wo.so_number}</td>
@@ -335,8 +388,50 @@ export default function WorkOrdersClient({ isAdmin, userBranch, builders, userNa
                   </table>
                 </div>
               )}
+
               {!loadingBoard && workOrders.length === 0 && !boardError && (
                 <div className="px-4 py-8 text-center text-sm text-gray-500">No open work orders found.</div>
+              )}
+
+              {/* Pagination controls */}
+              {totalPages > 1 && (
+                <div className="px-4 py-3 border-t border-gray-700 flex items-center justify-between text-sm">
+                  <span className="text-gray-500 text-xs">
+                    Showing {boardPage * PAGE_SIZE + 1}–{Math.min((boardPage + 1) * PAGE_SIZE, workOrders.length)} of {workOrders.length}
+                  </span>
+                  <div className="flex gap-1">
+                    <button
+                      onClick={() => setBoardPage((p) => Math.max(0, p - 1))}
+                      disabled={boardPage === 0}
+                      className="px-3 py-1 rounded bg-gray-800 text-gray-300 hover:text-white disabled:opacity-40 transition text-xs"
+                    >
+                      ← Prev
+                    </button>
+                    {Array.from({ length: Math.min(totalPages, 7) }).map((_, i) => {
+                      const pageIdx = totalPages <= 7 ? i : Math.max(0, Math.min(boardPage - 3, totalPages - 7)) + i;
+                      return (
+                        <button
+                          key={pageIdx}
+                          onClick={() => setBoardPage(pageIdx)}
+                          className={`px-2.5 py-1 rounded text-xs transition ${
+                            pageIdx === boardPage
+                              ? 'bg-cyan-700 text-white'
+                              : 'bg-gray-800 text-gray-400 hover:text-white'
+                          }`}
+                        >
+                          {pageIdx + 1}
+                        </button>
+                      );
+                    })}
+                    <button
+                      onClick={() => setBoardPage((p) => Math.min(totalPages - 1, p + 1))}
+                      disabled={boardPage >= totalPages - 1}
+                      className="px-3 py-1 rounded bg-gray-800 text-gray-300 hover:text-white disabled:opacity-40 transition text-xs"
+                    >
+                      Next →
+                    </button>
+                  </div>
+                </div>
               )}
             </div>
           </>
@@ -368,7 +463,24 @@ export default function WorkOrdersClient({ isAdmin, userBranch, builders, userNa
               <div className="p-3 bg-red-900/50 border border-red-700 rounded text-red-300 text-sm">{searchError}</div>
             )}
 
-            {searchResults !== null && (
+            {searching && (
+              <div className="bg-gray-900 border border-gray-700 rounded-xl overflow-hidden animate-pulse">
+                <div className="px-4 py-3 border-b border-gray-700">
+                  <div className="h-4 bg-gray-800 rounded w-48" />
+                </div>
+                {Array.from({ length: 4 }).map((_, i) => (
+                  <div key={i} className="border-b border-gray-800 px-4 py-3 flex gap-4 items-center">
+                    <div className="h-3.5 bg-gray-800 rounded w-16 shrink-0" />
+                    <div className="h-3.5 bg-gray-800 rounded w-20 shrink-0" />
+                    <div className="h-3.5 bg-gray-800 rounded w-48 shrink-0" />
+                    <div className="h-3.5 bg-gray-800 rounded w-16 shrink-0" />
+                    <div className="h-3.5 bg-gray-800 rounded w-20 shrink-0" />
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {searchResults !== null && !searching && (
               <div className="bg-gray-900 border border-gray-700 rounded-xl overflow-hidden">
                 <div className="px-4 py-3 border-b border-gray-700 text-sm text-gray-400">
                   SO {soQuery} — {searchResults.length} work order{searchResults.length !== 1 ? 's' : ''}
@@ -454,7 +566,10 @@ export default function WorkOrdersClient({ isAdmin, userBranch, builders, userNa
           <div className="bg-gray-900 border border-gray-700 rounded-xl overflow-hidden">
             <div className="px-4 py-3 border-b border-gray-700 flex items-center justify-between">
               <span className="text-sm text-gray-400">
-                {loadingAssigned ? 'Loading…' : `${assignments.length} active assignment${assignments.length !== 1 ? 's' : ''}`}
+                {loadingAssigned
+                  ? <div className="animate-pulse h-4 bg-gray-800 rounded w-36 inline-block" />
+                  : `${assignments.length} active assignment${assignments.length !== 1 ? 's' : ''}`
+                }
               </span>
               <button
                 onClick={loadAssigned}
@@ -464,6 +579,11 @@ export default function WorkOrdersClient({ isAdmin, userBranch, builders, userNa
                 Refresh
               </button>
             </div>
+
+            {loadingAssigned && assignments.length === 0 && (
+              <AssignedTableSkeleton />
+            )}
+
             {assignments.length === 0 && !loadingAssigned ? (
               <div className="px-4 py-8 text-center text-sm text-gray-500">No active assignments.</div>
             ) : (

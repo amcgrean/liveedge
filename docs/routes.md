@@ -1,7 +1,7 @@
 # LiveEdge Route Reference
 
-**Last audited: 2026-04-17 (transfers added 2026-04-17)**
-**API routes: 148 | Page routes: 78**
+**Last audited: 2026-04-28 (scorecard, management, hubbell, jobs added)**
+**API routes: ~175 | Page routes: ~95**
 
 All API routes require a valid NextAuth session (`session?.user`) unless noted as **public**.
 Branch-scoped routes respect the active branch cookie; admin users see all branches.
@@ -81,6 +81,14 @@ Branch-scoped routes respect the active branch cookie; admin users see all branc
 
 ---
 
+## Sales Hub (`/api/sales/hub`)
+
+| Route | Methods | Purpose | Notes |
+|-------|---------|---------|-------|
+| `/api/sales/hub` | GET | Personalized sales rep dashboard data | KPIs (open orders, will calls, quotes, designs, POs), top customers (30d), recent transactions, recent bid/design activity. Resolves rep via `agent_id` or `username` from `app_users`. Branch-scoped |
+
+---
+
 ## Sales (`/api/sales/`)
 
 | Route | Methods | Purpose | Notes |
@@ -90,7 +98,6 @@ Branch-scoped routes respect the active branch cookie; admin users see all branc
 | `/api/sales/orders/[so_number]/shipments` | GET | Shipment history | Invoice/ship dates from `agility_shipments` |
 | `/api/sales/orders/[so_number]/push-to-erp` | POST | Manual Agility sync | Calls `agilityApi.call()` passthrough |
 | `/api/sales/metrics` | GET | Branch sales KPIs | YTD/month revenue, order counts. Also used by `/sales/reports` |
-| `/api/sales/rep-metrics` | GET | Salesperson performance | Per-rep metrics. Used by `/sales/rep-dashboard` |
 | `/api/sales/reports` | GET | Custom report data | Exportable |
 | `/api/sales/history` | GET | Customer purchase history | Invoiced/closed orders |
 | `/api/sales/products` | GET | Item master search | Reads `agility_items`. Stale mirror — use `/api/erp/price-check` for live pricing |
@@ -106,7 +113,7 @@ Branch-scoped routes respect the active branch cookie; admin users see all branc
 
 | Route | Methods | Purpose | Notes |
 |-------|---------|---------|-------|
-| `/api/purchasing/pos/open` | GET | Open purchase orders | Uses `app_po_search` view |
+| `/api/purchasing/pos/open` | GET | Open purchase orders | Queries `agility_po_header` directly — `app_po_search` view does not exist |
 | `/api/purchasing/pos/[po]` | GET | PO detail + receipt history | Line items + receiving summary |
 | `/api/purchasing/pos/[po]/notes` | GET POST | PO internal notes | |
 | `/api/purchasing/pos/[po]/live` | GET | Real-time PO status | Live Agility `purchaseOrderGet()` |
@@ -273,6 +280,37 @@ Branch-scoped routes respect the active branch cookie; admin users see all branc
 
 ---
 
+## Management & Scorecard (`/api/management/`, `/api/scorecard/`)
+
+| Route | Methods | Purpose | Notes |
+|-------|---------|---------|-------|
+| `/api/management` | GET | Management dashboard KPIs | 3-year revenue/GM%, branch comparison, sale-type breakdown. Admin/management/ops/supervisor |
+| `/api/management/forecast` | GET | Open-order forecast data | Aggregated by branch + date. Requires admin/management |
+| `/api/scorecard` | GET | Customer scorecard list | All customers with YTD sales, GM%, VA%, Non-Stock%. Sortable |
+| `/api/scorecard/overview` | GET | Company-level aggregate scorecard | All branches combined, 3-year comparison |
+| `/api/scorecard/branch/[branchId]` | GET | Branch scorecard | Per-branch 3-year KPIs + top customers + product mix |
+| `/api/scorecard/rep` | GET | All-rep scorecard | Assigned book vs written-up sales per rep |
+| `/api/scorecard/rep/[repCode]` | GET | Rep detail scorecard | Per-rep 3-year + product mix. `repCode` = ERP rep code (uppercase) |
+| `/api/scorecard/product` | GET | Product group scorecard | Product-mix treemap + concentration Pareto. All customers |
+| `/api/scorecard/[customerId]` | GET | Customer detail scorecard | 3-year KPIs, product mix, days-to-pay, sale-type breakdown |
+
+---
+
+## Admin Jobs & Hubbell (`/api/admin/jobs/`, `/api/admin/hubbell/`, `/api/inbound/`)
+
+| Route | Methods | Purpose | Notes |
+|-------|---------|---------|-------|
+| `/api/admin/jobs` | GET | Job review list | Paginated SO list with GPS match status. Search + filter by branch/status/GPS. Admin only |
+| `/api/admin/jobs/[so_id]` | GET | Job detail | SO header, customer card, GPS coordinates, ship-to address. Admin only |
+| `/api/admin/hubbell/emails` | GET | Hubbell email inbox | Tabbed by match status (Pending/Matched/Confirmed/No Match/Rejected). Paginated 50/page |
+| `/api/admin/hubbell/emails/[id]` | GET POST | Email detail + actions | POST body: `{ action: 'confirm' | 'reject' | 'reset', soId? }` |
+| `/api/admin/hubbell/jobs` | GET | Hubbell jobs list | One row per job site, aggregates confirmed emails |
+| `/api/admin/hubbell/jobs/[soId]` | GET | Hubbell job detail | SO header, reconciliation table, unmatched email warnings |
+| `/api/inbound/hubbell` | POST | Hubbell inbound email webhook | Resend `email.received` events to `hubbell@beisser.cloud`. Stores in `bids.hubbell_emails` |
+| `/api/inbound/credits` | POST | RMA credits inbound email webhook | Resend events to `*@rma.beisser.cloud`. Uploads attachments to R2, upserts `public.credit_images` |
+
+---
+
 ## Admin (`/api/admin/`)
 
 | Route | Methods | Purpose | Notes |
@@ -282,8 +320,8 @@ Branch-scoped routes respect the active branch cookie; admin users see all branc
 | `/api/admin/users/[id]/permissions` | GET PATCH | Role management | Array-based roles: admin, estimator, purchasing, dispatch, ops, warehouse, supervisor |
 | `/api/admin/users/export` | GET | Export user list | CSV / JSON |
 | `/api/admin/users/rehash-passwords` | POST | Batch upgrade bcrypt rounds | One-time utility |
-| `/api/admin/app-users` | GET PUT | OTP user list / upsert | Reads `public.app_users` directly. Subset of `/api/admin/users` functionality — no frontend page uses this directly |
-| `/api/admin/app-users/[id]` | PATCH | Update individual OTP user | |
+| `/api/admin/app-users` | GET PUT | OTP user list / upsert | **Likely unused** — frontend page `/admin/app-users` was deleted (2026-04-17). `/api/admin/users` covers the same table with full CRUD |
+| `/api/admin/app-users/[id]` | PATCH | Update individual OTP user | **Likely unused** — same as above |
 | `/api/admin/bid-fields` | GET POST | Custom bid field definitions | |
 | `/api/admin/bid-fields/[id]` | PATCH DELETE | Update / delete bid field | |
 | `/api/admin/notifications` | GET POST | Create notifications | Push / in-app |
@@ -323,6 +361,8 @@ Branch-scoped routes respect the active branch cookie; admin users see all branc
 |------|-------|----------|
 | Home / Dashboard | `/` | `/api/home` |
 | Legacy Dashboard (redirect) | `/dashboard` | Redirects to `/` |
+| Management Dashboard | `/management` | `/api/management` |
+| Management Forecast | `/management/forecast` | `/api/management/forecast` |
 | Global Search | `/search` | `/api/search` |
 | All Bids | `/all-bids` | `/api/all-bids` |
 | Help | `/help` | Static content, no API |
@@ -354,7 +394,7 @@ Branch-scoped routes respect the active branch cookie; admin users see all branc
 ### Sales
 | Page | Route | API Used |
 |------|-------|----------|
-| Sales Hub | `/sales` | `/api/sales/metrics` |
+| Sales Hub | `/sales` | `/api/sales/hub` |
 | Customers | `/sales/customers` | `/api/sales/customers` |
 | Customer Detail | `/sales/customers/[code]` | `/api/sales/customers/[code]`, AR, notes |
 | Sales Orders | `/sales/orders/[so_number]` | `/api/sales/orders/[so_number]` |
@@ -364,7 +404,6 @@ Branch-scoped routes respect the active branch cookie; admin users see all branc
 | Purchase History | `/sales/history` | `/api/sales/history` |
 | Products & Stock | `/sales/products` | `/api/sales/products` |
 | Reports | `/sales/reports` | `/api/sales/metrics`, `/api/sales/reports` |
-| Rep Dashboard | `/sales/rep-dashboard` | `/api/sales/rep-metrics` |
 
 ### Purchasing
 | Page | Route | API Used |
@@ -379,12 +418,23 @@ Branch-scoped routes respect the active branch cookie; admin users see all branc
 | Buyer Workspace | `/purchasing/workspace` | `/api/purchasing/pos/open`, `/api/purchasing/submissions` |
 | Command Center | `/purchasing/manage` | `/api/purchasing/pos/open`, `/api/purchasing/exceptions` |
 
+### Customer Scorecard
+| Page | Route | API Used |
+|------|-------|----------|
+| Scorecard List | `/scorecard` | `/api/scorecard` |
+| Company Overview | `/scorecard/overview` | `/api/scorecard/overview` |
+| Branch Scorecard | `/scorecard/branch/[branchId]` | `/api/scorecard/branch/[branchId]` |
+| All-Rep Scorecard | `/scorecard/rep` | `/api/scorecard/rep` |
+| Rep Detail | `/scorecard/rep/[repCode]` | `/api/scorecard/rep/[repCode]` |
+| Product Scorecard | `/scorecard/product` | `/api/scorecard/product` |
+| Customer Detail | `/scorecard/[customerId]` | `/api/scorecard/[customerId]` |
+
 ### Estimating & Takeoff
 | Page | Route | API Used |
 |------|-------|----------|
 | Estimating App (legacy) | `/estimating` | Legacy AJAX (Flask-era) |
-| Bids List | `/bids` | `/api/bids` |
-| Legacy Bids | `/legacy-bids` | `/api/legacy-bids` |
+| Bids Hub (tabbed) | `/bids` | `/api/legacy-bids`, `/api/bids`, `/api/all-bids` |
+| Legacy Bids (redirects) | `/legacy-bids` | Redirects to `/bids?tab=open` |
 | Legacy Bid Detail | `/legacy-bids/[id]` | `/api/legacy-bids/[id]` |
 | Add Legacy Bid | `/legacy-bids/add` | `/api/legacy-bids` |
 | Completed Bids | `/legacy-bids/completed` | `/api/legacy-bids?status=completed` |
@@ -427,6 +477,12 @@ Branch-scoped routes respect the active branch cookie; admin users see all branc
 | Audit Log | `/admin/audit` | `/api/admin/audit` |
 | ERP Sync | `/admin/erp` | `/api/admin/erp/*`, `/api/admin/agility/*` |
 | Analytics | `/admin/analytics` | `/api/admin/analytics` |
+| Job Review | `/admin/jobs` | `/api/admin/jobs` |
+| Job Detail | `/admin/jobs/[so_id]` | `/api/admin/jobs/[so_id]` |
+| Hubbell Inbox | `/admin/hubbell` | `/api/admin/hubbell/emails` |
+| Hubbell Email Detail | `/admin/hubbell/[id]` | `/api/admin/hubbell/emails/[id]` |
+| Hubbell Jobs | `/admin/hubbell/jobs` | `/api/admin/hubbell/jobs` |
+| Hubbell Job Detail | `/admin/hubbell/jobs/[soId]` | `/api/admin/hubbell/jobs/[soId]` |
 
 ### Floor Displays (low/no auth)
 | Page | Route | Auth | Notes |

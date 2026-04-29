@@ -46,9 +46,9 @@ const STATUS_FILTERS = [
   { value: 'archived', label: 'Archived' },
 ];
 
-interface Props { session: Session; }
+interface Props { session: Session; embedded?: boolean; }
 
-export default function BidsListClient({ session }: Props) {
+export default function BidsListClient({ session, embedded = false }: Props) {
   usePageTracking();
   const [bids, setBids] = useState<BidRow[]>([]);
   const [loading, setLoading] = useState(true);
@@ -110,14 +110,12 @@ export default function BidsListClient({ session }: Props) {
     return actions;
   };
 
-  return (
-    <div>
-      <TopNav userName={session.user?.name} userRole={userRole} />
-      <div className="max-w-7xl mx-auto px-4 py-6">
+  const body = (
+    <>
         {/* Header */}
         <div className="flex items-center justify-between mb-6">
           <div>
-            <h1 className="text-2xl font-bold text-white">Bids</h1>
+            {!embedded && <h1 className="text-2xl font-bold text-white">Bids</h1>}
             <p className="text-slate-400 text-sm mt-0.5">All saved estimates</p>
           </div>
           <div className="flex gap-3">
@@ -270,7 +268,15 @@ export default function BidsListClient({ session }: Props) {
         <div className="mt-3 text-xs text-slate-500">
           {bids.length} bid{bids.length !== 1 ? 's' : ''}
         </div>
-      </div>
+    </>
+  );
+
+  if (embedded) return body;
+
+  return (
+    <div>
+      <TopNav userName={session.user?.name} userRole={userRole} />
+      <div className="max-w-7xl mx-auto px-4 py-6">{body}</div>
     </div>
   );
 }

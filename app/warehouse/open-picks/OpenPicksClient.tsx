@@ -82,6 +82,49 @@ export default function OpenPicksClient({ isAdmin }: Props) {
         </div>
       </div>
 
+      {/* Skeleton on initial load */}
+      {loading && pickers.length === 0 && (
+        <div className="space-y-6 animate-pulse">
+          {/* Active picker cards skeleton */}
+          <div>
+            <div className="h-4 bg-slate-800 rounded w-36 mb-3" />
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+              {[1, 2, 3].map((i) => (
+                <div key={i} className="bg-slate-900 border border-white/10 rounded-xl p-4">
+                  <div className="flex items-center justify-between mb-3">
+                    <div className="space-y-1.5">
+                      <div className="h-4 bg-slate-800 rounded w-28" />
+                      <div className="h-3 bg-slate-800 rounded w-16" />
+                    </div>
+                    <div className="h-5 bg-slate-800 rounded w-16" />
+                  </div>
+                  <div className="border-t border-white/5 pt-2 space-y-2">
+                    <div className="h-3 bg-slate-800 rounded w-20" />
+                    <div className="h-3 bg-slate-800 rounded w-24" />
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+          {/* All pickers table skeleton */}
+          <div>
+            <div className="h-4 bg-slate-800 rounded w-44 mb-3" />
+            <div className="bg-slate-900 border border-white/10 rounded-xl overflow-hidden">
+              {Array.from({ length: 6 }).map((_, i) => (
+                <div key={i} className="border-b border-white/5 px-4 py-3 flex gap-6 items-center">
+                  <div className="h-4 bg-slate-800 rounded w-28" />
+                  <div className="h-3 bg-slate-800 rounded w-16" />
+                  <div className="h-5 bg-slate-800 rounded w-14" />
+                  <div className="h-4 bg-slate-800 rounded w-8" />
+                  <div className="h-4 bg-slate-800 rounded w-8" />
+                  <div className="h-3 bg-slate-800 rounded w-14 ml-auto" />
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Active pickers */}
       {activePickers.length > 0 && (
         <div>
@@ -138,53 +181,55 @@ export default function OpenPicksClient({ isAdmin }: Props) {
       )}
 
       {/* All pickers table */}
-      <div>
-        <h2 className="text-sm font-semibold text-slate-400 mb-3 flex items-center gap-2">
-          <User className="w-4 h-4" /> All Pickers — Pick Counts
-        </h2>
-        <div className="bg-slate-900 border border-white/10 rounded-xl overflow-hidden">
-          {pickers.length === 0 && !loading ? (
-            <div className="px-4 py-10 text-center text-slate-500">No pickers found</div>
-          ) : (
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b border-white/10 text-left">
-                  <th className="px-4 py-3 text-xs font-semibold text-slate-400 uppercase">Picker</th>
-                  <th className="px-4 py-3 text-xs font-semibold text-slate-400 uppercase">Type</th>
-                  <th className="px-4 py-3 text-xs font-semibold text-slate-400 uppercase">Status</th>
-                  <th className="px-4 py-3 text-xs font-semibold text-slate-400 uppercase">Today</th>
-                  <th className="px-4 py-3 text-xs font-semibold text-slate-400 uppercase">5-Day</th>
-                  <th className="px-4 py-3"></th>
-                </tr>
-              </thead>
-              <tbody>
-                {pickers.map((p) => (
-                  <tr key={p.picker_id} className="border-b border-white/5 hover:bg-slate-800/50">
-                    <td className="px-4 py-3 text-white font-medium">{p.picker_name}</td>
-                    <td className="px-4 py-3 text-slate-400 text-xs">{p.user_type ?? '—'}</td>
-                    <td className="px-4 py-3">
-                      <span className={`inline-flex px-2 py-0.5 rounded text-xs font-medium ${
-                        p.active_picks.length > 0
-                          ? 'bg-green-500/20 text-green-300'
-                          : 'bg-slate-700 text-slate-400'
-                      }`}>
-                        {p.active_picks.length > 0 ? `PICKING (${p.active_picks.length})` : 'IDLE'}
-                      </span>
-                    </td>
-                    <td className="px-4 py-3 text-slate-300 font-medium">{p.today_count}</td>
-                    <td className="px-4 py-3 text-slate-300">{p.five_day_count}</td>
-                    <td className="px-4 py-3">
-                      <Link href={`/warehouse/pickers/${p.picker_id}`} className="text-xs text-cyan-400 hover:text-cyan-300 transition">
-                        Details
-                      </Link>
-                    </td>
+      {!loading && (
+        <div>
+          <h2 className="text-sm font-semibold text-slate-400 mb-3 flex items-center gap-2">
+            <User className="w-4 h-4" /> All Pickers — Pick Counts
+          </h2>
+          <div className="bg-slate-900 border border-white/10 rounded-xl overflow-hidden">
+            {pickers.length === 0 ? (
+              <div className="px-4 py-10 text-center text-slate-500">No pickers found</div>
+            ) : (
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b border-white/10 text-left">
+                    <th className="px-4 py-3 text-xs font-semibold text-slate-400 uppercase">Picker</th>
+                    <th className="px-4 py-3 text-xs font-semibold text-slate-400 uppercase">Type</th>
+                    <th className="px-4 py-3 text-xs font-semibold text-slate-400 uppercase">Status</th>
+                    <th className="px-4 py-3 text-xs font-semibold text-slate-400 uppercase">Today</th>
+                    <th className="px-4 py-3 text-xs font-semibold text-slate-400 uppercase">5-Day</th>
+                    <th className="px-4 py-3"></th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          )}
+                </thead>
+                <tbody>
+                  {pickers.map((p) => (
+                    <tr key={p.picker_id} className="border-b border-white/5 hover:bg-slate-800/50">
+                      <td className="px-4 py-3 text-white font-medium">{p.picker_name}</td>
+                      <td className="px-4 py-3 text-slate-400 text-xs">{p.user_type ?? '—'}</td>
+                      <td className="px-4 py-3">
+                        <span className={`inline-flex px-2 py-0.5 rounded text-xs font-medium ${
+                          p.active_picks.length > 0
+                            ? 'bg-green-500/20 text-green-300'
+                            : 'bg-slate-700 text-slate-400'
+                        }`}>
+                          {p.active_picks.length > 0 ? `PICKING (${p.active_picks.length})` : 'IDLE'}
+                        </span>
+                      </td>
+                      <td className="px-4 py-3 text-slate-300 font-medium">{p.today_count}</td>
+                      <td className="px-4 py-3 text-slate-300">{p.five_day_count}</td>
+                      <td className="px-4 py-3">
+                        <Link href={`/warehouse/pickers/${p.picker_id}`} className="text-xs text-cyan-400 hover:text-cyan-300 transition">
+                          Details
+                        </Link>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+          </div>
         </div>
-      </div>
+      )}
     </div>
   );
 }

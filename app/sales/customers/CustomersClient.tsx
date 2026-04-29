@@ -2,30 +2,25 @@
 
 import { useState, useCallback } from 'react';
 import Link from 'next/link';
-import { Search, ExternalLink } from 'lucide-react';
+import { Search, User } from 'lucide-react';
 import { usePageTracking } from '@/hooks/usePageTracking';
 
 type Customer = {
   cust_code: string;
   cust_name: string | null;
-  branch_code: string | null;
-  phone: string | null;
-  email: string | null;
+  rep_1: string | null;
 };
-
-const BRANCHES = ['', '10FD', '20GR', '25BW', '40CV'];
 
 export default function CustomersClient() {
   usePageTracking();
   const [q, setQ] = useState('');
-  const [branch, setBranch] = useState('');
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [loading, setLoading] = useState(false);
   const [searched, setSearched] = useState(false);
   const [error, setError] = useState('');
 
-  const search = useCallback(async (query: string, br: string) => {
-    if (query.length < 2 && !br) {
+  const search = useCallback(async (query: string) => {
+    if (query.length < 2) {
       setCustomers([]);
       setSearched(false);
       return;
@@ -34,8 +29,7 @@ export default function CustomersClient() {
     setError('');
     try {
       const sp = new URLSearchParams();
-      if (query) sp.set('q', query);
-      if (br) sp.set('branch', br);
+      sp.set('q', query);
       const res = await fetch(`/api/sales/customers?${sp}`);
       if (!res.ok) throw new Error('Search failed');
       const data = await res.json() as { customers: Customer[] };
@@ -50,39 +44,25 @@ export default function CustomersClient() {
 
   function handleQChange(v: string) {
     setQ(v);
-    search(v, branch);
-  }
-
-  function handleBranchChange(v: string) {
-    setBranch(v);
-    search(q, v);
+    search(v);
   }
 
   return (
-    <div className="max-w-5xl mx-auto px-4 py-8">
-      <h1 className="text-2xl font-bold text-cyan-400 mb-6">Customers</h1>
+    <div className="max-w-5xl mx-auto px-4 py-6 sm:py-8">
+      <h1 className="text-2xl font-bold text-cyan-400 mb-4 sm:mb-6">Customers</h1>
 
-      {/* Filters */}
-      <div className="flex flex-wrap gap-3 mb-6">
-        <div className="relative flex-1 min-w-[200px]">
+      <div className="mb-4 sm:mb-6">
+        <div className="relative">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-500" />
           <input
             type="text"
             value={q}
             onChange={(e) => handleQChange(e.target.value)}
             placeholder="Search by name or code..."
-            className="w-full pl-9 pr-3 py-2 bg-gray-800 border border-gray-700 rounded text-white placeholder-gray-500 focus:outline-none focus:border-cyan-500 text-sm"
+            className="w-full pl-9 pr-3 py-2.5 bg-gray-800 border border-gray-700 rounded text-white placeholder-gray-500 focus:outline-none focus:border-cyan-500 text-sm"
+            autoFocus
           />
         </div>
-        <select
-          value={branch}
-          onChange={(e) => handleBranchChange(e.target.value)}
-          className="bg-gray-800 border border-gray-700 rounded px-3 py-2 text-sm text-white"
-        >
-          {BRANCHES.map((b) => (
-            <option key={b} value={b}>{b || 'All Branches'}</option>
-          ))}
-        </select>
       </div>
 
       {error && <p className="text-red-400 text-sm mb-4">{error}</p>}
@@ -98,38 +78,34 @@ export default function CustomersClient() {
       )}
 
       {customers.length > 0 && (
-        <div className="bg-gray-900 border border-gray-800 rounded-lg overflow-hidden">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b border-gray-800 text-left text-xs text-gray-500 uppercase tracking-wider">
-                <th className="px-4 py-3">Code</th>
-                <th className="px-4 py-3">Name</th>
-                <th className="px-4 py-3">Branch</th>
-                <th className="px-4 py-3">Phone</th>
-                <th className="px-4 py-3"></th>
-              </tr>
-            </thead>
-            <tbody>
-              {customers.map((c) => (
-                <tr key={c.cust_code} className="border-b border-gray-800/50 hover:bg-gray-800/30 transition-colors">
-                  <td className="px-4 py-3 font-mono text-cyan-300 text-xs">{c.cust_code}</td>
-                  <td className="px-4 py-3 text-white font-medium">{c.cust_name ?? '—'}</td>
-                  <td className="px-4 py-3 text-gray-400">{c.branch_code ?? '—'}</td>
-                  <td className="px-4 py-3 text-gray-400">{c.phone ?? '—'}</td>
-                  <td className="px-4 py-3 text-right">
-                    <Link
-                      href={`/sales/customers/${encodeURIComponent(c.cust_code)}`}
-                      className="inline-flex items-center gap-1 text-xs text-cyan-400 hover:text-cyan-300"
-                    >
-                      Profile <ExternalLink className="w-3 h-3" />
-                    </Link>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-          <div className="px-4 py-2 text-xs text-gray-600">{customers.length} customer{customers.length !== 1 ? 's' : ''}</div>
-        </div>
+        <>
+          <ul className="grid grid-cols-1 sm:grid-cols-2 gap-2 sm:gap-3">
+            {customers.map((c) => (
+              <li key={c.cust_code}>
+                <Link
+                  href={`/sales/customers/${encodeURIComponent(c.cust_code)}`}
+                  className="block bg-gray-900 border border-gray-800 rounded-lg p-4 hover:border-cyan-600 hover:bg-gray-800/50 active:bg-gray-800 transition-colors"
+                >
+                  <div className="text-base sm:text-lg font-semibold text-white leading-tight">
+                    {c.cust_name ?? '—'}
+                  </div>
+                  <div className="mt-1 flex items-center justify-between gap-2 text-xs">
+                    <span className="font-mono text-cyan-300">{c.cust_code}</span>
+                    {c.rep_1 && (
+                      <span className="inline-flex items-center gap-1 text-gray-400">
+                        <User className="w-3 h-3" />
+                        {c.rep_1}
+                      </span>
+                    )}
+                  </div>
+                </Link>
+              </li>
+            ))}
+          </ul>
+          <div className="mt-3 text-xs text-gray-600">
+            {customers.length} customer{customers.length !== 1 ? 's' : ''}
+          </div>
+        </>
       )}
     </div>
   );

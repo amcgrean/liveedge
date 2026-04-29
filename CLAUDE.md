@@ -23,10 +23,10 @@ All LiveEdge API routes now query the optimized `agility_*` tables instead of th
 
 | agility_ table | Replaces | Key differences |
 |----------------|----------|-----------------|
-| `agility_so_header` | `erp_mirror_so_header` | Has `cust_name`, `cust_code`, `shipto_*` denormalized — no JOIN to customers/shipto needed. Missing `invoice_date`/`ship_date`/`terms` (now in `agility_shipments`) |
+| `agility_so_header` | `erp_mirror_so_header` | Has `cust_name`, `cust_code`, `shipto_*` denormalized — no JOIN to customers/shipto needed. Missing `invoice_date`/`ship_date`/`terms` (now in `agility_shipments`). Date column is `created_date` (NOT `order_date`). Credit memos: `sale_type = 'Credit'`, open status = `'B'` (blank). |
 | `agility_so_lines` | `erp_mirror_so_detail` | Has `item_code`, `handling_code` inline — no JOIN to items needed for most queries |
 | `agility_customers` | `erp_mirror_cust` + `erp_mirror_cust_shipto` | One row per ship-to address (seq_num≥1). Use `GROUP BY cust_code` or `DISTINCT ON` to get one row per customer |
-| `agility_items` | `erp_mirror_item` + `erp_mirror_item_branch` | Has `handling_code`, `qty_on_hand`, `default_location` inline. One row per item per branch (`system_id`) |
+| `agility_items` | `erp_mirror_item` + `erp_mirror_item_branch` | Item master — one row per item. Has `product_major_code`, `product_major`, `product_minor_code`, `product_minor`. Branch-specific stock data (qty_on_hand, default_location, handling_code, active_flag, stock, system_id) is in `agility_item_branch` — join on `agility_item_branch.item_code = agility_items.item`. **Do NOT filter by branch on `agility_items`** — use `agility_item_branch.system_id`. `agility_items.system_id` = company code ('00CO'), not branch. |
 | `agility_shipments` | `erp_mirror_shipments_header` | Same fields. Source for `invoice_date`, `ship_date` per SO |
 | `agility_wo_header` | `erp_mirror_wo_header` | `source_id` is INTEGER (cast with `::text` for joins). Has `item_code`, `description` inline |
 | `agility_picks` | `erp_mirror_pick_header` + `erp_mirror_pick_detail` | Combined — one row per pick line. `tran_id` = SO number, `tran_type` = 'SO' |
@@ -37,7 +37,7 @@ All LiveEdge API routes now query the optimized `agility_*` tables instead of th
 | `agility_suppliers` | `erp_mirror_suppname` + `erp_mirror_supp_ship_from` | Ship-from fields inline per row |
 | `agility_receiving_header` | `erp_mirror_receiving_header` | Same structure |
 | `agility_receiving_lines` | `erp_mirror_receiving_detail` | Same structure |
-| `agility_ar_open` | (new) | AR open items — `cust_key`, `ref_num`, `open_amt`, `open_flag` |
+| `agility_ar_open` | (new) | AR open items — `cust_key`, `ref_num`, `open_amt`, `open_flag`. **`cust_key` ≠ `cust_code`** — must resolve via `agility_customers` LATERAL join first (see AR query pattern below) |
 
 App views backed by agility_ tables (via the old erp_mirror_ as of 2026-04-04 — will be updated to point at agility_ tables):
 - `app_po_search` → `app_po_header` (matview) — enriched PO list for purchasing routes
@@ -197,6 +197,25 @@ Full migration plan in `docs/migration-plan.md`. Six phases.
 - **Print CSS**: already comprehensive in `app/globals.css` (lines 63–130) — hides nav/buttons, white bg, page-break handling
 - **Error boundaries**: `app/error.tsx` + 6 route-level `error.tsx` files already in place; no additional work needed
 
+#### Services Nav Consolidation (2026-04-24) — COMPLETE
+Branches: `claude/fix-deployment-error-gVa5I` (deploy fix, PR #141 merged) + `claude/consolidate-services-nav-bids` (PR #143)
+
+**Deploy fix (PR #141):** The WIP commit `26e7640` stubbed `/estimating/page.tsx` to import a `./EstimatingHubClient` that was never committed, breaking production builds with `Module not found`. Reverted `/estimating/page.tsx` to render `TakeoffApp` with `?bid=` search param. The new `/estimating/[bidId]` route added in `26e7640` is preserved.
+
+**Bids consolidation (PR #143):** Services dropdown went from 9 items to 6 by collapsing 4 separate bid list entries into a single tabbed `/bids` hub:
+- `/bids` — `BidsHubClient.tsx` with 4 tabs, driven by `?tab=` query param (default `open`)
+  - **Open** — embeds `LegacyBidsClient` (legacy Incomplete, `/api/legacy-bids`)
+  - **Completed** — embeds `CompletedBidsClient` (legacy Complete + turnaround days)
+  - **All** — embeds `AllBidsClient` (unified legacy + estimator, `/api/all-bids`)
+  - **Projects** — embeds `BidsListClient` (estimator UUID bids with draft→submitted→won/lost/archived workflow buttons, `/api/bids`)
+- Each of the 4 list clients gained an `embedded?: boolean` prop: when true, they skip their own `<TopNav>` and outer wrapper so the hub mounts them as tab panels
+- Old list pages now redirect:
+  - `/legacy-bids/page.tsx` → `/bids?tab=open`
+  - `/legacy-bids/completed/page.tsx` → `/bids?tab=completed`
+  - `/all-bids/page.tsx` → `/bids?tab=all`
+- Detail and add routes (`/legacy-bids/[id]`, `/legacy-bids/add`) are **untouched** — internal links like `href={`/legacy-bids/${bid.id}`}` still work
+- Design is now inside Services (not a direct top-level link as the old CLAUDE.md suggested). Services dropdown: Estimating App · PDF Takeoff · Bids · EWP · Projects · Design
+
 #### Nav + Branding Overhaul (2026-04-15) — COMPLETE
 Branch: `claude/update-navbar-menu-cgiYe` (merged to `main`)
 
@@ -237,12 +256,26 @@ Branch: `claude/update-navbar-menu-cgiYe` (merged to `main`)
 
 **Sidebar sections:**
 ```
-General:  Dashboard · Customers · Products/SKUs · Formulas
-Services: Bid Fields
-Users:    Users · Notifications
-System:   Audit Log · ERP Sync · Page Analytics
+General:     Dashboard · Customers · Products/SKUs · Formulas
+Services:    Bid Fields
+Users:       Users · Notifications
+Operations:  Job Review
+System:      Audit Log · ERP Sync · Page Analytics
 ```
 - `app/admin/page.tsx` rewritten — sectioned overview cards matching the 4 groups
+
+#### Job Review (2026-04-17) — COMPLETE
+
+Admin-only view for reviewing ERP sales order jobs with GPS match status.
+
+- **List page** (`/admin/jobs`): paginated at 50/page, search (SO#, customer, reference, PO#), customer code filter, branch/status/GPS/sort dropdowns
+- **Quick filter chips**: Recently Created · Recently Matched GPS · Missing GPS · Has GPS Match — each sets a preset combination of `gps` + `sort` filters
+- **GPS match status**: badge per row — green "GPS" (coordinates on file) / amber "No GPS" (missing from `agility_customers`)
+- **Detail page** (`/admin/jobs/[so_id]`): customer card, order details card, GPS coordinates card, Leaflet map pinned to ship-to address (or "no coordinates" state)
+- **API**: `GET /api/admin/jobs` (list + count) · `GET /api/admin/jobs/[so_id]` (detail) — both admin-only
+- **Data source**: `agility_so_header` JOIN `agility_customers` on `cust_key + shipto_seq_num` for GPS coords (lat/lon)
+- **Map component**: `src/components/admin/JobLocationMap.tsx` — single-marker Leaflet map, same pattern as `DispatchMap` without vehicles/routes
+- **Future**: write-back to Agility API for tax code + address corrections (detail page already displays these fields)
 
 **Cleanup & security:**
 - `/admin/app-users/` directory **deleted** — `AppUsersClient.tsx` was dead code (461 lines); `page.tsx` was a redirect stub. Auth unification consolidated all users under `/admin/users`
@@ -262,7 +295,7 @@ Full WH-Tracker (Python/Flask) migration into LiveEdge. All modules ported:
 - **Sales Hub** (`/sales`): KPI dashboard + order status table. API: `/api/sales/metrics`, `/api/sales/orders`
 - **Sales Transactions** (`/sales/transactions`): full-screen order search workspace — all statuses, date range, sale type
 - **Purchase History** (`/sales/history`): invoiced/closed order lookup with customer filter. API: `/api/sales/history`
-- **Products & Stock** (`/sales/products`): item catalog search via `erp_mirror_item` + `erp_mirror_item_branch`. API: `/api/sales/products`
+- **Products & Stock** (`/sales/products`): product major/minor tile browse + FTS item search. Tiles from `agility_items` (product hierarchy); stock data from `agility_item_branch` (JOIN on item_code). Branch scoped via nav cookie. API: `/api/sales/products`, `/api/sales/products/groups`, `/api/sales/products/majors`
 - **Sales Reports** (`/sales/reports`): daily orders chart, top customers, by sale type/ship via, status breakdown. API: `/api/sales/reports`
 - **Customer Profile** (`/sales/customers/[code]`): open orders, history, ship-to addresses in tabs. API: `/api/sales/customers/[code]`
 - **Supervisor Dashboard** (`/supervisor`): picker status board (active/assigned/idle), 30s refresh. API: `/api/supervisor/pickers`
@@ -278,7 +311,7 @@ Full WH-Tracker (Python/Flask) migration into LiveEdge. All modules ported:
 - **Customer Search** (`/sales/customers`): search `erp_mirror_cust`, link to profile. API: `/api/sales/customers`
 - **Customer Profile** (`/sales/customers/[code]`): details, 90-day orders, ship-to addresses. API: `/api/sales/customers/[code]`
 - **Customer Notes** (`/sales/customers/[code]` Notes tab): read/write from `public.customer_notes` table via `getErpSql()`. API: `/api/sales/customers/[code]/notes`
-- **Products & Stock** (`/sales/products`): search `erp_mirror_item` + `erp_mirror_item_branch`. API: `/api/sales/products`
+- **Products & Stock** (`/sales/products`): product major/minor tile browse + FTS search. See WH-Tracker migration section for full detail.
 - **Purchase History** (`/sales/history`): orders with expanded filters (status, date range, branch). Reuses `/api/sales/orders`
 - **Sales Reports** (`/sales/reports`): KPI cards + status breakdown + top customers. Reuses `/api/sales/metrics`
 
@@ -287,9 +320,40 @@ Full WH-Tracker (Python/Flask) migration into LiveEdge. All modules ported:
 - **Buyer Workspace** (`/purchasing/workspace`): quick-action cards + upcoming POs + recent check-ins
 - **Command Center** (`/purchasing/manage`): KPI cards, POs by branch, overdue list, recent submissions
 
-#### RMA Credits (2026-04-02) — METADATA ONLY
-- **Credits Search** (`/credits`): search `public.credit_images` table by RMA# or email. API: `/api/credits`
-- Note: Images in `credit_images.filepath` are local WH-Tracker filesystem paths — not viewable in LiveEdge yet
+#### RMA Credits (2026-04-02, rewritten 2026-04-22) — LIVE (ERP-driven, email pipeline active)
+
+**Credits page** (`/credits`):
+- `GET /api/credits` — queries `agility_so_header` WHERE `sale_type = 'Credit'` AND `so_status NOT IN ('I','C')` AND `is_deleted = false`
+- Branch-scoped: non-admins see only their branch (`system_id`); admins see all or can filter by branch param
+- Paginated at 25/page; search across SO#, customer name/code, reference, PO#
+- LEFT JOINs `public.credit_images` on `ci.rma_number = soh.so_id::text` for doc count per CM
+- Columns: CM #, Customer, Reference/PO, Location, Status, Branch, Docs, Created
+- Status badge: `B` (blank) = Open (cyan), `S` = Staged (yellow), others = gray
+
+**Key ERP facts for `agility_so_header` credits:**
+- `sale_type = 'Credit'` — NOT `'CM'`; credit memos use the full word
+- `so_status = 'B'` = open/blank (no status set). Exclude `'I'` (invoiced) and `'C'` (cancelled)
+- Date column is `created_date` — NOT `order_date` (does not exist)
+- `is_deleted` column DOES exist on this table
+- `@/` path alias maps to `src/` — import types from API routes using relative paths (e.g. `../api/credits/route`)
+
+**Inbound email webhook** (`POST /api/inbound/credits`):
+- Receives Resend `email.received` events for `*@rma.beisser.cloud`
+- TO address guard: skips events not addressed to `@rma.beisser.cloud` (prevents credits emails from appearing in Hubbell module)
+- Attachment filter: allowed MIME types (jpeg/png/gif/webp/pdf) + skips parts where `content_id` is set (HTML-embedded images/signatures carry a `Content-ID`; real file attachments never do)
+- Uploads to R2 at `credits/{rmaNumber}/{timestamp}-{filename}`; upserts `public.credit_images` row with `r2_key`
+- Resend attachment fields are snake_case: `content_type`, `content_disposition`, `content_id` (NOT camelCase)
+- Env var: `RESEND_WEBHOOK_SECRET` (Svix signature secret from Resend dashboard)
+- Webhook URL must be set to `https://app.beisser.cloud/api/inbound/credits` (not the Vercel preview URL — Resend does not follow redirects)
+
+**Hubbell webhook** (`POST /api/inbound/hubbell`):
+- Has TO address guard: only processes emails to `hubbell@beisser.cloud`
+- Env var: `RESEND_HUBBELL_WEBHOOK_SECRET`
+
+**Pending — doc count not syncing to credits table:**
+- `credit_images` rows require `rma_number` to match `agility_so_header.so_id::text`
+- The webhook extracts RMA# from subject/body via regex — if the email subject doesn't contain the CM number, `rma_number` will be `'UNKNOWN'` and won't JOIN
+- Next step: troubleshoot why uploaded docs aren't linking to credit memos (separate session)
 
 #### Nav Restructuring (2026-04-02) — COMPLETE, EXTENDED 2026-04-03
 - TopNav completely rewritten 2026-04-03 — 8 domain dropdowns replacing flat links + 4 domain dropdowns
@@ -335,6 +399,39 @@ Branch: `claude/auth-unification-FelEf` (merged to `main`)
 3. Backfilled `password_hash` in `app_users` via `UPDATE public.app_users SET password_hash = u.password FROM bids."user" u WHERE estimating_user_id = u.id` (69/70 — `po-test` is OTP-only, no estimating user)
 4. `password_hash` column is now inert — auth no longer reads it
 
+#### Hubbell Email Reconciliation (2026-04-22) — COMPLETE
+
+Admin tool for reconciling Hubbell supply-house emails (PO confirmations / WO acknowledgements) against LiveEdge sales orders.
+
+**Pages:**
+- `/admin/hubbell` — Email inbox: all ingested Hubbell emails, tabbed by match status (Pending / Matched / Confirmed / No Match / Rejected), paginated at 50/page, search by subject/sender/PO#/SO#
+- `/admin/hubbell/[id]` — Email detail: extracted data, match candidates sorted by confidence, confirm/reject/reset actions
+- `/admin/hubbell/jobs` — Jobs index: one row per job site (customer + address), aggregates all confirmed emails; paginated at 50/page; click row to view orders
+- `/admin/hubbell/jobs/[soId]` — Job detail: SO header, reconciliation table (all SOs at same address vs emails received), unmatched email warnings
+
+**API routes:**
+- `GET /api/admin/hubbell/emails` — paginated inbox with status/search filtering
+- `GET/POST /api/admin/hubbell/emails/[id]` — detail + confirm/reject/reset actions
+- `GET /api/admin/hubbell/jobs` — aggregated jobs list
+- `GET /api/admin/hubbell/jobs/[soId]` — per-SO detail with related SOs and emails
+
+**DB table:** `bids.hubbell_emails` (Drizzle-managed, `db/schema.ts`)
+
+**AR balance query pattern** — `agility_ar_open.cust_key` is NOT the same as `agility_so_header.cust_code`. Always resolve via `agility_customers` first:
+```sql
+LEFT JOIN LATERAL (
+  SELECT cust_key FROM agility_customers
+  WHERE TRIM(cust_code) = TRIM(soh.cust_code) AND is_deleted = false
+  LIMIT 1
+) ac ON true
+LEFT JOIN (
+  SELECT cust_key, SUM(open_amt) AS balance
+  FROM agility_ar_open
+  WHERE is_deleted = false AND open_flag = true
+  GROUP BY cust_key
+) ar ON ar.cust_key = ac.cust_key
+```
+
 #### AR / Agility API Cleanup (2026-04-17) — COMPLETE
 Branch: `claude/review-customer-route-api-jVgJG`
 
@@ -344,12 +441,71 @@ Branch: `claude/review-customer-route-api-jVgJG`
 - Removed `balance`/`credit_limit` from `GET /api/sales/customers` list query
 - `/api/sales/customers/[code]/ar` and `/ar-live` routes preserved for future accounting view
 
+#### Products & Stock Redesign (2026-04-28) — COMPLETE
+Branch: `claude/product-group-tiles-kWvWT` (PR #154)
+
+- **`/sales/products`** redesigned to auto-load product major tiles on page open, drill down to minor tiles, then item list. FTS search still works across all items regardless of browse position.
+- **Data sources**: product hierarchy (`product_major_code`, `product_major`, `product_minor_code`, `product_minor`) from `agility_items`; stock data (qty_on_hand, default_location, handling_code, active_flag, stock) from `agility_item_branch` joined on `item_code = item`.
+- **Branch scoping**: nav cookie (`beisser-branch`) read server-side via `getSelectedBranchCode()` — no branch input on the page. Branch filter goes on `agility_item_branch.system_id` (NOT `agility_items.system_id` which is always the company code `'00CO'`).
+- **Tile query pattern**: `SELECT product_major_code FROM agility_items WHERE item IN (SELECT item_code FROM agility_item_branch WHERE system_id=$1 AND active_flag=true AND stock=true AND is_deleted=false) GROUP BY product_major_code`
+- **Item list pattern**: `JOIN agility_item_branch bi ON bi.item_code = ai.item AND bi.system_id=$1` — branch + active/stock conditions in JOIN ON clause; product hierarchy + FTS conditions in WHERE on `ai.*`.
+- **Indexes applied** (`db/migrations/0005_products_search_indexes.sql`): GIN FTS on `agility_items`; `(product_major_code, product_minor_code)` on `agility_items`; `(system_id, item_code)` on `agility_item_branch`.
+- **Key files**: `app/sales/products/ProductsClient.tsx`, `app/api/sales/products/_shared.ts`, `app/api/sales/products/groups/route.ts`, `app/api/sales/products/majors/route.ts`, `app/api/sales/products/route.ts`.
+
 #### Flask Sunset — NOT STARTED
 - DNS routing, archive Flask app
 
+#### Interactive Charts (2026-04-27) — COMPLETE
+PRs #159 (phase 1), #160 (phase 2), #161 (phase 3) — all merged into `main`.
+
+Adds **Recharts** (`recharts@^2.15`) and a small set of opinionated dark-theme chart wrappers in `src/components/charts/`. Tables stay alongside as the export source of truth — charts go above each section.
+
+**Components in `src/components/charts/`** (all `'use client'`, types exported from `index.ts`):
+- `ChartCard` — shared frame: `bg-slate-800/40` border, title/subtitle, `print:break-inside-avoid`
+- `TimeSeriesChart` — bars over time, optional `referenceY`, optional `Brush`, optional stacked-by-series (used for daily orders, deliveries-by-branch, forecast)
+- `ComboBarLineChart` — bars (left $ axis) + line (right % axis); the 3-year sales+GM% chart
+- `ComparisonBarChart` — paired horizontal bars (base vs compare year) with delta % chips
+- `ParetoChart` — descending bars + cumulative-% line + 80% reference line
+- `MixDonut` — donut with `topN + Other` rollup, total in center, prior-year delta in tooltip
+- `StatusFunnelBar` — pure CSS stacked bar in fixed pipeline order (`O/B → K → S → P → D → I`); not recharts
+- `HeatmapGrid` — pure CSS row × col grid with intensity shading; not recharts
+- `ProductTreemap` — recharts `<Treemap>` for product-major mix, hover surfaces GM%
+- `DaysToPayBullet` — pure CSS bullet bar with prior-year tick + threshold (red/green flip); not recharts
+- `theme.ts` — central `CHART_COLORS` palette (Beisser green = base year, Beisser gold = cumulative/reference, slate-500 = compare); branch + status colors mirror existing inline maps in `TopNav`/`ReportsClient`
+
+**Wired into:**
+- `/management` — 3-yr combo + branch comparison + sale-type Pareto
+- `/sales/reports` — daily order time-series with prior-yr ref line + Brush on 90d, sale-type donut, status pipeline funnel (replaces the custom HTML `DailyBars`)
+- `/ops/delivery-reporting` — stacked-by-branch daily time series + sale-type × branch heatmap + carrier donut (replaces the custom HTML `DailyBars` and `BreakdownRow` carrier list)
+- `/management/forecast` — open-orders Pareto + stacked-by-branch forecast time series
+- `/scorecard/overview` — 3-yr combo + branch contribution Pareto + product treemap + sale-type Pareto
+- `/scorecard/branch/[branchId]` — 3-yr combo + top-customers Pareto + product treemap + sale-type Pareto
+- `/scorecard/rep` — assigned-book vs written-up sales bars (top 12 reps)
+- `/scorecard/rep/[repCode]` — 3-yr combo + product treemap rendered per dual section (Assigned/Written)
+- `/scorecard/product` — product-mix treemap + product-concentration Pareto side-by-side
+- `/scorecard/[customerId]` — 3-yr combo + product treemap + days-to-pay bullet + sale-type Pareto
+
+**Server/client boundary pattern**: pages stay server components and pass already-resolved data to a `'use client'` adapter:
+- `app/management/_components/ManagementCharts.tsx` — accepts `threeYear`, `branchSummaries`, `saleTypes` props
+- `app/scorecard/_components/ScorecardCharts.tsx` — exports per-use-case adapters (`<ThreeYearChart>`, `<TopCustomersPareto>`, `<ProductMixTreemap>`, `<RepComparisonChart>`, `<DaysToPayCard>`, etc.)
+
+**API change**: `GET /api/ops/delivery-reporting` now returns `by_sale_type_branch: { sale_type, system_id, count }[]` aggregate (derived from the same `uniq` CTE — no extra query) for the heatmap pivot.
+
+**Print CSS** added in `app/globals.css` so recharts SVGs render with white background + dark gridlines on printed reports.
+
+**Conventions when adding charts:**
+- Use `e.sales !== 0` (not `e.sales > 0`) when computing GM% for time-series — match the table convention so years with negative net sales (credits exceed sales) show their actual ratio rather than collapsing to 0%
+- Normalize blank `so_status` (`''`) to `'B'` when building counts for `<StatusFunnelBar>` since the API uses `UPPER(COALESCE(so_status, ''))` and the codebase treats blank as Open
+- Keep tables alongside charts — they remain the CSV-export source of truth; chart components don't have export buttons
+- For pages already `'use client'`, import chart components directly. For server-component pages, create an `_components/<X>Charts.tsx` client adapter that accepts plain serializable props.
+
+**Out of scope (intentional):**
+- KPI sparklines on tiles — would need monthly history aggregation we don't expose yet
+- SVG download button on `<ChartCard>`
+
 #### Still Missing / Deferred
 - **Suggested Buys** (`/purchasing/suggested-buys`): `app_purchasing_queue` view confirmed missing. Check `agility_suggested_po_header` + `agility_suggested_po_lines` before building
-- **RMA Credits images**: `credit_images.filepath` holds local WH-Tracker paths — not R2 keys yet. Metadata search at `/credits` works. Image serving requires R2 pipeline (see Pending Actions)
+- **RMA Credits doc sync**: Email pipeline active — attachments upload to R2 and upsert `credit_images`. Doc counts show on `/credits` page via LEFT JOIN. Outstanding issue: `credit_images.rma_number` must match `agility_so_header.so_id::text` — if RMA# is not parsed correctly from email subject/body the JOIN produces 0. Troubleshoot in next session.
 - **WH-Tracker kiosk/TV/smart scan**: not appropriate for LiveEdge web app pattern — intentionally deferred
 - **Purchasing workflow** (tasks, approvals, exceptions, PO notes): verify `purchasing_tasks`, `purchasing_approvals`, etc. exist in `public` schema first
 - **Dispatch enrichment** (driver/truck mgmt, order timeline per stop): WH-Tracker had these; LiveEdge dispatch shows basic stops only. **AR balance intentionally excluded from dispatch** — see AR Data Policy in the Agility Live API section.
@@ -362,7 +518,7 @@ Branch: `claude/review-customer-route-api-jVgJG`
 1. **Apply page_visits migration**: Run `db/migrations/0004_page_visits.sql` in Supabase SQL editor to enable Quick Access tracking on homepage
 2. **Extend page tracking to module clients**: Add `POST /api/track-visit` call to each module's main client component (or extract a shared `usePageTracking` hook in `src/hooks/`) so Quick Access fills with real data
 3. **`app_users` admin UI**: Update `/admin/users` create/edit forms to match `public.app_users` schema (roles JSON array, branch string) — currently shows bids."user" field layout which no longer matches the auth source of truth
-4. **RMA Credits image pipeline**: `credit_images.filepath` holds WH-Tracker local paths. Plan: add `r2_key TEXT` column to `public.credit_images` (WH-Tracker Alembic migration) → update `sync_email_credits.py` to upload attachments to R2 → add `GET /api/credits/[id]/image` presigned URL route → update `CreditsClient.tsx` to show thumbnails
+4. **RMA Credits doc sync**: Email-to-R2 pipeline is live (`/api/inbound/credits`). Issue: doc counts on `/credits` show 0 because `credit_images.rma_number` isn't matching `agility_so_header.so_id`. Debug: check what `rma_number` values were stored in `credit_images` vs actual SO IDs. The webhook extracts RMA# from subject/body regex — may need tuning for Beisser's specific email format. Also add `GET /api/credits/[id]/image` presigned URL route + thumbnails in CreditsClient once JOINs work.
 5. **Purchasing workflow gaps**: Before building, verify tables exist: `SELECT table_name FROM information_schema.tables WHERE table_schema='public' AND table_name IN ('purchasing_tasks','purchasing_approvals','purchasing_notes','purchasing_exceptions')` — if found, build PO notes API, exceptions view, approval workflow
 6. **Suggested Buys**: `app_purchasing_queue` confirmed missing. Check `agility_suggested_po_header` + `agility_suggested_po_lines` before building `/purchasing/suggested-buys`
 7. **Flask sunset**: DNS cutover + archive `C:\Users\amcgrean\python\wh-tracker-fly\WH-Tracker` after user testing confirms parity
@@ -496,6 +652,7 @@ When the accounting AR view is built, add it under a dedicated route (e.g. `/acc
 - Cloudflare R2 (file storage via @aws-sdk/client-s3 + @aws-sdk/s3-request-presigner)
 - NextAuth v5 beta (credentials provider, JWT strategy)
 - pdfjs-dist 5.6, fabric 7.x (NOT v6 — mouse event API differs), jspdf 2.x
+- Recharts 2.15 (route-scoped, ~95 KB gz; SVG-based for crisp printing) — wrappers in `src/components/charts/`
 - Lucide React icons, papaparse, zod, date-fns
 
 ## Environment Variables
@@ -527,12 +684,11 @@ When the accounting AR view is built, add it under a dedicated route (e.g. `/acc
 - `SESSION_COOKIE_SECURE` — Secure flag on session cookie (`true` in prod, `false` in dev)
 
 ## Navigation Structure
-Current structure as of 2026-04-15 (7 domain dropdowns + user dropdown; Design is a direct link):
+Current structure as of 2026-04-24 (6 domain dropdowns + user dropdown; Design is inside Services):
 - **Yard ▾**: Picks Board, Open Picks, Picker Stats, Work Orders, Supervisor (all `/warehouse/*` paths, label renamed from "Warehouse")
 - **Dispatch ▾**: Dispatch Board, Delivery Tracker, Fleet Map
 - **Sales ▾**: Sales Hub, Customers, Transactions, Purchase History, Products & Stock, Reports, RMA Credits
-- **Services ▾**: Estimating App (`/estimating`), PDF Takeoff, Bids, EWP, Projects (renamed from "Estimating")
-- **Design** (direct → `/designs`)
+- **Services ▾**: Estimating App (`/estimating`), PDF Takeoff, **Bids** (tabbed hub at `/bids`), EWP, Projects, Design (6 items; bid list entries consolidated 2026-04-24)
 - **Purchasing ▾**: Buyer Workspace, Open POs, Command Center, PO Check-In, Review Queue (Receiving merged in)
 - **Admin ▾** (admin role only): Customers, Products/SKUs, Formulas, Bid Fields, Users, Notifications, Audit Log, ERP Sync, Page Analytics, Delivery Report, Picker Admin
 - **User dropdown** (under logged-in username + chevron): Report an Issue (`/it-issues`), Help & Docs (`/help`), Sign Out

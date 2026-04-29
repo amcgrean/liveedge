@@ -324,6 +324,7 @@ export const legacyEWP = bidsSchema.table('ewp', {
 // ============================================================
 // IT SERVICE (internal issue tracker)
 // ============================================================
+// ALTER TABLE bids.it_service ADD COLUMN IF NOT EXISTS source_page VARCHAR(500);
 export const legacyITService = bidsSchema.table('it_service', {
   id:          serial('id').primaryKey(),
   issueType:   varchar('issue_type', { length: 255 }).notNull(),
@@ -334,6 +335,7 @@ export const legacyITService = bidsSchema.table('it_service', {
   updatedDate: timestamp('updated_date').defaultNow(),
   notes:       text('notes'),
   createdDate: timestamp('createdDate').defaultNow(),
+  sourcePage:  varchar('source_page', { length: 500 }),
 });
 
 // ============================================================

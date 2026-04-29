@@ -321,14 +321,14 @@ export default function CreditsClient() {
         <table className="w-full text-sm">
           <thead>
             <tr className="bg-gray-900 border-b border-gray-800 text-left">
-              <SortableHeader col="so_id"        label="CM #"         activeCol={sortCol} activeDir={sortDir} onSort={handleSort} />
-              <SortableHeader col="cust_name"    label="Customer"     activeCol={sortCol} activeDir={sortDir} onSort={handleSort} />
+              <SortableHeader col="so_id"        label="CM #"           activeCol={sortCol} activeDir={sortDir} onSort={handleSort} />
+              <SortableHeader col="cust_name"    label="Customer"       activeCol={sortCol} activeDir={sortDir} onSort={handleSort} />
               <SortableHeader col="reference"    label="Reference / PO" activeCol={sortCol} activeDir={sortDir} onSort={handleSort} className="hidden lg:table-cell" />
-              <SortableHeader col="city"         label="Location"     activeCol={sortCol} activeDir={sortDir} onSort={handleSort} className="hidden md:table-cell" />
-              <SortableHeader col="so_status"    label="Status"       activeCol={sortCol} activeDir={sortDir} onSort={handleSort} />
-              <SortableHeader col="system_id"    label="Branch"       activeCol={sortCol} activeDir={sortDir} onSort={handleSort} className="hidden sm:table-cell" />
-              <SortableHeader col="doc_count"    label="Docs"         activeCol={sortCol} activeDir={sortDir} onSort={handleSort} />
-              <SortableHeader col="created_date" label="Created"      activeCol={sortCol} activeDir={sortDir} onSort={handleSort} className="hidden md:table-cell" />
+              <SortableHeader col="city"         label="Location"       activeCol={sortCol} activeDir={sortDir} onSort={handleSort} className="hidden md:table-cell" />
+              <SortableHeader col="so_status"    label="Status"         activeCol={sortCol} activeDir={sortDir} onSort={handleSort} />
+              <SortableHeader col="system_id"    label="Branch"         activeCol={sortCol} activeDir={sortDir} onSort={handleSort} className="hidden sm:table-cell" />
+              <SortableHeader col="doc_count"    label="Docs"           activeCol={sortCol} activeDir={sortDir} onSort={handleSort} />
+              <SortableHeader col="created_date" label="Created"        activeCol={sortCol} activeDir={sortDir} onSort={handleSort} className="hidden md:table-cell" />
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-800">

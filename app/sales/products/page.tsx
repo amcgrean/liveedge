@@ -9,15 +9,12 @@ export default async function ProductsPage() {
 
   const isAdmin =
     session.user.role === 'admin' ||
-    (session.user.roles ?? []).some((r) => ['admin', 'supervisor', 'ops', 'sales'].includes(r));
+    (session.user.roles ?? []).some((r: string) => ['admin', 'supervisor', 'ops', 'sales'].includes(r));
 
   return (
     <div className="min-h-screen bg-gray-950">
       <TopNav userName={session.user.name} userRole={session.user.role} />
-      <ProductsClient
-        isAdmin={isAdmin}
-        userBranch={session.user.branch ?? null}
-      />
+      <ProductsClient isAdmin={isAdmin} />
     </div>
   );
 }

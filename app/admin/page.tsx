@@ -2,7 +2,7 @@ import { auth } from '../../auth';
 import Link from 'next/link';
 import {
   Building2, Package, Calculator, Users, Bell,
-  FileText, Database, BarChart2, FormInput, LayoutDashboard,
+  FileText, Database, BarChart2, FormInput, LayoutDashboard, UserCog,
 } from 'lucide-react';
 
 export const metadata = { title: 'Admin Dashboard | LiveEdge' };
@@ -28,8 +28,9 @@ const SECTIONS = [
     title: 'Users',
     description: 'Team members and notification rules',
     cards: [
-      { href: '/admin/users',         label: 'Users',         description: 'Add, edit, and manage access',             icon: Users, color: 'text-orange-400 bg-orange-400/10 border-orange-400/20' },
-      { href: '/admin/notifications', label: 'Notifications', description: 'Set up event-triggered notification rules', icon: Bell,  color: 'text-yellow-400 bg-yellow-400/10 border-yellow-400/20' },
+      { href: '/admin/users',         label: 'Users',         description: 'Add, edit, and manage access',             icon: Users,   color: 'text-orange-400 bg-orange-400/10 border-orange-400/20' },
+      { href: '/warehouse/pickers',   label: 'Picker Admin',  description: 'Manage warehouse pickers (legacy roster)', icon: UserCog, color: 'text-pink-400   bg-pink-400/10   border-pink-400/20'   },
+      { href: '/admin/notifications', label: 'Notifications', description: 'Set up event-triggered notification rules', icon: Bell,    color: 'text-yellow-400 bg-yellow-400/10 border-yellow-400/20' },
     ],
   },
   {

@@ -8,7 +8,7 @@ export default async function DispatchPage() {
 
   const isAdmin =
     session.user.role === 'admin' ||
-    (session.user.roles ?? []).some((r) => ['admin', 'supervisor', 'ops'].includes(r));
+    (session.user.roles ?? []).some((r) => ['admin', 'management', 'supervisor', 'ops'].includes(r));
 
   return (
     <DispatchClient

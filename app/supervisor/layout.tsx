@@ -8,7 +8,7 @@ export default async function SupervisorLayout({ children }: { children: React.R
   const canAccess =
     session.user.role === 'admin' ||
     (session.user.roles ?? []).some((r) =>
-      ['admin', 'supervisor', 'ops', 'warehouse'].includes(r)
+      ['admin', 'supervisor', 'ops', 'warehouse', 'management'].includes(r)
     );
   if (!canAccess) redirect('/dashboard');
 

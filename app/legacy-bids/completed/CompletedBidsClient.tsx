@@ -27,9 +27,10 @@ interface BidRow {
 
 interface Props {
   session: Session;
+  embedded?: boolean;
 }
 
-export default function CompletedBidsClient({ session }: Props) {
+export default function CompletedBidsClient({ session, embedded = false }: Props) {
   usePageTracking();
   const [bids, setBids] = useState<BidRow[]>([]);
   const [total, setTotal] = useState(0);
@@ -70,17 +71,16 @@ export default function CompletedBidsClient({ session }: Props) {
 
   const totalPages = Math.ceil(total / limit);
 
-  return (
-    <div className="min-h-screen bg-gray-950 text-gray-100">
-      <TopNav userName={session.user?.name} userRole={session.user?.role} />
-
-      <main className="max-w-7xl mx-auto px-4 sm:px-6 py-8">
-        <div className="flex items-center gap-3 mb-6">
-          <Link href="/legacy-bids" className="p-2 rounded-lg hover:bg-gray-800">
-            <ArrowLeft className="w-5 h-5" />
-          </Link>
-          <h1 className="text-2xl font-bold">Completed Bids</h1>
-        </div>
+  const body = (
+    <>
+        {!embedded && (
+          <div className="flex items-center gap-3 mb-6">
+            <Link href="/legacy-bids" className="p-2 rounded-lg hover:bg-gray-800">
+              <ArrowLeft className="w-5 h-5" />
+            </Link>
+            <h1 className="text-2xl font-bold">Completed Bids</h1>
+          </div>
+        )}
 
         <div className="flex items-center gap-3 mb-4">
           <div className="relative flex-1 max-w-md">
@@ -213,7 +213,15 @@ export default function CompletedBidsClient({ session }: Props) {
             </div>
           </div>
         )}
-      </main>
+    </>
+  );
+
+  if (embedded) return body;
+
+  return (
+    <div className="min-h-screen bg-gray-950 text-gray-100">
+      <TopNav userName={session.user?.name} userRole={session.user?.role} />
+      <main className="max-w-7xl mx-auto px-4 sm:px-6 py-8">{body}</main>
     </div>
   );
 }

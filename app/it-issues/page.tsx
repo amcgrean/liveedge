@@ -4,8 +4,9 @@ import ITIssuesClient from './ITIssuesClient';
 
 export const metadata = { title: 'IT Issues | LiveEdge' };
 
-export default async function ITIssuesPage() {
+export default async function ITIssuesPage({ searchParams }: { searchParams: Promise<Record<string, string>> }) {
   const session = await auth();
   if (!session) redirect('/login');
-  return <ITIssuesClient session={session} />;
+  const sp = await searchParams;
+  return <ITIssuesClient session={session} autoReport={sp.report === '1'} fromPage={sp.from ?? ''} />;
 }

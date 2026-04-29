@@ -2,15 +2,16 @@
 
 import React, { useEffect, useState, useCallback } from 'react';
 import { Plus, RefreshCw, Pencil, Trash2, X, Check, Shield, Eye, KeyRound,
-         ShoppingCart, Package, PackageCheck, Info } from 'lucide-react';
+         ShoppingCart, Package, PackageCheck, Info, BarChart3 } from 'lucide-react';
 import Link from 'next/link';
 import { formatDate } from '../../../src/lib/utils';
 import { useSession } from 'next-auth/react';
 
-interface AppUser {
+export interface AppUser {
   id: string;
   name: string;         // display_name
   username: string | null;
+  agentId: string | null;
   email: string | null;
   role: string;         // primary role (derived)
   roles: string[];      // full roles array
@@ -20,7 +21,8 @@ interface AppUser {
 }
 
 const ROLES = [
-  { value: 'admin',          label: 'Admin',              icon: <Shield className="w-3 h-3" />,       desc: 'Full access, admin panel' },
+  { value: 'admin',          label: 'Admin',              icon: <Shield className="w-3 h-3" />,       desc: 'Full access including admin panel' },
+  { value: 'management',     label: 'Management',         icon: <BarChart3 className="w-3 h-3" />,    desc: 'Full access to all modules, no admin panel' },
   { value: 'estimator',      label: 'Estimator',          icon: <Pencil className="w-3 h-3" />,       desc: 'Create & manage bids and takeoffs' },
   { value: 'designer',       label: 'Designer',           icon: <Pencil className="w-3 h-3" />,       desc: 'Design work' },
   { value: 'purchasing',     label: 'Purchasing',         icon: <ShoppingCart className="w-3 h-3" />, desc: 'PO check-in, open POs, receiving' },
@@ -34,12 +36,12 @@ const ROLES = [
 
 const BRANCHES = ['10FD', '20GR', '25BW', '40CV'];
 
-const EMPTY = { name: '', username: '', email: '', role: 'estimator', password: '', branch: '' };
+const EMPTY = { name: '', username: '', agentId: '', email: '', role: 'estimator', password: '', branch: '' };
 
-export default function UsersClient() {
+export default function UsersClient({ initialUsers }: { initialUsers?: AppUser[] }) {
   const { data: session } = useSession();
-  const [users, setUsers] = useState<AppUser[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [users, setUsers] = useState<AppUser[]>(initialUsers ?? []);
+  const [loading, setLoading] = useState(!initialUsers);
   const [showForm, setShowForm] = useState(false);
   const [editTarget, setEditTarget] = useState<AppUser | null>(null);
   const [form, setForm] = useState(EMPTY);
@@ -54,7 +56,7 @@ export default function UsersClient() {
     } finally { setLoading(false); }
   }, []);
 
-  useEffect(() => { fetch_(); }, [fetch_]);
+  useEffect(() => { if (!initialUsers) fetch_(); }, [fetch_, initialUsers]);
 
   const openCreate = () => { setEditTarget(null); setForm(EMPTY); setFormError(''); setShowForm(true); };
   const openEdit = (u: AppUser) => {
@@ -62,6 +64,7 @@ export default function UsersClient() {
     setForm({
       name:     u.name,
       username: u.username ?? '',
+      agentId:  u.agentId ?? '',
       email:    u.email ?? '',
       role:     u.role,
       password: '',
@@ -94,6 +97,7 @@ export default function UsersClient() {
         branch: form.branch.trim() || undefined,
       };
       if (form.username.trim()) body.username = form.username.trim().toLowerCase();
+      if (form.agentId.trim())  body.agentId  = form.agentId.trim().toLowerCase();
       if (form.email.trim())    body.email    = form.email.trim().toLowerCase();
       if (form.password)        body.password = form.password;
       const res = await fetch(url, { method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
@@ -112,7 +116,7 @@ export default function UsersClient() {
   const getRoleInfo = (role: string) => ROLES.find((r) => r.value === role) ?? ROLES[ROLES.length - 1];
 
   return (
-    <div className="max-w-5xl">
+    <div className="max-w-full">
       {/* Context banner */}
       <div className="flex items-start gap-2.5 mb-5 p-3.5 bg-cyan-500/5 border border-cyan-500/20 rounded-xl text-sm text-slate-400">
         <Info className="w-4 h-4 text-cyan-400 mt-0.5 shrink-0" />
@@ -150,6 +154,7 @@ export default function UsersClient() {
               <tr>
                 <th>Name</th>
                 <th>Username</th>
+                <th>Agent ID</th>
                 <th>Email</th>
                 <th>Role</th>
                 <th>Branch</th>
@@ -171,10 +176,14 @@ export default function UsersClient() {
                     <td className="text-slate-400 text-sm font-mono">
                       {u.username || <span className="text-slate-600 italic">—</span>}
                     </td>
+                    <td className="text-slate-400 text-sm font-mono">
+                      {u.agentId || <span className="text-slate-600 italic">—</span>}
+                    </td>
                     <td className="text-slate-400 text-sm">{u.email || <span className="text-slate-600 italic">—</span>}</td>
                     <td>
                       <span className={`flex items-center gap-1.5 w-fit px-2 py-0.5 rounded text-[11px] font-medium capitalize ${
                         u.role === 'admin'          ? 'bg-purple-900/40 text-purple-400 border border-purple-700' :
+                        u.role === 'management'     ? 'bg-gold-800/40 text-gold-300 border border-gold-700' :
                         u.role === 'purchasing'     ? 'bg-amber-900/30 text-amber-400 border border-amber-800' :
                         u.role === 'receiving_yard' ? 'bg-orange-900/30 text-orange-400 border border-orange-800' :
                         u.role === 'warehouse'      ? 'bg-green-900/30 text-green-400 border border-green-800' :
@@ -195,12 +204,12 @@ export default function UsersClient() {
                       </span>
                     </td>
                     <td className="text-slate-500 text-xs">{formatDate(u.createdAt)}</td>
-                    <td>
+                    <td className="whitespace-nowrap w-px">
                       <div className="flex items-center gap-1">
                         <Link href={`/admin/users/${u.id}/permissions`} className="p-1.5 rounded hover:bg-slate-800 text-slate-500 hover:text-cyan-400 transition" title="Permissions"><KeyRound className="w-3.5 h-3.5" /></Link>
-                        <button onClick={() => openEdit(u)} className="p-1.5 rounded hover:bg-slate-800 text-slate-500 hover:text-slate-200 transition"><Pencil className="w-3.5 h-3.5" /></button>
+                        <button onClick={() => openEdit(u)} className="p-1.5 rounded hover:bg-slate-800 text-slate-500 hover:text-slate-200 transition" title="Edit"><Pencil className="w-3.5 h-3.5" /></button>
                         {!isSelf && u.isActive && (
-                          <button onClick={() => handleDeactivate(u)} className="p-1.5 rounded hover:bg-red-900/20 text-slate-500 hover:text-red-400 transition"><Trash2 className="w-3.5 h-3.5" /></button>
+                          <button onClick={() => handleDeactivate(u)} className="p-1.5 rounded hover:bg-red-900/20 text-slate-500 hover:text-red-400 transition" title="Deactivate"><Trash2 className="w-3.5 h-3.5" /></button>
                         )}
                       </div>
                     </td>
@@ -245,6 +254,14 @@ export default function UsersClient() {
                     placeholder="user@beisserlumber.com"
                     className="w-full px-3 py-2 bg-slate-950/60 border border-slate-700 rounded-lg text-sm text-slate-100 focus:border-cyan-400 focus:outline-none" />
                 </div>
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-slate-400 mb-1">
+                  Agent ID <span className="text-slate-600">(ERP rep code — full first name + last initial, e.g. Aaron McGrean → aaronm)</span>
+                </label>
+                <input value={form.agentId} onChange={(e) => setForm({ ...form, agentId: e.target.value })}
+                  placeholder="aaronm"
+                  className="w-full px-3 py-2 bg-slate-950/60 border border-slate-700 rounded-lg text-sm text-slate-100 focus:border-cyan-400 focus:outline-none" />
               </div>
               <div>
                 <label className="block text-xs font-medium text-slate-400 mb-1">Branch</label>

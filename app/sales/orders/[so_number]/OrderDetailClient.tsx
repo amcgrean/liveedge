@@ -99,6 +99,8 @@ function money(val: number | null | undefined) {
 
 interface Props {
   soNumber: string;
+  from?: string;
+  fromLabel?: string;
 }
 
 function ShipmentRow({ shipment }: { shipment: ShipmentRecord }) {
@@ -195,7 +197,7 @@ function ShipmentRow({ shipment }: { shipment: ShipmentRecord }) {
   );
 }
 
-export default function OrderDetailClient({ soNumber }: Props) {
+export default function OrderDetailClient({ soNumber, from, fromLabel }: Props) {
   usePageTracking();
   const [order, setOrder] = useState<OrderDetail | null>(null);
   const [loading, setLoading] = useState(true);
@@ -289,9 +291,9 @@ export default function OrderDetailClient({ soNumber }: Props) {
       <div className="max-w-6xl mx-auto space-y-5">
 
         {/* Back link */}
-        <Link href="/sales" className="inline-flex items-center gap-1.5 text-sm text-gray-400 hover:text-white transition-colors">
+        <Link href={from ?? '/sales'} className="inline-flex items-center gap-1.5 text-sm text-gray-400 hover:text-white transition-colors">
           <ArrowLeft size={14} />
-          Sales Hub
+          {fromLabel ?? 'Sales Hub'}
         </Link>
 
         {loading && (

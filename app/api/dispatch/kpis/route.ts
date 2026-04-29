@@ -57,7 +57,7 @@ export async function GET(req: NextRequest) {
       `,
     ]);
 
-    // Unassigned = stops whose so_id isn't in any dispatch_route_stop for this date
+    // Unassigned = stops with no matching dispatch_route_stop for this date
     type UnassignedRow = { count: number };
     const [unassignedRows] = await sql<UnassignedRow[]>`
       SELECT COUNT(*)::int AS count
@@ -66,11 +66,12 @@ export async function GET(req: NextRequest) {
         ${branchFilter}
         AND soh.so_status NOT IN ('C', 'X')
         AND soh.expect_date::date = ${deliveryDate}::date
-        AND soh.so_id::text NOT IN (
-          SELECT s.so_id
+        AND NOT EXISTS (
+          SELECT 1
           FROM dispatch_route_stops s
           JOIN dispatch_routes r ON r.id = s.route_id
-          WHERE r.route_date = ${deliveryDate}::date
+          WHERE s.so_id = soh.so_id::text
+            AND r.route_date = ${deliveryDate}::date
         )
     `;
 

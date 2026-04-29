@@ -21,20 +21,20 @@ interface ITIssue {
 
 const ISSUE_TYPES = ['Hardware', 'Software', 'Network', 'Account', 'Other'];
 
-interface Props { session: Session; }
+interface Props { session: Session; autoReport?: boolean; fromPage?: string; }
 
-export default function ITIssuesClient({ session }: Props) {
+export default function ITIssuesClient({ session, autoReport = false, fromPage = '' }: Props) {
   usePageTracking();
   const [issues, setIssues] = useState<ITIssue[]>([]);
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
-  const [statusFilter, setStatusFilter] = useState('');
+  const [statusFilter, setStatusFilter] = useState('Open');
   const [page, setPage] = useState(0);
-  const [showForm, setShowForm] = useState(false);
+  const [showForm, setShowForm] = useState(autoReport);
   const [saving, setSaving] = useState(false);
   const [formError, setFormError] = useState('');
-  const [form, setForm] = useState({ issueType: 'Software', description: '', notes: '' });
+  const [form, setForm] = useState({ issueType: 'Software', description: '', notes: '', sourcePage: fromPage });
   const limit = 50;
 
   const fetchIssues = useCallback(async () => {
@@ -61,7 +61,7 @@ export default function ITIssuesClient({ session }: Props) {
         method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(form),
       });
       if (!res.ok) { setFormError((await res.json()).error ?? 'Failed'); return; }
-      setShowForm(false); setForm({ issueType: 'Software', description: '', notes: '' });
+      setShowForm(false); setForm({ issueType: 'Software', description: '', notes: '', sourcePage: '' });
       fetchIssues();
     } finally { setSaving(false); }
   };
@@ -181,6 +181,12 @@ export default function ITIssuesClient({ session }: Props) {
                 <textarea value={form.notes} onChange={(e) => setForm({ ...form, notes: e.target.value })} rows={2}
                   className="w-full px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg text-sm focus:outline-none focus:border-cyan-500 resize-y" />
               </div>
+              {form.sourcePage && (
+                <p className="text-xs text-gray-500 flex items-center gap-1">
+                  <span className="text-gray-600">Reporting from:</span>
+                  <span className="font-mono text-gray-400">{form.sourcePage}</span>
+                </p>
+              )}
               {formError && <p className="text-sm text-red-400">{formError}</p>}
             </div>
             <div className="px-6 py-4 border-t border-gray-800 flex justify-end gap-3">

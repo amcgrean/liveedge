@@ -7,6 +7,7 @@ import { usePageTracking } from '@/hooks/usePageTracking';
 import { useBranchFilter } from '@/hooks/useBranchFilter';
 import type { DeliveryStop } from '../api/dispatch/deliveries/route';
 import type { DispatchKpis } from '../api/dispatch/kpis/route';
+import type { DispatchInitResponse } from '../api/dispatch/init/route';
 import type { OrderLine } from '../api/dispatch/orders/[so_number]/lines/route';
 import Link from 'next/link';
 import {
@@ -671,56 +672,35 @@ export default function DispatchClient({ isAdmin, userBranch, userName, userRole
     return s;
   }, [routeStops]);
 
-  // Load all route stops for every route
-  const loadRouteStops = useCallback(async (routeList: DispatchRoute[]) => {
-    const entries = await Promise.all(
-      routeList.map(async (r) => {
-        try {
-          const res = await fetch(`/api/dispatch/routes/${r.id}/stops`);
-          const data = res.ok ? (await res.json() as RouteStop[]) : [];
-          return [r.id, data] as [number, RouteStop[]];
-        } catch {
-          return [r.id, []] as [number, RouteStop[]];
-        }
-      })
-    );
-    setRouteStops(new Map(entries));
-  }, []);
-
   const loadAll = useCallback(async () => {
     setLoading(true);
     setError('');
     try {
       const params = new URLSearchParams({ date });
       if (branch) params.set('branch', branch);
-      const qs = params.toString();
+      const res = await fetch(`/api/dispatch/init?${params.toString()}`);
+      if (!res.ok) throw new Error('Failed to load dispatch data');
+      const data = await res.json() as DispatchInitResponse;
 
-      const [stopsRes, kpisRes, routesRes, trucksRes] = await Promise.all([
-        fetch(`/api/dispatch/deliveries?${qs}`),
-        fetch(`/api/dispatch/kpis?${qs}`),
-        fetch(`/api/dispatch/routes?${qs}`),
-        fetch(`/api/dispatch/truck-assignments?${qs}`),
-      ]);
+      setStops(data.deliveries);
+      setKpis(data.kpis);
+      setRoutes(data.routes);
+      setTrucks(data.trucks);
 
-      const [stopsData, kpisData, routesData, trucksData] = await Promise.all([
-        stopsRes.ok ? stopsRes.json() : [],
-        kpisRes.ok ? kpisRes.json() : null,
-        routesRes.ok ? routesRes.json() : [],
-        trucksRes.ok ? trucksRes.json() : { assignments: [] },
-      ]);
-
-      setStops(stopsData as DeliveryStop[]);
-      setKpis(kpisData as DispatchKpis | null);
-      const routeList = routesData as DispatchRoute[];
-      setRoutes(routeList);
-      setTrucks((trucksData as { assignments: TruckAssignment[] }).assignments ?? []);
-      await loadRouteStops(routeList);
+      // Build routeStops Map from the flat stops array
+      const map = new Map<number, RouteStop[]>();
+      for (const s of data.routeStops) {
+        const arr = map.get(s.route_id) ?? [];
+        arr.push(s);
+        map.set(s.route_id, arr);
+      }
+      setRouteStops(map);
     } catch {
       setError('Failed to load dispatch data.');
     } finally {
       setLoading(false);
     }
-  }, [date, branch, loadRouteStops]);
+  }, [date, branch]);
 
   useEffect(() => { loadAll(); }, [loadAll]);
 
@@ -804,7 +784,7 @@ export default function DispatchClient({ isAdmin, userBranch, userName, userRole
 
   // Filtered lists
   const q = search.toLowerCase();
-  const unassignedStops = stops.filter((s) => !assignedSoIds.has(s.so_id));
+  const unassignedStops = stops.filter((s) => !assignedSoIds.has(s.so_id) && s.so_status?.toUpperCase() !== 'I');
   const filteredUnassigned = q
     ? unassignedStops.filter((s) =>
         s.so_id.includes(q) || s.customer_name?.toLowerCase().includes(q) || s.city?.toLowerCase().includes(q))

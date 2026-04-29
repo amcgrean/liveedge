@@ -68,8 +68,9 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
             display_name: string | null;
             roles: string[] | null;
             branch: string | null;
+            agent_id: string | null;
           }[]>`
-            SELECT id, email, display_name, roles, branch
+            SELECT id, email, display_name, roles, branch, agent_id
             FROM app_users
             WHERE ${isEmail ? sql`email = ${input}` : sql`username = ${input}`}
               AND is_active = true
@@ -120,6 +121,7 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
             roles,
             branch: user.branch ?? null,
             branchId: null,
+            agentId: user.agent_id ?? null,
           };
         } catch (err) {
           console.error('[auth] authorize error:', err);
@@ -137,9 +139,11 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
         token.roles = (user as { roles?: string[] }).roles ?? [];
         token.branch = (user as { branch?: string | null }).branch ?? null;
         token.branchId = (user as { branchId?: number | null }).branchId ?? null;
+        token.agentId = (user as { agentId?: string | null }).agentId ?? null;
       }
       if (!token.roles || (token.roles as string[]).length === 0) {
-        if (token.role === 'admin') token.roles = ['admin'];
+        const r = token.role as string | undefined;
+        if (r && r !== 'viewer') token.roles = [r];
       }
       return token;
     },
@@ -149,8 +153,8 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
         (session.user as { role?: string }).role = token.role as string;
         (session.user as { roles?: string[] }).roles = (token.roles ?? []) as string[];
         (session.user as { branch?: string | null }).branch = (token.branch ?? null) as string | null;
-        (session.user as { branchId?: number | null }).branchId =
-          token.branchId as number | null;
+        (session.user as { branchId?: number | null }).branchId = token.branchId as number | null;
+        (session.user as { agentId?: string | null }).agentId = (token.agentId ?? null) as string | null;
       }
       return session;
     },
@@ -163,10 +167,18 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
 
 /** Map a roles[] array to the primary scalar `role` string. */
 function deriveRole(roles: string[]): string {
-  if (roles.includes('admin')) return 'admin';
-  if (roles.some((r) => ['ops', 'sales', 'supervisor', 'purchasing', 'warehouse',
-                         'estimating', 'estimator', 'designer', 'receiving_yard',
-                         'dispatch', 'driver'].includes(r))) return 'estimator';
+  if (roles.includes('admin'))           return 'admin';
+  if (roles.includes('management'))      return 'management';
+  if (roles.includes('estimator') || roles.includes('estimating')) return 'estimator';
+  if (roles.includes('designer'))        return 'designer';
+  if (roles.includes('supervisor'))      return 'supervisor';
+  if (roles.includes('ops'))             return 'ops';
+  if (roles.includes('sales'))           return 'sales';
+  if (roles.includes('purchasing'))      return 'purchasing';
+  if (roles.includes('receiving_yard'))  return 'receiving_yard';
+  if (roles.includes('warehouse'))       return 'warehouse';
+  if (roles.includes('dispatch'))        return 'dispatch';
+  if (roles.includes('driver'))          return 'driver';
   return 'viewer';
 }
 
@@ -182,6 +194,7 @@ declare module 'next-auth' {
       roles: string[];
       branch: string | null;
       branchId: number | null;
+      agentId: string | null;
     };
   }
 }

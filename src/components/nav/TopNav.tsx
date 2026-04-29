@@ -7,7 +7,7 @@ import { signOut, useSession } from 'next-auth/react';
 import {
   LogOut, ChevronDown, Menu, X, Settings,
   Truck, ShoppingCart, FileText, Wrench, PackageCheck, MapPin, Search,
-  Boxes, HelpCircle, User,
+  Boxes, HelpCircle, User, BarChart3,
 } from 'lucide-react';
 import { cn } from '../../lib/utils';
 
@@ -210,11 +210,13 @@ function getDomains(tvBranch: string): Domain[] {
       links: [
         { href: '/warehouse',              label: 'Picks Board' },
         { href: '/warehouse/open-picks',   label: 'Open Picks' },
-        { href: '/warehouse/picker-stats', label: 'Picker Stats' },
         { href: '/work-orders',            label: 'Work Orders' },
-        { href: '/supervisor',             label: 'Supervisor',   requireAnyRole: ['supervisor', 'ops', 'warehouse'] },
-        { href: `/tv/${tvBranch}`,         label: 'TV Board',     requireAnyRole: ['supervisor', 'ops', 'warehouse'] },
-        { href: '/warehouse/pickers',      label: 'Picker Admin', requireAnyRole: ['supervisor', 'ops'] },
+        // Performance — picker analytics + supervisor view
+        { href: '/warehouse/picker-stats', label: 'Picker Stats',         sectionBefore: 'Performance' },
+        { href: '/supervisor',             label: 'Supervisor',           requireAnyRole: ['supervisor', 'ops', 'warehouse'] },
+        // Kiosks — TV board + on-floor kiosk
+        { href: `/tv/${tvBranch}`,         label: 'TV Board',             sectionBefore: 'Kiosks', requireAnyRole: ['supervisor', 'ops', 'warehouse'] },
+        { href: `/kiosk/${tvBranch}`,      label: 'Pick Tracker Kiosk',   requireAnyRole: ['supervisor', 'ops', 'warehouse'] },
       ],
     },
     {
@@ -224,14 +226,16 @@ function getDomains(tvBranch: string): Domain[] {
       dropdown: true,
       isActive: (p) =>
         ['/dispatch', '/delivery'].some((prefix) => p === prefix || p.startsWith(prefix + '/')) ||
-        p.startsWith('/ops/delivery'),
+        p.startsWith('/ops/delivery') ||
+        p === '/management/forecast',
       links: [
         { href: '/dispatch',               label: 'Dispatch Board' },
         { href: '/dispatch/transfers',     label: 'Branch Transfers' },
         { href: '/dispatch/drivers',       label: 'Driver Roster',   requireAnyRole: ['supervisor', 'ops', 'dispatch'] },
         { href: '/delivery',               label: 'Delivery Tracker' },
         { href: '/delivery/map',           label: 'Fleet Map' },
-        { href: '/ops/delivery-reporting', label: 'Delivery Report', requireAnyRole: ['supervisor', 'ops'] },
+        { href: '/ops/delivery-reporting', label: 'Delivery Report', sectionBefore: 'Reports', requireAnyRole: ['supervisor', 'ops'] },
+        { href: '/management/forecast',    label: 'Delivery Forecast' },
       ],
     },
     {
@@ -239,18 +243,33 @@ function getDomains(tvBranch: string): Domain[] {
       label: 'Sales',
       icon: <ShoppingCart className="w-4 h-4" />,
       dropdown: true,
-      isActive: (p) => p.startsWith('/sales') || p.startsWith('/credits'),
+      isActive: (p) =>
+        (p.startsWith('/sales') && !p.startsWith('/sales/reports')) ||
+        p.startsWith('/credits'),
       links: [
         { href: '/sales',               label: 'Sales Hub' },
         { href: '/sales/customers',     label: 'Customers' },
         { href: '/sales/transactions',  label: 'Transactions' },
-        { href: '/sales/history',       label: 'Purchase History' },
         { href: '/sales/products',      label: 'Products & Stock' },
-        { href: '/sales/reports',       label: 'Reports' },
         { href: '/sales/tracker',       label: 'Sales Tracker',    requireAnyRole: ['sales', 'ops', 'supervisor'] },
-        { href: '/sales/deliveries',    label: 'Sales Deliveries', requireAnyRole: ['sales', 'ops', 'supervisor'] },
-        { href: '/sales/rep-dashboard', label: 'Rep Dashboard',    requireAnyRole: ['sales'] },
         { href: '/credits',             label: 'RMA Credits' },
+      ],
+    },
+    {
+      id: 'management',
+      label: 'Management',
+      icon: <BarChart3 className="w-4 h-4" />,
+      dropdown: true,
+      isActive: (p) => p.startsWith('/management') || p.startsWith('/sales/reports') || p.startsWith('/scorecard'),
+      links: [
+        { href: '/management',          label: 'Management Hub' },
+        { href: '/scorecard/overview',  label: 'Company Overview' },
+        { href: '/scorecard/branch/20GR', label: 'By Branch' },
+        { href: '/scorecard/rep',       label: 'By Sales Rep' },
+        { href: '/scorecard/product',   label: 'Product Groups' },
+        { href: '/scorecard',           label: 'Customer Scorecard' },
+        { href: '/sales/reports',       label: 'Sales Reports' },
+        { href: '/management/forecast', label: 'Open Orders & Forecast' },
       ],
     },
     {
@@ -269,15 +288,12 @@ function getDomains(tvBranch: string): Domain[] {
         p.startsWith('/projects') ||
         p.startsWith('/designs'),
       links: [
-        { href: '/estimating',            label: 'Estimating App' },
-        { href: '/takeoff',               label: 'PDF Takeoff' },
-        { href: '/legacy-bids',           label: 'Bids' },
-        { href: '/legacy-bids/completed', label: 'Completed Bids' },
-        { href: '/all-bids',              label: 'All Bids' },
-        { href: '/bids',                  label: 'Bid Projects' },
-        { href: '/ewp',                   label: 'EWP' },
-        { href: '/projects',              label: 'Projects' },
-        { href: '/designs',               label: 'Design' },
+        { href: '/estimating', label: 'Estimating App' },
+        { href: '/takeoff',    label: 'PDF Takeoff' },
+        { href: '/bids',       label: 'Bids' },
+        { href: '/ewp',        label: 'EWP' },
+        { href: '/projects',   label: 'Projects' },
+        { href: '/designs',    label: 'Design' },
       ],
     },
     {
@@ -318,7 +334,10 @@ const ADMIN_LINKS: NavLink[] = [
   { href: '/admin/bid-fields',    label: 'Bid Fields',      sectionBefore: 'Services' },
   // Users
   { href: '/admin/users',         label: 'Users',           sectionBefore: 'Users' },
+  { href: '/warehouse/pickers',   label: 'Picker Admin' },
   { href: '/admin/notifications', label: 'Notifications' },
+  // Operations
+  { href: '/admin/jobs',          label: 'Job Review',      sectionBefore: 'Operations' },
   // System
   { href: '/admin/audit',         label: 'Audit Log',       sectionBefore: 'System' },
   { href: '/admin/erp',           label: 'ERP Sync' },
@@ -336,6 +355,7 @@ function hasAnyRole(roles: string[], ...check: WHRole[]): boolean {
 
 function canSeeSection(domainId: string, role: string, roles: string[]): boolean {
   if (role === 'admin') return true;
+  if (role === 'management') return true; // management sees all non-admin sections
   const isWHUser = (WH_ROLES as readonly string[]).some((r) => roles.includes(r));
   switch (domainId) {
     case 'yard':
@@ -344,8 +364,10 @@ function canSeeSection(domainId: string, role: string, roles: string[]): boolean
       return hasAnyRole(roles, 'warehouse', 'sales', 'ops', 'supervisor', 'dispatch');
     case 'sales':
       return hasAnyRole(roles, 'sales', 'ops', 'supervisor');
+    case 'management':
+      return hasAnyRole(roles, 'ops', 'supervisor');
     case 'estimating':
-      return (role === 'admin' || role === 'estimator') && !isWHUser;
+      return ((role === 'admin' || role === 'estimator') && !isWHUser) || hasAnyRole(roles, 'sales');
     case 'purchasing':
       // Covers both purchasing and receiving (merged)
       return role !== 'viewer';
@@ -356,6 +378,7 @@ function canSeeSection(domainId: string, role: string, roles: string[]): boolean
 
 function canSeeLink(link: NavLink, role: string, roles: string[]): boolean {
   if (role === 'admin') return true;
+  if (role === 'management') return true; // management sees all nav links
   if (!link.requireAnyRole) return true;
   return link.requireAnyRole.some((r) => roles.includes(r));
 }
@@ -578,7 +601,7 @@ export function TopNav({ userName, userRole }: Props) {
                     <p className="text-sm font-semibold text-white truncate mt-0.5">{name}</p>
                   </div>
                   <Link
-                    href="/it-issues"
+                    href={`/it-issues?report=1&from=${encodeURIComponent(pathname)}`}
                     onClick={() => setOpenMenu(null)}
                     className="flex items-center gap-2.5 px-4 py-2.5 text-sm text-slate-300 hover:bg-slate-800 hover:text-white transition"
                   >
@@ -766,7 +789,7 @@ export function TopNav({ userName, userRole }: Props) {
                   Account — {name}
                 </div>
                 <Link
-                  href="/it-issues"
+                  href={`/it-issues?report=1&from=${encodeURIComponent(pathname)}`}
                   className="flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm text-slate-300 hover:text-white hover:bg-slate-800 transition"
                 >
                   <Wrench className="w-4 h-4" />

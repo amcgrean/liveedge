@@ -113,6 +113,12 @@ export default function ManageITIssueClient({ session }: Props) {
               </select>
             </div>
           </div>
+          {(issue.sourcePage as string | null) && (
+            <div>
+              <label className="block text-xs text-gray-400 mb-1">Reported from</label>
+              <p className="px-3 py-2 bg-gray-800/50 border border-gray-700/50 rounded text-sm font-mono text-gray-400">{issue.sourcePage as string}</p>
+            </div>
+          )}
           <div>
             <label className="block text-xs text-gray-400 mb-1">Description</label>
             <textarea value={(form.description as string) ?? ''} onChange={(e) => setField('description', e.target.value)} rows={4}

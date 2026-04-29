@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useRef, useCallback } from 'react';
+import { useEffect, useRef, useCallback, useState } from 'react';
 import type { DeliveryStop } from '../../../app/api/dispatch/deliveries/route';
 
 // ── Types ──────────────────────────────────────────────────────────────────────
@@ -89,6 +89,7 @@ export function DispatchMap({
   const vehicleTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const onSelectStopRef = useRef(onSelectStop);
   onSelectStopRef.current = onSelectStop;
+  const [mapReady, setMapReady] = useState(false);
 
   // Build a map: so_id → route color
   const routeColorMap = useRef<Map<string, string>>(new Map());
@@ -125,6 +126,7 @@ export function DispatchMap({
       }).addTo(map);
 
       mapRef.current = map;
+      setMapReady(true);
     });
 
     return () => {
@@ -155,7 +157,7 @@ export function DispatchMap({
     const t = setTimeout(update, 100);
     return () => clearTimeout(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [stops, routes, routeStops, selectedStop]);
+  }, [stops, routes, routeStops, selectedStop, mapReady]);
 
   const renderStops = useCallback(() => {
     import('leaflet').then((L) => {

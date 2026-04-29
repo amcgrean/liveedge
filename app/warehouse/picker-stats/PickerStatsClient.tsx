@@ -75,27 +75,40 @@ export default function PickerStatsClient({ isAdmin }: Props) {
 
       {/* KPI cards */}
       <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
-        <div className="bg-slate-900 border border-white/10 rounded-xl p-4">
-          <div className="flex items-center gap-2 mb-1">
-            <BarChart2 className="w-4 h-4 text-cyan-400" />
-            <span className="text-xs text-slate-400">Total Picks ({days}d)</span>
-          </div>
-          <div className="text-2xl font-bold text-white">{totalPicks}</div>
-        </div>
-        <div className="bg-slate-900 border border-white/10 rounded-xl p-4">
-          <div className="flex items-center gap-2 mb-1">
-            <TrendingUp className="w-4 h-4 text-cyan-400" />
-            <span className="text-xs text-slate-400">Today&apos;s Picks</span>
-          </div>
-          <div className="text-2xl font-bold text-white">{todayTotal}</div>
-        </div>
-        <div className="bg-slate-900 border border-white/10 rounded-xl p-4">
-          <div className="flex items-center gap-2 mb-1">
-            <Clock className="w-4 h-4 text-cyan-400" />
-            <span className="text-xs text-slate-400">Active Pickers</span>
-          </div>
-          <div className="text-2xl font-bold text-white">{stats.filter((s) => s.total_picks > 0).length}</div>
-        </div>
+        {loading && stats.length === 0 ? (
+          <>
+            {[1, 2, 3].map((i) => (
+              <div key={i} className="animate-pulse bg-slate-900 border border-white/10 rounded-xl p-4">
+                <div className="h-3 bg-slate-800 rounded w-28 mb-2" />
+                <div className="h-7 bg-slate-800 rounded w-16" />
+              </div>
+            ))}
+          </>
+        ) : (
+          <>
+            <div className="bg-slate-900 border border-white/10 rounded-xl p-4">
+              <div className="flex items-center gap-2 mb-1">
+                <BarChart2 className="w-4 h-4 text-cyan-400" />
+                <span className="text-xs text-slate-400">Total Picks ({days}d)</span>
+              </div>
+              <div className="text-2xl font-bold text-white">{totalPicks}</div>
+            </div>
+            <div className="bg-slate-900 border border-white/10 rounded-xl p-4">
+              <div className="flex items-center gap-2 mb-1">
+                <TrendingUp className="w-4 h-4 text-cyan-400" />
+                <span className="text-xs text-slate-400">Today&apos;s Picks</span>
+              </div>
+              <div className="text-2xl font-bold text-white">{todayTotal}</div>
+            </div>
+            <div className="bg-slate-900 border border-white/10 rounded-xl p-4">
+              <div className="flex items-center gap-2 mb-1">
+                <Clock className="w-4 h-4 text-cyan-400" />
+                <span className="text-xs text-slate-400">Active Pickers</span>
+              </div>
+              <div className="text-2xl font-bold text-white">{stats.filter((s) => s.total_picks > 0).length}</div>
+            </div>
+          </>
+        )}
       </div>
 
       {/* Stats table */}
@@ -113,7 +126,19 @@ export default function PickerStatsClient({ isAdmin }: Props) {
             </tr>
           </thead>
           <tbody>
-            {stats.length === 0 && !loading ? (
+            {loading && stats.length === 0 ? (
+              Array.from({ length: 6 }).map((_, i) => (
+                <tr key={i} className="border-b border-white/5 animate-pulse">
+                  <td className="px-4 py-3"><div className="h-4 bg-slate-800 rounded w-28" /></td>
+                  <td className="px-4 py-3"><div className="h-3 bg-slate-800 rounded w-16" /></td>
+                  <td className="px-4 py-3"><div className="h-4 bg-slate-800 rounded w-8" /></td>
+                  <td className="px-4 py-3"><div className="h-4 bg-slate-800 rounded w-8" /></td>
+                  <td className="px-4 py-3"><div className="h-3 bg-slate-800 rounded w-10" /></td>
+                  <td className="px-4 py-3"><div className="h-2 bg-slate-800 rounded-full w-24" /></td>
+                  <td className="px-4 py-3"><div className="h-3 bg-slate-800 rounded w-12" /></td>
+                </tr>
+              ))
+            ) : stats.length === 0 ? (
               <tr>
                 <td colSpan={7} className="px-4 py-10 text-center text-slate-500">No data</td>
               </tr>

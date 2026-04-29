@@ -216,6 +216,17 @@ export default function WarehouseClient({ initialStats, isAdmin, userBranch, use
 
         {/* Stats Cards */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+          {stats.length === 0 && (
+            <>
+              {[1, 2, 3, 4].map((i) => (
+                <div key={i} className="animate-pulse p-4 rounded-xl border border-gray-700 bg-gray-900">
+                  <div className="h-3 bg-gray-800 rounded w-12 mb-3" />
+                  <div className="h-8 bg-gray-800 rounded w-16 mb-1" />
+                  <div className="h-3 bg-gray-800 rounded w-20" />
+                </div>
+              ))}
+            </>
+          )}
           {stats
             .filter((s) => !selectedBranch || s.system_id === selectedBranch)
             .map((s) => (
@@ -296,7 +307,39 @@ export default function WarehouseClient({ initialStats, isAdmin, userBranch, use
           )}
 
           {loadingPicks && picks === null && (
-            <div className="px-4 py-8 text-center text-sm text-gray-500">Loading pick data…</div>
+            <div className="animate-pulse">
+              {/* Stats cards skeleton row */}
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="text-xs text-gray-500 border-b border-gray-700 bg-gray-900/50">
+                      <th className="px-4 py-2 text-left font-medium">SO #</th>
+                      <th className="px-4 py-2 text-left font-medium">Customer</th>
+                      <th className="px-4 py-2 text-left font-medium">Handling</th>
+                      <th className="px-4 py-2 text-left font-medium">Status</th>
+                      <th className="px-4 py-2 text-left font-medium">Assign Picker</th>
+                      <th className="px-4 py-2 text-left font-medium">Ship Via</th>
+                      <th className="px-4 py-2 text-left font-medium">Expect</th>
+                      <th className="px-4 py-2 text-right font-medium">Lines</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {Array.from({ length: 12 }).map((_, i) => (
+                      <tr key={i} className="border-b border-gray-800">
+                        <td className="px-4 py-2.5"><div className="h-3.5 bg-gray-800 rounded w-16" /></td>
+                        <td className="px-4 py-2.5"><div className="h-3.5 bg-gray-800 rounded w-36" /></td>
+                        <td className="px-4 py-2.5"><div className="h-5 bg-gray-800 rounded w-20" /></td>
+                        <td className="px-4 py-2.5"><div className="h-3.5 bg-gray-800 rounded w-20" /></td>
+                        <td className="px-4 py-2.5"><div className="h-6 bg-gray-800 rounded w-28" /></td>
+                        <td className="px-4 py-2.5"><div className="h-3.5 bg-gray-800 rounded w-16" /></td>
+                        <td className="px-4 py-2.5"><div className="h-3.5 bg-gray-800 rounded w-16" /></td>
+                        <td className="px-4 py-2.5 text-right"><div className="h-3.5 bg-gray-800 rounded w-6 ml-auto" /></td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
           )}
 
           {picks !== null && filteredPicks.length === 0 && !loadingPicks && (

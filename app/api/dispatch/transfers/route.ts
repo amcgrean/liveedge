@@ -2,10 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '../../../../auth';
 import { getErpSql } from '../../../../db/supabase';
 
-// Beisser branch codes — used to identify inbound POs sourced from another branch.
-const BRANCH_CODES = ['10FD', '20GR', '25BW', '40CV'];
-
-// Sale type used by Agility for inter-branch transfer SOs.
+// Sale type used by Agility for inter-branch transfer SOs and POs.
 const TRANSFER_SALE_TYPE = 'TRANSFER';
 
 
@@ -100,7 +97,7 @@ export async function GET(req: NextRequest) {
       ) lc ON true
       WHERE soh.is_deleted = false
         AND UPPER(COALESCE(soh.sale_type, '')) = ${TRANSFER_SALE_TYPE}
-        AND soh.so_status NOT IN ('C', 'X')
+        AND soh.so_status NOT IN ('C', 'X', 'I')
         ${branchFilter}
       ORDER BY soh.expect_date ASC NULLS LAST, soh.so_id
     `;
@@ -162,7 +159,7 @@ export async function GET(req: NextRequest) {
       ) lc ON true
       WHERE ph.is_deleted = false
         AND UPPER(COALESCE(ph.po_status, '')) NOT IN ('CLOSED','COMPLETE','CANCELLED','CANCELED','VOID','RECEIVED')
-        AND UPPER(TRIM(COALESCE(ph.supplier_code, ''))) = ANY(${BRANCH_CODES})
+        AND UPPER(TRIM(COALESCE(ph.purchase_type, ''))) = ${TRANSFER_SALE_TYPE}
         ${poBranchFilter}
       ORDER BY ph.expect_date ASC NULLS LAST, ph.po_id
     `;

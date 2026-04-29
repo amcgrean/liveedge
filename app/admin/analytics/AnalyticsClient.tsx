@@ -53,7 +53,7 @@ function label(path: string) {
 
 type PageRow = {
   path: string;
-  user_id: number;
+  user_id: string;
   username: string | null;
   full_name: string | null;
   visit_count: number;
@@ -61,7 +61,7 @@ type PageRow = {
 };
 
 type TopPage = { path: string; total_visits: number; unique_users: number };
-type TopUser = { user_id: number; username: string | null; full_name: string | null; total_visits: number; pages_visited: number };
+type TopUser = { user_id: string; username: string | null; full_name: string | null; total_visits: number; pages_visited: number };
 
 type AnalyticsData = {
   rows: PageRow[];
@@ -76,7 +76,7 @@ export default function AnalyticsClient() {
   const [data, setData] = useState<AnalyticsData | null>(null);
   const [loading, setLoading] = useState(true);
   const [tab, setTab] = useState<Tab>('pages');
-  const [userFilter, setUserFilter] = useState<number | null>(null);
+  const [userFilter, setUserFilter] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
