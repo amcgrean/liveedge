@@ -8,7 +8,7 @@ import {
   ArrowUp, ArrowDown,
 } from 'lucide-react';
 import { usePageTracking } from '@/hooks/usePageTracking';
-import type { CreditMemo, SortCol } from '../api/credits/route';
+import type { CreditMemo, SortCol } from '../api/credits/_shared';
 import type { CreditImage } from '../api/credits/[id]/images/route';
 
 type SortDir = 'asc' | 'desc';
