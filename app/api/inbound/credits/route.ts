@@ -87,6 +87,92 @@ async function fetchAttachmentBuffer(att: ResendAttachment, emailId: string | un
   }
 }
 
+// ─── Nested email MIME extractor ──────────────────────────────────────────────
+// Handles the case where someone attaches a forwarded email (.eml / message/rfc822)
+// that itself contains image or PDF attachments.
+// Walks multipart/* recursively; collects image/pdf leaf parts.
+
+type ExtractedPart = { filename: string; content_type: string; buffer: Buffer };
+
+const ALLOWED_MIME = ['image/jpeg', 'image/png', 'image/gif', 'image/webp', 'application/pdf'];
+
+function escapeBoundary(b: string) {
+  return b.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+function extractPartsFromRawEmail(raw: string): ExtractedPart[] {
+  const results: ExtractedPart[] = [];
+
+  function walk(text: string): void {
+    // Normalize CRLF → LF
+    const s = text.replace(/\r\n/g, '\n');
+
+    // Split headers from body at the first blank line
+    const blankIdx = s.indexOf('\n\n');
+    if (blankIdx === -1) return;
+    const headerBlock = s.slice(0, blankIdx);
+    const body = s.slice(blankIdx + 2);
+
+    // Parse Content-Type (may fold across lines)
+    const ctRaw = headerBlock
+      .match(/^content-type:\s*([^\n]+(?:\n[ \t][^\n]+)*)/im)?.[1]
+      ?.replace(/\n[ \t]/g, ' ')
+      .trim() ?? '';
+    const ct = ctRaw.split(';')[0].trim().toLowerCase();
+
+    if (ct.startsWith('multipart/')) {
+      const bm = ctRaw.match(/boundary="?([^";]+)"?/i);
+      if (!bm) return;
+      const boundary = bm[1].trim();
+      // Split on boundary markers; ignore the preamble and epilogue
+      const re = new RegExp(`--${escapeBoundary(boundary)}(?:--)?`, 'g');
+      const parts = body.split(re).slice(1); // drop preamble before first boundary
+      for (const part of parts) {
+        const trimmed = part.trim();
+        if (trimmed === '' || trimmed === '--') continue;
+        walk(trimmed);
+      }
+      return;
+    }
+
+    if (!ALLOWED_MIME.includes(ct)) return;
+
+    // Extract filename from Content-Disposition or Content-Type
+    const fnMatch =
+      headerBlock.match(/filename\*?="?([^"\n;]+)"?/i) ??
+      headerBlock.match(/name="?([^"\n;]+)"?/i);
+    const ext = ct.split('/')[1] ?? 'bin';
+    const filename = fnMatch?.[1]?.trim() ?? `attachment.${ext}`;
+
+    // Decode body
+    const enc = (headerBlock.match(/^content-transfer-encoding:\s*([^\n]+)/im)?.[1] ?? '')
+      .trim().toLowerCase();
+    let buffer: Buffer;
+    try {
+      if (enc === 'base64') {
+        buffer = Buffer.from(body.replace(/\s+/g, ''), 'base64');
+      } else {
+        // 7bit / 8bit / binary — treat as raw bytes
+        buffer = Buffer.from(body, 'binary');
+      }
+    } catch {
+      return;
+    }
+
+    // Skip suspiciously small parts (signature icons are typically < 5 KB)
+    if (buffer.length > 5000) {
+      results.push({ filename, content_type: ct, buffer });
+    }
+  }
+
+  try {
+    walk(raw);
+  } catch (err) {
+    console.error('[inbound/credits] MIME walk error', err);
+  }
+  return results;
+}
+
 function extractRmaNumber(subject: string | null, text: string | null, toAddresses: string[]): string {
   // Legacy: if using {so_id}@rma.beisser.cloud, the local part IS the CM number.
   // With credits@beisser.cloud the local part is just "credits" — falls through.
@@ -274,27 +360,52 @@ export async function POST(req: NextRequest) {
     has_id: !!a.id,
   })));
 
+  // Collect (filename, content_type, buffer) tuples from all attachment sources:
+  //   1. Regular file attachments (image/pdf)
+  //   2. Inline-embedded images that are large enough to be real photos (not logos)
+  //   3. Nested emails (message/rfc822) whose own MIME parts contain images/pdfs
+  const partsToUpload: ExtractedPart[] = [];
+
   for (const att of attachments) {
-    const allowed = ['image/jpeg', 'image/png', 'image/gif', 'image/webp', 'application/pdf'];
-    if (!allowed.includes(att.content_type)) continue;
-    // Skip HTML-embedded parts (email signatures, tracking pixels).
-    // True inline parts have BOTH content_id (cid: reference) AND content_disposition === 'inline'.
-    // Outlook sometimes sets content_id on real file attachments when forwarding, so checking
-    // content_id alone is too aggressive — require both conditions to skip.
-    const isInlineEmbedded =
+    // ── Nested email ──────────────────────────────────────────────────────────
+    if (att.content_type === 'message/rfc822') {
+      console.log('[inbound/credits] Nested email attachment detected:', att.filename);
+      const rawBuffer = await fetchAttachmentBuffer(att, emailId);
+      if (rawBuffer) {
+        const nested = extractPartsFromRawEmail(rawBuffer.toString('binary'));
+        console.log(`[inbound/credits] Extracted ${nested.length} part(s) from nested email`);
+        partsToUpload.push(...nested);
+      }
+      continue;
+    }
+
+    // ── Regular / inline image or PDF ────────────────────────────────────────
+    if (!ALLOWED_MIME.includes(att.content_type)) continue;
+
+    // Inline-embedded parts have content_id + content_disposition=inline.
+    // Skip only if the size indicates it's a small logo/icon (< 20 KB).
+    // If size is unknown, capture it — better to over-capture than miss a photo.
+    const isInline =
       !!att.content_id &&
       (att.content_disposition ?? '').toLowerCase().startsWith('inline');
-    if (isInlineEmbedded) continue;
-
-    const safeFilename = att.filename.replace(/[^a-zA-Z0-9._-]/g, '_');
-    const timestamp = Date.now();
-    const r2Key = `credits/${rmaNumber}/${timestamp}-${safeFilename}`;
+    if (isInline && att.size !== undefined && att.size < 20000) {
+      console.log(`[inbound/credits] Skipping small inline part (${att.size}B): ${att.filename}`);
+      continue;
+    }
 
     const buffer = await fetchAttachmentBuffer(att, emailId);
     if (!buffer) {
       console.warn('[inbound/credits] Could not retrieve attachment', att.filename);
       continue;
     }
+    partsToUpload.push({ filename: att.filename, content_type: att.content_type, buffer });
+  }
+
+  for (const part of partsToUpload) {
+    const { filename, content_type, buffer } = part;
+    const safeFilename = filename.replace(/[^a-zA-Z0-9._-]/g, '_');
+    const timestamp = Date.now();
+    const r2Key = `credits/${rmaNumber}/${timestamp}-${safeFilename}`;
 
     // Upload to R2
     try {
@@ -302,14 +413,14 @@ export async function POST(req: NextRequest) {
         Bucket: bucket,
         Key: r2Key,
         Body: buffer,
-        ContentType: att.content_type,
+        ContentType: content_type,
         Metadata: {
           rma_number: rmaNumber,
           email_from: from,
         },
       }));
     } catch (err) {
-      console.error('[inbound/credits] R2 upload failed', att.filename, err);
+      console.error('[inbound/credits] R2 upload failed', filename, err);
       continue;
     }
 
@@ -319,14 +430,14 @@ export async function POST(req: NextRequest) {
         INSERT INTO credit_images
           (rma_number, filename, filepath, email_from, email_subject, received_at, uploaded_at, r2_key)
         VALUES
-          (${rmaNumber}, ${att.filename}, ${r2Key}, ${from}, ${subject ?? null},
+          (${rmaNumber}, ${filename}, ${r2Key}, ${from}, ${subject ?? null},
            ${receivedAt.toISOString()}, NOW(), ${r2Key})
         ON CONFLICT (r2_key) DO UPDATE
           SET uploaded_at = NOW()
       `;
       uploaded++;
     } catch (err) {
-      console.error('[inbound/credits] DB upsert failed', att.filename, err);
+      console.error('[inbound/credits] DB upsert failed', filename, err);
     }
   }
 
