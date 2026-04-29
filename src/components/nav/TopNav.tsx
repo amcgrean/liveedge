@@ -245,7 +245,8 @@ function getDomains(tvBranch: string): Domain[] {
       dropdown: true,
       isActive: (p) =>
         (p.startsWith('/sales') && !p.startsWith('/sales/reports')) ||
-        p.startsWith('/credits'),
+        p.startsWith('/credits') ||
+        p.startsWith('/admin/hubbell'),
       links: [
         { href: '/sales',               label: 'Sales Hub' },
         { href: '/sales/customers',     label: 'Customers' },
@@ -253,6 +254,8 @@ function getDomains(tvBranch: string): Domain[] {
         { href: '/sales/products',      label: 'Products & Stock' },
         { href: '/sales/tracker',       label: 'Sales Tracker',    requireAnyRole: ['sales', 'ops', 'supervisor'] },
         { href: '/credits',             label: 'RMA Credits' },
+        { href: '/admin/hubbell',       label: 'Hubbell Emails',   sectionBefore: 'Vendor Reconciliation', requireAnyRole: ['hubbell'] },
+        { href: '/admin/hubbell/jobs',  label: 'Hubbell Jobs',     requireAnyRole: ['hubbell'] },
       ],
     },
     {
@@ -338,6 +341,8 @@ const ADMIN_LINKS: NavLink[] = [
   { href: '/admin/notifications', label: 'Notifications' },
   // Operations
   { href: '/admin/jobs',          label: 'Job Review',      sectionBefore: 'Operations' },
+  { href: '/admin/hubbell',       label: 'Hubbell Emails' },
+  { href: '/admin/hubbell/jobs',  label: 'Hubbell Jobs' },
   // System
   { href: '/admin/audit',         label: 'Audit Log',       sectionBefore: 'System' },
   { href: '/admin/erp',           label: 'ERP Sync' },
@@ -363,7 +368,7 @@ function canSeeSection(domainId: string, role: string, roles: string[]): boolean
     case 'dispatch':
       return hasAnyRole(roles, 'warehouse', 'sales', 'ops', 'supervisor', 'dispatch');
     case 'sales':
-      return hasAnyRole(roles, 'sales', 'ops', 'supervisor');
+      return hasAnyRole(roles, 'sales', 'ops', 'supervisor', 'hubbell');
     case 'management':
       return hasAnyRole(roles, 'ops', 'supervisor');
     case 'estimating':
