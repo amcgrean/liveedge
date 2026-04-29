@@ -12,7 +12,8 @@ export default async function JobEmailsPage({
   const session = await auth();
   if (!session) redirect('/login');
   const role = (session.user as { role?: string }).role ?? '';
-  if (role !== 'admin') redirect('/');
+  const roles = (session.user as { roles?: string[] }).roles ?? [];
+  if (role !== 'admin' && !roles.includes('hubbell')) redirect('/');
 
   const { soId } = await params;
   return <JobEmailsClient soId={soId} />;
