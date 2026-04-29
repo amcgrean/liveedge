@@ -1,8 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '../../../auth';
 import { getErpSql } from '../../../db/supabase';
-import { ALLOWED_SORTS } from '../../credits/types';
-import type { CreditMemo, SortCol } from '../../credits/types';
+import { ALLOWED_SORTS, type SortCol } from './_shared';
 
 const SORT_SQL: Record<SortCol, string> = {
   so_id:        'soh.so_id',

@@ -5,14 +5,15 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import {
   MapPin, MapPinOff, RefreshCw, Search, ChevronLeft, ChevronRight,
-  Clock, CheckCircle2, XCircle, Zap, Calendar,
+  Clock, CheckCircle2, XCircle, Zap, Calendar, Globe,
 } from 'lucide-react';
 import type { JobRecord } from '../../api/admin/jobs/route';
+import type { GeocodeStatus } from '../../api/admin/geocode/status/route';
 import { cn } from '../../../src/lib/utils';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
-type GpsFilter  = 'all' | 'matched' | 'unmatched';
+type GpsFilter  = 'all' | 'matched' | 'unmatched' | 'junk';
 type SortOption = 'newest' | 'oldest' | 'expect_date';
 
 interface QuickFilter {
@@ -51,7 +52,16 @@ const QUICK_FILTERS: QuickFilter[] = [
     gps: 'unmatched',
     sort: 'newest',
     status: '',
-    description: 'Jobs without GPS coordinates on file',
+    description: 'Real addresses without GPS coordinates (junk addresses excluded)',
+  },
+  {
+    id: 'junk_address',
+    label: 'Junk Addresses',
+    icon: <XCircle className="w-3.5 h-3.5" />,
+    gps: 'junk',
+    sort: 'newest',
+    status: '',
+    description: 'Will Call, General Purchase, names, and other placeholder addresses — not geocodeable',
   },
   {
     id: 'has_gps',
@@ -121,6 +131,13 @@ export default function JobsClient() {
   const [dateFrom, setDateFrom]       = useState('');
   const [dateTo, setDateTo]           = useState('');
   const [activeQuick, setActiveQuick] = useState<string>('recent');
+  const [geocodeStatus, setGeocodeStatus] = useState<GeocodeStatus | null>(null);
+  const [geocodeRunning, setGeocodeRunning] = useState(false);
+  const [geocodeProgress, setGeocodeProgress] = useState<{ matched: number; attempted: number; remaining: number } | null>(null);
+  const [geocodeLastResult, setGeocodeLastResult] = useState<string | null>(null);
+  const [oaLoading, setOaLoading] = useState(false);
+  const [oaResult, setOaResult] = useState<string | null>(null);
+  const geocodeCancelRef = useRef(false);
   const searchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const totalPages = Math.max(1, Math.ceil(total / 50));
 
@@ -164,8 +181,105 @@ export default function JobsClient() {
   // Initial load
   useEffect(() => {
     fetchJobs();
+    fetchGeocodeStatus();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  const fetchGeocodeStatus = async () => {
+    try {
+      const res = await fetch('/api/admin/geocode/status');
+      if (res.ok) setGeocodeStatus(await res.json());
+    } catch (e) {
+      console.error('[geocode status]', e);
+    }
+  };
+
+  // Loops POST /api/admin/geocode/run until the queue drains, the user cancels,
+  // or two consecutive batches make no progress (safety stop). Updates a live
+  // progress counter so the UI stays responsive across thousands of rows.
+  const runGeocodeAll = async () => {
+    setGeocodeRunning(true);
+    setGeocodeLastResult(null);
+    setGeocodeProgress({ matched: 0, attempted: 0, remaining: geocodeStatus?.customers_failed_legit ?? 0 });
+    geocodeCancelRef.current = false;
+
+    let totalMatched = 0;
+    let totalAttempted = 0;
+    let consecutiveNoProgress = 0;
+
+    try {
+      while (!geocodeCancelRef.current) {
+        const res = await fetch('/api/admin/geocode/run', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ batch_size: 500, state: 'IA' }),
+        });
+        const data = await res.json();
+        if (!res.ok) {
+          setGeocodeLastResult(data.error ?? `HTTP ${res.status}`);
+          break;
+        }
+        const matched = data.matched_city + data.matched_zip + data.matched_state_unique;
+        totalMatched   += matched;
+        totalAttempted += data.attempted;
+        setGeocodeProgress({ matched: totalMatched, attempted: totalAttempted, remaining: data.remaining_failed });
+
+        // Stop conditions
+        if (data.attempted === 0 || data.remaining_failed === 0) break;
+        // If a batch returns 0 matches twice in a row, the rest of the queue
+        // is presumably addresses the index can't satisfy — stop rather than
+        // burn cycles forever.
+        if (matched === 0) {
+          consecutiveNoProgress++;
+          if (consecutiveNoProgress >= 2) {
+            setGeocodeLastResult(`Stopped — last 2 batches matched 0 of ${data.attempted}. ${data.remaining_failed.toLocaleString()} customers remain (likely missing from index).`);
+            break;
+          }
+        } else {
+          consecutiveNoProgress = 0;
+        }
+      }
+      if (geocodeCancelRef.current) {
+        setGeocodeLastResult(`Cancelled. Matched ${totalMatched.toLocaleString()} of ${totalAttempted.toLocaleString()} attempted.`);
+      } else if (!geocodeLastResult) {
+        setGeocodeLastResult(`Done. Matched ${totalMatched.toLocaleString()} of ${totalAttempted.toLocaleString()} attempted.`);
+      }
+    } catch (e) {
+      setGeocodeLastResult(String(e));
+    } finally {
+      await fetchGeocodeStatus();
+      await fetchJobs();
+      setGeocodeRunning(false);
+    }
+  };
+
+  const cancelGeocode = () => { geocodeCancelRef.current = true; };
+
+  // Pulls the latest OpenAddresses Iowa statewide source from S3 and bulk-
+  // inserts into geocode_index. Idempotent — re-running picks up only new
+  // addresses since the last run. ~67 MB compressed, ~2-4 minutes server-side.
+  const loadOpenAddresses = async () => {
+    setOaLoading(true);
+    setOaResult(null);
+    try {
+      const res = await fetch('/api/admin/geocode/load-openaddresses', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({}),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setOaResult(data.error ?? `HTTP ${res.status}`);
+      } else {
+        setOaResult(`Loaded ${data.inserted.toLocaleString()} new addresses (${data.parsed.toLocaleString()} parsed, ${data.skipped.toLocaleString()} skipped) in ${(data.elapsed_ms / 1000).toFixed(1)}s.`);
+        await fetchGeocodeStatus();
+      }
+    } catch (e) {
+      setOaResult(String(e));
+    } finally {
+      setOaLoading(false);
+    }
+  };
 
   // Debounced search
   const handleSearch = (val: string) => {
@@ -261,6 +375,93 @@ export default function JobsClient() {
         </button>
       </div>
 
+      {/* Geocode status panel */}
+      {geocodeStatus && (
+        <div className="rounded-xl border border-white/10 bg-slate-900/60 p-4 flex flex-wrap items-center gap-4">
+          <Globe className="w-4 h-4 text-cyan-400 shrink-0" />
+          <div className="flex flex-wrap items-center gap-x-6 gap-y-1 text-sm flex-1 min-w-[300px]">
+            <span className="text-slate-300">
+              <span className="text-emerald-400 font-medium">{geocodeStatus.customers_with_gps.toLocaleString()}</span>
+              <span className="text-slate-500"> have GPS</span>
+            </span>
+            <span className="text-slate-300">
+              <span className="text-amber-400 font-medium">{geocodeStatus.customers_failed_legit.toLocaleString()}</span>
+              <span className="text-slate-500"> need geocoding</span>
+            </span>
+            <span className="text-slate-500 text-xs">
+              {geocodeStatus.customers_failed_junk.toLocaleString()} junk excluded
+            </span>
+            <span className="text-slate-500 text-xs">
+              · index: {geocodeStatus.index_total.toLocaleString()} rows
+            </span>
+          </div>
+          {!geocodeRunning ? (
+            <>
+              <button
+                onClick={loadOpenAddresses}
+                disabled={oaLoading || geocodeRunning}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 border border-white/10 text-slate-300 text-sm transition disabled:opacity-30 disabled:cursor-not-allowed"
+                title="Fetch the latest OpenAddresses Iowa statewide source (~67 MB) and merge into the geocode index. Idempotent — safe to re-run monthly."
+              >
+                <RefreshCw className={cn('w-3.5 h-3.5', oaLoading && 'animate-spin')} />
+                {oaLoading ? 'Fetching OpenAddresses…' : 'Refresh Iowa Index'}
+              </button>
+              <button
+                onClick={runGeocodeAll}
+                disabled={geocodeStatus.index_total === 0 || geocodeStatus.customers_failed_legit === 0 || oaLoading}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-cyan-500/15 hover:bg-cyan-500/25 border border-cyan-500/40 text-cyan-300 text-sm font-medium transition disabled:opacity-30 disabled:cursor-not-allowed"
+                title={
+                  geocodeStatus.index_total === 0
+                    ? 'Click "Refresh Iowa Index" first to load OpenAddresses data'
+                    : `Geocode all ${geocodeStatus.customers_failed_legit.toLocaleString()} pending customer addresses`
+                }
+              >
+                <RefreshCw className="w-3.5 h-3.5" />
+                Run Geocode (auto)
+              </button>
+            </>
+          ) : (
+            <button
+              onClick={cancelGeocode}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-red-500/15 hover:bg-red-500/25 border border-red-500/40 text-red-300 text-sm font-medium transition"
+            >
+              <XCircle className="w-3.5 h-3.5" />
+              Cancel
+            </button>
+          )}
+          {geocodeRunning && geocodeProgress && (
+            <div className="basis-full">
+              <div className="flex items-center gap-2 text-xs text-slate-400 mb-1">
+                <RefreshCw className="w-3 h-3 animate-spin text-cyan-400" />
+                <span>
+                  Matched <span className="text-emerald-400 font-medium">{geocodeProgress.matched.toLocaleString()}</span>
+                  {' '}of {geocodeProgress.attempted.toLocaleString()} attempted ·
+                  {' '}<span className="text-amber-400 font-medium">{geocodeProgress.remaining.toLocaleString()}</span> remaining
+                </span>
+              </div>
+              <div className="h-1 rounded-full bg-slate-800 overflow-hidden">
+                <div
+                  className="h-full bg-cyan-500 transition-all"
+                  style={{
+                    width: `${
+                      geocodeProgress.matched + geocodeProgress.remaining > 0
+                        ? (geocodeProgress.matched / (geocodeProgress.matched + geocodeProgress.remaining)) * 100
+                        : 0
+                    }%`,
+                  }}
+                />
+              </div>
+            </div>
+          )}
+          {!geocodeRunning && geocodeLastResult && (
+            <div className="basis-full text-xs text-slate-400">{geocodeLastResult}</div>
+          )}
+          {oaResult && (
+            <div className="basis-full text-xs text-slate-400">{oaResult}</div>
+          )}
+        </div>
+      )}
+
       {/* Quick filter chips */}
       <div className="flex flex-wrap gap-2">
         {QUICK_FILTERS.map((f) => (
@@ -331,7 +532,8 @@ export default function JobsClient() {
             >
               <option value="all">All GPS</option>
               <option value="matched">GPS Matched</option>
-              <option value="unmatched">No GPS</option>
+              <option value="unmatched">No GPS (real addresses)</option>
+              <option value="junk">Junk Addresses</option>
             </select>
             <select
               value={sort}

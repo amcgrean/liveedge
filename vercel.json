@@ -5,12 +5,22 @@
     },
     "app/api/cron/erp-sync/route.ts": {
       "maxDuration": 300
+    },
+    "app/api/admin/geocode/load-openaddresses/route.ts": {
+      "maxDuration": 300
+    },
+    "app/api/cron/geocode-nightly/route.ts": {
+      "maxDuration": 300
     }
   },
   "crons": [
     {
       "path": "/api/cron/erp-sync",
       "schedule": "0 6 * * *"
+    },
+    {
+      "path": "/api/cron/geocode-nightly",
+      "schedule": "0 9 * * *"
     }
   ]
 }
