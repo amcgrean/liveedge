@@ -5,6 +5,9 @@
     },
     "app/api/cron/erp-sync/route.ts": {
       "maxDuration": 300
+    },
+    "app/api/admin/geocode/load-openaddresses/route.ts": {
+      "maxDuration": 300
     }
   },
   "crons": [

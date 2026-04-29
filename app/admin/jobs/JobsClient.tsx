@@ -135,6 +135,8 @@ export default function JobsClient() {
   const [geocodeRunning, setGeocodeRunning] = useState(false);
   const [geocodeProgress, setGeocodeProgress] = useState<{ matched: number; attempted: number; remaining: number } | null>(null);
   const [geocodeLastResult, setGeocodeLastResult] = useState<string | null>(null);
+  const [oaLoading, setOaLoading] = useState(false);
+  const [oaResult, setOaResult] = useState<string | null>(null);
   const geocodeCancelRef = useRef(false);
   const searchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const totalPages = Math.max(1, Math.ceil(total / 50));
@@ -253,6 +255,32 @@ export default function JobsClient() {
 
   const cancelGeocode = () => { geocodeCancelRef.current = true; };
 
+  // Pulls the latest OpenAddresses Iowa statewide source from S3 and bulk-
+  // inserts into geocode_index. Idempotent — re-running picks up only new
+  // addresses since the last run. ~67 MB compressed, ~2-4 minutes server-side.
+  const loadOpenAddresses = async () => {
+    setOaLoading(true);
+    setOaResult(null);
+    try {
+      const res = await fetch('/api/admin/geocode/load-openaddresses', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({}),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setOaResult(data.error ?? `HTTP ${res.status}`);
+      } else {
+        setOaResult(`Loaded ${data.inserted.toLocaleString()} new addresses (${data.parsed.toLocaleString()} parsed, ${data.skipped.toLocaleString()} skipped) in ${(data.elapsed_ms / 1000).toFixed(1)}s.`);
+        await fetchGeocodeStatus();
+      }
+    } catch (e) {
+      setOaResult(String(e));
+    } finally {
+      setOaLoading(false);
+    }
+  };
+
   // Debounced search
   const handleSearch = (val: string) => {
     setSearch(val);
@@ -368,19 +396,30 @@ export default function JobsClient() {
             </span>
           </div>
           {!geocodeRunning ? (
-            <button
-              onClick={runGeocodeAll}
-              disabled={geocodeStatus.index_total === 0 || geocodeStatus.customers_failed_legit === 0}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-cyan-500/15 hover:bg-cyan-500/25 border border-cyan-500/40 text-cyan-300 text-sm font-medium transition disabled:opacity-30 disabled:cursor-not-allowed"
-              title={
-                geocodeStatus.index_total === 0
-                  ? 'Load OpenAddresses data first via db/load-openaddresses.ts'
-                  : `Geocode all ${geocodeStatus.customers_failed_legit.toLocaleString()} pending customer addresses`
-              }
-            >
-              <RefreshCw className="w-3.5 h-3.5" />
-              Run Geocode (auto)
-            </button>
+            <>
+              <button
+                onClick={loadOpenAddresses}
+                disabled={oaLoading || geocodeRunning}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 border border-white/10 text-slate-300 text-sm transition disabled:opacity-30 disabled:cursor-not-allowed"
+                title="Fetch the latest OpenAddresses Iowa statewide source (~67 MB) and merge into the geocode index. Idempotent — safe to re-run monthly."
+              >
+                <RefreshCw className={cn('w-3.5 h-3.5', oaLoading && 'animate-spin')} />
+                {oaLoading ? 'Fetching OpenAddresses…' : 'Refresh Iowa Index'}
+              </button>
+              <button
+                onClick={runGeocodeAll}
+                disabled={geocodeStatus.index_total === 0 || geocodeStatus.customers_failed_legit === 0 || oaLoading}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-cyan-500/15 hover:bg-cyan-500/25 border border-cyan-500/40 text-cyan-300 text-sm font-medium transition disabled:opacity-30 disabled:cursor-not-allowed"
+                title={
+                  geocodeStatus.index_total === 0
+                    ? 'Click "Refresh Iowa Index" first to load OpenAddresses data'
+                    : `Geocode all ${geocodeStatus.customers_failed_legit.toLocaleString()} pending customer addresses`
+                }
+              >
+                <RefreshCw className="w-3.5 h-3.5" />
+                Run Geocode (auto)
+              </button>
+            </>
           ) : (
             <button
               onClick={cancelGeocode}
@@ -416,6 +455,9 @@ export default function JobsClient() {
           )}
           {!geocodeRunning && geocodeLastResult && (
             <div className="basis-full text-xs text-slate-400">{geocodeLastResult}</div>
+          )}
+          {oaResult && (
+            <div className="basis-full text-xs text-slate-400">{oaResult}</div>
           )}
         </div>
       )}
