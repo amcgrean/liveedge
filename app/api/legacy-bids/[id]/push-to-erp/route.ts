@@ -195,11 +195,11 @@ export async function POST(req: NextRequest, context: RouteContext) {
     // ── Audit log ─────────────────────────────────────────────────────────────
     const userId = parseInt(session.user.id, 10);
     if (!isNaN(userId)) {
-      await db.insert(legacyBidActivity).values({
+      db.insert(legacyBidActivity).values({
         userId,
         bidId,
         action: `Pushed to ERP as ${erpType === 'quote' ? `Quote ${erpId}` : `Sales Order ${erpId}`}`,
-      });
+      }).catch(() => {});
     }
 
     return NextResponse.json({

@@ -151,14 +151,10 @@ export async function GET(_req: NextRequest, context: RouteContext) {
         }
       : null;
 
-    // Log view activity
+    // Log view activity — fire-and-forget; don't block response on FK mismatch
     const userId = parseInt(session.user.id, 10);
     if (!isNaN(userId)) {
-      await db.insert(legacyBidActivity).values({
-        userId,
-        bidId,
-        action: 'viewed',
-      });
+      db.insert(legacyBidActivity).values({ userId, bidId, action: 'viewed' }).catch(() => {});
     }
 
     return NextResponse.json({
@@ -272,14 +268,10 @@ export async function PUT(req: NextRequest, context: RouteContext) {
       }
     }
 
-    // Log activity
+    // Log activity — fire-and-forget; don't block response on FK mismatch
     const userId = parseInt(session.user.id, 10);
     if (!isNaN(userId)) {
-      await db.insert(legacyBidActivity).values({
-        userId,
-        bidId,
-        action: 'updated',
-      });
+      db.insert(legacyBidActivity).values({ userId, bidId, action: 'updated' }).catch(() => {});
     }
 
     return NextResponse.json({ bid: updated });
