@@ -124,7 +124,7 @@ export default function JobsClient() {
   const searchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const totalPages = Math.max(1, Math.ceil(total / 50));
 
-  // "Recently Created" view uses order_date columns and date-range filter
+  // "Recently Created" view uses created_date columns and date-range filter
   const isRecentView = activeQuick === 'recent';
 
   const fetchJobs = useCallback(async (opts?: {
@@ -440,7 +440,7 @@ export default function JobsClient() {
                     {job.salesperson ?? <span className="text-slate-600">—</span>}
                   </td>
                   <td className="px-4 py-3 text-slate-300 text-sm font-mono">
-                    {job.order_date ?? <span className="text-slate-600">—</span>}
+                    {job.created_date ?? <span className="text-slate-600">—</span>}
                   </td>
                   <td className="px-4 py-3">{gpsBadge(job.gps_matched)}</td>
                 </tr>

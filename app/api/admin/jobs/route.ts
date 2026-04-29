@@ -13,7 +13,7 @@ export interface JobRecord {
   so_status: string | null;
   ship_via: string | null;
   salesperson: string | null;
-  order_date: string | null;
+  created_date: string | null;
   expect_date: string | null;
   address_1: string | null;
   city: string | null;
@@ -27,7 +27,7 @@ export interface JobRecord {
 // GET /api/admin/jobs?search=&customer=&gps=all|matched|unmatched&branch=&status=
 //   &sort=newest|oldest|expect_date&date_from=YYYY-MM-DD&date_to=YYYY-MM-DD&page=1
 //
-// newest/oldest sort by order_date (job created date); expect_date sorts by delivery date.
+// newest/oldest sort by created_date (job created date); expect_date sorts by delivery date.
 export async function GET(req: NextRequest) {
   const session = await auth();
   if (!session?.user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
@@ -57,20 +57,20 @@ export async function GET(req: NextRequest) {
     const gpsFilter      = gps === 'matched'   ? sql`AND ac.lat IS NOT NULL AND ac.lon IS NOT NULL`
                          : gps === 'unmatched' ? sql`AND (ac.lat IS NULL OR ac.lon IS NULL)`
                          : sql``;
-    // order_date range filter (used by "Recently Created" view)
-    const dateFromFilter = dateFrom ? sql`AND soh.order_date::date >= ${dateFrom}::date` : sql``;
-    const dateToFilter   = dateTo   ? sql`AND soh.order_date::date <= ${dateTo}::date`   : sql``;
+    // created_date range filter (used by "Recently Created" view)
+    const dateFromFilter = dateFrom ? sql`AND soh.created_date::date >= ${dateFrom}::date` : sql``;
+    const dateToFilter   = dateTo   ? sql`AND soh.created_date::date <= ${dateTo}::date`   : sql``;
 
-    // newest/oldest sort by order_date (the job's actual creation date)
-    const orderBy = sort === 'oldest'      ? sql`soh.order_date ASC NULLS LAST, soh.so_id ASC`
+    // newest/oldest sort by created_date (the job's actual creation date)
+    const orderBy = sort === 'oldest'      ? sql`soh.created_date ASC NULLS LAST, soh.so_id ASC`
                   : sort === 'expect_date' ? sql`soh.expect_date ASC NULLS LAST, soh.so_id DESC`
-                  : sql`soh.order_date DESC NULLS LAST, soh.so_id DESC`; // newest (default)
+                  : sql`soh.created_date DESC NULLS LAST, soh.so_id DESC`; // newest (default)
 
     type RawRow = {
       so_id: string; system_id: string; cust_code: string | null; cust_name: string | null;
       reference: string | null; po_number: string | null; sale_type: string | null;
       so_status: string | null; ship_via: string | null; salesperson: string | null;
-      order_date: string | null; expect_date: string | null;
+      created_date: string | null; expect_date: string | null;
       address_1: string | null; city: string | null;
       shipto_state: string | null; shipto_zip: string | null;
       lat: string | null; lon: string | null;
@@ -89,7 +89,7 @@ export async function GET(req: NextRequest) {
           soh.so_status,
           soh.ship_via,
           soh.salesperson,
-          soh.order_date::text          AS order_date,
+          soh.created_date::text        AS created_date,
           soh.expect_date::text         AS expect_date,
           soh.shipto_address_1          AS address_1,
           soh.shipto_city               AS city,
@@ -144,7 +144,7 @@ export async function GET(req: NextRequest) {
       so_status:    r.so_status?.trim()    || null,
       ship_via:     r.ship_via?.trim()     || null,
       salesperson:  r.salesperson?.trim()  || null,
-      order_date:   r.order_date,
+      created_date: r.created_date,
       expect_date:  r.expect_date,
       address_1:    r.address_1?.trim()    || null,
       city:         r.city?.trim()         || null,
