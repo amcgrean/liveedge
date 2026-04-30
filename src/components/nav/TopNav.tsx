@@ -351,7 +351,7 @@ const ADMIN_LINKS: NavLink[] = [
 
 // ─── Role helpers ─────────────────────────────────────────────────────────────
 
-const WH_ROLES = ['warehouse', 'sales', 'ops', 'supervisor', 'purchasing', 'dispatch'] as const;
+const WH_ROLES = ['warehouse', 'sales', 'ops', 'supervisor', 'purchasing', 'dispatch', 'hubbell'] as const;
 type WHRole = typeof WH_ROLES[number];
 
 function hasAnyRole(roles: string[], ...check: WHRole[]): boolean {
