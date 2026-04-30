@@ -148,18 +148,23 @@ export async function runGeocodeBatch(
       else if (hit.source === 'openaddresses_zip')             counts.matched_zip++;
       else if (hit.source === 'openaddresses_state_unique')   counts.matched_state_unique++;
     }
+  }
 
-    // Bump `geocoded_at` on rows we attempted but couldn't match, so the next
-    // batch's ORDER BY pushes them to the end of the queue and picks fresh
-    // never-attempted (or oldest-attempted) rows instead.
-    const unmatchedIds = parsed.filter((p) => !matched.has(p.id)).map((p) => p.id);
-    if (unmatchedIds.length > 0) {
-      await sql`
-        UPDATE public.agility_customers
-           SET geocoded_at = NOW()
-         WHERE id = ANY(${unmatchedIds}::bigint[])
-      `;
-    }
+  // Bump `geocoded_at` on every candidate we attempted but didn't match —
+  // including rows that failed to parse via normalizeAddress(). Without
+  // bumping non-parseable rows here, they keep their old timestamp and
+  // re-appear at the front of every subsequent batch, choking out fresh
+  // never-attempted rows. Lives outside the `parsed.length > 0` block so
+  // batches of all-unparseable rows still progress.
+  const unmatchedIds = candidates
+    .filter((c) => !matched.has(c.id))
+    .map((c) => c.id);
+  if (unmatchedIds.length > 0) {
+    await sql`
+      UPDATE public.agility_customers
+         SET geocoded_at = NOW()
+       WHERE id = ANY(${unmatchedIds}::bigint[])
+    `;
   }
 
   const [{ remaining }] = await sql<{ remaining: number }[]>`
