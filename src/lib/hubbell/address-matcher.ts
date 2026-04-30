@@ -55,6 +55,15 @@ function streetNumber(s: string): string | null {
   return m ? m[1] : null;
 }
 
+// Expand ERP combined-unit addresses like "1224, 1228 Granite Street" into
+// individual variants ["1224 Granite Street", "1228 Granite Street"] so a
+// Hubbell email that only mentions one unit still scores well.
+function expandMultiUnitAddress(addr: string): string[] {
+  const m = addr.match(/^(\d+),\s*(\d+)\s+(.+)$/);
+  if (m) return [`${m[1]} ${m[3]}`, `${m[2]} ${m[3]}`];
+  return [addr];
+}
+
 function scoreCandidate(
   candidate: SoRow,
   extracted: { address: string | null; city: string | null; state: string | null; zip: string | null }
@@ -96,17 +105,21 @@ function scoreCandidate(
   // --- STREET ADDRESS (40 pts) ---
   if (address && candidate.shipto_address_1) {
     const candAddr = candidate.shipto_address_1.trim();
+    // Expand multi-unit ERP addresses ("1224, 1228 Granite St") so a single-unit
+    // email address ("1224 Granite St NE") can still score well.
+    const candVariants = expandMultiUnitAddress(candAddr);
 
-    // Street number exact match (15 pts)
+    // Street number: match if ANY expanded variant shares the same leading number (15 pts)
     const extractedNum = streetNumber(address);
-    const candNum = streetNumber(candAddr);
-    if (extractedNum && candNum && extractedNum === candNum) {
+    const candNums = new Set(candVariants.map(v => streetNumber(v)).filter(Boolean) as string[]);
+    if (extractedNum && candNums.has(extractedNum)) {
       score += 15;
       reasons.push('street_num');
     }
 
-    // Street name token similarity (25 pts)
-    const simAddr = jaccardSim(tokenSet(address), tokenSet(candAddr));
+    // Street name token similarity: best score across expanded variants (25 pts)
+    const emailTokens = tokenSet(address);
+    const simAddr = Math.max(...candVariants.map(v => jaccardSim(emailTokens, tokenSet(v))));
     if (simAddr >= 0.7) {
       score += 25;
       reasons.push('street');
@@ -136,8 +149,10 @@ export async function matchAddress(params: {
   // Build a union of candidates: zip match OR city match OR address prefix match
   const zipClause  = zip    ? sql`OR TRIM(soh.shipto_zip) LIKE ${zip.slice(0, 5) + '%'}` : sql``;
   const cityClause = city   ? sql`OR LOWER(TRIM(soh.shipto_city)) ILIKE ${'%' + city.toLowerCase() + '%'}` : sql``;
-  const addrClause = address
-    ? sql`OR LOWER(soh.shipto_address_1) ILIKE ${address.toLowerCase().slice(0, 8) + '%'}`
+  // Use just the leading street number so "1224, 1228 Granite St" is found when email says "1224 Granite St NE"
+  const addrPrefix = address?.match(/^(\d+)/)?.[1] ?? address?.toLowerCase().slice(0, 8);
+  const addrClause = addrPrefix
+    ? sql`OR LOWER(soh.shipto_address_1) ILIKE ${addrPrefix + '%'}`
     : sql``;
 
   const rows = await sql<SoRow[]>`
