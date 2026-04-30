@@ -147,6 +147,7 @@ export function normalizeAddress(raw: string | null | undefined): {
   const tokens = rest.split(/\s+/).filter(Boolean);
   if (tokens.length === 0) return null;
 
+  const lastTok = tokens[tokens.length - 1];
   const normalized = tokens.map((tok, idx) => {
     // Direction tokens collapse only at start or end of street
     if ((idx === 0 || idx === tokens.length - 1) && DIRECTION_MAP[tok]) {
@@ -154,6 +155,15 @@ export function normalizeAddress(raw: string | null | undefined): {
     }
     // Last token is usually street type
     if (idx === tokens.length - 1 && STREET_TYPE_MAP[tok]) {
+      return STREET_TYPE_MAP[tok];
+    }
+    // Street type at second-to-last when followed by a direction
+    // ("TUSCANY DRIVE SE" → "TUSCANY DR SE", "WEST RIDGE ROAD NE" → "WEST RDG RD NE")
+    if (
+      idx === tokens.length - 2 &&
+      STREET_TYPE_MAP[tok] &&
+      DIRECTION_MAP[lastTok]
+    ) {
       return STREET_TYPE_MAP[tok];
     }
     return tok;

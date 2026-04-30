@@ -138,7 +138,10 @@ export async function GET(req: NextRequest) {
       const matchedThisBatch = batch.matched_city + batch.matched_zip + batch.matched_state_unique;
       if (matchedThisBatch === 0) {
         consecutiveNoProgress += 1;
-        if (consecutiveNoProgress >= 2) {
+        // Higher threshold (was 2) — with ORDER BY geocoded_at ASC NULLS FIRST
+        // the runner now plows through all rows; brief sparse stretches in the
+        // middle of the queue shouldn't terminate the run.
+        if (consecutiveNoProgress >= 5) {
           result.geocode.stop_reason = 'no progress (likely missing from index)';
           break;
         }

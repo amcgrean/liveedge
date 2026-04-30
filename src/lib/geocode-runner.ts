@@ -39,6 +39,10 @@ export async function runGeocodeBatch(
   const stateFilter = opts.state ?? 'IA';
   const batchSize = Math.min(5000, Math.max(1, opts.batchSize ?? 500));
 
+  // Order by `geocoded_at` ASC NULLS FIRST so each batch picks rows that have
+  // either never been attempted (NULL) or were attempted longest ago. Without
+  // this, every batch returns the same prefix of failed rows by id and the
+  // runner gets stuck after one pass.
   const candidates = await sql<{
     id: number; address_1: string; city: string | null; zip: string | null;
   }[]>`
@@ -50,7 +54,7 @@ export async function runGeocodeBatch(
       AND COALESCE(TRIM(address_1),'') <> ''
       AND address_1 ~ '[0-9]'
       AND LOWER(TRIM(address_1)) !~ ${JUNK_ADDRESS_SQL_REGEX}
-    ORDER BY id
+    ORDER BY geocoded_at ASC NULLS FIRST, id
     LIMIT ${batchSize}
   `;
 
@@ -143,6 +147,18 @@ export async function runGeocodeBatch(
       if (hit.source === 'openaddresses_city')               counts.matched_city++;
       else if (hit.source === 'openaddresses_zip')             counts.matched_zip++;
       else if (hit.source === 'openaddresses_state_unique')   counts.matched_state_unique++;
+    }
+
+    // Bump `geocoded_at` on rows we attempted but couldn't match, so the next
+    // batch's ORDER BY pushes them to the end of the queue and picks fresh
+    // never-attempted (or oldest-attempted) rows instead.
+    const unmatchedIds = parsed.filter((p) => !matched.has(p.id)).map((p) => p.id);
+    if (unmatchedIds.length > 0) {
+      await sql`
+        UPDATE public.agility_customers
+           SET geocoded_at = NOW()
+         WHERE id = ANY(${unmatchedIds}::bigint[])
+      `;
     }
   }
 
