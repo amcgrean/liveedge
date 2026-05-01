@@ -323,27 +323,34 @@ Full WH-Tracker (Python/Flask) migration into LiveEdge. All modules ported:
 - **Buyer Workspace** (`/purchasing/workspace`): quick-action cards + upcoming POs + recent check-ins
 - **Command Center** (`/purchasing/manage`): KPI cards, POs by branch, overdue list, recent submissions
 
-#### RMA Credits (2026-04-02, rewritten 2026-04-22) — LIVE (ERP-driven, email pipeline active)
+#### RMA Credits (2026-04-02, rewritten 2026-04-22, extended 2026-05-01) — LIVE (ERP-driven, email pipeline active)
 
 **Credits page** (`/credits`):
 - `GET /api/credits` — queries `agility_so_header` WHERE `sale_type = 'Credit'` AND `so_status NOT IN ('I','C')` AND `is_deleted = false`
 - Branch-scoped: non-admins see only their branch (`system_id`); admins see all or can filter by branch param
 - Paginated at 25/page; search across SO#, customer name/code, reference, PO#
 - LEFT JOINs `public.credit_images` on `ci.rma_number = soh.so_id::text` for doc count per CM
+- **Customer name fallback**: uses `COALESCE(NULLIF(TRIM(soh.cust_name), ''), ac.cust_name)` with a `LEFT JOIN LATERAL` to `agility_customers` — some CM records have blank `cust_name` on the SO header even though the customer exists; `ac.cust_name` must be in GROUP BY
 - Columns: CM #, Customer, Reference/PO, Location, Status, Branch, Docs, Created
+- **All 8 columns sortable** — click header to sort desc, click again for asc; active column shows cyan arrow; sort state persists across pagination; API accepts `sort` + `dir` params; `SORT_SQL` whitelist in `route.ts` prevents injection
 - Status badge: `B` (blank) = Open (cyan), `S` = Staged (yellow), others = gray
+- Shared types in `app/api/credits/_shared.ts`: `CreditMemo`, `ALLOWED_SORTS`, `SortCol` — import from there; do NOT export from `route.ts` (Next.js 15 forbids non-handler exports from route files). Use two separate import lines to avoid TypeScript type-erasure: `import { ALLOWED_SORTS } from './_shared'; import type { CreditMemo, SortCol } from './_shared'`
+- Performance indexes: `db/migrations/0014_credits_performance_indexes.sql` — apply in Supabase SQL editor (no `CONCURRENTLY`; Supabase wraps statements in a transaction)
 
 **Key ERP facts for `agility_so_header` credits:**
 - `sale_type = 'Credit'` — NOT `'CM'`; credit memos use the full word
 - `so_status = 'B'` = open/blank (no status set). Exclude `'I'` (invoiced) and `'C'` (cancelled)
 - Date column is `created_date` — NOT `order_date` (does not exist)
 - `is_deleted` column DOES exist on this table
-- `@/` path alias maps to `src/` — import types from API routes using relative paths (e.g. `../api/credits/route`)
+- `@/` path alias maps to `src/` — import types from API routes using relative paths (e.g. `../api/credits/_shared`)
 
 **Inbound email webhook** (`POST /api/inbound/credits`):
-- Receives Resend `email.received` events for `*@rma.beisser.cloud`
-- TO address guard: skips events not addressed to `@rma.beisser.cloud` (prevents credits emails from appearing in Hubbell module)
-- Attachment filter: allowed MIME types (jpeg/png/gif/webp/pdf) + skips parts where `content_id` is set (HTML-embedded images/signatures carry a `Content-ID`; real file attachments never do)
+- Receives Resend `email.received` events for `credits@beisser.cloud` and `*@rma.beisser.cloud` (both accepted)
+- TO address guard: skips events not addressed to either address (prevents credits emails from appearing in Hubbell module)
+- **Attachment capture**: fetches bytes via `GET /emails/receiving/{emailId}/attachments/{id}` → `download_url` (Resend no longer sends `content` inline)
+- **Inline skip logic**: only skips parts with BOTH `content_id` AND `content_disposition: inline` AND `size < 20000` — Outlook sets `content_id` on real forwarded attachments so the old `if (content_id) skip` was too aggressive
+- **Nested email support**: `message/rfc822` attachments (forwarded `.eml` files) are parsed by `extractPartsFromRawEmail()` — zero-dependency recursive MIME walker that handles `multipart/*` boundaries, base64/binary encoding, skips parts < 5 KB
+- **Address-based RMA matching**: when subject has no CM#, extracts a street address fragment via regex and queries `agility_so_header.shipto_address_1 ILIKE '%fragment%'` against open Credit CMs; narrows by Iowa city name when multiple match; falls back to `UNKNOWN` only if ambiguous
 - Uploads to R2 at `credits/{rmaNumber}/{timestamp}-{filename}`; upserts `public.credit_images` row with `r2_key`
 - Resend attachment fields are snake_case: `content_type`, `content_disposition`, `content_id` (NOT camelCase)
 - Env var: `RESEND_WEBHOOK_SECRET` (Svix signature secret from Resend dashboard)
@@ -352,11 +359,6 @@ Full WH-Tracker (Python/Flask) migration into LiveEdge. All modules ported:
 **Hubbell webhook** (`POST /api/inbound/hubbell`):
 - Has TO address guard: only processes emails to `hubbell@beisser.cloud`
 - Env var: `RESEND_HUBBELL_WEBHOOK_SECRET`
-
-**Pending — doc count not syncing to credits table:**
-- `credit_images` rows require `rma_number` to match `agility_so_header.so_id::text`
-- The webhook extracts RMA# from subject/body via regex — if the email subject doesn't contain the CM number, `rma_number` will be `'UNKNOWN'` and won't JOIN
-- Next step: troubleshoot why uploaded docs aren't linking to credit memos (separate session)
 
 #### Nav Restructuring (2026-04-02) — COMPLETE, EXTENDED 2026-04-03
 - TopNav completely rewritten 2026-04-03 — 8 domain dropdowns replacing flat links + 4 domain dropdowns
@@ -508,7 +510,7 @@ Adds **Recharts** (`recharts@^2.15`) and a small set of opinionated dark-theme c
 
 #### Still Missing / Deferred
 - **Suggested Buys** (`/purchasing/suggested-buys`): `app_purchasing_queue` view confirmed missing. Check `agility_suggested_po_header` + `agility_suggested_po_lines` before building
-- **RMA Credits doc sync**: Email pipeline active — attachments upload to R2 and upsert `credit_images`. Doc counts show on `/credits` page via LEFT JOIN. Outstanding issue: `credit_images.rma_number` must match `agility_so_header.so_id::text` — if RMA# is not parsed correctly from email subject/body the JOIN produces 0. Troubleshoot in next session.
+- **RMA Credits thumbnails**: email pipeline, doc counts, address-based matching, and nested email support are all live. Next: add `GET /api/credits/[id]/images` presigned URL route + thumbnail previews in CreditsClient so users can view uploaded docs inline without leaving the page.
 - **WH-Tracker kiosk/TV/smart scan**: not appropriate for LiveEdge web app pattern — intentionally deferred
 - **Purchasing workflow** (tasks, approvals, exceptions, PO notes): verify `purchasing_tasks`, `purchasing_approvals`, etc. exist in `public` schema first
 - **Dispatch enrichment** (driver/truck mgmt, order timeline per stop): WH-Tracker had these; LiveEdge dispatch shows basic stops only. **AR balance intentionally excluded from dispatch** — see AR Data Policy in the Agility Live API section.
@@ -521,7 +523,7 @@ Adds **Recharts** (`recharts@^2.15`) and a small set of opinionated dark-theme c
 1. **Apply page_visits migration**: Run `db/migrations/0004_page_visits.sql` in Supabase SQL editor to enable Quick Access tracking on homepage
 2. **Extend page tracking to module clients**: Add `POST /api/track-visit` call to each module's main client component (or extract a shared `usePageTracking` hook in `src/hooks/`) so Quick Access fills with real data
 3. **`app_users` admin UI**: Update `/admin/users` create/edit forms to match `public.app_users` schema (roles JSON array, branch string) — currently shows bids."user" field layout which no longer matches the auth source of truth
-4. **RMA Credits doc sync**: Email-to-R2 pipeline is live (`/api/inbound/credits`). Issue: doc counts on `/credits` show 0 because `credit_images.rma_number` isn't matching `agility_so_header.so_id`. Debug: check what `rma_number` values were stored in `credit_images` vs actual SO IDs. The webhook extracts RMA# from subject/body regex — may need tuning for Beisser's specific email format. Also add `GET /api/credits/[id]/image` presigned URL route + thumbnails in CreditsClient once JOINs work.
+4. **RMA Credits thumbnails**: Email pipeline, doc counts, address-based RMA matching, and nested `.eml` parsing are live. Next: add `GET /api/credits/[id]/images` presigned URL route + thumbnail previews in CreditsClient so users can view docs inline.
 5. **Purchasing workflow gaps**: Before building, verify tables exist: `SELECT table_name FROM information_schema.tables WHERE table_schema='public' AND table_name IN ('purchasing_tasks','purchasing_approvals','purchasing_notes','purchasing_exceptions')` — if found, build PO notes API, exceptions view, approval workflow
 6. **Suggested Buys**: `app_purchasing_queue` confirmed missing. Check `agility_suggested_po_header` + `agility_suggested_po_lines` before building `/purchasing/suggested-buys`
 7. **Flask sunset**: DNS cutover + archive `C:\Users\amcgrean\python\wh-tracker-fly\WH-Tracker` after user testing confirms parity
