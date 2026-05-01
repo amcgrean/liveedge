@@ -1,8 +1,8 @@
 'use client';
 
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { TopNav } from '../../src/components/nav/TopNav';
-import type { OpenPickSummary } from '../api/warehouse/picks/route';
+import type { OpenPickSummary } from '@/lib/warehouse-picks';
 import { usePageTracking } from '@/hooks/usePageTracking';
 import { useBranchFilter } from '@/hooks/useBranchFilter';
 import { formatTimeCT, formatDateCT } from '@/lib/central-time';
@@ -32,6 +32,8 @@ interface Props {
   userBranch: string | null;
   userName: string | null;
   userRole?: string;
+  initialBranch: string;
+  initialPicks: OpenPickSummary[];
 }
 
 const STATUS_LABELS: Record<string, string> = {
@@ -53,11 +55,19 @@ function handlingColor(code: string) {
   return HANDLING_COLORS[code.toUpperCase()] ?? 'bg-cyan-900/60 text-cyan-300 border-cyan-700';
 }
 
-export default function WarehouseClient({ initialStats, isAdmin, userBranch, userName, userRole }: Props) {
+export default function WarehouseClient({
+  initialStats,
+  isAdmin,
+  userBranch,
+  userName,
+  userRole,
+  initialBranch,
+  initialPicks,
+}: Props) {
   usePageTracking();
   const [stats, setStats] = useState<BranchStats[]>(initialStats);
   const [selectedBranch, setSelectedBranch] = useBranchFilter(isAdmin, userBranch);
-  const [picks, setPicks] = useState<OpenPickSummary[] | null>(null);
+  const [picks, setPicks] = useState<OpenPickSummary[] | null>(initialPicks);
   const [loadingPicks, setLoadingPicks] = useState(false);
   const [picksError, setPicksError] = useState('');
   const [lastRefresh, setLastRefresh] = useState(new Date());
@@ -65,6 +75,7 @@ export default function WarehouseClient({ initialStats, isAdmin, userBranch, use
   const [pickers, setPickers] = useState<Picker[]>([]);
   const [assignments, setAssignments] = useState<Record<string, Assignment>>({});
   const [assigningKey, setAssigningKey] = useState<string | null>(null);
+  const skippedInitialPicksLoad = useRef(false);
 
   // Pick file release state — keyed by SO number
   const [pickFileState, setPickFileState] = useState<
@@ -126,9 +137,13 @@ export default function WarehouseClient({ initialStats, isAdmin, userBranch, use
 
   // Auto-load picks + assignment data for the selected branch
   useEffect(() => {
-    loadPicks(selectedBranch);
+    if (!skippedInitialPicksLoad.current && selectedBranch === initialBranch && initialPicks.length > 0) {
+      skippedInitialPicksLoad.current = true;
+    } else {
+      loadPicks(selectedBranch);
+    }
     loadAssignmentData();
-  }, [selectedBranch, loadPicks, loadAssignmentData]);
+  }, [selectedBranch, loadPicks, loadAssignmentData, initialBranch, initialPicks.length]);
 
   // Collect all handling codes from loaded picks for filter dropdown
   const allHandlingCodes = useMemo(
