@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { auth } from '../../../../../auth';
+import { requireCapability } from '../../../../../src/lib/access-control';
 import { getDb } from '../../../../../db/index';
 import { hubbellEmails, hubbellEmailCandidates } from '../../../../../db/schema';
 import { eq, inArray, and, or, isNotNull } from 'drizzle-orm';
@@ -14,10 +14,8 @@ import { getErpSql } from '../../../../../db/supabase';
 // Body: { statuses?: string[]; limit?: number }
 
 export async function POST(req: NextRequest) {
-  const session = await auth();
-  if (!session || session.user?.role !== 'admin') {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-  }
+  const authResult = await requireCapability('hubbell.review');
+  if (authResult instanceof NextResponse) return authResult;
 
   const body = await req.json().catch(() => ({}));
   const statuses: string[] = body.statuses ?? ['unmatched'];

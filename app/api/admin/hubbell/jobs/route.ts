@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { auth } from '../../../../../auth';
+import { requireCapability } from '../../../../../src/lib/access-control';
 import { getDb } from '../../../../../db/index';
 import { getErpSql } from '../../../../../db/supabase';
 import { hubbellEmails } from '../../../../../db/schema';
@@ -20,11 +20,8 @@ function canonicalCustCode(code: string | null): string {
 // One row per job site (customer + address), aggregating all confirmed emails and SOs.
 // Uses two separate queries (bids DB + ERP DB) to avoid cross-schema permission issues.
 export async function GET(req: NextRequest) {
-  const session = await auth();
-  if (!session?.user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-  const role = (session.user as { role?: string }).role ?? '';
-  const roles = (session.user as { roles?: string[] }).roles ?? [];
-  if (role !== 'admin' && !roles.includes('hubbell')) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+  const authResult = await requireCapability('hubbell.review');
+  if (authResult instanceof NextResponse) return authResult;
 
   const db = getDb();
 

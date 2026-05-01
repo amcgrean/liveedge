@@ -1,12 +1,9 @@
-import { auth } from '../../../auth';
-import { redirect } from 'next/navigation';
+import { requirePageAccess } from '../../../src/lib/access-control';
 import AnalyticsClient from './AnalyticsClient';
 
 export const metadata = { title: 'Page Analytics | LiveEdge Admin' };
 
 export default async function AnalyticsPage() {
-  const session = await auth();
-  if (!session?.user) redirect('/login');
-  if (session.user.role !== 'admin') redirect('/');
+  await requirePageAccess('admin.config.manage');
   return <AnalyticsClient />;
 }

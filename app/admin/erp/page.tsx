@@ -1,13 +1,9 @@
-import { auth } from '../../../auth';
-import { redirect } from 'next/navigation';
+import { requirePageAccess } from '../../../src/lib/access-control';
 import ERPClient from './ERPClient';
 
 export const metadata = { title: 'ERP Sync | LiveEdge' };
 
 export default async function ERPPage() {
-  const session = await auth();
-  if (!session) redirect('/login');
-  const role = (session.user as { role?: string }).role ?? 'estimator';
-  if (role !== 'admin') redirect('/dashboard');
+  await requirePageAccess('admin.config.manage');
   return <ERPClient />;
 }

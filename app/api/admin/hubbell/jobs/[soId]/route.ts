@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { auth } from '../../../../../../auth';
+import { requireCapability } from '../../../../../../src/lib/access-control';
 import { getDb } from '../../../../../../db/index';
 import { hubbellEmails } from '../../../../../../db/schema';
 import { eq, desc } from 'drizzle-orm';
@@ -12,11 +12,8 @@ type Params = Promise<{ soId: string }>;
 // the SO header, and all related SOs from ERP at the same customer + address
 // for the reconciliation view.
 export async function GET(req: NextRequest, { params }: { params: Params }) {
-  const session = await auth();
-  if (!session?.user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-  const role = (session.user as { role?: string }).role ?? '';
-  const roles = (session.user as { roles?: string[] }).roles ?? [];
-  if (role !== 'admin' && !roles.includes('hubbell')) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+  const authResult = await requireCapability('hubbell.review');
+  if (authResult instanceof NextResponse) return authResult;
 
   const { soId } = await params;
   const db  = getDb();

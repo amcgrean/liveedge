@@ -1,12 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { auth } from '../../../../../auth';
+import { requireCapability } from '../../../../../src/lib/access-control';
 import { getErpSql } from '../../../../../db/supabase';
 
 // PATCH /api/admin/app-users/[id] — update user
 export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const session = await auth();
-  if (!session?.user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-  if (session.user.role !== 'admin') return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+  const authResult = await requireCapability('admin.users.manage');
+  if (authResult instanceof NextResponse) return authResult;
 
   const { id } = await params;
   const userId = parseInt(id, 10);
@@ -84,9 +83,8 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
 
 // DELETE /api/admin/app-users/[id] — delete user and their OTP codes
 export async function DELETE(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const session = await auth();
-  if (!session?.user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-  if (session.user.role !== 'admin') return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+  const authResult = await requireCapability('admin.users.manage');
+  if (authResult instanceof NextResponse) return authResult;
 
   const { id } = await params;
   const userId = parseInt(id, 10);

@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { auth } from '../../../../../auth';
+import { requireCapability } from '../../../../../src/lib/access-control';
 import { queryErpTable } from '../../../../../src/lib/erp-sync';
 import { isErpConfigured } from '../../../../../db/supabase';
 
@@ -9,11 +9,8 @@ import { isErpConfigured } from '../../../../../db/supabase';
  * Preview rows from an ERP table. Admin-only.
  */
 export async function GET(req: NextRequest) {
-  const session = await auth();
-  if (!session?.user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-  if ((session.user as { role?: string }).role !== 'admin') {
-    return NextResponse.json({ error: 'Admin access required' }, { status: 403 });
-  }
+  const authResult = await requireCapability('admin.config.manage');
+  if (authResult instanceof NextResponse) return authResult;
 
   if (!isErpConfigured()) {
     return NextResponse.json({ error: 'ERP database not configured' }, { status: 503 });

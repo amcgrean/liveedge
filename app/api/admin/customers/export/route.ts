@@ -1,14 +1,13 @@
 import { NextResponse } from 'next/server';
-import { auth } from '../../../../../auth';
+import { requireCapability } from '../../../../../src/lib/access-control';
 import { getDb } from '../../../../../db/index';
 import { legacyCustomer } from '../../../../../db/schema-legacy';
 import { asc } from 'drizzle-orm';
 import { generateCSV, csvResponse } from '@/lib/csv-utils';
 
 export async function GET() {
-  const session = await auth();
-  if (!session?.user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-  if ((session.user as { role?: string }).role !== 'admin') return NextResponse.json({ error: 'Admin access required' }, { status: 403 });
+  const authResult = await requireCapability('admin.customers.view', 'admin.config.manage');
+  if (authResult instanceof NextResponse) return authResult;
 
   try {
     const db = getDb();

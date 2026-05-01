@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { auth } from '../../../../../auth';
+import { requireCapability } from '../../../../../src/lib/access-control';
 import { runErpSync } from '../../../../../src/lib/erp-sync';
 
 /**
@@ -9,11 +9,8 @@ import { runErpSync } from '../../../../../src/lib/erp-sync';
  * Admin-only. Runs the same logic as the cron endpoint.
  */
 export async function POST(req: NextRequest) {
-  const session = await auth();
-  if (!session?.user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-  if ((session.user as { role?: string }).role !== 'admin') {
-    return NextResponse.json({ error: 'Admin access required' }, { status: 403 });
-  }
+  const authResult = await requireCapability('admin.config.manage');
+  if (authResult instanceof NextResponse) return authResult;
 
   let body: { tables?: string[] } = {};
   try { body = await req.json(); } catch { /* empty body OK */ }

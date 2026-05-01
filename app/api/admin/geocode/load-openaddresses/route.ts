@@ -1,15 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { auth } from '../../../../../auth';
+import { requireCapability } from '../../../../../src/lib/access-control';
 import { getErpSql } from '../../../../../db/supabase';
 import { loadOpenAddresses, DEFAULT_IA_JOB_ID } from '../../../../../src/lib/geocode-runner';
 
 export const maxDuration = 300;
 
 export async function POST(req: NextRequest) {
-  const session = await auth();
-  if (!session?.user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-  const role = (session.user as { role?: string }).role ?? 'estimator';
-  if (role !== 'admin') return NextResponse.json({ error: 'Admin access required' }, { status: 403 });
+  const authResult = await requireCapability('admin.config.manage');
+  if (authResult instanceof NextResponse) return authResult;
 
   const body = await req.json().catch(() => ({}));
   const jobId = parseInt(body.job_id ?? DEFAULT_IA_JOB_ID, 10) || DEFAULT_IA_JOB_ID;

@@ -1,14 +1,9 @@
-import { redirect } from 'next/navigation';
-import { auth } from '../../../auth';
+import { requirePageAccess } from '../../../src/lib/access-control';
 import JobsClient from './JobsClient';
 
 export const metadata = { title: 'Job Review — LiveEdge Admin' };
 
 export default async function JobsPage() {
-  const session = await auth();
-  if (!session) redirect('/login');
-  const role = (session.user as { role?: string }).role ?? 'estimator';
-  if (role !== 'admin') redirect('/');
-
+  await requirePageAccess('admin.jobs.review');
   return <JobsClient />;
 }

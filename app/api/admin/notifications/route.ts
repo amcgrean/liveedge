@@ -1,19 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { auth } from '../../../../auth';
+import { requireCapability } from '../../../../src/lib/access-control';
 import { getDb } from '../../../../db/index';
 import { legacyNotificationRule, legacyBranch } from '../../../../db/schema-legacy';
 import { eq, desc } from 'drizzle-orm';
 
-function requireAdmin(session: { user: { role?: string } } | null) {
-  if (!session?.user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-  if ((session.user as { role?: string }).role !== 'admin') return NextResponse.json({ error: 'Admin access required' }, { status: 403 });
-  return null;
-}
-
 export async function GET() {
-  const session = await auth();
-  const err = requireAdmin(session);
-  if (err) return err;
+  const authResult = await requireCapability('admin.config.manage');
+  if (authResult instanceof NextResponse) return authResult;
 
   try {
     const db = getDb();
@@ -41,9 +34,8 @@ export async function GET() {
 }
 
 export async function POST(req: NextRequest) {
-  const session = await auth();
-  const adminErr = requireAdmin(session);
-  if (adminErr) return adminErr;
+  const authResult = await requireCapability('admin.config.manage');
+  if (authResult instanceof NextResponse) return authResult;
 
   let body: Record<string, unknown>;
   try { body = await req.json(); } catch { return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 }); }

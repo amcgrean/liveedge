@@ -9,7 +9,7 @@
  * passwords are skipped.
  */
 import { NextRequest, NextResponse } from 'next/server';
-import { auth } from '../../../../../auth';
+import { requireCapability } from '../../../../../src/lib/access-control';
 import { getDb } from '../../../../../db/index';
 import { legacyUser } from '../../../../../db/schema-legacy';
 import { eq } from 'drizzle-orm';
@@ -18,11 +18,8 @@ import bcrypt from 'bcryptjs';
 const BCRYPT_PREFIX_RE = /^\$2[abxy]\$/;
 
 export async function POST(req: NextRequest) {
-  const session = await auth();
-  if (!session?.user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-  if ((session.user as { role?: string }).role !== 'admin') {
-    return NextResponse.json({ error: 'Admin access required' }, { status: 403 });
-  }
+  const authResult = await requireCapability('admin.users.manage');
+  if (authResult instanceof NextResponse) return authResult;
 
   const { searchParams } = new URL(req.url);
   const dryRun = searchParams.get('dry_run') !== 'false';

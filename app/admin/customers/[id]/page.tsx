@@ -1,14 +1,10 @@
 import { Metadata } from 'next';
-import { auth } from '../../../../auth';
-import { redirect } from 'next/navigation';
+import { requirePageAccess } from '../../../../src/lib/access-control';
 import CustomerDetailClient from './CustomerDetailClient';
 
 export const metadata: Metadata = { title: 'Customer Detail | Admin | LiveEdge' };
 
 export default async function CustomerDetailPage() {
-  const session = await auth();
-  if (!session?.user) redirect('/login');
-  const role = (session.user as { role?: string }).role ?? 'viewer';
-  if (role !== 'admin') redirect('/');
+  const session = await requirePageAccess('admin.customers.view', 'admin.config.manage');
   return <CustomerDetailClient session={session} />;
 }

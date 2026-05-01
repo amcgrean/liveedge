@@ -1,5 +1,4 @@
-import { redirect } from 'next/navigation';
-import { auth } from '../../../../../auth';
+import { requirePageAccess } from '../../../../../src/lib/access-control';
 import JobEmailsClient from './JobEmailsClient';
 
 export const metadata = { title: 'Job Emails — LiveEdge Admin' };
@@ -9,12 +8,7 @@ export default async function JobEmailsPage({
 }: {
   params: Promise<{ soId: string }>;
 }) {
-  const session = await auth();
-  if (!session) redirect('/login');
-  const role = (session.user as { role?: string }).role ?? '';
-  const roles = (session.user as { roles?: string[] }).roles ?? [];
-  if (role !== 'admin' && !roles.includes('hubbell')) redirect('/');
-
+  await requirePageAccess('hubbell.review');
   const { soId } = await params;
   return <JobEmailsClient soId={soId} />;
 }
