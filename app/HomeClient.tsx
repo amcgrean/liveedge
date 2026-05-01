@@ -3,12 +3,15 @@
 import { useState, useEffect, useCallback } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
+import { useSession } from 'next-auth/react';
 import {
   Truck, ShoppingCart, FileText, Ruler, Wrench,
   PackageCheck, ClipboardCheck, Settings,
   ArrowRight, Activity, Zap, Receipt,
 } from 'lucide-react';
 import type { HomeData } from './api/home/route';
+import { hasCapability } from '../src/lib/access-control-shared';
+import type { Capability } from '../src/lib/access-control-shared';
 
 const SO_STATUS: Record<string, { label: string; color: string }> = {
   O: { label: 'Open',      color: 'bg-blue-900/60 text-blue-300' },
@@ -34,8 +37,9 @@ interface ModuleCard {
   icon: React.ReactNode;
   kpiKey?: keyof HomeData['kpis'];
   kpiLabel?: string;
-  accent: string;       // Tailwind color class fragments (border, icon, badge)
-  adminOnly?: boolean;
+  accent: string;
+  /** Card visible if the user holds ANY of these capabilities. Omit = always visible. */
+  requiresCap?: readonly Capability[];
 }
 
 const MODULE_CARDS: ModuleCard[] = [
@@ -48,6 +52,7 @@ const MODULE_CARDS: ModuleCard[] = [
     kpiKey: 'openPicks',
     kpiLabel: 'open picks',
     accent: 'yellow',
+    requiresCap: ['yard.view', 'picks.release', 'workorders.assign', 'pickers.manage', 'dispatch.view', 'dispatch.manage'],
   },
   {
     id: 'sales',
@@ -58,6 +63,7 @@ const MODULE_CARDS: ModuleCard[] = [
     kpiKey: 'openOrders',
     kpiLabel: 'open orders',
     accent: 'blue',
+    requiresCap: ['sales.view'],
   },
   {
     id: 'estimating',
@@ -68,6 +74,7 @@ const MODULE_CARDS: ModuleCard[] = [
     kpiKey: 'openBids',
     kpiLabel: 'open bids',
     accent: 'cyan',
+    requiresCap: ['bids.manage', 'ewp.manage', 'projects.manage'],
   },
   {
     id: 'design',
@@ -78,6 +85,7 @@ const MODULE_CARDS: ModuleCard[] = [
     kpiKey: 'openDesigns',
     kpiLabel: 'active',
     accent: 'purple',
+    requiresCap: ['designs.manage'],
   },
   {
     id: 'service',
@@ -86,6 +94,7 @@ const MODULE_CARDS: ModuleCard[] = [
     href: '/it-issues',
     icon: <Wrench className="w-6 h-6" />,
     accent: 'orange',
+    // No requiresCap — visible to everyone (it-issues is universal)
   },
   {
     id: 'purchasing',
@@ -94,6 +103,7 @@ const MODULE_CARDS: ModuleCard[] = [
     href: '/purchasing/workspace',
     icon: <PackageCheck className="w-6 h-6" />,
     accent: 'green',
+    requiresCap: ['purchasing.view'],
   },
   {
     id: 'receiving',
@@ -102,6 +112,7 @@ const MODULE_CARDS: ModuleCard[] = [
     href: '/purchasing',
     icon: <ClipboardCheck className="w-6 h-6" />,
     accent: 'indigo',
+    requiresCap: ['purchasing.receive', 'purchasing.review'],
   },
   {
     id: 'admin',
@@ -110,7 +121,7 @@ const MODULE_CARDS: ModuleCard[] = [
     href: '/admin',
     icon: <Settings className="w-6 h-6" />,
     accent: 'red',
-    adminOnly: true,
+    requiresCap: ['admin.users.manage', 'admin.config.manage', 'admin.audit.view', 'admin.jobs.review'],
   },
 ];
 
@@ -184,6 +195,7 @@ function relativeTime(ts: string) {
 
 export default function HomeClient({ userName, userRole, userBranch }: Props) {
   const pathname = usePathname();
+  const { data: session } = useSession();
   const [data, setData] = useState<HomeData | null>(null);
   const [loading, setLoading] = useState(true);
   const [mounted, setMounted] = useState(false);
@@ -210,7 +222,7 @@ export default function HomeClient({ userName, userRole, userBranch }: Props) {
   }, [pathname]);
 
   const visibleCards = MODULE_CARDS.filter(
-    (m) => !m.adminOnly || userRole === 'admin'
+    (m) => !m.requiresCap || hasCapability(session, ...m.requiresCap)
   );
 
   const kpis = data?.kpis;
