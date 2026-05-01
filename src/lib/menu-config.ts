@@ -18,7 +18,7 @@ import {
   CAPABILITIES,
   type Capability,
   hasCapability,
-} from './access-control';
+} from './access-control-shared';
 
 export type MenuItem = {
   label: string;

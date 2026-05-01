@@ -10,6 +10,8 @@ import {
   Boxes, HelpCircle, User, BarChart3,
 } from 'lucide-react';
 import { cn } from '../../lib/utils';
+import { hasCapability } from '../../lib/access-control-shared';
+import type { Capability } from '../../lib/access-control-shared';
 
 // ─── Branch switcher ──────────────────────────────────────────────────────────
 
@@ -181,7 +183,8 @@ function GlobalSearch() {
 interface NavLink {
   href: string;
   label: string;
-  requireAnyRole?: string[];
+  /** Item visible if user holds ANY of these capabilities. Omit = always visible within group. */
+  requiresCap?: readonly Capability[];
   /** Renders a labeled section divider above this link in the dropdown */
   sectionBefore?: string;
 }
@@ -194,6 +197,8 @@ interface Domain {
   isActive: (p: string) => boolean;
   dropdown: boolean;
   href?: string;
+  /** Domain tab visible if user holds ANY of these capabilities. */
+  requiresCap: readonly Capability[];
 }
 
 function getDomains(tvBranch: string): Domain[] {
@@ -203,6 +208,7 @@ function getDomains(tvBranch: string): Domain[] {
       label: 'Yard',
       icon: <Boxes className="w-4 h-4" />,
       dropdown: true,
+      requiresCap: ['yard.view', 'picks.release', 'workorders.assign', 'pickers.manage'],
       isActive: (p) =>
         ['/warehouse', '/work-orders', '/supervisor'].some(
           (prefix) => p === prefix || p.startsWith(prefix + '/')
@@ -211,12 +217,10 @@ function getDomains(tvBranch: string): Domain[] {
         { href: '/warehouse',              label: 'Picks Board' },
         { href: '/warehouse/open-picks',   label: 'Open Picks' },
         { href: '/work-orders',            label: 'Work Orders' },
-        // Performance — picker analytics + supervisor view
         { href: '/warehouse/picker-stats', label: 'Picker Stats',         sectionBefore: 'Performance' },
-        { href: '/supervisor',             label: 'Supervisor',           requireAnyRole: ['supervisor', 'ops', 'warehouse'] },
-        // Kiosks — TV board + on-floor kiosk
-        { href: `/tv/${tvBranch}`,         label: 'TV Board',             sectionBefore: 'Kiosks', requireAnyRole: ['supervisor', 'ops', 'warehouse'] },
-        { href: `/kiosk/${tvBranch}`,      label: 'Pick Tracker Kiosk',   requireAnyRole: ['supervisor', 'ops', 'warehouse'] },
+        { href: '/supervisor',             label: 'Supervisor',           requiresCap: ['pickers.manage', 'workorders.assign'] },
+        { href: `/tv/${tvBranch}`,         label: 'TV Board',             sectionBefore: 'Kiosks', requiresCap: ['pickers.manage', 'workorders.assign'] },
+        { href: `/kiosk/${tvBranch}`,      label: 'Pick Tracker Kiosk',   requiresCap: ['pickers.manage', 'workorders.assign'] },
       ],
     },
     {
@@ -224,6 +228,7 @@ function getDomains(tvBranch: string): Domain[] {
       label: 'Dispatch',
       icon: <Truck className="w-4 h-4" />,
       dropdown: true,
+      requiresCap: ['dispatch.view', 'dispatch.manage'],
       isActive: (p) =>
         ['/dispatch', '/delivery'].some((prefix) => p === prefix || p.startsWith(prefix + '/')) ||
         p.startsWith('/ops/delivery') ||
@@ -231,10 +236,10 @@ function getDomains(tvBranch: string): Domain[] {
       links: [
         { href: '/dispatch',               label: 'Dispatch Board' },
         { href: '/dispatch/transfers',     label: 'Branch Transfers' },
-        { href: '/dispatch/drivers',       label: 'Driver Roster',   requireAnyRole: ['supervisor', 'ops', 'dispatch'] },
+        { href: '/dispatch/drivers',       label: 'Driver Roster',   requiresCap: ['dispatch.manage'] },
         { href: '/delivery',               label: 'Delivery Tracker' },
         { href: '/delivery/map',           label: 'Fleet Map' },
-        { href: '/ops/delivery-reporting', label: 'Delivery Report', sectionBefore: 'Reports', requireAnyRole: ['supervisor', 'ops'] },
+        { href: '/ops/delivery-reporting', label: 'Delivery Report', sectionBefore: 'Reports', requiresCap: ['dispatch.manage'] },
         { href: '/management/forecast',    label: 'Delivery Forecast' },
       ],
     },
@@ -243,19 +248,20 @@ function getDomains(tvBranch: string): Domain[] {
       label: 'Sales',
       icon: <ShoppingCart className="w-4 h-4" />,
       dropdown: true,
+      requiresCap: ['sales.view', 'credits.view', 'credits.manage', 'hubbell.review'],
       isActive: (p) =>
         (p.startsWith('/sales') && !p.startsWith('/sales/reports')) ||
         p.startsWith('/credits') ||
         p.startsWith('/admin/hubbell'),
       links: [
-        { href: '/sales',               label: 'Sales Hub' },
-        { href: '/sales/customers',     label: 'Customers' },
-        { href: '/sales/transactions',  label: 'Transactions' },
-        { href: '/sales/products',      label: 'Products & Stock' },
-        { href: '/sales/tracker',       label: 'Sales Tracker',    requireAnyRole: ['sales', 'ops', 'supervisor'] },
-        { href: '/credits',             label: 'RMA Credits' },
-        { href: '/admin/hubbell',       label: 'Hubbell Emails',   sectionBefore: 'Vendor Reconciliation', requireAnyRole: ['hubbell'] },
-        { href: '/admin/hubbell/jobs',  label: 'Hubbell Jobs',     requireAnyRole: ['hubbell'] },
+        { href: '/sales',               label: 'Sales Hub',        requiresCap: ['sales.view'] },
+        { href: '/sales/customers',     label: 'Customers',        requiresCap: ['sales.view'] },
+        { href: '/sales/transactions',  label: 'Transactions',     requiresCap: ['sales.view'] },
+        { href: '/sales/products',      label: 'Products & Stock', requiresCap: ['sales.view'] },
+        { href: '/sales/tracker',       label: 'Sales Tracker',    requiresCap: ['sales.view'] },
+        { href: '/credits',             label: 'RMA Credits',      requiresCap: ['credits.view', 'credits.manage'] },
+        { href: '/admin/hubbell',       label: 'Hubbell Emails',   sectionBefore: 'Vendor Reconciliation', requiresCap: ['hubbell.review'] },
+        { href: '/admin/hubbell/jobs',  label: 'Hubbell Jobs',     requiresCap: ['hubbell.review'] },
       ],
     },
     {
@@ -263,16 +269,18 @@ function getDomains(tvBranch: string): Domain[] {
       label: 'Management',
       icon: <BarChart3 className="w-4 h-4" />,
       dropdown: true,
+      // branch.all is held by admin, management role, and ops — correct audience for these pages
+      requiresCap: ['branch.all'],
       isActive: (p) => p.startsWith('/management') || p.startsWith('/sales/reports') || p.startsWith('/scorecard'),
       links: [
-        { href: '/management',          label: 'Management Hub' },
-        { href: '/scorecard/overview',  label: 'Company Overview' },
+        { href: '/management',            label: 'Management Hub' },
+        { href: '/scorecard/overview',    label: 'Company Overview' },
         { href: '/scorecard/branch/20GR', label: 'By Branch' },
-        { href: '/scorecard/rep',       label: 'By Sales Rep' },
-        { href: '/scorecard/product',   label: 'Product Groups' },
-        { href: '/scorecard',           label: 'Customer Scorecard' },
-        { href: '/sales/reports',       label: 'Sales Reports' },
-        { href: '/management/forecast', label: 'Open Orders & Forecast' },
+        { href: '/scorecard/rep',         label: 'By Sales Rep' },
+        { href: '/scorecard/product',     label: 'Product Groups' },
+        { href: '/scorecard',             label: 'Customer Scorecard' },
+        { href: '/sales/reports',         label: 'Sales Reports' },
+        { href: '/management/forecast',   label: 'Open Orders & Forecast' },
       ],
     },
     {
@@ -280,6 +288,7 @@ function getDomains(tvBranch: string): Domain[] {
       label: 'Services',
       icon: <FileText className="w-4 h-4" />,
       dropdown: true,
+      requiresCap: ['bids.manage', 'designs.manage', 'ewp.manage', 'projects.manage'],
       isActive: (p) =>
         p === '/estimating' ||
         p.startsWith('/estimating/') ||
@@ -291,12 +300,12 @@ function getDomains(tvBranch: string): Domain[] {
         p.startsWith('/projects') ||
         p.startsWith('/designs'),
       links: [
-        { href: '/estimating', label: 'Estimating App' },
-        { href: '/takeoff',    label: 'PDF Takeoff' },
-        { href: '/bids',       label: 'Bids' },
-        { href: '/ewp',        label: 'EWP' },
-        { href: '/projects',   label: 'Projects' },
-        { href: '/designs',    label: 'Design' },
+        { href: '/estimating', label: 'Estimating App', requiresCap: ['bids.manage'] },
+        { href: '/takeoff',    label: 'PDF Takeoff',    requiresCap: ['bids.manage'] },
+        { href: '/bids',       label: 'Bids',           requiresCap: ['bids.manage'] },
+        { href: '/ewp',        label: 'EWP',            requiresCap: ['ewp.manage'] },
+        { href: '/projects',   label: 'Projects',       requiresCap: ['projects.manage'] },
+        { href: '/designs',    label: 'Design',         requiresCap: ['designs.manage'] },
       ],
     },
     {
@@ -304,6 +313,7 @@ function getDomains(tvBranch: string): Domain[] {
       label: 'Purchasing',
       icon: <PackageCheck className="w-4 h-4" />,
       dropdown: true,
+      requiresCap: ['purchasing.view', 'purchasing.receive', 'purchasing.review'],
       isActive: (p) =>
         p.startsWith('/purchasing/workspace') ||
         p.startsWith('/purchasing/open-pos') ||
@@ -314,79 +324,42 @@ function getDomains(tvBranch: string): Domain[] {
         p.startsWith('/purchasing/review') ||
         p === '/purchasing',
       links: [
-        { href: '/purchasing/workspace',      label: 'Buyer Workspace', requireAnyRole: ['purchasing', 'ops', 'supervisor'] },
-        { href: '/purchasing/open-pos',       label: 'Open POs',        requireAnyRole: ['purchasing', 'ops', 'supervisor', 'sales'] },
-        { href: '/purchasing/suggested-buys', label: 'Suggested Buys',  requireAnyRole: ['purchasing', 'ops', 'supervisor'] },
-        { href: '/purchasing/exceptions',     label: 'Exceptions',      requireAnyRole: ['purchasing', 'ops', 'supervisor'] },
-        { href: '/purchasing/manage',         label: 'Command Center',  requireAnyRole: ['purchasing', 'ops', 'supervisor'] },
-        // Receiving — merged from former top-level Receiving menu
-        { href: '/purchasing',        label: 'PO Check-In',  sectionBefore: 'Receiving' },
-        { href: '/purchasing/review', label: 'Review Queue', requireAnyRole: ['purchasing', 'ops', 'supervisor'] },
+        { href: '/purchasing/workspace',      label: 'Buyer Workspace', requiresCap: ['purchasing.view'] },
+        { href: '/purchasing/open-pos',       label: 'Open POs',        requiresCap: ['purchasing.view'] },
+        { href: '/purchasing/suggested-buys', label: 'Suggested Buys',  requiresCap: ['purchasing.view'] },
+        { href: '/purchasing/exceptions',     label: 'Exceptions',      requiresCap: ['purchasing.view'] },
+        { href: '/purchasing/manage',         label: 'Command Center',  requiresCap: ['purchasing.view'] },
+        { href: '/purchasing',        label: 'PO Check-In',  sectionBefore: 'Receiving', requiresCap: ['purchasing.receive'] },
+        { href: '/purchasing/review', label: 'Review Queue', requiresCap: ['purchasing.review'] },
       ],
     },
   ];
 }
 
-const ADMIN_LINKS: NavLink[] = [
-  { href: '/admin',               label: 'Dashboard' },
-  // General
-  { href: '/admin/customers',     label: 'Customers',       sectionBefore: 'General' },
-  { href: '/admin/products',      label: 'Products / SKUs' },
-  { href: '/admin/formulas',      label: 'Formulas' },
-  // Services
-  { href: '/admin/bid-fields',    label: 'Bid Fields',      sectionBefore: 'Services' },
-  // Users
-  { href: '/admin/users',         label: 'Users',           sectionBefore: 'Users' },
-  { href: '/warehouse/pickers',   label: 'Picker Admin' },
-  { href: '/admin/notifications', label: 'Notifications' },
-  // Operations
-  { href: '/admin/jobs',          label: 'Job Review',      sectionBefore: 'Operations' },
-  { href: '/admin/hubbell',       label: 'Hubbell Emails' },
-  { href: '/admin/hubbell/jobs',  label: 'Hubbell Jobs' },
-  // System
-  { href: '/admin/audit',         label: 'Audit Log',       sectionBefore: 'System' },
-  { href: '/admin/erp',           label: 'ERP Sync' },
-  { href: '/admin/analytics',     label: 'Page Analytics' },
+// Admin dropdown links with per-item capability gates
+interface AdminLink {
+  href: string;
+  label: string;
+  sectionBefore?: string;
+  requiresCap: readonly Capability[];
+}
+
+const ADMIN_LINKS: AdminLink[] = [
+  { href: '/admin',               label: 'Dashboard',       requiresCap: ['admin.users.manage', 'admin.config.manage', 'admin.audit.view', 'admin.jobs.review', 'admin.products.view', 'admin.customers.view', 'hubbell.review'] },
+  { href: '/admin/customers',     label: 'Customers',       sectionBefore: 'General',     requiresCap: ['admin.customers.view', 'admin.config.manage'] },
+  { href: '/admin/products',      label: 'Products / SKUs',                               requiresCap: ['admin.products.view', 'admin.config.manage'] },
+  { href: '/admin/formulas',      label: 'Formulas',                                      requiresCap: ['admin.config.manage'] },
+  { href: '/admin/bid-fields',    label: 'Bid Fields',      sectionBefore: 'Services',    requiresCap: ['admin.config.manage'] },
+  { href: '/admin/users',         label: 'Users',           sectionBefore: 'Users',       requiresCap: ['admin.users.manage'] },
+  { href: '/warehouse/pickers',   label: 'Picker Admin',                                  requiresCap: ['pickers.manage', 'admin.config.manage'] },
+  { href: '/admin/notifications', label: 'Notifications',                                 requiresCap: ['admin.config.manage'] },
+  { href: '/admin/jobs',          label: 'Job Review',      sectionBefore: 'Operations',  requiresCap: ['admin.jobs.review'] },
+  { href: '/admin/hubbell',       label: 'Hubbell Emails',                                requiresCap: ['hubbell.review'] },
+  { href: '/admin/hubbell/jobs',  label: 'Hubbell Jobs',                                  requiresCap: ['hubbell.review'] },
+  { href: '/admin/audit',         label: 'Audit Log',       sectionBefore: 'System',      requiresCap: ['admin.audit.view'] },
+  { href: '/admin/erp',           label: 'ERP Sync',                                      requiresCap: ['admin.config.manage'] },
+  { href: '/admin/analytics',     label: 'Page Analytics',                                requiresCap: ['admin.config.manage'] },
 ];
-
-// ─── Role helpers ─────────────────────────────────────────────────────────────
-
-const WH_ROLES = ['warehouse', 'sales', 'ops', 'supervisor', 'purchasing', 'dispatch', 'hubbell'] as const;
-type WHRole = typeof WH_ROLES[number];
-
-function hasAnyRole(roles: string[], ...check: WHRole[]): boolean {
-  return check.some((r) => roles.includes(r));
-}
-
-function canSeeSection(domainId: string, role: string, roles: string[]): boolean {
-  if (role === 'admin') return true;
-  if (role === 'management') return true; // management sees all non-admin sections
-  const isWHUser = (WH_ROLES as readonly string[]).some((r) => roles.includes(r));
-  switch (domainId) {
-    case 'yard':
-      return hasAnyRole(roles, 'warehouse', 'sales', 'ops', 'supervisor', 'dispatch');
-    case 'dispatch':
-      return hasAnyRole(roles, 'warehouse', 'sales', 'ops', 'supervisor', 'dispatch');
-    case 'sales':
-      return hasAnyRole(roles, 'sales', 'ops', 'supervisor', 'hubbell');
-    case 'management':
-      return hasAnyRole(roles, 'ops', 'supervisor');
-    case 'estimating':
-      return ((role === 'admin' || role === 'estimator') && !isWHUser) || hasAnyRole(roles, 'sales');
-    case 'purchasing':
-      // Covers both purchasing and receiving (merged)
-      return role !== 'viewer';
-    default:
-      return false;
-  }
-}
-
-function canSeeLink(link: NavLink, role: string, roles: string[]): boolean {
-  if (role === 'admin') return true;
-  if (role === 'management') return true; // management sees all nav links
-  if (!link.requireAnyRole) return true;
-  return link.requireAnyRole.some((r) => roles.includes(r));
-}
 
 // ─── Props ────────────────────────────────────────────────────────────────────
 
@@ -407,9 +380,6 @@ export function TopNav({ userName, userRole }: Props) {
   const navRef = React.useRef<HTMLElement>(null);
 
   const name: string = session?.user?.name ?? userName ?? 'User';
-  const role: string = (session?.user as { role?: string } | undefined)?.role ?? userRole ?? 'viewer';
-  const roles: string[] = (session?.user as { roles?: string[] } | undefined)?.roles ?? [];
-
   const signOutUrl = '/login';
 
   React.useEffect(() => {
@@ -418,12 +388,18 @@ export function TopNav({ userName, userRole }: Props) {
   }, []);
 
   const DOMAINS = getDomains(tvBranch);
+
+  // Filter domains and their links by the session's effective capabilities
   const visibleDomains = DOMAINS
-    .filter((d) => canSeeSection(d.id, role, roles))
+    .filter((d) => hasCapability(session, ...d.requiresCap))
     .map((d) => ({
       ...d,
-      links: d.links.filter((l) => canSeeLink(l, role, roles)),
+      links: d.links.filter((l) => !l.requiresCap || hasCapability(session, ...l.requiresCap)),
     }));
+
+  // Admin: visible if any admin-scope capability is held
+  const adminLinks = ADMIN_LINKS.filter((l) => hasCapability(session, ...l.requiresCap));
+  const showAdmin = adminLinks.length > 0;
 
   React.useEffect(() => {
     function handler(e: MouseEvent) {
@@ -453,7 +429,7 @@ export function TopNav({ userName, userRole }: Props) {
   }
 
   /** Renders a single dropdown link, with an optional labeled section divider above it */
-  function renderDropdownLink(l: NavLink) {
+  function renderDropdownLink(l: NavLink | AdminLink) {
     const isCurrentPath =
       pathname === l.href || (l.href !== '/' && pathname.startsWith(l.href + '/'));
     return (
@@ -494,7 +470,6 @@ export function TopNav({ userName, userRole }: Props) {
           {/* Brand */}
           <div className="flex items-center gap-1">
             <Link href="/" className="flex items-center gap-2.5 flex-shrink-0 mr-3">
-              {/* Beisser B logo badge */}
               <span className="flex items-center justify-center w-8 h-8 bg-white rounded-lg overflow-hidden flex-shrink-0 shadow-sm">
                 <img
                   src="/icons/beisser_B_full_color_RGB.png"
@@ -502,7 +477,6 @@ export function TopNav({ userName, userRole }: Props) {
                   className="w-full h-full object-cover"
                 />
               </span>
-              {/* App name */}
               <div className="hidden sm:flex flex-col leading-tight">
                 <span className="text-[9px] text-slate-400 font-normal tracking-widest uppercase leading-none">
                   Beisser Lumber
@@ -513,7 +487,7 @@ export function TopNav({ userName, userRole }: Props) {
               </div>
             </Link>
 
-            {/* Desktop domain nav — role-filtered */}
+            {/* Desktop domain nav — capability-filtered */}
             <div className="hidden lg:flex items-center gap-0.5">
               {visibleDomains.map((domain) => {
                 const active = domain.isActive(pathname);
@@ -561,8 +535,8 @@ export function TopNav({ userName, userRole }: Props) {
             <GlobalSearch />
             <BranchSwitcher />
 
-            {/* Admin dropdown — desktop only */}
-            {role === 'admin' && (
+            {/* Admin dropdown — desktop only, capability-gated */}
+            {showAdmin && (
               <div className="relative hidden lg:block">
                 <button
                   onClick={() => toggle('admin')}
@@ -581,7 +555,7 @@ export function TopNav({ userName, userRole }: Props) {
                 </button>
                 {openMenu === 'admin' && (
                   <div className="absolute right-0 mt-1 min-w-[190px] bg-slate-900 border border-white/10 rounded-xl shadow-xl overflow-hidden z-50">
-                    {ADMIN_LINKS.map((l) => renderDropdownLink(l))}
+                    {adminLinks.map((l) => renderDropdownLink(l))}
                   </div>
                 )}
               </div>
@@ -736,8 +710,8 @@ export function TopNav({ userName, userRole }: Props) {
                 );
               })}
 
-              {/* Admin section (mobile) */}
-              {role === 'admin' && (
+              {/* Admin section (mobile) — capability-gated */}
+              {showAdmin && (
                 <>
                   <button
                     onClick={() => toggleMobileSection('admin')}
@@ -761,7 +735,7 @@ export function TopNav({ userName, userRole }: Props) {
                   </button>
                   {mobileOpenSections.has('admin') && (
                     <div className="ml-4 border-l border-slate-700 pl-3 pb-1 space-y-0.5">
-                      {ADMIN_LINKS.map((l) => (
+                      {adminLinks.map((l) => (
                         <React.Fragment key={l.href}>
                           {l.sectionBefore && (
                             <div className="pt-2 pb-0.5">
