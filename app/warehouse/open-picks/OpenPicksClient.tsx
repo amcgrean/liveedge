@@ -5,35 +5,22 @@ import Link from 'next/link';
 import { RefreshCw, User, Activity, Clock } from 'lucide-react';
 import { usePageTracking } from '@/hooks/usePageTracking';
 import { businessMinutesElapsed } from '@/lib/central-time';
+import type { PickerSummary } from '@/lib/warehouse-open-picks';
 
-interface ActivePick {
-  pick_id: number;
-  picker_id: number;
-  picker_name: string;
-  barcode_number: string | null;
-  start_time: string | null;
+interface Props {
+  isAdmin: boolean;
+  initialPickers: PickerSummary[];
 }
-
-interface PickerSummary {
-  picker_id: number;
-  picker_name: string;
-  user_type: string | null;
-  today_count: number;
-  five_day_count: number;
-  active_picks: ActivePick[];
-}
-
-interface Props { isAdmin: boolean; }
 
 function minutesSince(iso: string | null) {
   if (!iso) return null;
   return businessMinutesElapsed(iso);
 }
 
-export default function OpenPicksClient({ isAdmin }: Props) {
+export default function OpenPicksClient({ isAdmin, initialPickers }: Props) {
   usePageTracking();
-  const [pickers, setPickers] = useState<PickerSummary[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [pickers, setPickers] = useState<PickerSummary[]>(initialPickers);
+  const [loading, setLoading] = useState(initialPickers.length === 0);
 
   const load = useCallback(async () => {
     setLoading(true);
