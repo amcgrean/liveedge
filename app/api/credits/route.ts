@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { auth } from '../../../auth';
+import { requireCapability } from '../../../src/lib/access-control';
 import { getErpSql } from '../../../db/supabase';
 import { ALLOWED_SORTS } from './_shared';
 import type { CreditMemo, SortCol } from './_shared';
@@ -20,8 +20,9 @@ const SORT_SQL: Record<SortCol, string> = {
 // from agility_so_header. Branch-scoped: non-admins see only their branch.
 // LEFT JOINs credit_images for doc count per CM.
 export async function GET(req: NextRequest) {
-  const session = await auth();
-  if (!session?.user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  const authResult = await requireCapability('credits.view', 'credits.manage');
+  if (authResult instanceof NextResponse) return authResult;
+  const session = authResult;
 
   const { searchParams } = req.nextUrl;
   const q      = (searchParams.get('q') ?? '').trim();
@@ -42,11 +43,9 @@ export async function GET(req: NextRequest) {
     : `${SORT_SQL[sort]} ${dir} ${nulls}, soh.so_id DESC`;
 
   const isAdmin =
-    (session.user as { role?: string }).role === 'admin' ||
-    ((session.user as { roles?: string[] }).roles ?? []).some((r) =>
-      ['admin', 'supervisor', 'ops'].includes(r)
-    );
-  const userBranch      = (session.user as { branch?: string }).branch ?? '';
+    session.user.role === 'admin' ||
+    (session.user.roles ?? []).some((r) => ['admin', 'supervisor', 'ops'].includes(r));
+  const userBranch      = session.user.branch ?? '';
   const effectiveBranch = isAdmin ? branch : userBranch;
 
   try {

@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { auth } from '../../../auth';
+import { requireCapability } from '../../../src/lib/access-control';
 import { getDb } from '../../../db/index';
 import { getErpSql, isErpConfigured } from '../../../db/supabase';
 import { legacyBid, legacyDesign, legacyBidActivity } from '../../../db/schema-legacy';
@@ -80,13 +80,14 @@ function pathLabel(path: string): string {
 
 // GET /api/home
 export async function GET() {
-  const session = await auth();
-  if (!session?.user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  const authResult = await requireCapability('sales.view', 'yard.view', 'dispatch.view');
+  if (authResult instanceof NextResponse) return authResult;
+  const session = authResult;
 
   const userId = session.user.id ?? '';
-  const userRole = (session.user as { role?: string }).role ?? '';
-  const userRoles = ((session.user as { roles?: string[] }).roles ?? []) as string[];
-  const userBranch = (session.user as { branch?: string | null }).branch ?? null;
+  const userRole = session.user.role ?? '';
+  const userRoles = (session.user.roles ?? []) as string[];
+  const userBranch = session.user.branch ?? null;
 
   // Admin / ops / supervisor see all branches. Everyone else is scoped to their branch.
   const seesAllBranches =

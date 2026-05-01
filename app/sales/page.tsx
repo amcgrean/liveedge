@@ -1,14 +1,11 @@
-import { auth } from '../../auth';
-import { redirect } from 'next/navigation';
+import { requirePageAccess } from '../../src/lib/access-control';
+import { hasCapability } from '../../src/lib/access-control-shared';
 import SalesHubClient from './SalesHubClient';
 
 export default async function SalesPage() {
-  const session = await auth();
-  if (!session?.user) redirect('/login');
+  const session = await requirePageAccess('sales.view');
 
-  const isAdmin =
-    session.user.role === 'admin' ||
-    (session.user.roles ?? []).some((r) => ['admin', 'supervisor', 'ops'].includes(r));
+  const isAdmin = hasCapability(session, 'admin.config.manage');
 
   return (
     <SalesHubClient

@@ -1,16 +1,6 @@
-import { redirect } from 'next/navigation';
-import { auth } from '../../auth';
+import { requirePageAccess } from '../../src/lib/access-control';
 
 export default async function SalesLayout({ children }: { children: React.ReactNode }) {
-  const session = await auth();
-  if (!session?.user) redirect('/login');
-
-  const canAccess =
-    session.user.role === 'admin' ||
-    (session.user.roles ?? []).some((r) =>
-      ['admin', 'supervisor', 'ops', 'sales', 'management'].includes(r)
-    );
-  if (!canAccess) redirect('/dashboard');
-
+  await requirePageAccess('sales.view');
   return <>{children}</>;
 }

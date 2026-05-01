@@ -34,6 +34,10 @@ export function parseIncludeInactive(value: string | null): boolean {
   return value === '1' || value === 'true' || value === 'yes';
 }
 
+/**
+ * @deprecated Use `hasCapability(session, 'sales.view')` from access-control-shared instead.
+ * Kept for any remaining callers; all product routes use requireCapability now.
+ */
 export function isProductAdmin(user: { role?: string | null; roles?: string[] | null }): boolean {
   return (
     user.role === 'admin' ||

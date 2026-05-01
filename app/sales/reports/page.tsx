@@ -1,15 +1,12 @@
-import { auth } from '../../../auth';
-import { redirect } from 'next/navigation';
+import { requirePageAccess } from '../../../src/lib/access-control';
+import { hasCapability } from '../../../src/lib/access-control-shared';
 import { TopNav } from '../../../src/components/nav/TopNav';
 import ReportsClient from './ReportsClient';
 
 export default async function ReportsPage() {
-  const session = await auth();
-  if (!session?.user) redirect('/login');
+  const session = await requirePageAccess('sales.view');
 
-  const isAdmin =
-    session.user.role === 'admin' ||
-    (session.user.roles ?? []).some((r) => ['admin', 'supervisor', 'ops', 'sales'].includes(r));
+  const isAdmin = hasCapability(session, 'admin.config.manage');
 
   return (
     <div className="min-h-screen bg-gray-950">

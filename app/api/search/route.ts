@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { auth } from '../../../auth';
+import { requireCapability } from '../../../src/lib/access-control';
 import { getErpSql } from '../../../db/supabase';
 
 export interface SearchResult {
@@ -13,8 +13,9 @@ export interface SearchResult {
 // GET /api/search?q=<query>
 // Cross-searches SOs, customers, work orders, and pickers.
 export async function GET(req: NextRequest) {
-  const session = await auth();
-  if (!session?.user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  const authResult = await requireCapability('sales.view', 'yard.view', 'dispatch.view');
+  if (authResult instanceof NextResponse) return authResult;
+  const session = authResult;
 
   const q = (req.nextUrl.searchParams.get('q') ?? '').trim();
   if (q.length < 2) return NextResponse.json({ results: [] });
@@ -23,7 +24,7 @@ export async function GET(req: NextRequest) {
     session.user.role === 'admin' ||
     (session.user.roles ?? []).some((r: string) => ['admin', 'supervisor', 'ops'].includes(r));
 
-  const userBranch = (session.user as { branch?: string }).branch ?? null;
+  const userBranch = session.user.branch ?? null;
   const branchFilter = isAdmin ? null : userBranch;
 
   try {
