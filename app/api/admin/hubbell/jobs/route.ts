@@ -2,8 +2,9 @@ import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '../../../../../auth';
 import { getDb } from '../../../../../db/index';
 import { getErpSql } from '../../../../../db/supabase';
-import { hubbellEmails } from '../../../../../db/schema';
-import { and, isNotNull, inArray } from 'drizzle-orm';
+import { sql } from 'drizzle-orm';
+
+export const maxDuration = 30;
 
 // Customer codes that represent the same entity and should be merged into one job row.
 // Key = alias code (lower-trimmed), value = canonical code to group under.
@@ -28,43 +29,51 @@ export async function GET(req: NextRequest) {
 
   const db = getDb();
 
-  // Step 1: Pull all confirmed emails from bids DB
-  const confirmedEmails = await db
-    .select({
-      confirmedSoId:   hubbellEmails.confirmedSoId,
-      emailType:       hubbellEmails.emailType,
-      extractedAmount: hubbellEmails.extractedAmount,
-      receivedAt:      hubbellEmails.receivedAt,
-    })
-    .from(hubbellEmails)
-    .where(and(
-      isNotNull(hubbellEmails.confirmedSoId),
-      inArray(hubbellEmails.matchStatus, ['confirmed', 'matched']),
-    ));
+  // Step 1: Aggregate per confirmedSoId directly in SQL — avoids loading thousands of rows into JS
+  type StatsRow = {
+    confirmed_so_id: string;
+    email_count: string;
+    po_count: string;
+    wo_count: string;
+    total_amount: string;
+    last_received: Date;
+  };
 
-  if (confirmedEmails.length === 0) return NextResponse.json({ jobs: [] });
+  const statsRows = await db.execute<StatsRow>(sql`
+    SELECT
+      confirmed_so_id,
+      COUNT(*)::text                                                                   AS email_count,
+      COUNT(*) FILTER (WHERE email_type = 'po')::text                                 AS po_count,
+      COUNT(*) FILTER (WHERE email_type = 'wo')::text                                 AS wo_count,
+      COALESCE(SUM(extracted_amount::numeric) FILTER (WHERE extracted_amount IS NOT NULL), 0)::text AS total_amount,
+      MAX(received_at)                                                                 AS last_received
+    FROM bids.hubbell_emails
+    WHERE confirmed_so_id IS NOT NULL
+      AND match_status IN ('confirmed', 'matched')
+    GROUP BY confirmed_so_id
+  `);
 
-  // Step 2: Aggregate per SO in JS
-  type Stats = { emailCount: number; poCount: number; woCount: number; totalAmount: number; lastReceived: Date };
-  const statsMap = new Map<string, Stats>();
+  if (statsRows.length === 0) return NextResponse.json({ jobs: [] });
 
-  for (const email of confirmedEmails) {
-    const soId = email.confirmedSoId!;
-    const s = statsMap.get(soId) ?? { emailCount: 0, poCount: 0, woCount: 0, totalAmount: 0, lastReceived: new Date(0) };
-    s.emailCount++;
-    if (email.emailType === 'po') s.poCount++;
-    if (email.emailType === 'wo') s.woCount++;
-    s.totalAmount += parseFloat(email.extractedAmount ?? '0') || 0;
-    const recv = email.receivedAt ? new Date(String(email.receivedAt)) : new Date(0);
-    if (recv > s.lastReceived) s.lastReceived = recv;
-    statsMap.set(soId, s);
+  type StatsMap = {
+    emailCount: number; poCount: number; woCount: number;
+    totalAmount: number; lastReceived: Date;
+  };
+  const statsMap = new Map<string, StatsMap>();
+  for (const r of statsRows) {
+    statsMap.set(r.confirmed_so_id, {
+      emailCount:   parseInt(r.email_count)  || 0,
+      poCount:      parseInt(r.po_count)     || 0,
+      woCount:      parseInt(r.wo_count)     || 0,
+      totalAmount:  parseFloat(r.total_amount) || 0,
+      lastReceived: r.last_received ? new Date(String(r.last_received)) : new Date(0),
+    });
   }
 
   const soIds = [...statsMap.keys()];
-
   const erpSql = getErpSql();
 
-  // Step 3a: Fetch SO headers (no AR join — keep it simple).
+  // Step 2a: Fetch SO headers from ERP
   type SoRow = {
     so_id: string;
     cust_code: string | null;
@@ -89,8 +98,7 @@ export async function GET(req: NextRequest) {
       AND soh.is_deleted = false
   `;
 
-  // Step 3b: Fetch open AR per SO — ref_num in agility_ar_open equals the SO/invoice number.
-  // Cast ref_num to text so the ANY() comparison works regardless of stored type.
+  // Step 2b: Fetch open AR per SO
   type ArRow = { so_id: string; balance: string };
   const arRows = soIds.length
     ? await erpSql<ArRow[]>`
@@ -102,12 +110,9 @@ export async function GET(req: NextRequest) {
       `
     : [];
 
-  // so_id string → open AR balance for that specific job
   const soArBalance = new Map(arRows.map((r) => [r.so_id, parseFloat(r.balance ?? '0') || 0]));
 
-  // Step 4: Group by job site (canonical cust_code + shipto_address_1).
-  // Aliased codes (e.g. hubb1700 → hubb1200) collapse into the same row.
-  // AR balance is summed across all SOs in the group.
+  // Step 3: Group by job site (canonical cust_code + shipto_address_1)
   type JobGroup = {
     cust_code: string | null;
     cust_name: string | null;
@@ -153,7 +158,6 @@ export async function GET(req: NextRequest) {
     groupMap.set(key, g);
   }
 
-  // Sort by most recent email first
   const jobs = [...groupMap.values()]
     .sort((a, b) => b.lastReceived.getTime() - a.lastReceived.getTime())
     .map((g) => ({
