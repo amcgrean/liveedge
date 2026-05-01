@@ -5,7 +5,7 @@ import SalesHubClient from './SalesHubClient';
 export default async function SalesPage() {
   const session = await requirePageAccess('sales.view');
 
-  const isAdmin = hasCapability(session, 'admin.config.manage');
+  const isAdmin = hasCapability(session, 'branch.all');
 
   return (
     <SalesHubClient

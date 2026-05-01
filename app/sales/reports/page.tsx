@@ -6,7 +6,7 @@ import ReportsClient from './ReportsClient';
 export default async function ReportsPage() {
   const session = await requirePageAccess('sales.view');
 
-  const isAdmin = hasCapability(session, 'admin.config.manage');
+  const isAdmin = hasCapability(session, 'branch.all');
 
   return (
     <div className="min-h-screen bg-gray-950">

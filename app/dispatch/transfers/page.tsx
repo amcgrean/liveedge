@@ -1,13 +1,12 @@
-import { auth } from '../../../auth';
 import { redirect } from 'next/navigation';
+import { requirePageAccess, hasCapability } from '../../../src/lib/access-control';
 import { TopNav } from '../../../src/components/nav/TopNav';
 import TransfersClient from './TransfersClient';
 
 export const metadata = { title: 'Branch Transfers' };
 
 export default async function TransfersPage() {
-  const session = await auth();
-  if (!session?.user) redirect('/login');
+  const session = await requirePageAccess('dispatch.view');
 
   const isAdmin = hasCapability(session, 'branch.all');
 
