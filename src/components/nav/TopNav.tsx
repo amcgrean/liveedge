@@ -120,11 +120,32 @@ function BranchSwitcher() {
   );
 }
 
+type InlineResult = {
+  type: 'so' | 'customer' | 'work_order' | 'picker' | 'item';
+  title: string;
+  subtitle: string;
+  url: string;
+  meta?: string;
+};
+
+const INLINE_GROUPS: Array<{ type: InlineResult['type']; label: string }> = [
+  { type: 'customer',   label: 'Customers'   },
+  { type: 'item',       label: 'Items'       },
+  { type: 'so',         label: 'Orders'      },
+  { type: 'work_order', label: 'Work Orders' },
+  { type: 'picker',     label: 'Pickers'     },
+];
+
 function GlobalSearch() {
   const router = useRouter();
   const [q, setQ] = React.useState('');
+  const [results, setResults] = React.useState<InlineResult[]>([]);
+  const [open, setOpen] = React.useState(false);
   const inputRef = React.useRef<HTMLInputElement>(null);
+  const containerRef = React.useRef<HTMLDivElement>(null);
+  const debounceRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  // ⌘K shortcut + Escape
   React.useEffect(() => {
     function handler(e: KeyboardEvent) {
       if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
@@ -132,36 +153,114 @@ function GlobalSearch() {
         inputRef.current?.focus();
         inputRef.current?.select();
       }
-      if (e.key === 'Escape' && document.activeElement === inputRef.current) {
-        inputRef.current?.blur();
-        setQ('');
+      if (e.key === 'Escape') {
+        setOpen(false);
+        if (document.activeElement === inputRef.current) {
+          inputRef.current?.blur();
+          setQ('');
+        }
       }
     }
     document.addEventListener('keydown', handler);
     return () => document.removeEventListener('keydown', handler);
   }, []);
 
+  // Close dropdown on outside click
+  React.useEffect(() => {
+    function handler(e: MouseEvent) {
+      if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
+        setOpen(false);
+      }
+    }
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, []);
+
+  // Debounced live search
+  React.useEffect(() => {
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    const trimmed = q.trim();
+    if (trimmed.length < 2) { setResults([]); setOpen(false); return; }
+    debounceRef.current = setTimeout(async () => {
+      try {
+        const res = await fetch(`/api/search?q=${encodeURIComponent(trimmed)}`);
+        if (!res.ok) return;
+        const data = await res.json();
+        setResults(data.results ?? []);
+        setOpen(true);
+      } catch { /* ignore */ }
+    }, 300);
+    return () => { if (debounceRef.current) clearTimeout(debounceRef.current); };
+  }, [q]);
+
   function submit(e: React.FormEvent) {
     e.preventDefault();
     const trimmed = q.trim();
     if (!trimmed) return;
+    setOpen(false);
     router.push(`/search?q=${encodeURIComponent(trimmed)}`);
     setQ('');
     inputRef.current?.blur();
   }
 
+  const grouped = results.reduce<Record<string, InlineResult[]>>((acc, r) => {
+    (acc[r.type] ??= []).push(r);
+    return acc;
+  }, {});
+
   return (
-    <form onSubmit={submit} className="flex items-center gap-1.5 h-[28px] px-2.5 bg-slate-800/60 border border-white/10 rounded-md min-w-[200px] max-w-xs focus-within:border-cyan-500/50 transition">
-      <Search className="w-3.5 h-3.5 text-slate-500 flex-shrink-0" />
-      <input
-        ref={inputRef}
-        value={q}
-        onChange={(e) => setQ(e.target.value)}
-        placeholder="Search orders, customers, SKUs…"
-        className="flex-1 min-w-0 bg-transparent text-[13px] text-slate-200 placeholder-slate-500 focus:outline-none"
-      />
-      <span className="text-[10px] font-mono text-slate-500 border border-slate-700 rounded px-1 leading-none py-0.5 hidden lg:inline">⌘K</span>
-    </form>
+    <div ref={containerRef} className="relative">
+      <form onSubmit={submit} className="flex items-center gap-1.5 h-[28px] px-2.5 bg-slate-800/60 border border-white/10 rounded-md min-w-[200px] max-w-xs focus-within:border-cyan-500/50 transition">
+        <Search className="w-3.5 h-3.5 text-slate-500 flex-shrink-0" />
+        <input
+          ref={inputRef}
+          value={q}
+          onChange={(e) => setQ(e.target.value)}
+          placeholder="Search orders, customers, SKUs…"
+          className="flex-1 min-w-0 bg-transparent text-[13px] text-slate-200 placeholder-slate-500 focus:outline-none"
+        />
+        <span className="text-[10px] font-mono text-slate-500 border border-slate-700 rounded px-1 leading-none py-0.5 hidden lg:inline">⌘K</span>
+      </form>
+
+      {open && results.length > 0 && (
+        <div className="absolute left-0 top-full mt-1.5 w-[360px] bg-slate-900 border border-white/10 rounded-lg shadow-2xl shadow-black/60 z-[60] overflow-hidden">
+          {INLINE_GROUPS.map(({ type, label }) => {
+            const group = grouped[type];
+            if (!group?.length) return null;
+            return (
+              <div key={type}>
+                <div className="px-3 pt-2.5 pb-1 border-t border-white/5 first:border-t-0">
+                  <span className="text-[10px] font-bold uppercase tracking-[0.08em] text-slate-500">{label}</span>
+                </div>
+                {group.slice(0, 3).map((r, i) => (
+                  <Link
+                    key={i}
+                    href={r.url}
+                    onClick={() => { setOpen(false); setQ(''); }}
+                    className="flex items-center justify-between gap-3 px-3 py-2 hover:bg-slate-800 transition"
+                  >
+                    <div className="min-w-0">
+                      <div className="text-[13px] font-medium text-white truncate">{r.title}</div>
+                      <div className="text-[11px] text-slate-400 truncate">{r.subtitle}</div>
+                    </div>
+                    {r.meta && (
+                      <span className="text-[11px] text-slate-500 flex-shrink-0 whitespace-nowrap">{r.meta}</span>
+                    )}
+                  </Link>
+                ))}
+              </div>
+            );
+          })}
+          <Link
+            href={`/search?q=${encodeURIComponent(q.trim())}`}
+            onClick={() => { setOpen(false); setQ(''); }}
+            className="flex items-center justify-center py-2.5 text-[12px] text-slate-400 hover:text-white border-t border-white/8 hover:bg-slate-800/50 transition"
+          >
+            See all {results.length} results →
+          </Link>
+        </div>
+      )}
+    </div>
   );
 }
 

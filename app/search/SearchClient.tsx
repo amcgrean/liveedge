@@ -3,12 +3,12 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
-import { Search, ShoppingCart, Users, Wrench, HardHat, Loader2, X } from 'lucide-react';
+import { Search, ShoppingCart, Users, Wrench, HardHat, Package, Loader2, X } from 'lucide-react';
 import { TopNav } from '../../src/components/nav/TopNav';
 import { usePageTracking } from '@/hooks/usePageTracking';
 
 interface SearchResult {
-  type: 'so' | 'customer' | 'work_order' | 'picker';
+  type: 'so' | 'customer' | 'work_order' | 'picker' | 'item';
   title: string;
   subtitle: string;
   url: string;
@@ -22,8 +22,9 @@ interface Props {
 }
 
 const TYPE_CONFIG: Record<string, { label: string; icon: React.ReactNode; color: string }> = {
-  so:         { label: 'Sales Order',  icon: <ShoppingCart className="w-3.5 h-3.5" />, color: 'text-cyan-400 bg-cyan-900/30 border-cyan-700' },
   customer:   { label: 'Customer',     icon: <Users className="w-3.5 h-3.5" />,        color: 'text-green-400 bg-green-900/30 border-green-700' },
+  item:       { label: 'Item',         icon: <Package className="w-3.5 h-3.5" />,      color: 'text-orange-400 bg-orange-900/30 border-orange-700' },
+  so:         { label: 'Sales Order',  icon: <ShoppingCart className="w-3.5 h-3.5" />, color: 'text-cyan-400 bg-cyan-900/30 border-cyan-700' },
   work_order: { label: 'Work Order',   icon: <Wrench className="w-3.5 h-3.5" />,       color: 'text-yellow-400 bg-yellow-900/30 border-yellow-700' },
   picker:     { label: 'Picker',       icon: <HardHat className="w-3.5 h-3.5" />,      color: 'text-purple-400 bg-purple-900/30 border-purple-700' },
 };
@@ -92,7 +93,7 @@ export default function SearchClient({ userName, userRole, initialQuery = '' }: 
     return acc;
   }, {});
 
-  const typeOrder: SearchResult['type'][] = ['so', 'customer', 'work_order', 'picker'];
+  const typeOrder: SearchResult['type'][] = ['customer', 'item', 'so', 'work_order', 'picker'];
 
   return (
     <>
@@ -109,7 +110,7 @@ export default function SearchClient({ userName, userRole, initialQuery = '' }: 
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
                 onKeyDown={(e) => e.key === 'Enter' && doSearch(query)}
-                placeholder="Search orders, customers, work orders, pickers…"
+                placeholder="Search orders, customers, items, work orders…"
                 className="w-full pl-12 pr-10 py-3.5 bg-gray-800 border border-gray-700 rounded-xl text-white placeholder-gray-500 focus:outline-none focus:border-cyan-500 text-base"
               />
               {query && (
@@ -122,7 +123,7 @@ export default function SearchClient({ userName, userRole, initialQuery = '' }: 
               )}
             </div>
             <p className="text-xs text-gray-600 mt-2 pl-1">
-              Searches sales orders, customers, work orders, and pickers
+              Searches customers, items, sales orders, work orders, and pickers
             </p>
           </div>
         </div>
