@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { requireCapability } from '../../../src/lib/access-control';
+import { auth } from '../../../auth';
 import { getDb } from '../../../db/index';
 import { getErpSql, isErpConfigured } from '../../../db/supabase';
 import { legacyBid, legacyDesign, legacyBidActivity } from '../../../db/schema-legacy';
@@ -80,9 +80,8 @@ function pathLabel(path: string): string {
 
 // GET /api/home
 export async function GET() {
-  const authResult = await requireCapability('sales.view', 'yard.view', 'dispatch.view');
-  if (authResult instanceof NextResponse) return authResult;
-  const session = authResult;
+  const session = await auth();
+  if (!session?.user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
   const userId = session.user.id ?? '';
   const userRole = session.user.role ?? '';

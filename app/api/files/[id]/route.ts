@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { requireCapability } from '../../../../src/lib/access-control';
 import { hasCapability } from '../../../../src/lib/access-control-shared';
+import { auth } from '../../../../auth';
 import { getDb } from '../../../../db/index';
 import { getPresignedPdfUrl, deletePdf } from '@/lib/r2';
 import { sql } from 'drizzle-orm';
@@ -9,8 +9,8 @@ type FileLookup = { id: string; file_name: string; r2_key: string; content_type:
 
 // GET /api/files/[id] — get presigned download URL
 export async function GET(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const authResult = await requireCapability('sales.view', 'yard.view', 'dispatch.view');
-  if (authResult instanceof NextResponse) return authResult;
+  const session = await auth();
+  if (!session?.user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
   const { id } = await params;
 
@@ -32,9 +32,8 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
 
 // DELETE /api/files/[id] — delete file record + R2 object
 export async function DELETE(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const authResult = await requireCapability('sales.view', 'yard.view', 'dispatch.view');
-  if (authResult instanceof NextResponse) return authResult;
-  const session = authResult;
+  const session = await auth();
+  if (!session?.user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
   const { id } = await params;
 

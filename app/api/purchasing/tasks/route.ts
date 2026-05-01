@@ -91,8 +91,8 @@ export async function POST(req: NextRequest) {
 
 // PATCH /api/purchasing/tasks — mark complete / update status
 export async function PATCH(req: NextRequest) {
-  const session = await auth();
-  if (!session?.user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  const authResult = await requireCapability('purchasing.view', 'purchasing.review');
+  if (authResult instanceof NextResponse) return authResult;
 
   const body = await req.json() as { id: number; status: string };
   if (!body.id || !body.status) {
