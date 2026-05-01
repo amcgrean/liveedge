@@ -57,14 +57,6 @@ export const legacyDesigner = bidsSchema.table('designer', {
 });
 
 // ============================================================
-// USER TYPE
-// ============================================================
-export const legacyUserType = bidsSchema.table('user_type', {
-  id:   serial('id').primaryKey(),
-  name: varchar('name', { length: 50 }).notNull().unique(),
-});
-
-// ============================================================
 // USER (legacy "user" table — lowercase, quoted by Drizzle)
 // ============================================================
 export const legacyUser = bidsSchema.table('user', {
@@ -72,9 +64,7 @@ export const legacyUser = bidsSchema.table('user', {
   username:                 varchar('username', { length: 150 }).notNull().unique(),
   email:                    varchar('email', { length: 150 }).unique(),
   password:                 varchar('password', { length: 255 }).notNull(),
-  usertypeId:               integer('usertype_id')
-                              .notNull()
-                              .references(() => legacyUserType.id),
+  usertypeId:               integer('usertype_id').notNull(),
   estimatorID:              integer('estimatorID').references(
                               () => legacyEstimator.estimatorID
                             ),
@@ -95,36 +85,6 @@ export const legacyUser = bidsSchema.table('user', {
   isWarehouse:              boolean('is_warehouse').default(false),
   isReceivingYard:          boolean('is_receiving_yard').default(false),
   loginCount:               integer('login_count').default(0),
-});
-
-// ============================================================
-// USER SECURITY (permission matrix — PK is user_type_id)
-// ============================================================
-export const legacyUserSecurity = bidsSchema.table('user_security', {
-  userTypeId:  integer('user_type_id')
-                 .primaryKey()
-                 .references(() => legacyUserType.id),
-  admin:       boolean('admin').notNull(),
-  estimating:  boolean('estimating').notNull(),
-  bidRequest:  boolean('bid_request').notNull(),
-  design:      boolean('design').notNull(),
-  ewp:         boolean('ewp').notNull(),
-  service:     boolean('service').notNull(),
-  install:     boolean('install').notNull(),
-  picking:     boolean('picking').notNull(),
-  workOrders:  boolean('work_orders').notNull(),
-  dashboards:  boolean('dashboards').notNull(),
-  security10:  boolean('security_10').notNull(),
-  security11:  boolean('security_11').notNull(),
-  security12:  boolean('security_12').notNull(),
-  security13:  boolean('security_13').notNull(),
-  security14:  boolean('security_14').notNull(),
-  security15:  boolean('security_15').notNull(),
-  security16:  boolean('security_16').notNull(),
-  security17:  boolean('security_17').notNull(),
-  security18:  boolean('security_18').notNull(),
-  security19:  boolean('security_19').notNull(),
-  security20:  boolean('security_20').notNull(),
 });
 
 // ============================================================
@@ -428,8 +388,6 @@ export type LegacyJob = typeof legacyJob.$inferSelect;
 export type LegacyProject = typeof legacyProject.$inferSelect;
 export type LegacyEWP = typeof legacyEWP.$inferSelect;
 export type LegacyITService = typeof legacyITService.$inferSelect;
-export type LegacyUserType = typeof legacyUserType.$inferSelect;
-export type LegacyUserSecurity = typeof legacyUserSecurity.$inferSelect;
 export type LegacyBidActivity = typeof legacyBidActivity.$inferSelect;
 export type LegacyDesignActivity = typeof legacyDesignActivity.$inferSelect;
 export type LegacyLoginActivity = typeof legacyLoginActivity.$inferSelect;
