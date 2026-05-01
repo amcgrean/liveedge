@@ -321,7 +321,7 @@ export default function HomeClient({ userName, userRole, userBranch }: Props) {
                       onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
                     >
                       <div style={{ fontSize: 13, fontWeight: 500, color: 'var(--text)' }}>{p.label}</div>
-                      <div className="mono" style={{ fontSize: 11, color: 'var(--text-3)' }}>{p.path} · {p.count} visits</div>
+                      <div className="mono" style={{ fontSize: 11, color: 'var(--text-3)' }}>{p.path} · {p.visit_count} visits</div>
                     </div>
                   </Link>
                 ))
