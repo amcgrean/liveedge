@@ -1,6 +1,6 @@
 'use client';
 
-import React from 'react';
+import React, { useState } from 'react';
 import {
   ChartCard,
   ComboBarLineChart,
@@ -9,6 +9,7 @@ import {
   fmtCurrency0,
   fmtCurrencyCompact,
 } from '@/components/charts';
+import { ThreeYearTable, BranchSummaryTable, SalesByTypeTable } from './ManagementTables';
 import type {
   BranchSummaryRow,
   SaleTypeRow,
@@ -28,6 +29,26 @@ interface ManagementChartsProps {
   saleTypes: SaleTypeRow[];
   baseYear: number;
   compareYear: number;
+  qs?: string;
+}
+
+function ChartTableToggle({
+  view,
+  onChange,
+}: {
+  view: 'chart' | 'table';
+  onChange: (v: 'chart' | 'table') => void;
+}) {
+  return (
+    <div className="seg">
+      <button onClick={() => onChange('chart')} className={view === 'chart' ? 'active' : ''}>
+        Chart
+      </button>
+      <button onClick={() => onChange('table')} className={view === 'table' ? 'active' : ''}>
+        Table
+      </button>
+    </div>
+  );
 }
 
 export default function ManagementCharts({
@@ -36,7 +57,12 @@ export default function ManagementCharts({
   saleTypes,
   baseYear,
   compareYear,
+  qs = '',
 }: ManagementChartsProps) {
+  const [threeYearView, setThreeYearView] = useState<'chart' | 'table'>('chart');
+  const [branchView, setBranchView] = useState<'chart' | 'table'>('chart');
+  const [saleTypeView, setSaleTypeView] = useState<'chart' | 'table'>('chart');
+
   // M1: 3-year combo — bars=sales, line=GM%
   const threeYearData = threeYear.map((e) => ({
     label: e.label,
@@ -52,7 +78,7 @@ export default function ManagementCharts({
     compare: b.salesCompare,
   }));
 
-  // M3: sale-type Pareto, exclude flagged-out categories, sort desc
+  // M3: sale-type Pareto
   const paretoRows = saleTypes
     .filter((s) => !s.isExcluded && s.salesBase > 0)
     .map((s) => ({ label: s.category, value: s.salesBase }));
@@ -70,40 +96,55 @@ export default function ManagementCharts({
           title="3-Year Sales & Margin"
           subtitle="Annual revenue with gross-margin trend"
           className="lg:col-span-2"
+          action={<ChartTableToggle view={threeYearView} onChange={setThreeYearView} />}
         >
-          <ComboBarLineChart
-            data={threeYearData}
-            barLabel="Net Sales"
-            lineLabel="GM %"
-            barFormat={fmtCurrencyCompact}
-            height={260}
-          />
+          {threeYearView === 'chart' ? (
+            <ComboBarLineChart
+              data={threeYearData}
+              barLabel="Net Sales"
+              lineLabel="GM %"
+              barFormat={fmtCurrencyCompact}
+              height={260}
+            />
+          ) : (
+            <ThreeYearTable rows={threeYear} />
+          )}
         </ChartCard>
       )}
       {showBranches && (
         <ChartCard
           title="Branch Comparison"
           subtitle={`${baseYear} vs ${compareYear} sales by branch`}
+          action={<ChartTableToggle view={branchView} onChange={setBranchView} />}
         >
-          <ComparisonBarChart
-            rows={branchRows}
-            baseLabel={String(baseYear)}
-            compareLabel={String(compareYear)}
-            format={fmtCurrency0}
-          />
+          {branchView === 'chart' ? (
+            <ComparisonBarChart
+              rows={branchRows}
+              baseLabel={String(baseYear)}
+              compareLabel={String(compareYear)}
+              format={fmtCurrency0}
+            />
+          ) : (
+            <BranchSummaryTable rows={branchSummaries} baseYear={baseYear} compareYear={compareYear} qs={qs} />
+          )}
         </ChartCard>
       )}
       {showPareto && (
         <ChartCard
           title="Sales Mix by Type"
           subtitle="Concentration — bars are sales, line is cumulative %"
+          action={<ChartTableToggle view={saleTypeView} onChange={setSaleTypeView} />}
         >
-          <ParetoChart
-            rows={paretoRows}
-            format={fmtCurrencyCompact}
-            valueLabel={`${baseYear} Sales`}
-            height={300}
-          />
+          {saleTypeView === 'chart' ? (
+            <ParetoChart
+              rows={paretoRows}
+              format={fmtCurrencyCompact}
+              valueLabel={`${baseYear} Sales`}
+              height={300}
+            />
+          ) : (
+            <SalesByTypeTable rows={saleTypes} baseYear={baseYear} compareYear={compareYear} />
+          )}
         </ChartCard>
       )}
     </div>

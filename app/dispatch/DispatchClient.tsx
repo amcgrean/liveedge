@@ -67,6 +67,11 @@ type DetailTab = 'timeline' | 'lines';
 
 const BRANCHES = ['10FD', '20GR', '25BW', '40CV'];
 
+const PICKER_HUE: string[] = [
+  '#4a8fbf', '#1f8a4f', '#c9a83f', '#d05050', '#8b5cf6',
+  '#e07b39', '#2ab7b7', '#c45bab', '#6e7d89', '#a3b54a',
+];
+
 const STATUS_FLAG: Record<string, { label: string; color: string; step: number }> = {
   K: { label: 'Picking',     color: 'bg-yellow-900/60 text-yellow-300 border-yellow-700', step: 1 },
   P: { label: 'Picked',      color: 'bg-blue-900/60 text-blue-300 border-blue-700',       step: 2 },
@@ -795,7 +800,7 @@ export default function DispatchClient({ isAdmin, userBranch, userName, userRole
     : stops;
 
   return (
-    <div className="h-screen flex flex-col bg-gray-950 text-white overflow-hidden">
+    <div className="h-screen flex flex-col overflow-hidden relative" style={{ background: 'var(--bg)', color: 'var(--text)' }}>
       <TopNav userName={userName} userRole={userRole} />
       <div className="flex-1 flex flex-col overflow-hidden">
 
@@ -931,141 +936,103 @@ export default function DispatchClient({ isAdmin, userBranch, userName, userRole
           </div>
         )}
 
-        {/* ── Main Layout ── */}
+        {/* ── Three-Panel Layout ── */}
         <div className="flex flex-1 overflow-hidden">
 
-          {/* Left Panel */}
-          <div className="w-64 shrink-0 border-r border-gray-800 flex flex-col bg-gray-950 overflow-hidden">
-            {/* Tabs */}
-            <div className="flex border-b border-gray-800 shrink-0">
-              {(['unassigned', 'routes', 'all'] as LeftTab[]).map((t) => (
-                <button
-                  key={t}
-                  onClick={() => setLeftTab(t)}
-                  className={`flex-1 py-2 text-[10px] font-medium capitalize transition border-b-2 ${
-                    leftTab === t ? 'border-cyan-500 text-cyan-400 bg-gray-900/50' : 'border-transparent text-gray-500 hover:text-gray-300'
-                  }`}
-                >
-                  {t === 'unassigned' ? `Unassigned${kpis ? ` (${kpis.unassigned_stops})` : ''}` : t === 'routes' ? `Routes (${routes.length})` : 'All'}
-                </button>
-              ))}
+          {/* Left Panel — Unassigned Pool (280px) */}
+          <div
+            className="shrink-0 border-r flex flex-col overflow-hidden"
+            style={{ width: 280, background: 'var(--bg)', borderColor: 'var(--line)' }}
+          >
+            {/* Header */}
+            <div className="px-3 py-2.5 flex items-center justify-between shrink-0" style={{ borderBottom: '1px solid var(--line)' }}>
+              <div className="flex items-center gap-2">
+                <span className="text-xs font-bold uppercase tracking-widest" style={{ color: 'var(--text-3)' }}>Unassigned</span>
+                {kpis && (
+                  <span className="text-[10px] px-1.5 py-0.5 rounded mono font-bold" style={{ background: 'rgba(212,162,58,0.15)', color: 'var(--gold-bright)' }}>
+                    {kpis.unassigned_stops}
+                  </span>
+                )}
+              </div>
             </div>
 
+            {/* Unassigned stop cards */}
             <div className="flex-1 overflow-y-auto p-2">
-
-              {/* Unassigned tab */}
-              {leftTab === 'unassigned' && (
-                filteredUnassigned.length === 0 ? (
-                  <div className="text-xs text-gray-600 text-center py-8">
-                    {search ? 'No matches.' : 'All stops are assigned to routes.'}
-                  </div>
-                ) : (
-                  filteredUnassigned.map((s) => (
-                    <StopCard
-                      key={`${s.so_id}-${s.shipment_num}`}
-                      stop={s}
-                      selected={selectedStop?.so_id === s.so_id}
-                      onClick={() => setSelectedStop(selectedStop?.so_id === s.so_id ? null : s)}
-                      routes={routes}
-                      onAssign={(routeId) => assignStopToRoute(s.so_id, routeId)}
-                    />
-                  ))
-                )
+              {filteredUnassigned.length === 0 ? (
+                <div className="text-xs text-center py-8" style={{ color: 'var(--text-3)' }}>
+                  {search ? 'No matches.' : 'All stops assigned.'}
+                </div>
+              ) : (
+                filteredUnassigned.map((s) => (
+                  <StopCard
+                    key={`${s.so_id}-${s.shipment_num}`}
+                    stop={s}
+                    selected={selectedStop?.so_id === s.so_id}
+                    onClick={() => setSelectedStop(selectedStop?.so_id === s.so_id ? null : s)}
+                    routes={routes}
+                    onAssign={(routeId) => assignStopToRoute(s.so_id, routeId)}
+                  />
+                ))
               )}
-
-              {/* Routes tab */}
-              {leftTab === 'routes' && (
-                <>
-                  {routes.length === 0 ? (
-                    <div className="text-xs text-gray-600 text-center py-6">No routes planned for {date}.</div>
-                  ) : (
-                    routes.map((r) => (
-                      <RouteCard
-                        key={r.id}
-                        route={r}
-                        stops={routeStops.get(r.id) ?? []}
-                        stopLookup={stopLookup}
-                        selectedSoId={selectedStop?.so_id ?? null}
-                        onSelectStop={(s) => setSelectedStop(selectedStop?.so_id === s.so_id ? null : s)}
-                        onRemoveStop={removeStopFromRoute}
-                        onDeleteRoute={deleteRoute}
-                      />
-                    ))
-                  )}
-                  {/* Create route form */}
-                  {showNewRoute ? (
-                    <div className="rounded-lg border border-cyan-700 bg-gray-900 p-3 mt-2 space-y-2">
-                      <div className="text-xs font-semibold text-cyan-400">New Route</div>
-                      <input
-                        type="text" placeholder="Route name *" value={newRoute.route_name}
-                        onChange={(e) => setNewRoute((r) => ({ ...r, route_name: e.target.value }))}
-                        className="w-full bg-gray-800 border border-gray-600 rounded px-2 py-1.5 text-xs text-white placeholder-gray-500"
-                      />
-                      {isAdmin && (
-                        <select
-                          value={newRoute.branch_code}
-                          onChange={(e) => setNewRoute((r) => ({ ...r, branch_code: e.target.value }))}
-                          className="w-full bg-gray-800 border border-gray-600 rounded px-2 py-1.5 text-xs text-white"
-                        >
-                          <option value="">Branch *</option>
-                          {BRANCHES.map((b) => <option key={b} value={b}>{b}</option>)}
-                        </select>
-                      )}
-                      <input
-                        type="text" placeholder="Driver name" value={newRoute.driver_name}
-                        onChange={(e) => setNewRoute((r) => ({ ...r, driver_name: e.target.value }))}
-                        className="w-full bg-gray-800 border border-gray-600 rounded px-2 py-1.5 text-xs text-white placeholder-gray-500"
-                      />
-                      <input
-                        type="text" placeholder="Truck ID" value={newRoute.truck_id}
-                        onChange={(e) => setNewRoute((r) => ({ ...r, truck_id: e.target.value }))}
-                        className="w-full bg-gray-800 border border-gray-600 rounded px-2 py-1.5 text-xs text-white placeholder-gray-500"
-                      />
-                      <div className="flex gap-1.5">
-                        <button
-                          onClick={createRoute}
-                          disabled={savingRoute || !newRoute.route_name.trim() || (!newRoute.branch_code && isAdmin)}
-                          className="flex-1 py-1.5 bg-cyan-700 hover:bg-cyan-600 disabled:opacity-40 text-white text-xs rounded transition"
-                        >
-                          {savingRoute ? 'Creating…' : 'Create'}
-                        </button>
-                        <button onClick={() => setShowNewRoute(false)} className="px-3 py-1.5 text-gray-400 hover:text-white text-xs transition">
-                          Cancel
-                        </button>
-                      </div>
-                    </div>
-                  ) : (
-                    <button
-                      onClick={() => setShowNewRoute(true)}
-                      className="w-full mt-2 py-2 rounded-lg border border-dashed border-gray-700 text-xs text-gray-500 hover:text-cyan-400 hover:border-cyan-700 transition flex items-center justify-center gap-1"
+              {/* Create route button at bottom */}
+              <button
+                onClick={() => setShowNewRoute(true)}
+                className="w-full mt-2 py-2 text-xs flex items-center justify-center gap-1 rounded-lg transition"
+                style={{ border: '1px dashed var(--line)', color: 'var(--text-3)' }}
+              >
+                <Plus className="w-3.5 h-3.5" /> New Route
+              </button>
+              {showNewRoute && (
+                <div className="rounded-lg p-3 mt-2 space-y-2" style={{ border: '1px solid var(--green-bright)', background: 'var(--panel)' }}>
+                  <div className="text-xs font-semibold" style={{ color: 'var(--green-bright)' }}>New Route</div>
+                  <input
+                    type="text" placeholder="Route name *" value={newRoute.route_name}
+                    onChange={(e) => setNewRoute((r) => ({ ...r, route_name: e.target.value }))}
+                    className="w-full text-xs rounded px-2 py-1.5 placeholder-gray-500"
+                    style={{ background: 'var(--panel-2)', border: '1px solid var(--line)', color: 'var(--text)' }}
+                  />
+                  {isAdmin && (
+                    <select
+                      value={newRoute.branch_code}
+                      onChange={(e) => setNewRoute((r) => ({ ...r, branch_code: e.target.value }))}
+                      className="w-full text-xs rounded px-2 py-1.5"
+                      style={{ background: 'var(--panel-2)', border: '1px solid var(--line)', color: 'var(--text)' }}
                     >
-                      <Plus className="w-3.5 h-3.5" /> New Route
-                    </button>
+                      <option value="">Branch *</option>
+                      {BRANCHES.map((b) => <option key={b} value={b}>{b}</option>)}
+                    </select>
                   )}
-                </>
-              )}
-
-              {/* All tab */}
-              {leftTab === 'all' && (
-                filteredAll.length === 0 ? (
-                  <div className="text-xs text-gray-600 text-center py-8">No stops found.</div>
-                ) : (
-                  filteredAll.map((s) => (
-                    <StopCard
-                      key={`${s.so_id}-${s.shipment_num}`}
-                      stop={s}
-                      selected={selectedStop?.so_id === s.so_id}
-                      onClick={() => setSelectedStop(selectedStop?.so_id === s.so_id ? null : s)}
-                      routes={routes}
-                      onAssign={(routeId) => assignStopToRoute(s.so_id, routeId)}
-                    />
-                  ))
-                )
+                  <input
+                    type="text" placeholder="Driver name" value={newRoute.driver_name}
+                    onChange={(e) => setNewRoute((r) => ({ ...r, driver_name: e.target.value }))}
+                    className="w-full text-xs rounded px-2 py-1.5 placeholder-gray-500"
+                    style={{ background: 'var(--panel-2)', border: '1px solid var(--line)', color: 'var(--text)' }}
+                  />
+                  <input
+                    type="text" placeholder="Truck ID" value={newRoute.truck_id}
+                    onChange={(e) => setNewRoute((r) => ({ ...r, truck_id: e.target.value }))}
+                    className="w-full text-xs rounded px-2 py-1.5 placeholder-gray-500"
+                    style={{ background: 'var(--panel-2)', border: '1px solid var(--line)', color: 'var(--text)' }}
+                  />
+                  <div className="flex gap-1.5">
+                    <button
+                      onClick={createRoute}
+                      disabled={savingRoute || !newRoute.route_name.trim() || (!newRoute.branch_code && isAdmin)}
+                      className="flex-1 py-1.5 text-xs rounded transition disabled:opacity-40"
+                      style={{ background: 'var(--green-bright)', color: '#fff' }}
+                    >
+                      {savingRoute ? 'Creating…' : 'Create'}
+                    </button>
+                    <button onClick={() => setShowNewRoute(false)} className="px-3 py-1.5 text-xs transition" style={{ color: 'var(--text-3)' }}>
+                      Cancel
+                    </button>
+                  </div>
+                </div>
               )}
             </div>
           </div>
 
-          {/* Center: Board or Map */}
+          {/* Center — Route Columns */}
           {viewMode === 'map' ? (
             <div className="flex-1 relative overflow-hidden">
               <DispatchMap
@@ -1078,85 +1045,270 @@ export default function DispatchClient({ isAdmin, userBranch, userName, userRole
               />
             </div>
           ) : (
-            <div className="flex-1 overflow-y-auto">
-              {loading && (
-                <div className="flex items-center justify-center h-32 text-sm text-gray-500">
-                  <RefreshCw className="w-4 h-4 animate-spin mr-2" /> Loading…
-                </div>
-              )}
-              {!loading && stops.length === 0 && (
-                <div className="flex items-center justify-center h-32 text-sm text-gray-600">
-                  No deliveries for {date}{branch ? ` · ${branch}` : ''}.
-                </div>
-              )}
-              {!loading && groupKeys.map((key) => (
-                <div key={key} className="border-b border-gray-800">
-                  <div className="flex items-center justify-between px-4 py-2 bg-gray-900/60 border-b border-gray-800 sticky top-0 z-10">
-                    <span className="text-xs font-semibold text-gray-300">
-                      {key}
-                      <span className="ml-2 font-normal text-gray-600">
-                        ({grouped[key].length} stop{grouped[key].length !== 1 ? 's' : ''})
-                      </span>
-                    </span>
-                    <div className="flex gap-1.5">
-                      {['S', 'D', 'I'].map((flag) => {
-                        const cnt = grouped[key].filter((d) => d.status_flag?.toUpperCase() === flag).length;
-                        if (!cnt) return null;
-                        return <span key={flag} className="flex items-center gap-0.5">{statusBadge(flag)}<span className="text-[10px] text-gray-600">{cnt}</span></span>;
-                      })}
+            <div className="flex-1 overflow-x-auto overflow-y-hidden">
+              <div className="flex gap-3 p-4 h-full" style={{ minWidth: 'max-content', alignItems: 'flex-start' }}>
+                {loading && (
+                  <div className="flex items-center justify-center w-full h-32 text-sm" style={{ color: 'var(--text-3)' }}>
+                    <RefreshCw className="w-4 h-4 animate-spin mr-2" /> Loading…
+                  </div>
+                )}
+                {!loading && routes.length === 0 && (
+                  <div className="flex items-center justify-center w-full h-32 text-sm" style={{ color: 'var(--text-3)' }}>
+                    No routes planned for {date}{branch ? ` · ${branch}` : ''}.
+                  </div>
+                )}
+                {!loading && routes.map((route, routeIdx) => {
+                  const rStops = routeStops.get(route.id) ?? [];
+                  const routeColor = PICKER_HUE ? PICKER_HUE[routeIdx % PICKER_HUE.length] : '#4a8fbf';
+                  const deliveredCount = rStops.filter((rs) => {
+                    const del = stopLookup.get(rs.so_id);
+                    return del?.status_flag?.toUpperCase() === 'I';
+                  }).length;
+                  const loadPct = rStops.length > 0 ? Math.min(100, Math.round((rStops.length / 8) * 100)) : 0;
+
+                  return (
+                    <div
+                      key={route.id}
+                      className="flex-shrink-0 flex flex-col rounded-lg overflow-hidden"
+                      style={{
+                        width: 268,
+                        background: 'var(--panel)',
+                        border: '1px solid var(--line)',
+                        borderTop: `3px solid ${routeColor}`,
+                        maxHeight: 'calc(100vh - 200px)',
+                      }}
+                    >
+                      {/* Column header */}
+                      <div className="px-3 py-2.5 shrink-0" style={{ borderBottom: '1px solid var(--line)' }}>
+                        <div className="flex items-center justify-between gap-2">
+                          <div className="min-w-0">
+                            <div className="text-xs font-bold mono truncate" style={{ color: 'var(--text)' }}>
+                              {route.route_name}
+                            </div>
+                            {route.driver_name && (
+                              <div className="text-[10px] mt-0.5 truncate" style={{ color: 'var(--text-3)' }}>
+                                {route.driver_name}{route.truck_id ? ` · ${route.truck_id}` : ''}
+                              </div>
+                            )}
+                          </div>
+                          <div className="flex items-center gap-1.5 shrink-0">
+                            <span className="text-[10px] mono" style={{ color: 'var(--text-3)' }}>
+                              {rStops.length} stops
+                            </span>
+                            <button
+                              onClick={async () => {
+                                if (!confirm(`Delete route "${route.route_name}"?`)) return;
+                                await deleteRoute(route.id);
+                              }}
+                              className="transition"
+                              style={{ color: 'var(--text-4)' }}
+                            >
+                              <Trash2 className="w-3 h-3" />
+                            </button>
+                          </div>
+                        </div>
+                        {/* Load bar */}
+                        <div className="mt-2 h-1 rounded overflow-hidden" style={{ background: 'var(--panel-3)' }}>
+                          <div className="h-full rounded transition-all" style={{ width: `${loadPct}%`, background: routeColor }} />
+                        </div>
+                        <div className="flex justify-between mt-1 text-[10px] mono" style={{ color: 'var(--text-4)' }}>
+                          <span>{deliveredCount} delivered</span>
+                          <span>{loadPct}% load</span>
+                        </div>
+                      </div>
+
+                      {/* Stop cards */}
+                      <div className="flex-1 overflow-y-auto p-2 space-y-1.5">
+                        {rStops.length === 0 ? (
+                          <div className="text-[10px] text-center py-4" style={{ color: 'var(--text-3)' }}>
+                            No stops — assign from unassigned pool
+                          </div>
+                        ) : (
+                          rStops.map((rs, stopIdx) => {
+                            const del = stopLookup.get(rs.so_id);
+                            const isSelected = rs.so_id === selectedStop?.so_id;
+                            const isDelivered = del?.status_flag?.toUpperCase() === 'I';
+                            return (
+                              <div
+                                key={rs.id}
+                                onClick={() => del && setSelectedStop(isSelected ? null : del)}
+                                className="rounded p-2.5 cursor-pointer transition"
+                                style={{
+                                  background: isSelected ? 'rgba(31,138,79,0.08)' : 'var(--panel-2)',
+                                  border: `1px solid ${isSelected ? 'var(--green-bright)' : 'var(--line)'}`,
+                                  opacity: isDelivered ? 0.55 : 1,
+                                }}
+                              >
+                                <div className="flex items-center gap-2 mb-1">
+                                  <span
+                                    className="w-5 h-5 rounded-full flex items-center justify-center text-[9px] font-bold flex-shrink-0"
+                                    style={{ background: isDelivered ? 'var(--ok)' : routeColor, color: '#fff' }}
+                                  >
+                                    {isDelivered ? '✓' : stopIdx + 1}
+                                  </span>
+                                  <span className="text-xs font-mono font-bold" style={{ color: '#4ec48a' }}>
+                                    {rs.so_id}
+                                  </span>
+                                  {del && (
+                                    <span className={`ml-auto ${del.status_flag?.toUpperCase() === 'I' ? 'chip chip-done' : del.status_flag?.toUpperCase() === 'S' ? 'chip chip-staged' : 'chip chip-open'}`} style={{ fontSize: 9 }}>
+                                      {STATUS_FLAG[del.status_flag?.toUpperCase()]?.label ?? del.status_flag ?? '—'}
+                                    </span>
+                                  )}
+                                </div>
+                                <div className="text-[11px] truncate" style={{ color: 'var(--text-2)' }}>
+                                  {del?.customer_name ?? '—'}
+                                </div>
+                                {del?.city && (
+                                  <div className="text-[10px] truncate mt-0.5" style={{ color: 'var(--text-3)' }}>
+                                    {del.city}
+                                  </div>
+                                )}
+                                <div className="flex items-center justify-between mt-1.5">
+                                  <span className="text-[10px] mono" style={{ color: 'var(--text-3)' }}>
+                                    {del?.expect_date ? new Date(del.expect_date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : '—'}
+                                  </span>
+                                  <button
+                                    onClick={async (e) => { e.stopPropagation(); await removeStopFromRoute(route.id, rs.id); }}
+                                    className="transition"
+                                    style={{ color: 'var(--text-4)' }}
+                                  >
+                                    <X className="w-3 h-3" />
+                                  </button>
+                                </div>
+                              </div>
+                            );
+                          })
+                        )}
+                        {/* Drop zone visual */}
+                        <div
+                          className="py-3 text-[10px] text-center rounded flex items-center justify-center gap-1"
+                          style={{ border: '1px dashed var(--line)', color: 'var(--text-4)' }}
+                        >
+                          Drop stop here
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+                {/* Add route column */}
+                {!loading && (
+                  <div
+                    className="flex-shrink-0 flex items-center justify-center rounded-lg cursor-pointer transition"
+                    style={{
+                      width: 268,
+                      minHeight: 120,
+                      border: '1px dashed var(--line)',
+                      color: 'var(--text-3)',
+                    }}
+                    onClick={() => setShowNewRoute(true)}
+                  >
+                    <div className="flex flex-col items-center gap-1">
+                      <Plus className="w-5 h-5" />
+                      <span className="text-xs">Add route</span>
                     </div>
                   </div>
-                  <table className="w-full text-sm">
-                    <tbody>
-                      {grouped[key].map((d) => {
-                        const isSelected = selectedStop?.so_id === d.so_id;
-                        return (
-                          <tr
-                            key={`${d.so_id}-${d.shipment_num}`}
-                            onClick={() => setSelectedStop(isSelected ? null : d)}
-                            className={`border-b border-gray-800/50 cursor-pointer transition-colors ${
-                              isSelected ? 'bg-cyan-900/20 border-l-2 border-l-cyan-500' : 'hover:bg-gray-800/30'
-                            }`}
-                          >
-                            <td className="px-3 py-2.5 w-4">
-                              {isSelected
-                                ? <ChevronDown className="w-3.5 h-3.5 text-cyan-400" />
-                                : <ChevronRight className="w-3.5 h-3.5 text-gray-600" />}
-                            </td>
-                            <td className="px-2 py-2.5 font-mono text-cyan-400 whitespace-nowrap text-xs w-24">
-                              {d.so_id}
-                              {d.shipment_num > 1 && <span className="text-gray-600 ml-1">#{d.shipment_num}</span>}
-                            </td>
-                            <td className="px-2 py-2.5 max-w-[180px]">
-                              <div className="text-sm text-gray-200 truncate">{d.customer_name ?? '—'}</div>
-                              {d.reference && <div className="text-xs text-gray-500 truncate">{d.reference}</div>}
-                            </td>
-                            <td className="px-2 py-2.5 text-xs text-gray-400 max-w-[140px]">
-                              <div className="truncate">{d.city ?? d.address_1 ?? '—'}</div>
-                            </td>
-                            <td className="px-2 py-2.5">{statusBadge(d.status_flag)}</td>
-                            <td className="px-2 py-2.5 text-xs text-gray-500 whitespace-nowrap">
-                              {d.driver ?? d.route_id_char ?? '—'}
-                            </td>
-                            {isAdmin && <td className="px-2 py-2.5 text-xs text-gray-600">{d.system_id}</td>}
-                            <td className="px-2 py-2.5 text-xs text-gray-500 whitespace-nowrap">
-                              {d.loaded_date
-                                ? `${new Date(d.loaded_date).toLocaleDateString()}${d.loaded_time ? ' ' + d.loaded_time : ''}`
-                                : fmtDate(d.expect_date)}
-                            </td>
-                          </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
-                </div>
-              ))}
+                )}
+              </div>
             </div>
           )}
 
-          {/* Right: Detail Panel (slides in) */}
+          {/* Right Panel — Mini Map + Vehicles (320px) */}
+          <div
+            className="shrink-0 flex flex-col overflow-hidden"
+            style={{ width: 320, background: 'var(--panel)', borderLeft: '1px solid var(--line)' }}
+          >
+            {/* Mini Iowa SVG map */}
+            <div className="shrink-0 p-3" style={{ borderBottom: '1px solid var(--line)' }}>
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-xs font-bold uppercase tracking-widest" style={{ color: 'var(--text-3)' }}>
+                  Live Map · {trucks.length} trucks
+                </span>
+                <a href="/delivery/map" className="text-[10px] mono transition" style={{ color: 'var(--green-bright)' }}>
+                  Full map →
+                </a>
+              </div>
+              {/* Simple Iowa SVG */}
+              <svg viewBox="0 0 280 180" className="w-full rounded" style={{ background: '#0a0f13' }}>
+                {/* Iowa outline (simplified polygon) */}
+                <polygon
+                  points="30,20 250,20 260,45 260,90 240,100 245,140 220,155 80,155 55,140 20,110 15,65 30,20"
+                  fill="none"
+                  stroke="#243038"
+                  strokeWidth="1.5"
+                />
+                {/* I-80 highway line */}
+                <line x1="30" y1="95" x2="255" y2="95" stroke="#1a2830" strokeWidth="2" strokeDasharray="8,4" />
+                <text x="135" y="91" fill="#2d3f4c" fontSize="7" textAnchor="middle">I-80</text>
+                {/* Branch pins */}
+                <g>
+                  {/* Fort Dodge — northwest */}
+                  <rect x="68" y="42" width="8" height="8" rx="1" fill="#d05050" />
+                  <text x="72" y="58" fill="#d05050" fontSize="7" textAnchor="middle">FD</text>
+                  {/* Grimes — central */}
+                  <rect x="138" y="75" width="8" height="8" rx="1" fill="#1f8a4f" />
+                  <text x="142" y="91" fill="#1f8a4f" fontSize="7" textAnchor="middle">GR</text>
+                  {/* Birchwood — east */}
+                  <rect x="195" y="62" width="8" height="8" rx="1" fill="#c9a83f" />
+                  <text x="199" y="78" fill="#c9a83f" fontSize="7" textAnchor="middle">BW</text>
+                  {/* Coralville — southeast */}
+                  <rect x="190" y="110" width="8" height="8" rx="1" fill="#6e7d89" />
+                  <text x="194" y="126" fill="#6e7d89" fontSize="7" textAnchor="middle">CV</text>
+                </g>
+                {/* Truck markers from assignments */}
+                {trucks.slice(0, 6).map((t, i) => (
+                  <g key={t.id} transform={`translate(${50 + i * 35}, ${105 + (i % 2) * 15})`}>
+                    <rect x="-8" y="-5" width="16" height="10" rx="2" fill="#1f8a4f" opacity="0.8" />
+                    <text x="0" y="3" fill="#fff" fontSize="6" textAnchor="middle">🚚</text>
+                  </g>
+                ))}
+              </svg>
+            </div>
+
+            {/* Vehicle cards */}
+            <div className="flex-1 overflow-y-auto p-2 space-y-1.5">
+              {trucks.length === 0 ? (
+                <div className="text-xs text-center py-6" style={{ color: 'var(--text-3)' }}>
+                  No truck assignments for {date}.
+                </div>
+              ) : (
+                trucks.map((t, idx) => (
+                  <div
+                    key={t.id}
+                    className="rounded p-2.5"
+                    style={{
+                      background: 'var(--panel-2)',
+                      border: '1px solid var(--line)',
+                      borderLeft: `3px solid ${PICKER_HUE[idx % PICKER_HUE.length]}`,
+                    }}
+                  >
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="flex items-center gap-2 min-w-0">
+                        <Truck className="w-3.5 h-3.5 flex-shrink-0" style={{ color: PICKER_HUE[idx % PICKER_HUE.length] }} />
+                        <span className="text-xs font-semibold truncate" style={{ color: 'var(--text)' }}>
+                          {t.samsara_vehicle_name ?? t.samsara_vehicle_id}
+                        </span>
+                      </div>
+                      <span className="chip chip-prog text-[9px] shrink-0">En Route</span>
+                    </div>
+                    {t.driver_name && (
+                      <div className="text-[10px] mt-1" style={{ color: 'var(--text-3)' }}>
+                        {t.driver_name}
+                      </div>
+                    )}
+                    {t.route_name && (
+                      <div className="text-[10px] mono mt-0.5" style={{ color: 'var(--text-3)' }}>
+                        {t.route_name}
+                      </div>
+                    )}
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
+
+          {/* Stop Detail overlay */}
           {selectedStop && (
-            <div className="w-96 shrink-0 overflow-hidden">
+            <div className="absolute right-0 top-0 bottom-0 w-96 z-20 shadow-2xl overflow-hidden" style={{ boxShadow: '-4px 0 20px rgba(0,0,0,0.4)' }}>
               <DetailPanel stop={selectedStop} onClose={() => setSelectedStop(null)} />
             </div>
           )}

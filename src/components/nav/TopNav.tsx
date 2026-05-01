@@ -6,8 +6,8 @@ import { usePathname, useRouter } from 'next/navigation';
 import { signOut, useSession } from 'next-auth/react';
 import {
   LogOut, ChevronDown, Menu, X, Settings,
-  Truck, ShoppingCart, FileText, Wrench, PackageCheck, MapPin, Search,
-  Boxes, HelpCircle, User, BarChart3,
+  Truck, ShoppingCart, FileText, Wrench, PackageCheck, Search,
+  Boxes, HelpCircle, User, BarChart3, Bell,
 } from 'lucide-react';
 import { cn } from '../../lib/utils';
 import { hasCapability } from '../../lib/access-control-shared';
@@ -46,7 +46,9 @@ function BranchSwitcher() {
   const ref = React.useRef<HTMLDivElement>(null);
 
   React.useEffect(() => {
-    setCurrent(readBranchCookie());
+    const branch = readBranchCookie();
+    setCurrent(branch);
+    document.body.dataset.branch = branch;
   }, []);
 
   React.useEffect(() => {
@@ -68,6 +70,7 @@ function BranchSwitcher() {
         body: JSON.stringify({ branchCode: code }),
       });
       setCurrent(code);
+      document.body.dataset.branch = code;
       router.refresh();
     } finally {
       setSaving(false);
@@ -94,7 +97,7 @@ function BranchSwitcher() {
         <ChevronDown className={cn('w-3 h-3 transition-transform', open && 'rotate-180')} />
       </button>
       {open && (
-        <div className="absolute right-0 mt-1 min-w-[200px] bg-slate-900 border border-white/10 rounded-xl shadow-xl overflow-hidden z-50">
+        <div className="absolute right-0 mt-1 min-w-[200px] bg-slate-900 border border-white/10 rounded-lg shadow-2xl shadow-black/50 overflow-hidden z-50 py-1">
           {BRANCH_OPTIONS.map((b) => {
             const bc = BRANCH_COLORS[b.code] ?? BRANCH_COLORS[''];
             const isActive = b.code === current;
@@ -120,21 +123,19 @@ function BranchSwitcher() {
 
 function GlobalSearch() {
   const router = useRouter();
-  const [open, setOpen] = React.useState(false);
   const [q, setQ] = React.useState('');
   const inputRef = React.useRef<HTMLInputElement>(null);
 
   React.useEffect(() => {
-    if (open) setTimeout(() => inputRef.current?.focus(), 50);
-    else setQ('');
-  }, [open]);
-
-  React.useEffect(() => {
     function handler(e: KeyboardEvent) {
-      if (e.key === 'Escape') setOpen(false);
       if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
         e.preventDefault();
-        setOpen((p) => !p);
+        inputRef.current?.focus();
+        inputRef.current?.select();
+      }
+      if (e.key === 'Escape' && document.activeElement === inputRef.current) {
+        inputRef.current?.blur();
+        setQ('');
       }
     }
     document.addEventListener('keydown', handler);
@@ -145,36 +146,23 @@ function GlobalSearch() {
     e.preventDefault();
     const trimmed = q.trim();
     if (!trimmed) return;
-    setOpen(false);
     router.push(`/search?q=${encodeURIComponent(trimmed)}`);
+    setQ('');
+    inputRef.current?.blur();
   }
 
   return (
-    <div className="relative hidden sm:block">
-      {open ? (
-        <form onSubmit={submit} className="flex items-center">
-          <input
-            ref={inputRef}
-            value={q}
-            onChange={(e) => setQ(e.target.value)}
-            placeholder="Search…"
-            className="w-48 px-3 py-1.5 bg-gray-800 border border-gray-600 rounded-lg text-sm text-white placeholder-gray-500 focus:outline-none focus:border-cyan-500"
-          />
-          <button type="button" onClick={() => setOpen(false)} className="ml-1 p-1.5 text-gray-500 hover:text-white">
-            <X className="w-3.5 h-3.5" />
-          </button>
-        </form>
-      ) : (
-        <button
-          onClick={() => setOpen(true)}
-          className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium text-gray-400 hover:text-white hover:bg-gray-800 transition"
-          title="Search (Ctrl+K)"
-        >
-          <Search className="w-3.5 h-3.5" />
-          <span className="hidden md:inline text-gray-600 text-[10px] font-mono border border-gray-700 rounded px-1">⌘K</span>
-        </button>
-      )}
-    </div>
+    <form onSubmit={submit} className="hidden md:flex items-center gap-1.5 h-[28px] px-2.5 bg-slate-800/60 border border-white/10 rounded-md min-w-[240px] focus-within:border-cyan-500/50 transition">
+      <Search className="w-3.5 h-3.5 text-slate-500 flex-shrink-0" />
+      <input
+        ref={inputRef}
+        value={q}
+        onChange={(e) => setQ(e.target.value)}
+        placeholder="Search orders, customers, SKUs…"
+        className="flex-1 min-w-0 bg-transparent text-[13px] text-slate-200 placeholder-slate-500 focus:outline-none"
+      />
+      <span className="text-[10px] font-mono text-slate-500 border border-slate-700 rounded px-1 leading-none py-0.5 hidden lg:inline">⌘K</span>
+    </form>
   );
 }
 
@@ -435,9 +423,9 @@ export function TopNav({ userName, userRole }: Props) {
     return (
       <React.Fragment key={l.href}>
         {l.sectionBefore && (
-          <div className="px-4 pt-2.5 pb-1">
-            <div className="border-t border-slate-700/60" />
-            <span className="text-[10px] uppercase tracking-widest text-slate-500 font-semibold mt-2 block">
+          <div className="px-3 pt-3 pb-1">
+            <div className="border-t border-white/8 mb-2" />
+            <span className="text-[10px] uppercase tracking-[0.08em] text-slate-500 font-semibold">
               {l.sectionBefore}
             </span>
           </div>
@@ -446,10 +434,10 @@ export function TopNav({ userName, userRole }: Props) {
           href={l.href}
           onClick={() => setOpenMenu(null)}
           className={cn(
-            'block px-4 py-2.5 text-sm transition whitespace-nowrap',
+            'flex items-center justify-between px-3 py-2 text-[13px] transition whitespace-nowrap rounded mx-1',
             isCurrentPath
-              ? 'bg-cyan-500/20 text-cyan-400'
-              : 'text-slate-300 hover:bg-slate-800 hover:text-white'
+              ? 'bg-cyan-500/15 text-cyan-400'
+              : 'text-slate-300 hover:bg-slate-700/60 hover:text-white'
           )}
         >
           {l.label}
@@ -463,9 +451,9 @@ export function TopNav({ userName, userRole }: Props) {
     <>
       <nav
         ref={navRef}
-        className="sticky top-0 z-50 bg-slate-950/90 border-b border-white/10 backdrop-blur-sm print:hidden"
+        className="sticky top-2 z-50 bg-slate-950/90 border-b border-white/10 backdrop-blur-sm print:hidden"
       >
-        <div className="max-w-screen-2xl mx-auto px-4 flex items-center justify-between h-14">
+        <div className="max-w-screen-2xl mx-auto px-4 flex items-center justify-between h-[52px]">
 
           {/* Brand */}
           <div className="flex items-center gap-1">
@@ -520,7 +508,7 @@ export function TopNav({ userName, userRole }: Props) {
                       />
                     </button>
                     {openMenu === domain.id && (
-                      <div className="absolute left-0 mt-1 min-w-[170px] bg-slate-900 border border-white/10 rounded-xl shadow-xl overflow-hidden z-50">
+                      <div className="absolute left-0 mt-1 min-w-[200px] bg-slate-900 border border-white/10 rounded-lg shadow-2xl shadow-black/50 overflow-hidden z-50 py-1">
                         {domain.links.map((l) => renderDropdownLink(l))}
                       </div>
                     )}
@@ -534,6 +522,15 @@ export function TopNav({ userName, userRole }: Props) {
           <div className="flex items-center gap-2">
             <GlobalSearch />
             <BranchSwitcher />
+
+            {/* Notifications bell */}
+            <button
+              className="relative hidden sm:flex items-center justify-center w-8 h-8 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition"
+              title="Notifications"
+            >
+              <Bell className="w-4 h-4" />
+              <span className="absolute top-1.5 right-1.5 w-1.5 h-1.5 rounded-full bg-amber-400" />
+            </button>
 
             {/* Admin dropdown — desktop only, capability-gated */}
             {showAdmin && (
@@ -554,7 +551,7 @@ export function TopNav({ userName, userRole }: Props) {
                   />
                 </button>
                 {openMenu === 'admin' && (
-                  <div className="absolute right-0 mt-1 min-w-[190px] bg-slate-900 border border-white/10 rounded-xl shadow-xl overflow-hidden z-50">
+                  <div className="absolute right-0 mt-1 min-w-[200px] bg-slate-900 border border-white/10 rounded-lg shadow-2xl shadow-black/50 overflow-hidden z-50 py-1">
                     {adminLinks.map((l) => renderDropdownLink(l))}
                   </div>
                 )}
@@ -574,10 +571,14 @@ export function TopNav({ userName, userRole }: Props) {
                 />
               </button>
               {openMenu === 'user' && (
-                <div className="absolute right-0 mt-1 min-w-[210px] bg-slate-900 border border-white/10 rounded-xl shadow-xl overflow-hidden z-50">
-                  <div className="px-4 py-2.5 border-b border-slate-800">
-                    <p className="text-[10px] text-slate-500 uppercase tracking-wider">Signed in as</p>
-                    <p className="text-sm font-semibold text-white truncate mt-0.5">{name}</p>
+                <div className="absolute right-0 mt-1 min-w-[210px] bg-slate-900 border border-white/10 rounded-lg shadow-2xl shadow-black/50 overflow-hidden z-50">
+                  <div className="px-3 py-3 border-b border-white/8">
+                    <p className="text-[13px] font-semibold text-white truncate">{name}</p>
+                    {userRole && (
+                      <p className="text-[11px] text-slate-400 mt-0.5 font-mono">
+                        {userRole.charAt(0).toUpperCase() + userRole.slice(1)}
+                      </p>
+                    )}
                   </div>
                   <Link
                     href={`/it-issues?report=1&from=${encodeURIComponent(pathname)}`}

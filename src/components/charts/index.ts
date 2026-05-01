@@ -17,6 +17,8 @@ export { default as ProductTreemap } from './ProductTreemap';
 export type { ProductTreemapProps } from './ProductTreemap';
 export { default as DaysToPayBullet } from './DaysToPayBullet';
 export type { DaysToPayBulletProps } from './DaysToPayBullet';
+export { default as BulletChart } from './BulletChart';
+export type { BulletChartProps } from './BulletChart';
 export {
   CHART_COLORS,
   AXIS_PROPS,
