@@ -1,13 +1,9 @@
-import { auth } from '../../../../../auth';
-import { redirect } from 'next/navigation';
+import { requirePageAccess } from '../../../../../src/lib/access-control';
 import PermissionsClient from './PermissionsClient';
 
 export const metadata = { title: 'User Permissions | LiveEdge' };
 
 export default async function PermissionsPage() {
-  const session = await auth();
-  if (!session) redirect('/login');
-  const role = (session.user as { role?: string }).role ?? 'estimator';
-  if (role !== 'admin') redirect('/dashboard');
+  await requirePageAccess('admin.users.manage');
   return <PermissionsClient />;
 }

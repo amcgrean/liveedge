@@ -36,7 +36,7 @@ const ROLES = [
 
 const BRANCHES = ['10FD', '20GR', '25BW', '40CV'];
 
-const EMPTY = { name: '', username: '', agentId: '', email: '', role: 'estimator', password: '', branch: '' };
+const EMPTY = { name: '', username: '', agentId: '', email: '', roles: ['estimator'] as string[], password: '', branch: '' };
 
 export default function UsersClient({ initialUsers }: { initialUsers?: AppUser[] }) {
   const { data: session } = useSession();
@@ -44,7 +44,7 @@ export default function UsersClient({ initialUsers }: { initialUsers?: AppUser[]
   const [loading, setLoading] = useState(!initialUsers);
   const [showForm, setShowForm] = useState(false);
   const [editTarget, setEditTarget] = useState<AppUser | null>(null);
-  const [form, setForm] = useState(EMPTY);
+  const [form, setForm] = useState<typeof EMPTY>(EMPTY);
   const [saving, setSaving] = useState(false);
   const [formError, setFormError] = useState('');
 
@@ -66,12 +66,20 @@ export default function UsersClient({ initialUsers }: { initialUsers?: AppUser[]
       username: u.username ?? '',
       agentId:  u.agentId ?? '',
       email:    u.email ?? '',
-      role:     u.role,
+      roles:    u.roles.length > 0 ? u.roles : [u.role],
       password: '',
       branch:   u.branch ?? '',
     });
     setFormError('');
     setShowForm(true);
+  };
+
+  const toggleRole = (value: string) => {
+    setForm((f) => {
+      const has = f.roles.includes(value);
+      const next = has ? f.roles.filter((r) => r !== value) : [...f.roles, value];
+      return { ...f, roles: next.length > 0 ? next : [value] };
+    });
   };
 
   const handleSave = async () => {
@@ -87,13 +95,17 @@ export default function UsersClient({ initialUsers }: { initialUsers?: AppUser[]
       setFormError('Password must be at least 8 characters');
       return;
     }
+    if (form.roles.length === 0) {
+      setFormError('At least one role is required');
+      return;
+    }
     setSaving(true); setFormError('');
     try {
       const url = editTarget ? `/api/admin/users/${editTarget.id}` : '/api/admin/users';
       const method = editTarget ? 'PUT' : 'POST';
       const body: Record<string, string | string[] | undefined> = {
         name:  form.name.trim() || undefined,
-        role:  form.role,
+        roles: form.roles,
         branch: form.branch.trim() || undefined,
       };
       if (form.username.trim()) body.username = form.username.trim().toLowerCase();
@@ -165,7 +177,6 @@ export default function UsersClient({ initialUsers }: { initialUsers?: AppUser[]
             </thead>
             <tbody>
               {users.map((u) => {
-                const roleInfo = getRoleInfo(u.role);
                 const isSelf = u.id === session?.user?.id;
                 return (
                   <tr key={u.id} className={isSelf ? 'bg-cyan-500/5' : ''}>
@@ -181,21 +192,28 @@ export default function UsersClient({ initialUsers }: { initialUsers?: AppUser[]
                     </td>
                     <td className="text-slate-400 text-sm">{u.email || <span className="text-slate-600 italic">—</span>}</td>
                     <td>
-                      <span className={`flex items-center gap-1.5 w-fit px-2 py-0.5 rounded text-[11px] font-medium capitalize ${
-                        u.role === 'admin'          ? 'bg-purple-900/40 text-purple-400 border border-purple-700' :
-                        u.role === 'management'     ? 'bg-gold-800/40 text-gold-300 border border-gold-700' :
-                        u.role === 'purchasing'     ? 'bg-amber-900/30 text-amber-400 border border-amber-800' :
-                        u.role === 'receiving_yard' ? 'bg-orange-900/30 text-orange-400 border border-orange-800' :
-                        u.role === 'warehouse'      ? 'bg-green-900/30 text-green-400 border border-green-800' :
-                        u.role === 'supervisor'     ? 'bg-orange-900/30 text-orange-400 border border-orange-800' :
-                        u.role === 'sales'          ? 'bg-cyan-900/30 text-cyan-400 border border-cyan-800' :
-                        u.role === 'ops'            ? 'bg-yellow-900/30 text-yellow-400 border border-yellow-800' :
-                        u.role === 'viewer'         ? 'bg-slate-800 text-slate-400' :
-                        'bg-blue-900/30 text-blue-400 border border-blue-800'
-                      }`}>
-                        {roleInfo.icon}
-                        {u.role}
-                      </span>
+                      <div className="flex flex-wrap gap-1">
+                        {(u.roles.length > 0 ? u.roles : [u.role]).map((role) => {
+                          const ri = getRoleInfo(role);
+                          return (
+                            <span key={role} className={`flex items-center gap-1 w-fit px-2 py-0.5 rounded text-[11px] font-medium capitalize ${
+                              role === 'admin'          ? 'bg-purple-900/40 text-purple-400 border border-purple-700' :
+                              role === 'management'     ? 'bg-gold-800/40 text-gold-300 border border-gold-700' :
+                              role === 'purchasing'     ? 'bg-amber-900/30 text-amber-400 border border-amber-800' :
+                              role === 'receiving_yard' ? 'bg-orange-900/30 text-orange-400 border border-orange-800' :
+                              role === 'warehouse'      ? 'bg-green-900/30 text-green-400 border border-green-800' :
+                              role === 'supervisor'     ? 'bg-orange-900/30 text-orange-400 border border-orange-800' :
+                              role === 'sales'          ? 'bg-cyan-900/30 text-cyan-400 border border-cyan-800' :
+                              role === 'ops'            ? 'bg-yellow-900/30 text-yellow-400 border border-yellow-800' :
+                              role === 'viewer'         ? 'bg-slate-800 text-slate-400' :
+                              'bg-blue-900/30 text-blue-400 border border-blue-800'
+                            }`}>
+                              {ri.icon}
+                              {role}
+                            </span>
+                          );
+                        })}
+                      </div>
                     </td>
                     <td className="text-slate-500 text-xs">{u.branch || <span className="italic">—</span>}</td>
                     <td>
@@ -272,19 +290,24 @@ export default function UsersClient({ initialUsers }: { initialUsers?: AppUser[]
                 </select>
               </div>
               <div>
-                <label className="block text-xs font-medium text-slate-400 mb-2">Role</label>
+                <label className="block text-xs font-medium text-slate-400 mb-1">
+                  Roles <span className="text-slate-600">(select all that apply)</span>
+                </label>
                 <div className="space-y-1.5">
-                  {ROLES.map((r) => (
-                    <label key={r.value} className={`flex items-start gap-3 p-2.5 rounded-lg border cursor-pointer transition ${form.role === r.value ? 'bg-cyan-500/10 border-cyan-500/40' : 'bg-slate-950/40 border-slate-700 hover:border-slate-600'}`}>
-                      <input type="radio" name="role" value={r.value} checked={form.role === r.value} onChange={() => setForm({ ...form, role: r.value })} className="mt-0.5" />
-                      <div>
-                        <p className={`text-sm font-medium capitalize flex items-center gap-1.5 ${form.role === r.value ? 'text-cyan-400' : 'text-slate-200'}`}>
-                          {r.icon} {r.label}
-                        </p>
-                        <p className="text-xs text-slate-500 mt-0.5">{r.desc}</p>
-                      </div>
-                    </label>
-                  ))}
+                  {ROLES.map((r) => {
+                    const checked = form.roles.includes(r.value);
+                    return (
+                      <label key={r.value} className={`flex items-start gap-3 p-2.5 rounded-lg border cursor-pointer transition ${checked ? 'bg-cyan-500/10 border-cyan-500/40' : 'bg-slate-950/40 border-slate-700 hover:border-slate-600'}`}>
+                        <input type="checkbox" checked={checked} onChange={() => toggleRole(r.value)} className="mt-0.5 rounded border-slate-600 bg-slate-800 text-cyan-500 focus:ring-cyan-500" />
+                        <div>
+                          <p className={`text-sm font-medium capitalize flex items-center gap-1.5 ${checked ? 'text-cyan-400' : 'text-slate-200'}`}>
+                            {r.icon} {r.label}
+                          </p>
+                          <p className="text-xs text-slate-500 mt-0.5">{r.desc}</p>
+                        </div>
+                      </label>
+                    );
+                  })}
                 </div>
               </div>
               <div>
