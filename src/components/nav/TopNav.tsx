@@ -6,8 +6,7 @@ import { usePathname, useRouter } from 'next/navigation';
 import { signOut, useSession } from 'next-auth/react';
 import {
   LogOut, ChevronDown, Menu, X, Settings,
-  Truck, ShoppingCart, FileText, Wrench, PackageCheck, Search,
-  Boxes, HelpCircle, User, BarChart3, Bell,
+  Search, Wrench, HelpCircle, User, Bell,
 } from 'lucide-react';
 import { cn } from '../../lib/utils';
 import { hasCapability } from '../../lib/access-control-shared';
@@ -121,11 +120,32 @@ function BranchSwitcher() {
   );
 }
 
+type InlineResult = {
+  type: 'so' | 'customer' | 'work_order' | 'picker' | 'item';
+  title: string;
+  subtitle: string;
+  url: string;
+  meta?: string;
+};
+
+const INLINE_GROUPS: Array<{ type: InlineResult['type']; label: string }> = [
+  { type: 'customer',   label: 'Customers'   },
+  { type: 'item',       label: 'Items'       },
+  { type: 'so',         label: 'Orders'      },
+  { type: 'work_order', label: 'Work Orders' },
+  { type: 'picker',     label: 'Pickers'     },
+];
+
 function GlobalSearch() {
   const router = useRouter();
   const [q, setQ] = React.useState('');
+  const [results, setResults] = React.useState<InlineResult[]>([]);
+  const [open, setOpen] = React.useState(false);
   const inputRef = React.useRef<HTMLInputElement>(null);
+  const containerRef = React.useRef<HTMLDivElement>(null);
+  const debounceRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  // ⌘K shortcut + Escape
   React.useEffect(() => {
     function handler(e: KeyboardEvent) {
       if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
@@ -133,36 +153,114 @@ function GlobalSearch() {
         inputRef.current?.focus();
         inputRef.current?.select();
       }
-      if (e.key === 'Escape' && document.activeElement === inputRef.current) {
-        inputRef.current?.blur();
-        setQ('');
+      if (e.key === 'Escape') {
+        setOpen(false);
+        if (document.activeElement === inputRef.current) {
+          inputRef.current?.blur();
+          setQ('');
+        }
       }
     }
     document.addEventListener('keydown', handler);
     return () => document.removeEventListener('keydown', handler);
   }, []);
 
+  // Close dropdown on outside click
+  React.useEffect(() => {
+    function handler(e: MouseEvent) {
+      if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
+        setOpen(false);
+      }
+    }
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, []);
+
+  // Debounced live search
+  React.useEffect(() => {
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    const trimmed = q.trim();
+    if (trimmed.length < 2) { setResults([]); setOpen(false); return; }
+    debounceRef.current = setTimeout(async () => {
+      try {
+        const res = await fetch(`/api/search?q=${encodeURIComponent(trimmed)}`);
+        if (!res.ok) return;
+        const data = await res.json();
+        setResults(data.results ?? []);
+        setOpen(true);
+      } catch { /* ignore */ }
+    }, 300);
+    return () => { if (debounceRef.current) clearTimeout(debounceRef.current); };
+  }, [q]);
+
   function submit(e: React.FormEvent) {
     e.preventDefault();
     const trimmed = q.trim();
     if (!trimmed) return;
+    setOpen(false);
     router.push(`/search?q=${encodeURIComponent(trimmed)}`);
     setQ('');
     inputRef.current?.blur();
   }
 
+  const grouped = results.reduce<Record<string, InlineResult[]>>((acc, r) => {
+    (acc[r.type] ??= []).push(r);
+    return acc;
+  }, {});
+
   return (
-    <form onSubmit={submit} className="hidden md:flex items-center gap-1.5 h-[28px] px-2.5 bg-slate-800/60 border border-white/10 rounded-md min-w-[240px] focus-within:border-cyan-500/50 transition">
-      <Search className="w-3.5 h-3.5 text-slate-500 flex-shrink-0" />
-      <input
-        ref={inputRef}
-        value={q}
-        onChange={(e) => setQ(e.target.value)}
-        placeholder="Search orders, customers, SKUs…"
-        className="flex-1 min-w-0 bg-transparent text-[13px] text-slate-200 placeholder-slate-500 focus:outline-none"
-      />
-      <span className="text-[10px] font-mono text-slate-500 border border-slate-700 rounded px-1 leading-none py-0.5 hidden lg:inline">⌘K</span>
-    </form>
+    <div ref={containerRef} className="relative">
+      <form onSubmit={submit} className="flex items-center gap-1.5 h-[28px] px-2.5 bg-slate-800/60 border border-white/10 rounded-md min-w-[200px] max-w-xs focus-within:border-cyan-500/50 transition">
+        <Search className="w-3.5 h-3.5 text-slate-500 flex-shrink-0" />
+        <input
+          ref={inputRef}
+          value={q}
+          onChange={(e) => setQ(e.target.value)}
+          placeholder="Search orders, customers, SKUs…"
+          className="flex-1 min-w-0 bg-transparent text-[13px] text-slate-200 placeholder-slate-500 focus:outline-none"
+        />
+        <span className="text-[10px] font-mono text-slate-500 border border-slate-700 rounded px-1 leading-none py-0.5 hidden lg:inline">⌘K</span>
+      </form>
+
+      {open && results.length > 0 && (
+        <div className="absolute left-0 top-full mt-1.5 w-[360px] bg-slate-900 border border-white/10 rounded-lg shadow-2xl shadow-black/60 z-[60] overflow-hidden">
+          {INLINE_GROUPS.map(({ type, label }) => {
+            const group = grouped[type];
+            if (!group?.length) return null;
+            return (
+              <div key={type}>
+                <div className="px-3 pt-2.5 pb-1 border-t border-white/5 first:border-t-0">
+                  <span className="text-[10px] font-bold uppercase tracking-[0.08em] text-slate-500">{label}</span>
+                </div>
+                {group.slice(0, 3).map((r, i) => (
+                  <Link
+                    key={i}
+                    href={r.url}
+                    onClick={() => { setOpen(false); setQ(''); }}
+                    className="flex items-center justify-between gap-3 px-3 py-2 hover:bg-slate-800 transition"
+                  >
+                    <div className="min-w-0">
+                      <div className="text-[13px] font-medium text-white truncate">{r.title}</div>
+                      <div className="text-[11px] text-slate-400 truncate">{r.subtitle}</div>
+                    </div>
+                    {r.meta && (
+                      <span className="text-[11px] text-slate-500 flex-shrink-0 whitespace-nowrap">{r.meta}</span>
+                    )}
+                  </Link>
+                ))}
+              </div>
+            );
+          })}
+          <Link
+            href={`/search?q=${encodeURIComponent(q.trim())}`}
+            onClick={() => { setOpen(false); setQ(''); }}
+            className="flex items-center justify-center py-2.5 text-[12px] text-slate-400 hover:text-white border-t border-white/8 hover:bg-slate-800/50 transition"
+          >
+            See all {results.length} results →
+          </Link>
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -180,7 +278,6 @@ interface NavLink {
 interface Domain {
   id: string;
   label: string;
-  icon: React.ReactNode;
   links: NavLink[];
   isActive: (p: string) => boolean;
   dropdown: boolean;
@@ -194,7 +291,6 @@ function getDomains(tvBranch: string): Domain[] {
     {
       id: 'yard',
       label: 'Yard',
-      icon: <Boxes className="w-4 h-4" />,
       dropdown: true,
       requiresCap: ['yard.view', 'picks.release', 'workorders.assign', 'pickers.manage'],
       isActive: (p) =>
@@ -214,7 +310,6 @@ function getDomains(tvBranch: string): Domain[] {
     {
       id: 'dispatch',
       label: 'Dispatch',
-      icon: <Truck className="w-4 h-4" />,
       dropdown: true,
       requiresCap: ['dispatch.view', 'dispatch.manage'],
       isActive: (p) =>
@@ -234,7 +329,6 @@ function getDomains(tvBranch: string): Domain[] {
     {
       id: 'sales',
       label: 'Sales',
-      icon: <ShoppingCart className="w-4 h-4" />,
       dropdown: true,
       requiresCap: ['sales.view', 'credits.view', 'credits.manage', 'hubbell.review'],
       isActive: (p) =>
@@ -254,8 +348,7 @@ function getDomains(tvBranch: string): Domain[] {
     },
     {
       id: 'management',
-      label: 'Management',
-      icon: <BarChart3 className="w-4 h-4" />,
+      label: 'MGMT',
       dropdown: true,
       // branch.all is held by admin, management role, and ops — correct audience for these pages
       requiresCap: ['branch.all'],
@@ -274,7 +367,6 @@ function getDomains(tvBranch: string): Domain[] {
     {
       id: 'estimating',
       label: 'Services',
-      icon: <FileText className="w-4 h-4" />,
       dropdown: true,
       requiresCap: ['bids.manage', 'designs.manage', 'ewp.manage', 'projects.manage'],
       isActive: (p) =>
@@ -299,7 +391,6 @@ function getDomains(tvBranch: string): Domain[] {
     {
       id: 'purchasing',
       label: 'Purchasing',
-      icon: <PackageCheck className="w-4 h-4" />,
       dropdown: true,
       requiresCap: ['purchasing.view', 'purchasing.receive', 'purchasing.review'],
       isActive: (p) =>
@@ -475,12 +566,14 @@ export function TopNav({ userName, userRole }: Props) {
               </div>
             </Link>
 
-            {/* Desktop domain nav — capability-filtered */}
+            {/* Desktop search + domain nav — capability-filtered */}
             <div className="hidden lg:flex items-center gap-0.5">
+              <GlobalSearch />
+              <div className="w-px h-5 bg-slate-700 mx-1.5" />
               {visibleDomains.map((domain) => {
                 const active = domain.isActive(pathname);
                 const baseCls = cn(
-                  'flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium transition',
+                  'flex items-center gap-1 px-3 py-2 rounded-lg text-sm font-medium transition',
                   active
                     ? 'bg-cyan-500/20 text-cyan-400'
                     : 'text-slate-300 hover:text-white hover:bg-slate-800'
@@ -489,7 +582,6 @@ export function TopNav({ userName, userRole }: Props) {
                 if (!domain.dropdown) {
                   return (
                     <Link key={domain.id} href={domain.href!} className={baseCls}>
-                      {domain.icon}
                       {domain.label}
                     </Link>
                   );
@@ -498,7 +590,6 @@ export function TopNav({ userName, userRole }: Props) {
                 return (
                   <div key={domain.id} className="relative">
                     <button onClick={() => toggle(domain.id)} className={baseCls}>
-                      {domain.icon}
                       <span>{domain.label}</span>
                       <ChevronDown
                         className={cn(
@@ -515,12 +606,36 @@ export function TopNav({ userName, userRole }: Props) {
                   </div>
                 );
               })}
+
+              {/* Admin inline with domain nav — capability-gated */}
+              {showAdmin && (
+                <div className="relative">
+                  <button
+                    onClick={() => toggle('admin')}
+                    className={cn(
+                      'flex items-center gap-1 px-3 py-2 rounded-lg text-sm font-medium transition',
+                      pathname.startsWith('/admin')
+                        ? 'bg-cyan-500/20 text-cyan-400'
+                        : 'text-slate-300 hover:text-white hover:bg-slate-800'
+                    )}
+                  >
+                    <span>Admin</span>
+                    <ChevronDown
+                      className={cn('w-3 h-3 transition-transform', openMenu === 'admin' && 'rotate-180')}
+                    />
+                  </button>
+                  {openMenu === 'admin' && (
+                    <div className="absolute left-0 mt-1 min-w-[200px] bg-slate-900 border border-white/10 rounded-lg shadow-2xl shadow-black/50 overflow-hidden z-50 py-1">
+                      {adminLinks.map((l) => renderDropdownLink(l))}
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
           </div>
 
-          {/* Right side */}
-          <div className="flex items-center gap-2">
-            <GlobalSearch />
+          {/* Right side: branch + bell + user */}
+          <div className="flex items-center gap-1.5">
             <BranchSwitcher />
 
             {/* Notifications bell */}
@@ -532,34 +647,8 @@ export function TopNav({ userName, userRole }: Props) {
               <span className="absolute top-1.5 right-1.5 w-1.5 h-1.5 rounded-full bg-amber-400" />
             </button>
 
-            {/* Admin dropdown — desktop only, capability-gated */}
-            {showAdmin && (
-              <div className="relative hidden lg:block">
-                <button
-                  onClick={() => toggle('admin')}
-                  className={cn(
-                    'flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium transition',
-                    pathname.startsWith('/admin')
-                      ? 'bg-cyan-500/20 text-cyan-400'
-                      : 'text-slate-300 hover:text-white hover:bg-slate-800'
-                  )}
-                >
-                  <Settings className="w-4 h-4" />
-                  <span>Admin</span>
-                  <ChevronDown
-                    className={cn('w-3 h-3 transition-transform', openMenu === 'admin' && 'rotate-180')}
-                  />
-                </button>
-                {openMenu === 'admin' && (
-                  <div className="absolute right-0 mt-1 min-w-[200px] bg-slate-900 border border-white/10 rounded-lg shadow-2xl shadow-black/50 overflow-hidden z-50 py-1">
-                    {adminLinks.map((l) => renderDropdownLink(l))}
-                  </div>
-                )}
-              </div>
-            )}
-
             {/* User dropdown — desktop */}
-            <div className="relative hidden sm:block pl-3 border-l border-slate-700">
+            <div className="relative hidden sm:block pl-2 border-l border-slate-700">
               <button
                 onClick={() => toggle('user')}
                 className="flex items-center gap-1.5 px-2 py-1.5 rounded-lg text-sm text-slate-300 hover:text-white hover:bg-slate-800 transition"
@@ -631,13 +720,9 @@ export function TopNav({ userName, userRole }: Props) {
             <div className="px-4 py-3 space-y-0.5">
 
               {/* Mobile search */}
-              <Link
-                href="/search"
-                className="flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm transition text-slate-400 hover:text-white hover:bg-slate-800"
-              >
-                <Search className="w-4 h-4" />
-                Search
-              </Link>
+              <div className="pb-2">
+                <GlobalSearch />
+              </div>
               <div className="border-t border-slate-800 my-1" />
 
               {/* Domain sections */}
@@ -650,13 +735,12 @@ export function TopNav({ userName, userRole }: Props) {
                       key={domain.id}
                       href={domain.href!}
                       className={cn(
-                        'flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition',
+                        'flex items-center px-3 py-2.5 rounded-lg text-sm font-medium transition',
                         domain.isActive(pathname)
                           ? 'bg-cyan-500/20 text-cyan-400'
                           : 'text-slate-300 hover:text-white hover:bg-slate-800'
                       )}
                     >
-                      {domain.icon}
                       {domain.label}
                     </Link>
                   );
@@ -673,10 +757,7 @@ export function TopNav({ userName, userRole }: Props) {
                           : 'text-slate-400 hover:text-white hover:bg-slate-800'
                       )}
                     >
-                      <span className="flex items-center gap-2">
-                        {domain.icon}
-                        {domain.label}
-                      </span>
+                      <span>{domain.label}</span>
                       <ChevronDown
                         className={cn('w-4 h-4 transition-transform', sectionOpen && 'rotate-180')}
                       />
@@ -723,10 +804,7 @@ export function TopNav({ userName, userRole }: Props) {
                         : 'text-slate-400 hover:text-white hover:bg-slate-800'
                     )}
                   >
-                    <span className="flex items-center gap-2">
-                      <Settings className="w-4 h-4" />
-                      Admin
-                    </span>
+                    <span>Admin</span>
                     <ChevronDown
                       className={cn(
                         'w-4 h-4 transition-transform',

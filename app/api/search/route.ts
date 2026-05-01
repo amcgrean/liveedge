@@ -3,7 +3,7 @@ import { requireCapability, hasCapability } from '../../../src/lib/access-contro
 import { getErpSql } from '../../../db/supabase';
 
 export interface SearchResult {
-  type: 'so' | 'customer' | 'work_order' | 'picker';
+  type: 'so' | 'customer' | 'work_order' | 'picker' | 'item';
   title: string;
   subtitle: string;
   url: string;
@@ -164,6 +164,41 @@ export async function GET(req: NextRequest) {
         subtitle: r.barcode ? `Barcode: ${r.barcode}` : 'Picker',
         url: `/warehouse/pickers/${r.id}`,
         meta: [r.system_id, r.is_active ? null : 'Inactive'].filter(Boolean).join(' · '),
+      });
+    }
+
+    // ── Items ─────────────────────────────────────────────────────────────
+    type ItemRow = {
+      item_code: string;
+      description: string | null;
+      product_major: string | null;
+    };
+    const itemRows = await sql<ItemRow[]>`
+      SELECT ai.item AS item_code, ai.description, ai.product_major
+      FROM agility_items ai
+      WHERE ai.is_deleted = false
+        AND (
+          ai.item ILIKE ${pct}
+          OR ai.description ILIKE ${pct}
+        )
+        AND EXISTS (
+          SELECT 1 FROM agility_item_branch aib
+          WHERE aib.item_code = ai.item
+            AND aib.is_deleted = false
+            AND aib.active_flag = true
+            ${branchFilter ? sql`AND aib.system_id = ${branchFilter}` : sql``}
+        )
+      ORDER BY ai.item
+      LIMIT 5
+    `;
+
+    for (const r of itemRows) {
+      results.push({
+        type: 'item',
+        title: r.item_code,
+        subtitle: r.description ?? 'Item',
+        url: `/sales/products?q=${encodeURIComponent(r.item_code)}`,
+        meta: r.product_major ?? undefined,
       });
     }
 
