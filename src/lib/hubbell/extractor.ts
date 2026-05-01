@@ -314,16 +314,38 @@ function extractContactPhone(body: string): string | null {
 }
 
 function extractDescription(subject: string, body: string): string | null {
-  // Try labeled description fields
-  const labeled = body.match(
-    /(?:description|scope\s+of\s+work|work\s+description|item\s+description|project\s+description)\s*:?\s*\n?([^\n]{10,200})/i
+  const bodySnip = body.slice(0, 3000);
+
+  // Labeled description fields (body takes priority)
+  const labeled = bodySnip.match(
+    /(?:description|material|mat\.|scope\s+of\s+work|work\s+description|item\s+description|project\s+description|line\s+item)\s*:?\s*\n?([^\n]{5,200})/i
   );
   if (labeled) return labeled[1].trim();
 
-  // Fall back to subject (strip PO/WO/Service Order number prefix if present)
+  // WO/PO inline description: "WO-00014424: Framing Mat. - Basement" or "WO 00014424 - Framing Mat."
+  const inline = bodySnip.match(
+    /\b(?:WO|PO)[-\s]?[\d\-]{3,15}[:\s\-]+([A-Za-z][^\n]{5,150})/i
+  );
+  if (inline) {
+    const candidate = inline[1].trim();
+    // Reject if it looks like an address (starts with a number) or a URL
+    if (!/^\d/.test(candidate) && !/https?:\/\//.test(candidate)) return candidate;
+  }
+
+  // For "New WO{n}-CustomerName-Address" subject format, extract the customer/subdivision name
+  // as the most meaningful description fragment (sits between WO# and the street address)
+  const woPoCustomer = subject.match(
+    /\bNew\s+(?:WO|PO)[\d\-]+\s*[-–]\s*([^-–\d][^-–]{2,50}?)\s*[-–]\s*\d/i
+  );
+  if (woPoCustomer) return woPoCustomer[1].trim();
+
+  // Fall back to subject — strip order-number prefix and email prefixes
   const cleaned = subject
     .replace(/\b(?:P\.?O\.?|W\.?O\.?|Purchase\s+Order|Work\s+Order|Service\s+Order)\s*#?\s*[\w\-]+\s*/gi, '')
+    .replace(/\bAssigned\s+for\b.*/i, '')   // drop "Assigned for <address>"
+    .replace(/\bNew\s+/i, '')               // drop leading "New"
     .replace(/^(?:FW:|RE:|Fwd:)\s*/i, '')
+    .replace(/[-–]{2,}/g, ' ')
     .trim();
   return cleaned.length >= 5 ? cleaned : null;
 }
