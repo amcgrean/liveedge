@@ -127,16 +127,28 @@ export default function HubbellClient() {
   async function handleReprocess() {
     setReprocessing(true);
     setReprocessResult(null);
+    let totalProcessed = 0, totalMatched = 0, totalPending = 0, totalStill = 0;
     try {
-      const res = await fetch('/api/admin/hubbell/reprocess', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ statuses: ['unmatched', 'pending'], limit: 200 }),
-      });
-      if (!res.ok) throw new Error(await res.text());
-      const data = await res.json();
+      // Loop in batches of 20 until nothing left to process
+      while (true) {
+        const res = await fetch('/api/admin/hubbell/reprocess', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ statuses: ['unmatched', 'pending'], limit: 20 }),
+        });
+        if (!res.ok) throw new Error(await res.text());
+        const data = await res.json();
+        totalProcessed  += data.processed;
+        totalMatched    += data.matched;
+        totalPending    += data.pending;
+        totalStill      += data.stillUnmatched;
+        setReprocessResult(
+          `Processing… ${totalProcessed} done — ${totalMatched} matched, ${totalPending} pending, ${totalStill} still unmatched`
+        );
+        if (data.processed === 0 || data.processed < 20) break;
+      }
       setReprocessResult(
-        `Processed ${data.processed}: ${data.matched} matched, ${data.pending} pending, ${data.stillUnmatched} still unmatched`
+        `Done — ${totalProcessed} processed: ${totalMatched} matched, ${totalPending} pending, ${totalStill} still unmatched`
       );
       fetchEmails(1, status, search);
     } catch (e: unknown) {
