@@ -326,7 +326,6 @@ export default function WarehouseClient({ initialStats, isAdmin, userBranch, use
             background: 'var(--panel)',
             border: '1px solid var(--line)',
             borderRadius: 'var(--r)',
-            divideColor: 'var(--line)',
           }}
         >
           {[
