@@ -6,6 +6,9 @@ Beisser Lumber Co. internal estimating app (Next.js 15, TypeScript, Tailwind, Dr
 ## Route Reference
 Full API and page route inventory: **`docs/routes.md`** (last audited 2026-04-17, 147 API routes / 77 pages).
 
+## Access Control (in progress)
+Capability-based access control is being rolled out in phases. Phase 1 (foundation) is complete on branch `claude/improve-access-control-b8Le1`. See **`docs/access-control-plan.md`** for the full plan, the 28-capability vocabulary, the role-defaults table, and the Phase 2 handoff. Helpers live in `src/lib/access-control.ts`; menu config in `src/lib/menu-config.ts`. Existing role checks remain in place — capabilities are additive until Phase 4 sweeps them.
+
 ## Architecture Overview
 
 ### Single Database — Supabase (agility-api project)
