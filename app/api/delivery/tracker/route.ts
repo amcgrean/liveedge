@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { auth } from '../../../../auth';
+import { requireCapability } from '../../../../src/lib/access-control';
 import { getErpSql } from '../../../../db/supabase';
 
 export interface DeliveryRecord {
@@ -23,8 +23,9 @@ export interface DeliveryRecord {
 
 // GET /api/delivery/tracker?branch=10FD&date=2026-04-02
 export async function GET(req: NextRequest) {
-  const session = await auth();
-  if (!session?.user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  const authResult = await requireCapability('dispatch.view', 'dispatch.manage');
+  if (authResult instanceof NextResponse) return authResult;
+  const session = authResult;
 
   const { searchParams } = req.nextUrl;
   const branchParam = searchParams.get('branch') ?? '';

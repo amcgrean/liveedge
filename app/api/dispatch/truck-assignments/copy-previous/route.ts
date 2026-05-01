@@ -1,18 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { auth } from '../../../../../auth';
+import { requireCapability } from '../../../../../src/lib/access-control';
 import { getErpSql } from '../../../../../db/supabase';
 
 // POST /api/dispatch/truck-assignments/copy-previous
 // Body: { target_date: "2026-04-04", branch_code: "20GR" }
 // Finds the most recent prior assignment date and copies all its rows to target_date.
 export async function POST(req: NextRequest) {
-  const session = await auth();
-  if (!session?.user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-
-  const canEdit =
-    session.user.role === 'admin' ||
-    (session.user.roles ?? []).some((r) => ['admin', 'supervisor', 'ops', 'dispatch'].includes(r));
-  if (!canEdit) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+  const authResult = await requireCapability('dispatch.manage');
+  if (authResult instanceof NextResponse) return authResult;
+  const session = authResult;
 
   const body = await req.json() as { target_date?: string; branch_code?: string };
   const targetDate = (body.target_date ?? new Date().toISOString().slice(0, 10)).trim();

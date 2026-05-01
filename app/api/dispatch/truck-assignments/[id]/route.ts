@@ -1,16 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { auth } from '../../../../../auth';
+import { requireCapability } from '../../../../../src/lib/access-control';
 import { getErpSql } from '../../../../../db/supabase';
 
 // PATCH /api/dispatch/truck-assignments/[id]
 export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const session = await auth();
-  if (!session?.user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-
-  const canEdit =
-    session.user.role === 'admin' ||
-    (session.user.roles ?? []).some((r) => ['admin', 'supervisor', 'ops', 'dispatch'].includes(r));
-  if (!canEdit) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+  const authResult = await requireCapability('dispatch.manage');
+  if (authResult instanceof NextResponse) return authResult;
 
   const { id } = await params;
   const assignId = parseInt(id, 10);
@@ -55,13 +50,8 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
 
 // DELETE /api/dispatch/truck-assignments/[id]
 export async function DELETE(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const session = await auth();
-  if (!session?.user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-
-  const canEdit =
-    session.user.role === 'admin' ||
-    (session.user.roles ?? []).some((r) => ['admin', 'supervisor', 'ops', 'dispatch'].includes(r));
-  if (!canEdit) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+  const authResult = await requireCapability('dispatch.manage');
+  if (authResult instanceof NextResponse) return authResult;
 
   const { id } = await params;
   const assignId = parseInt(id, 10);

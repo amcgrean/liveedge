@@ -1,11 +1,9 @@
-import { auth } from '../../../auth';
-import { redirect } from 'next/navigation';
+import { requirePageAccess } from '../../../src/lib/access-control';
 import { TopNav } from '../../../src/components/nav/TopNav';
 import DeliveryReportingClient from './DeliveryReportingClient';
 
 export default async function OpsDeliveryReportingPage() {
-  const session = await auth();
-  if (!session?.user) redirect('/login');
+  const session = await requirePageAccess('dispatch.manage');
 
   const isAdmin =
     session.user.role === 'admin' ||

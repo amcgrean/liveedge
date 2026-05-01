@@ -1,13 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { auth } from '../../../../../../auth';
+import { requireCapability } from '../../../../../../src/lib/access-control';
 import { getErpSql } from '../../../../../../db/supabase';
 
 type Params = Promise<{ id: string }>;
 
 // GET /api/dispatch/routes/[id]/stops
 export async function GET(req: NextRequest, { params }: { params: Params }) {
-  const session = await auth();
-  if (!session?.user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  const authResult = await requireCapability('dispatch.view', 'dispatch.manage');
+  if (authResult instanceof NextResponse) return authResult;
 
   const { id } = await params;
 
@@ -28,13 +28,8 @@ export async function GET(req: NextRequest, { params }: { params: Params }) {
 
 // POST /api/dispatch/routes/[id]/stops — add a stop
 export async function POST(req: NextRequest, { params }: { params: Params }) {
-  const session = await auth();
-  if (!session?.user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-
-  const canManage =
-    session.user.role === 'admin' ||
-    (session.user.roles ?? []).some((r) => ['admin', 'supervisor', 'ops'].includes(r));
-  if (!canManage) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+  const authResult = await requireCapability('dispatch.manage');
+  if (authResult instanceof NextResponse) return authResult;
 
   const { id } = await params;
   const body = await req.json() as {

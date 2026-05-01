@@ -1,18 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { auth } from '../../../../../../../auth';
+import { requireCapability } from '../../../../../../../src/lib/access-control';
 import { getErpSql } from '../../../../../../../db/supabase';
 
 type Params = Promise<{ id: string; stopId: string }>;
 
 // DELETE /api/dispatch/routes/[id]/stops/[stopId]
 export async function DELETE(_req: NextRequest, { params }: { params: Params }) {
-  const session = await auth();
-  if (!session?.user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-
-  const canManage =
-    session.user.role === 'admin' ||
-    (session.user.roles ?? []).some((r) => ['admin', 'supervisor', 'ops', 'dispatch'].includes(r));
-  if (!canManage) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+  const authResult = await requireCapability('dispatch.manage');
+  if (authResult instanceof NextResponse) return authResult;
 
   const { id, stopId } = await params;
   const routeId = parseInt(id, 10);

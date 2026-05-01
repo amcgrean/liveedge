@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { auth } from '../../../../auth';
+import { requireCapability } from '../../../../src/lib/access-control';
 import { getErpSql } from '../../../../db/supabase';
 
 export interface DeliveryStop {
@@ -30,8 +30,9 @@ export interface DeliveryStop {
 
 // GET /api/dispatch/deliveries?date=2026-04-02&branch=20GR
 export async function GET(req: NextRequest) {
-  const session = await auth();
-  if (!session?.user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  const authResult = await requireCapability('dispatch.view', 'dispatch.manage');
+  if (authResult instanceof NextResponse) return authResult;
+  const session = authResult;
 
   const { searchParams } = req.nextUrl;
   const dateParam = searchParams.get('date') ?? new Date().toISOString().slice(0, 10);
