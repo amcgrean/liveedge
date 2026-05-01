@@ -50,10 +50,10 @@ export async function GET(_req: NextRequest, context: RouteContext) {
       .where(eq(legacyDesignActivity.designId, designId))
       .orderBy(asc(legacyDesignActivity.timestamp));
 
-    // Log view
+    // Log view — fire-and-forget; don't block response on FK mismatch between app_users and bids."user"
     const userId = parseInt(session.user.id, 10);
     if (!isNaN(userId)) {
-      await db.insert(legacyDesignActivity).values({ userId, designId, action: 'viewed' });
+      db.insert(legacyDesignActivity).values({ userId, designId, action: 'viewed' }).catch(() => {});
     }
 
     return NextResponse.json({ ...design, customerName, customerCode, designerName, activity });
@@ -97,7 +97,7 @@ export async function PUT(req: NextRequest, context: RouteContext) {
 
     const userId = parseInt(session.user.id, 10);
     if (!isNaN(userId)) {
-      await db.insert(legacyDesignActivity).values({ userId, designId, action: 'updated' });
+      db.insert(legacyDesignActivity).values({ userId, designId, action: 'updated' }).catch(() => {});
     }
 
     return NextResponse.json({ design: updated });

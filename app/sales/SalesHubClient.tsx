@@ -90,7 +90,6 @@ function SectionLabel({ children }: { children?: ReactNode }) {
 }
 
 export default function SalesHubClient({ isAdmin, userBranch, userName, userRole, agentId }: Props) {
-  const thirtyDaysAgo = new Date(Date.now() - 30 * 86_400_000).toISOString().slice(0, 10);
   const txBase = '/sales/transactions';
   function txUrl(params: Record<string, string>) {
     const sp = new URLSearchParams(params);
@@ -100,6 +99,17 @@ export default function SalesHubClient({ isAdmin, userBranch, userName, userRole
   const [data, setData] = useState<HubData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [greeting, setGreeting] = useState('');
+  const [dateStr, setDateStr] = useState('');
+  const [thirtyDaysAgo, setThirtyDaysAgo] = useState('');
+
+  useEffect(() => {
+    const now = new Date();
+    const h = now.getHours();
+    setGreeting(h < 12 ? 'Good morning' : h < 17 ? 'Good afternoon' : 'Good evening');
+    setDateStr(now.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' }));
+    setThirtyDaysAgo(new Date(now.getTime() - 30 * 86_400_000).toISOString().slice(0, 10));
+  }, []);
 
   useEffect(() => {
     setLoading(true);
@@ -117,15 +127,6 @@ export default function SalesHubClient({ isAdmin, userBranch, userName, userRole
     willCallsIWrote: 0, openQuotes: 0, openDesigns: 0, openServiceRequests: 0,
     myOpenPOs: 0, posIWrote: 0,
   };
-
-  const greeting = (() => {
-    const h = new Date().getHours();
-    if (h < 12) return 'Good morning';
-    if (h < 17) return 'Good afternoon';
-    return 'Good evening';
-  })();
-
-  const dateStr = new Date().toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' });
 
   return (
     <>

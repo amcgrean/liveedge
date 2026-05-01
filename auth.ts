@@ -1,6 +1,7 @@
 import NextAuth from 'next-auth';
 import Credentials from 'next-auth/providers/credentials';
 import { z } from 'zod';
+import { effectiveCapabilities } from './src/lib/access-control';
 
 // ─── Input schema ─────────────────────────────────────────────────────────────
 // All users authenticate via OTP — identifier can be a username or email,
@@ -34,14 +35,16 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
 
           if (!hasDb) {
             if ((identifier === 'admin' || identifier === 'admin@beisserlumber.com') && otp_code === '000000') {
+              const devRoles = ['admin'];
               return {
                 id: 'dev',
                 name: 'Dev Admin',
                 email: 'admin@beisserlumber.com',
                 role: 'admin',
-                roles: ['admin'],
+                roles: devRoles,
                 branch: null,
                 branchId: null,
+                capabilities: Array.from(effectiveCapabilities(devRoles)),
               };
             }
             return null;
@@ -69,8 +72,12 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
             roles: string[] | null;
             branch: string | null;
             agent_id: string | null;
+            granted_capabilities: string[] | null;
+            revoked_capabilities: string[] | null;
           }[]>`
-            SELECT id, email, display_name, roles, branch, agent_id
+            SELECT id, email, display_name, roles, branch, agent_id,
+                   COALESCE(granted_capabilities, '{}') AS granted_capabilities,
+                   COALESCE(revoked_capabilities, '{}') AS revoked_capabilities
             FROM app_users
             WHERE ${isEmail ? sql`email = ${input}` : sql`username = ${input}`}
               AND is_active = true
@@ -112,6 +119,9 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
 
           const roles: string[] = Array.isArray(user.roles) ? user.roles : [];
           const role = deriveRole(roles);
+          const granted = Array.isArray(user.granted_capabilities) ? user.granted_capabilities : [];
+          const revoked = Array.isArray(user.revoked_capabilities) ? user.revoked_capabilities : [];
+          const capabilities = Array.from(effectiveCapabilities(roles, granted, revoked));
 
           return {
             id: String(user.id),
@@ -122,6 +132,7 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
             branch: user.branch ?? null,
             branchId: null,
             agentId: user.agent_id ?? null,
+            capabilities,
           };
         } catch (err) {
           console.error('[auth] authorize error:', err);
@@ -140,10 +151,16 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
         token.branch = (user as { branch?: string | null }).branch ?? null;
         token.branchId = (user as { branchId?: number | null }).branchId ?? null;
         token.agentId = (user as { agentId?: string | null }).agentId ?? null;
+        token.capabilities = (user as { capabilities?: string[] }).capabilities ?? [];
       }
       if (!token.roles || (token.roles as string[]).length === 0) {
         const r = token.role as string | undefined;
         if (r && r !== 'viewer') token.roles = [r];
+      }
+      // Backfill capabilities for tokens minted before this field existed.
+      if (!Array.isArray(token.capabilities)) {
+        const tokenRoles = (token.roles ?? []) as string[];
+        token.capabilities = Array.from(effectiveCapabilities(tokenRoles));
       }
       return token;
     },
@@ -155,6 +172,7 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
         (session.user as { branch?: string | null }).branch = (token.branch ?? null) as string | null;
         (session.user as { branchId?: number | null }).branchId = token.branchId as number | null;
         (session.user as { agentId?: string | null }).agentId = (token.agentId ?? null) as string | null;
+        (session.user as { capabilities?: string[] }).capabilities = (token.capabilities ?? []) as string[];
       }
       return session;
     },
@@ -195,6 +213,7 @@ declare module 'next-auth' {
       branch: string | null;
       branchId: number | null;
       agentId: string | null;
+      capabilities: string[];
     };
   }
 }

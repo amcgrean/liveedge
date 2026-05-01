@@ -146,14 +146,10 @@ export async function POST(req: NextRequest) {
       })
       .returning();
 
-    // Log activity
+    // Log activity — fire-and-forget; don't block response on FK mismatch
     const userId = parseInt(session.user.id, 10);
     if (!isNaN(userId)) {
-      await db.insert(legacyDesignActivity).values({
-        userId,
-        designId: design.id,
-        action: 'created',
-      });
+      db.insert(legacyDesignActivity).values({ userId, designId: design.id, action: 'created' }).catch(() => {});
     }
 
     return NextResponse.json({ design }, { status: 201 });

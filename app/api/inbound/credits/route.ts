@@ -87,6 +87,92 @@ async function fetchAttachmentBuffer(att: ResendAttachment, emailId: string | un
   }
 }
 
+// ─── Nested email MIME extractor ──────────────────────────────────────────────
+// Handles the case where someone attaches a forwarded email (.eml / message/rfc822)
+// that itself contains image or PDF attachments.
+// Walks multipart/* recursively; collects image/pdf leaf parts.
+
+type ExtractedPart = { filename: string; content_type: string; buffer: Buffer };
+
+const ALLOWED_MIME = ['image/jpeg', 'image/png', 'image/gif', 'image/webp', 'application/pdf'];
+
+function escapeBoundary(b: string) {
+  return b.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+function extractPartsFromRawEmail(raw: string): ExtractedPart[] {
+  const results: ExtractedPart[] = [];
+
+  function walk(text: string): void {
+    // Normalize CRLF → LF
+    const s = text.replace(/\r\n/g, '\n');
+
+    // Split headers from body at the first blank line
+    const blankIdx = s.indexOf('\n\n');
+    if (blankIdx === -1) return;
+    const headerBlock = s.slice(0, blankIdx);
+    const body = s.slice(blankIdx + 2);
+
+    // Parse Content-Type (may fold across lines)
+    const ctRaw = headerBlock
+      .match(/^content-type:\s*([^\n]+(?:\n[ \t][^\n]+)*)/im)?.[1]
+      ?.replace(/\n[ \t]/g, ' ')
+      .trim() ?? '';
+    const ct = ctRaw.split(';')[0].trim().toLowerCase();
+
+    if (ct.startsWith('multipart/')) {
+      const bm = ctRaw.match(/boundary="?([^";]+)"?/i);
+      if (!bm) return;
+      const boundary = bm[1].trim();
+      // Split on boundary markers; ignore the preamble and epilogue
+      const re = new RegExp(`--${escapeBoundary(boundary)}(?:--)?`, 'g');
+      const parts = body.split(re).slice(1); // drop preamble before first boundary
+      for (const part of parts) {
+        const trimmed = part.trim();
+        if (trimmed === '' || trimmed === '--') continue;
+        walk(trimmed);
+      }
+      return;
+    }
+
+    if (!ALLOWED_MIME.includes(ct)) return;
+
+    // Extract filename from Content-Disposition or Content-Type
+    const fnMatch =
+      headerBlock.match(/filename\*?="?([^"\n;]+)"?/i) ??
+      headerBlock.match(/name="?([^"\n;]+)"?/i);
+    const ext = ct.split('/')[1] ?? 'bin';
+    const filename = fnMatch?.[1]?.trim() ?? `attachment.${ext}`;
+
+    // Decode body
+    const enc = (headerBlock.match(/^content-transfer-encoding:\s*([^\n]+)/im)?.[1] ?? '')
+      .trim().toLowerCase();
+    let buffer: Buffer;
+    try {
+      if (enc === 'base64') {
+        buffer = Buffer.from(body.replace(/\s+/g, ''), 'base64');
+      } else {
+        // 7bit / 8bit / binary — treat as raw bytes
+        buffer = Buffer.from(body, 'binary');
+      }
+    } catch {
+      return;
+    }
+
+    // Skip suspiciously small parts (signature icons are typically < 5 KB)
+    if (buffer.length > 5000) {
+      results.push({ filename, content_type: ct, buffer });
+    }
+  }
+
+  try {
+    walk(raw);
+  } catch (err) {
+    console.error('[inbound/credits] MIME walk error', err);
+  }
+  return results;
+}
+
 function extractRmaNumber(subject: string | null, text: string | null, toAddresses: string[]): string {
   // Legacy: if using {so_id}@rma.beisser.cloud, the local part IS the CM number.
   // With credits@beisser.cloud the local part is just "credits" — falls through.
@@ -111,6 +197,75 @@ function extractRmaNumber(subject: string | null, text: string | null, toAddress
   // Last resort: first standalone 4+ digit number in the subject
   const fallback = (subject ?? '').match(/\b(\d{4,})\b/);
   return fallback ? fallback[1] : 'UNKNOWN';
+}
+
+// Extract candidate address tokens from free-form text.
+// Returns the best candidate street fragment (house number + street name) if found.
+function extractAddressFragment(text: string): string | null {
+  // Match "123 Oak Street", "456 N Main Ave", "789 County Rd 12", etc.
+  const m = text.match(
+    /\b(\d{1,6}(?:\s+[NSEW]\.?)?\s+[A-Za-z][A-Za-z\s]{2,30}(?:St(?:reet)?|Ave(?:nue)?|Rd|Road|Dr(?:ive)?|Ln|Lane|Blvd|Pkwy|Hwy|Way|Ct|Court|Pl|Place|Loop|Trail|Trl|Creek|Lake|Park)\.?)\b/i
+  );
+  return m ? m[1].replace(/\s+/g, ' ').trim() : null;
+}
+
+// Try to find the ONE open credit memo whose ship-to address matches the address
+// fragment extracted from the email subject/body. Returns the so_id string if
+// exactly one CM matches; 'UNKNOWN' if zero or multiple match (ambiguous).
+async function lookupRmaByAddress(
+  subject: string | null,
+  text: string | null,
+): Promise<string> {
+  const searchText = `${subject ?? ''} ${text?.slice(0, 1000) ?? ''}`;
+  const fragment = extractAddressFragment(searchText);
+  if (!fragment) return 'UNKNOWN';
+
+  try {
+    const sql = getErpSql();
+    const rows = await sql<{ so_id: string }[]>`
+      SELECT soh.so_id::text AS so_id
+      FROM agility_so_header soh
+      WHERE soh.sale_type = 'Credit'
+        AND soh.so_status NOT IN ('I', 'C')
+        AND soh.is_deleted = false
+        AND soh.shipto_address_1 ILIKE ${'%' + fragment.split(' ').slice(0, 3).join(' ') + '%'}
+      LIMIT 5
+    `;
+
+    if (rows.length === 1) {
+      console.log(`[inbound/credits] Address match "${fragment}" → CM ${rows[0].so_id}`);
+      return rows[0].so_id;
+    }
+
+    if (rows.length > 1) {
+      // Try to narrow by city if multiple CMs share that street
+      const cityMatch = searchText.match(/\b([A-Za-z]{3,}(?:\s+[A-Za-z]+)?),?\s+(?:IA|Iowa)\b/i);
+      if (cityMatch) {
+        const city = cityMatch[1].trim();
+        const narrowRows = await sql<{ so_id: string }[]>`
+          SELECT soh.so_id::text AS so_id
+          FROM agility_so_header soh
+          WHERE soh.sale_type = 'Credit'
+            AND soh.so_status NOT IN ('I', 'C')
+            AND soh.is_deleted = false
+            AND soh.shipto_address_1 ILIKE ${'%' + fragment.split(' ').slice(0, 3).join(' ') + '%'}
+            AND soh.shipto_city ILIKE ${'%' + city + '%'}
+          LIMIT 5
+        `;
+        if (narrowRows.length === 1) {
+          console.log(`[inbound/credits] Address+city match "${fragment}, ${city}" → CM ${narrowRows[0].so_id}`);
+          return narrowRows[0].so_id;
+        }
+      }
+      console.warn(`[inbound/credits] Address "${fragment}" matched ${rows.length} open CMs — ambiguous, storing as UNKNOWN`);
+    } else {
+      console.warn(`[inbound/credits] Address "${fragment}" matched no open CMs`);
+    }
+  } catch (err) {
+    console.error('[inbound/credits] Address lookup failed', err);
+  }
+
+  return 'UNKNOWN';
 }
 
 function getR2Client(): S3Client {
@@ -173,7 +328,12 @@ export async function POST(req: NextRequest) {
   }
 
   const { email_id: emailId, from, subject, text, attachments } = payload.data;
-  const rmaNumber = extractRmaNumber(subject, text, toAddresses);
+  let rmaNumber = extractRmaNumber(subject, text, toAddresses);
+  if (rmaNumber === 'UNKNOWN') {
+    // Subject/body had no CM/RMA number — try matching the job address to an open credit memo.
+    rmaNumber = await lookupRmaByAddress(subject, text);
+    console.log(`[inbound/credits] Address-based RMA lookup result: ${rmaNumber}`);
+  }
   const receivedAt = payload.created_at ? new Date(payload.created_at) : new Date();
 
   if (!attachments?.length) {
@@ -191,22 +351,61 @@ export async function POST(req: NextRequest) {
   const sql = getErpSql();
   let uploaded = 0;
 
-  for (const att of attachments) {
-    const allowed = ['image/jpeg', 'image/png', 'image/gif', 'image/webp', 'application/pdf'];
-    if (!allowed.includes(att.content_type)) continue;
-    // Skip HTML-embedded parts (email signatures, tracking pixels) — they carry a Content-ID
-    // used by the HTML body as a cid: reference. Real file attachments don't have one.
-    if (att.content_id) continue;
+  console.log(`[inbound/credits] ${attachments.length} attachment(s) in payload:`, attachments.map(a => ({
+    filename: a.filename,
+    content_type: a.content_type,
+    content_disposition: a.content_disposition,
+    has_content_id: !!a.content_id,
+    has_inline_content: !!a.content,
+    has_id: !!a.id,
+  })));
 
-    const safeFilename = att.filename.replace(/[^a-zA-Z0-9._-]/g, '_');
-    const timestamp = Date.now();
-    const r2Key = `credits/${rmaNumber}/${timestamp}-${safeFilename}`;
+  // Collect (filename, content_type, buffer) tuples from all attachment sources:
+  //   1. Regular file attachments (image/pdf)
+  //   2. Inline-embedded images that are large enough to be real photos (not logos)
+  //   3. Nested emails (message/rfc822) whose own MIME parts contain images/pdfs
+  const partsToUpload: ExtractedPart[] = [];
+
+  for (const att of attachments) {
+    // ── Nested email ──────────────────────────────────────────────────────────
+    if (att.content_type === 'message/rfc822') {
+      console.log('[inbound/credits] Nested email attachment detected:', att.filename);
+      const rawBuffer = await fetchAttachmentBuffer(att, emailId);
+      if (rawBuffer) {
+        const nested = extractPartsFromRawEmail(rawBuffer.toString('binary'));
+        console.log(`[inbound/credits] Extracted ${nested.length} part(s) from nested email`);
+        partsToUpload.push(...nested);
+      }
+      continue;
+    }
+
+    // ── Regular / inline image or PDF ────────────────────────────────────────
+    if (!ALLOWED_MIME.includes(att.content_type)) continue;
+
+    // Inline-embedded parts have content_id + content_disposition=inline.
+    // Skip only if the size indicates it's a small logo/icon (< 20 KB).
+    // If size is unknown, capture it — better to over-capture than miss a photo.
+    const isInline =
+      !!att.content_id &&
+      (att.content_disposition ?? '').toLowerCase().startsWith('inline');
+    if (isInline && att.size !== undefined && att.size < 20000) {
+      console.log(`[inbound/credits] Skipping small inline part (${att.size}B): ${att.filename}`);
+      continue;
+    }
 
     const buffer = await fetchAttachmentBuffer(att, emailId);
     if (!buffer) {
       console.warn('[inbound/credits] Could not retrieve attachment', att.filename);
       continue;
     }
+    partsToUpload.push({ filename: att.filename, content_type: att.content_type, buffer });
+  }
+
+  for (const part of partsToUpload) {
+    const { filename, content_type, buffer } = part;
+    const safeFilename = filename.replace(/[^a-zA-Z0-9._-]/g, '_');
+    const timestamp = Date.now();
+    const r2Key = `credits/${rmaNumber}/${timestamp}-${safeFilename}`;
 
     // Upload to R2
     try {
@@ -214,14 +413,14 @@ export async function POST(req: NextRequest) {
         Bucket: bucket,
         Key: r2Key,
         Body: buffer,
-        ContentType: att.content_type,
+        ContentType: content_type,
         Metadata: {
           rma_number: rmaNumber,
           email_from: from,
         },
       }));
     } catch (err) {
-      console.error('[inbound/credits] R2 upload failed', att.filename, err);
+      console.error('[inbound/credits] R2 upload failed', filename, err);
       continue;
     }
 
@@ -231,14 +430,14 @@ export async function POST(req: NextRequest) {
         INSERT INTO credit_images
           (rma_number, filename, filepath, email_from, email_subject, received_at, uploaded_at, r2_key)
         VALUES
-          (${rmaNumber}, ${att.filename}, ${r2Key}, ${from}, ${subject ?? null},
+          (${rmaNumber}, ${filename}, ${r2Key}, ${from}, ${subject ?? null},
            ${receivedAt.toISOString()}, NOW(), ${r2Key})
         ON CONFLICT (r2_key) DO UPDATE
           SET uploaded_at = NOW()
       `;
       uploaded++;
     } catch (err) {
-      console.error('[inbound/credits] DB upsert failed', att.filename, err);
+      console.error('[inbound/credits] DB upsert failed', filename, err);
     }
   }
 

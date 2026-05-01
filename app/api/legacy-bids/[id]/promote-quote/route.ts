@@ -75,11 +75,11 @@ export async function POST(_req: NextRequest, context: RouteContext) {
     // Audit
     const userId = parseInt(session.user.id, 10);
     if (!isNaN(userId)) {
-      await db.insert(legacyBidActivity).values({
+      db.insert(legacyBidActivity).values({
         userId,
         bidId,
         action: `Quote ${agilityQuoteId} promoted to Sales Order ${soId}`,
-      });
+      }).catch(() => {});
     }
 
     return NextResponse.json({

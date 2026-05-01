@@ -4,17 +4,22 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import Link from 'next/link';
 import {
   Search, ChevronLeft, ChevronRight, Loader2, Paperclip, FileText,
-  ExternalLink, ChevronDown, ChevronUp, Mail, Upload,
+  ExternalLink, ChevronDown, ChevronUp, Mail, Upload, ArrowUpDown,
+  ArrowUp, ArrowDown,
 } from 'lucide-react';
 import { usePageTracking } from '@/hooks/usePageTracking';
-import type { CreditMemo } from '../api/credits/route';
+import type { CreditMemo, SortCol } from '../api/credits/_shared';
 import type { CreditImage } from '../api/credits/[id]/images/route';
+
+type SortDir = 'asc' | 'desc';
 
 type ApiResponse = {
   credits: CreditMemo[];
   total: number;
   page: number;
   limit: number;
+  sort: SortCol;
+  dir: SortDir;
 };
 
 type ImagesResponse = { images: CreditImage[] };
@@ -177,6 +182,27 @@ function ImagesPanel({ soId, onUploaded }: { soId: string; onUploaded: () => voi
   );
 }
 
+function SortableHeader({
+  col, label, activeCol, activeDir, onSort, className = '',
+}: {
+  col: SortCol; label: string; activeCol: SortCol; activeDir: SortDir;
+  onSort: (col: SortCol) => void; className?: string;
+}) {
+  const active = activeCol === col;
+  const Icon = active ? (activeDir === 'asc' ? ArrowUp : ArrowDown) : ArrowUpDown;
+  return (
+    <th
+      onClick={() => onSort(col)}
+      className={`px-4 py-3 text-xs font-medium text-gray-400 uppercase tracking-wider cursor-pointer select-none hover:text-gray-200 transition-colors ${className}`}
+    >
+      <span className="flex items-center gap-1.5">
+        {label}
+        <Icon className={`w-3 h-3 ${active ? 'text-cyan-400' : 'opacity-40'}`} />
+      </span>
+    </th>
+  );
+}
+
 export default function CreditsClient() {
   usePageTracking();
 
@@ -187,17 +213,19 @@ export default function CreditsClient() {
   const [page, setPage]         = useState(1);
   const [total, setTotal]       = useState(0);
   const [totalPages, setTotalPages] = useState(1);
+  const [sortCol, setSortCol]   = useState<SortCol>('created_date');
+  const [sortDir, setSortDir]   = useState<SortDir>('desc');
   const [expandedSoId, setExpandedSoId] = useState<string | null>(null);
   // Track doc counts locally so the Docs column updates after an upload without a full reload
   const [docCountOverrides, setDocCountOverrides] = useState<Record<string, number>>({});
 
-  const load = useCallback(async (p: number, query: string) => {
+  const load = useCallback(async (p: number, query: string, col: SortCol, dir: SortDir) => {
     setLoading(true);
     setError('');
     setExpandedSoId(null);
     setDocCountOverrides({});
     try {
-      const sp = new URLSearchParams({ page: String(p) });
+      const sp = new URLSearchParams({ page: String(p), sort: col, dir });
       if (query) sp.set('q', query);
       const res = await fetch(`/api/credits?${sp}`);
       if (!res.ok) throw new Error();
@@ -213,16 +241,23 @@ export default function CreditsClient() {
     }
   }, []);
 
-  useEffect(() => { load(1, ''); }, [load]);
+  useEffect(() => { load(1, '', 'created_date', 'desc'); }, [load]);
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    load(1, q);
+    load(1, q, sortCol, sortDir);
   }
 
   function clearSearch() {
     setQ('');
-    load(1, '');
+    load(1, '', sortCol, sortDir);
+  }
+
+  function handleSort(col: SortCol) {
+    const newDir: SortDir = sortCol === col && sortDir === 'desc' ? 'asc' : 'desc';
+    setSortCol(col);
+    setSortDir(newDir);
+    load(1, q, col, newDir);
   }
 
   function toggleImages(soId: string) {
@@ -286,14 +321,14 @@ export default function CreditsClient() {
         <table className="w-full text-sm">
           <thead>
             <tr className="bg-gray-900 border-b border-gray-800 text-left">
-              <th className="px-4 py-3 text-xs font-medium text-gray-400 uppercase tracking-wider">CM #</th>
-              <th className="px-4 py-3 text-xs font-medium text-gray-400 uppercase tracking-wider">Customer</th>
-              <th className="px-4 py-3 text-xs font-medium text-gray-400 uppercase tracking-wider hidden lg:table-cell">Reference / PO</th>
-              <th className="px-4 py-3 text-xs font-medium text-gray-400 uppercase tracking-wider hidden md:table-cell">Location</th>
-              <th className="px-4 py-3 text-xs font-medium text-gray-400 uppercase tracking-wider">Status</th>
-              <th className="px-4 py-3 text-xs font-medium text-gray-400 uppercase tracking-wider hidden sm:table-cell">Branch</th>
-              <th className="px-4 py-3 text-xs font-medium text-gray-400 uppercase tracking-wider">Docs</th>
-              <th className="px-4 py-3 text-xs font-medium text-gray-400 uppercase tracking-wider hidden md:table-cell">Created</th>
+              <SortableHeader col="so_id"        label="CM #"           activeCol={sortCol} activeDir={sortDir} onSort={handleSort} />
+              <SortableHeader col="cust_name"    label="Customer"       activeCol={sortCol} activeDir={sortDir} onSort={handleSort} />
+              <SortableHeader col="reference"    label="Reference / PO" activeCol={sortCol} activeDir={sortDir} onSort={handleSort} className="hidden lg:table-cell" />
+              <SortableHeader col="city"         label="Location"       activeCol={sortCol} activeDir={sortDir} onSort={handleSort} className="hidden md:table-cell" />
+              <SortableHeader col="so_status"    label="Status"         activeCol={sortCol} activeDir={sortDir} onSort={handleSort} />
+              <SortableHeader col="system_id"    label="Branch"         activeCol={sortCol} activeDir={sortDir} onSort={handleSort} className="hidden sm:table-cell" />
+              <SortableHeader col="doc_count"    label="Docs"           activeCol={sortCol} activeDir={sortDir} onSort={handleSort} />
+              <SortableHeader col="created_date" label="Created"        activeCol={sortCol} activeDir={sortDir} onSort={handleSort} className="hidden md:table-cell" />
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-800">
@@ -386,7 +421,7 @@ export default function CreditsClient() {
       {!loading && totalPages > 1 && (
         <div className="flex items-center justify-between mt-4">
           <button
-            onClick={() => load(page - 1, q)}
+            onClick={() => load(page - 1, q, sortCol, sortDir)}
             disabled={page <= 1}
             className="flex items-center gap-1.5 px-3 py-2 text-sm text-gray-400 hover:text-white border border-gray-700 hover:border-gray-600 rounded disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
           >
@@ -394,7 +429,7 @@ export default function CreditsClient() {
           </button>
           <span className="text-sm text-gray-500">Page {page} of {totalPages}</span>
           <button
-            onClick={() => load(page + 1, q)}
+            onClick={() => load(page + 1, q, sortCol, sortDir)}
             disabled={page >= totalPages}
             className="flex items-center gap-1.5 px-3 py-2 text-sm text-gray-400 hover:text-white border border-gray-700 hover:border-gray-600 rounded disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
           >

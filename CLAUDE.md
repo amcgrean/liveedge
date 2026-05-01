@@ -6,6 +6,9 @@ Beisser Lumber Co. internal estimating app (Next.js 15, TypeScript, Tailwind, Dr
 ## Route Reference
 Full API and page route inventory: **`docs/routes.md`** (last audited 2026-04-17, 147 API routes / 77 pages).
 
+## Access Control (in progress)
+Capability-based access control is being rolled out in phases. Phase 1 (foundation) is complete on branch `claude/improve-access-control-b8Le1`. See **`docs/access-control-plan.md`** for the full plan, the 28-capability vocabulary, the role-defaults table, and the Phase 2 handoff. Helpers live in `src/lib/access-control.ts`; menu config in `src/lib/menu-config.ts`. Existing role checks remain in place — capabilities are additive until Phase 4 sweeps them.
+
 ## Architecture Overview
 
 ### Single Database — Supabase (agility-api project)
@@ -26,7 +29,7 @@ All LiveEdge API routes now query the optimized `agility_*` tables instead of th
 | `agility_so_header` | `erp_mirror_so_header` | Has `cust_name`, `cust_code`, `shipto_*` denormalized — no JOIN to customers/shipto needed. Missing `invoice_date`/`ship_date`/`terms` (now in `agility_shipments`). Date column is `created_date` (NOT `order_date`). Credit memos: `sale_type = 'Credit'`, open status = `'B'` (blank). |
 | `agility_so_lines` | `erp_mirror_so_detail` | Has `item_code`, `handling_code` inline — no JOIN to items needed for most queries |
 | `agility_customers` | `erp_mirror_cust` + `erp_mirror_cust_shipto` | One row per ship-to address (seq_num≥1). Use `GROUP BY cust_code` or `DISTINCT ON` to get one row per customer. **`rep_1` is NOT a column here** — it lives on `agility_so_header`. |
-| `agility_items` | `erp_mirror_item` + `erp_mirror_item_branch` | Has `handling_code`, `qty_on_hand`, `default_location` inline. One row per item per branch (`system_id`) |
+| `agility_items` | `erp_mirror_item` + `erp_mirror_item_branch` | Item master — one row per item. Has `product_major_code`, `product_major`, `product_minor_code`, `product_minor`. Branch-specific stock data (qty_on_hand, default_location, handling_code, active_flag, stock, system_id) is in `agility_item_branch` — join on `agility_item_branch.item_code = agility_items.item`. **Do NOT filter by branch on `agility_items`** — use `agility_item_branch.system_id`. `agility_items.system_id` = company code ('00CO'), not branch. |
 | `agility_shipments` | `erp_mirror_shipments_header` | Same fields. Source for `invoice_date`, `ship_date` per SO |
 | `agility_wo_header` | `erp_mirror_wo_header` | `source_id` is INTEGER (cast with `::text` for joins). Has `item_code`, `description` inline |
 | `agility_picks` | `erp_mirror_pick_header` + `erp_mirror_pick_detail` | Combined — one row per pick line. `tran_id` = SO number, `tran_type` = 'SO' |
@@ -295,7 +298,7 @@ Full WH-Tracker (Python/Flask) migration into LiveEdge. All modules ported:
 - **Sales Hub** (`/sales`): KPI dashboard + order status table. API: `/api/sales/metrics`, `/api/sales/orders`
 - **Sales Transactions** (`/sales/transactions`): full-screen order search workspace — all statuses, date range, sale type
 - **Purchase History** (`/sales/history`): invoiced/closed order lookup with customer filter. API: `/api/sales/history`
-- **Products & Stock** (`/sales/products`): item catalog search via `erp_mirror_item` + `erp_mirror_item_branch`. API: `/api/sales/products`
+- **Products & Stock** (`/sales/products`): product major/minor tile browse + FTS item search. Tiles from `agility_items` (product hierarchy); stock data from `agility_item_branch` (JOIN on item_code). Branch scoped via nav cookie. API: `/api/sales/products`, `/api/sales/products/groups`, `/api/sales/products/majors`
 - **Sales Reports** (`/sales/reports`): daily orders chart, top customers, by sale type/ship via, status breakdown. API: `/api/sales/reports`
 - **Customer Profile** (`/sales/customers/[code]`): open orders, history, ship-to addresses in tabs. API: `/api/sales/customers/[code]`
 - **Supervisor Dashboard** (`/supervisor`): picker status board (active/assigned/idle), 30s refresh. API: `/api/supervisor/pickers`
@@ -311,7 +314,7 @@ Full WH-Tracker (Python/Flask) migration into LiveEdge. All modules ported:
 - **Customer Search** (`/sales/customers`): search `erp_mirror_cust`, link to profile. API: `/api/sales/customers`
 - **Customer Profile** (`/sales/customers/[code]`): details, 90-day orders, ship-to addresses. API: `/api/sales/customers/[code]`
 - **Customer Notes** (`/sales/customers/[code]` Notes tab): read/write from `public.customer_notes` table via `getErpSql()`. API: `/api/sales/customers/[code]/notes`
-- **Products & Stock** (`/sales/products`): search `erp_mirror_item` + `erp_mirror_item_branch`. API: `/api/sales/products`
+- **Products & Stock** (`/sales/products`): product major/minor tile browse + FTS search. See WH-Tracker migration section for full detail.
 - **Purchase History** (`/sales/history`): orders with expanded filters (status, date range, branch). Reuses `/api/sales/orders`
 - **Sales Reports** (`/sales/reports`): KPI cards + status breakdown + top customers. Reuses `/api/sales/metrics`
 
@@ -440,6 +443,17 @@ Branch: `claude/review-customer-route-api-jVgJG`
 - Stripped AR sub-queries from `GET /api/dispatch/deliveries` and `GET /api/dispatch/orders/[so_number]/timeline`
 - Removed `balance`/`credit_limit` from `GET /api/sales/customers` list query
 - `/api/sales/customers/[code]/ar` and `/ar-live` routes preserved for future accounting view
+
+#### Products & Stock Redesign (2026-04-28) — COMPLETE
+Branch: `claude/product-group-tiles-kWvWT` (PR #154)
+
+- **`/sales/products`** redesigned to auto-load product major tiles on page open, drill down to minor tiles, then item list. FTS search still works across all items regardless of browse position.
+- **Data sources**: product hierarchy (`product_major_code`, `product_major`, `product_minor_code`, `product_minor`) from `agility_items`; stock data (qty_on_hand, default_location, handling_code, active_flag, stock) from `agility_item_branch` joined on `item_code = item`.
+- **Branch scoping**: nav cookie (`beisser-branch`) read server-side via `getSelectedBranchCode()` — no branch input on the page. Branch filter goes on `agility_item_branch.system_id` (NOT `agility_items.system_id` which is always the company code `'00CO'`).
+- **Tile query pattern**: `SELECT product_major_code FROM agility_items WHERE item IN (SELECT item_code FROM agility_item_branch WHERE system_id=$1 AND active_flag=true AND stock=true AND is_deleted=false) GROUP BY product_major_code`
+- **Item list pattern**: `JOIN agility_item_branch bi ON bi.item_code = ai.item AND bi.system_id=$1` — branch + active/stock conditions in JOIN ON clause; product hierarchy + FTS conditions in WHERE on `ai.*`.
+- **Indexes applied** (`db/migrations/0005_products_search_indexes.sql`): GIN FTS on `agility_items`; `(product_major_code, product_minor_code)` on `agility_items`; `(system_id, item_code)` on `agility_item_branch`.
+- **Key files**: `app/sales/products/ProductsClient.tsx`, `app/api/sales/products/_shared.ts`, `app/api/sales/products/groups/route.ts`, `app/api/sales/products/majors/route.ts`, `app/api/sales/products/route.ts`.
 
 #### Flask Sunset — NOT STARTED
 - DNS routing, archive Flask app

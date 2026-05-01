@@ -31,6 +31,22 @@ function fmtQty(n: number): string {
   return new Intl.NumberFormat('en-US', { maximumFractionDigits: 1 }).format(n);
 }
 
+function deltaClass(base: number, compare: number): string {
+  if (base > compare) return 'text-emerald-400';
+  if (base < compare) return 'text-red-400';
+  return 'text-white';
+}
+
+function gmDeltaClass(salesBase: number, gpBase: number, salesCompare: number, gpCompare: number): string {
+  const base = salesBase !== 0 ? (gpBase / salesBase) * 100 : null;
+  const cmp  = salesCompare !== 0 ? (gpCompare / salesCompare) * 100 : null;
+  if (base === null) return 'text-slate-300';
+  if (cmp === null)  return 'text-emerald-400';
+  if (base > cmp + 0.005) return 'text-emerald-400';
+  if (base < cmp - 0.005) return 'text-red-400';
+  return 'text-slate-300';
+}
+
 
 function LoadingRow({ colSpan = 7, label }: { colSpan?: number; label: string }) {
   return (
@@ -249,9 +265,9 @@ export default function ProductMajorTable({ rows, params, baseYear, compareYear,
                   <span>{r.productMajor}</span>
                   <span className="text-slate-500 italic text-xs ml-0.5">({r.productMajorCode})</span>
                 </td>
-                <td className="py-2 text-right font-mono tabular-nums text-white pr-3">{fmt$(r.salesBase)}</td>
-                <td className="py-2 text-right font-mono tabular-nums text-white pr-3">{fmt$(r.gpBase)}</td>
-                <td className="py-2 text-right font-mono tabular-nums text-cyan-400 pr-3">{fmtPct(r.salesBase, r.gpBase)}</td>
+                <td className={`py-2 text-right font-mono tabular-nums pr-3 ${deltaClass(r.salesBase, r.salesCompare)}`}>{fmt$(r.salesBase)}</td>
+                <td className={`py-2 text-right font-mono tabular-nums pr-3 ${deltaClass(r.gpBase, r.gpCompare)}`}>{fmt$(r.gpBase)}</td>
+                <td className={`py-2 text-right font-mono tabular-nums pr-3 ${gmDeltaClass(r.salesBase, r.gpBase, r.salesCompare, r.gpCompare)}`}>{fmtPct(r.salesBase, r.gpBase)}</td>
                 <td className="py-2 text-right font-mono tabular-nums text-slate-400 pr-3">{fmt$(r.salesCompare)}</td>
                 <td className="py-2 text-right font-mono tabular-nums text-slate-400 pr-3">{fmt$(r.gpCompare)}</td>
                 <td className="py-2 text-right font-mono tabular-nums text-slate-400">{fmtPct(r.salesCompare, r.gpCompare)}</td>
@@ -283,9 +299,9 @@ export default function ProductMajorTable({ rows, params, baseYear, compareYear,
                         <span>{m.productMinor}</span>
                         <span className="text-slate-500 italic ml-0.5">({m.productMinorCode})</span>
                       </td>
-                      <td className="py-1.5 text-right font-mono tabular-nums text-slate-300 text-xs pr-3">{fmt$(m.salesBase)}</td>
-                      <td className="py-1.5 text-right font-mono tabular-nums text-slate-300 text-xs pr-3">{fmt$(m.gpBase)}</td>
-                      <td className="py-1.5 text-right font-mono tabular-nums text-cyan-500/70 text-xs pr-3">{fmtPct(m.salesBase, m.gpBase)}</td>
+                      <td className={`py-1.5 text-right font-mono tabular-nums text-xs pr-3 ${deltaClass(m.salesBase, m.salesCompare)}`}>{fmt$(m.salesBase)}</td>
+                      <td className={`py-1.5 text-right font-mono tabular-nums text-xs pr-3 ${deltaClass(m.gpBase, m.gpCompare)}`}>{fmt$(m.gpBase)}</td>
+                      <td className={`py-1.5 text-right font-mono tabular-nums text-xs pr-3 ${gmDeltaClass(m.salesBase, m.gpBase, m.salesCompare, m.gpCompare)}`}>{fmtPct(m.salesBase, m.gpBase)}</td>
                       <td className="py-1.5 text-right font-mono tabular-nums text-slate-500 text-xs pr-3">{fmt$(m.salesCompare)}</td>
                       <td className="py-1.5 text-right font-mono tabular-nums text-slate-500 text-xs pr-3">{fmt$(m.gpCompare)}</td>
                       <td className="py-1.5 text-right font-mono tabular-nums text-slate-500 text-xs">{fmtPct(m.salesCompare, m.gpCompare)}</td>
@@ -392,9 +408,9 @@ export default function ProductMajorTable({ rows, params, baseYear, compareYear,
           {/* Total row */}
           <tr className="border-t-2 border-slate-600 font-semibold">
             <td className="py-2 text-slate-100">Total</td>
-            <td className="py-2 text-right font-mono tabular-nums text-white pr-3">{fmt$(totalBase)}</td>
-            <td className="py-2 text-right font-mono tabular-nums text-white pr-3">{fmt$(totalGpBase)}</td>
-            <td className="py-2 text-right font-mono tabular-nums text-cyan-400 pr-3">{fmtPct(totalBase, totalGpBase)}</td>
+            <td className={`py-2 text-right font-mono tabular-nums pr-3 ${deltaClass(totalBase, totalCompare)}`}>{fmt$(totalBase)}</td>
+            <td className={`py-2 text-right font-mono tabular-nums pr-3 ${deltaClass(totalGpBase, totalGpCompare)}`}>{fmt$(totalGpBase)}</td>
+            <td className={`py-2 text-right font-mono tabular-nums pr-3 ${gmDeltaClass(totalBase, totalGpBase, totalCompare, totalGpCompare)}`}>{fmtPct(totalBase, totalGpBase)}</td>
             <td className="py-2 text-right font-mono tabular-nums text-slate-400 pr-3">{fmt$(totalCompare)}</td>
             <td className="py-2 text-right font-mono tabular-nums text-slate-400 pr-3">{fmt$(totalGpCompare)}</td>
             <td className="py-2 text-right font-mono tabular-nums text-slate-400">{fmtPct(totalCompare, totalGpCompare)}</td>

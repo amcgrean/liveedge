@@ -10,6 +10,7 @@ import {
   DaysToPayBullet,
   fmtCurrency0,
   fmtCurrencyCompact,
+  fmtPct1FromPct,
 } from '@/components/charts';
 import type {
   ThreeYearEntry,
@@ -59,7 +60,7 @@ export function ThreeYearChart({
   );
 }
 
-/** Sale-type Pareto. Bars desc, cumulative-% line, 80% reference. */
+/** Sale-type chart. Bars desc by sales, line is GP%. */
 export function SaleTypeParetoChart({
   rows,
   baseYear,
@@ -67,19 +68,26 @@ export function SaleTypeParetoChart({
   rows: SaleTypeRow[];
   baseYear?: number;
 }) {
-  const paretoRows = rows
+  const data = rows
     .filter((s) => !s.isExcluded && s.salesBase > 0)
-    .map((s) => ({ label: s.category, value: s.salesBase }));
-  if (paretoRows.length === 0) return null;
+    .sort((a, b) => b.salesBase - a.salesBase)
+    .map((s) => ({
+      label: s.category,
+      bar: s.salesBase,
+      line: s.salesBase !== 0 ? (s.gpBase / s.salesBase) * 100 : 0,
+    }));
+  if (data.length === 0) return null;
   return (
     <ChartCard
       title="Sales Mix by Type"
-      subtitle="Bars are sales, line is cumulative %"
+      subtitle="Bars are sales, line is GP%"
     >
-      <ParetoChart
-        rows={paretoRows}
-        format={fmtCurrencyCompact}
-        valueLabel={baseYear ? `${baseYear} Sales` : 'Sales'}
+      <ComboBarLineChart
+        data={data}
+        barLabel={baseYear ? `${baseYear} Sales` : 'Sales'}
+        lineLabel="GM %"
+        barFormat={fmtCurrencyCompact}
+        lineFormat={fmtPct1FromPct}
         height={300}
       />
     </ChartCard>
@@ -203,25 +211,34 @@ export function RepComparisonChart({
   );
 }
 
-/** Branch contribution Pareto (sales) for the Overview page. */
+/** Branch contribution — bars by sales descending, line is GP%. */
 export function BranchContributionPareto({
   rows,
 }: {
-  rows: { branchId: string; salesBase: number }[];
+  rows: { branchId: string; salesBase: number; gpBase: number }[];
 }) {
-  const paretoRows = rows
+  const data = rows
     .filter((b) => b.salesBase > 0)
+    .sort((a, b) => b.salesBase - a.salesBase)
     .map((b) => ({
       label: BRANCH_LABELS[b.branchId] ?? b.branchId,
-      value: b.salesBase,
+      bar: b.salesBase,
+      line: b.salesBase !== 0 ? (b.gpBase / b.salesBase) * 100 : 0,
     }));
-  if (paretoRows.length === 0) return null;
+  if (data.length === 0) return null;
   return (
     <ChartCard
       title="Branch Contribution"
-      subtitle="Sales share by branch with cumulative %"
+      subtitle="Sales by branch with GP% line"
     >
-      <ParetoChart rows={paretoRows} format={fmtCurrencyCompact} valueLabel="Sales" height={260} />
+      <ComboBarLineChart
+        data={data}
+        barLabel="Sales"
+        lineLabel="GM %"
+        barFormat={fmtCurrencyCompact}
+        lineFormat={fmtPct1FromPct}
+        height={260}
+      />
     </ChartCard>
   );
 }

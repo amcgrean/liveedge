@@ -26,7 +26,7 @@ interface LogEntry {
   timestamp: string | null;
 }
 
-const EVENT_TYPES = ['bid_created', 'bid_completed', 'bid_updated', 'design_created', 'design_updated', 'ewp_created'];
+const EVENT_TYPES = ['bid_created', 'bid_completed', 'bid_updated', 'design_created', 'design_updated', 'ewp_created', 'geocode_nightly_summary', 'geocode_nightly_error'];
 const RECIPIENT_TYPES = ['email', 'user', 'branch_all'];
 
 export default function NotificationsClient() {

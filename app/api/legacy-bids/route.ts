@@ -184,14 +184,10 @@ export async function POST(req: NextRequest) {
       })
       .returning();
 
-    // Log activity
+    // Log activity — fire-and-forget; don't block response on FK mismatch
     const userId = parseInt(session.user.id, 10);
     if (!isNaN(userId)) {
-      await db.insert(legacyBidActivity).values({
-        userId,
-        bidId: bid.id,
-        action: 'created',
-      });
+      db.insert(legacyBidActivity).values({ userId, bidId: bid.id, action: 'created' }).catch(() => {});
     }
 
     return NextResponse.json({ bid }, { status: 201 });

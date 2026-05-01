@@ -22,6 +22,12 @@ function gmPct(sales: number, gp: number): number | null {
   return (gp / sales) * 100;
 }
 
+function deltaClass(base: number, compare: number): string {
+  if (base > compare) return 'text-emerald-400';
+  if (base < compare) return 'text-red-400';
+  return 'text-white';
+}
+
 function gmColor(baseSales: number, baseGp: number, cmpSales: number, cmpGp: number): string {
   const base = gmPct(baseSales, baseGp);
   const cmp  = gmPct(cmpSales, cmpGp);
@@ -123,8 +129,8 @@ export default function SaleTypeTable({ rows, baseYear, compareYear, exportFilen
                     </span>
                   )}
                 </td>
-                <td className="py-2 text-right font-mono tabular-nums text-white pr-3">{fmt$(r.salesBase)}</td>
-                <td className="py-2 text-right font-mono tabular-nums text-white pr-3">{fmt$(r.gpBase)}</td>
+                <td className={`py-2 text-right font-mono tabular-nums pr-3 ${deltaClass(r.salesBase, r.salesCompare)}`}>{fmt$(r.salesBase)}</td>
+                <td className={`py-2 text-right font-mono tabular-nums pr-3 ${deltaClass(r.gpBase, r.gpCompare)}`}>{fmt$(r.gpBase)}</td>
                 <td className={`py-2 text-right font-mono tabular-nums pr-3 ${gmColor(r.salesBase, r.gpBase, r.salesCompare, r.gpCompare)}`}>{fmtPct(r.salesBase, r.gpBase)}</td>
                 <td className="py-2 text-right font-mono tabular-nums text-slate-400 pr-3">{fmt$(r.salesCompare)}</td>
                 <td className="py-2 text-right font-mono tabular-nums text-slate-400 pr-3">{fmt$(r.gpCompare)}</td>
@@ -133,8 +139,8 @@ export default function SaleTypeTable({ rows, baseYear, compareYear, exportFilen
             ))}
             <tr className="border-t-2 border-slate-600 font-semibold">
               <td className="py-2 text-slate-200">Total</td>
-              <td className="py-2 text-right font-mono tabular-nums text-white pr-3">{fmt$(totalBase)}</td>
-              <td className="py-2 text-right font-mono tabular-nums text-white pr-3">{fmt$(totalGpBase)}</td>
+              <td className={`py-2 text-right font-mono tabular-nums pr-3 ${deltaClass(totalBase, totalCompare)}`}>{fmt$(totalBase)}</td>
+              <td className={`py-2 text-right font-mono tabular-nums pr-3 ${deltaClass(totalGpBase, totalGpCompare)}`}>{fmt$(totalGpBase)}</td>
               <td className={`py-2 text-right font-mono tabular-nums pr-3 ${gmColor(totalBase, totalGpBase, totalCompare, totalGpCompare)}`}>{fmtPct(totalBase, totalGpBase)}</td>
               <td className="py-2 text-right font-mono tabular-nums text-slate-400 pr-3">{fmt$(totalCompare)}</td>
               <td className="py-2 text-right font-mono tabular-nums text-slate-400 pr-3">{fmt$(totalGpCompare)}</td>

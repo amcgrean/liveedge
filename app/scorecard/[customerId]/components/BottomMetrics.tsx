@@ -34,21 +34,31 @@ function fmtDays(n: number | null): string {
   return `${n} days`;
 }
 
+function deltaClass(base: number | null, compare: number | null, higherIsBetter = true): string {
+  if (base === null || compare === null || compare === 0) return 'text-white';
+  const better = higherIsBetter ? base > compare : base < compare;
+  const worse  = higherIsBetter ? base < compare : base > compare;
+  if (better) return 'text-emerald-400';
+  if (worse)  return 'text-red-400';
+  return 'text-white';
+}
+
 interface MetricRowProps {
   label: string;
   base: string;
   compare: string;
   tooltip?: string;
+  baseClass?: string;
 }
 
-function MetricRow({ label, base, compare, tooltip }: MetricRowProps) {
+function MetricRow({ label, base, compare, tooltip, baseClass = 'text-white' }: MetricRowProps) {
   return (
     <tr className="border-b border-slate-800">
       <td className="py-2 text-slate-300 text-sm" title={tooltip}>
         {label}
         {tooltip && <span className="ml-1 text-slate-500 text-xs cursor-help">(?)</span>}
       </td>
-      <td className="py-2 text-right font-mono tabular-nums text-white text-sm pr-4">{base}</td>
+      <td className={`py-2 text-right font-mono tabular-nums text-sm pr-4 ${baseClass}`}>{base}</td>
       <td className="py-2 text-right font-mono tabular-nums text-slate-400 text-sm">{compare}</td>
     </tr>
   );
@@ -100,62 +110,77 @@ export default function BottomMetrics({ kpis, daysToPay, baseYear, compareYear }
             label="Gross Sales (before CMs)"
             base={fmt$(b.grossSales)}
             compare={fmt$(c.grossSales)}
+            baseClass={deltaClass(b.grossSales, c.grossSales)}
           />
           <MetricRow
             label="Credit Memos"
             base={fmt$(b.cmSales)}
             compare={fmt$(c.cmSales)}
+            baseClass={deltaClass(b.cmSales, c.cmSales, false)}
           />
           <MetricRow
             label="CMs as % of Sales"
             base={cmPctBase !== null ? `${(cmPctBase * 100).toFixed(2)}%` : '—'}
             compare={cmPctCompare !== null ? `${(cmPctCompare * 100).toFixed(2)}%` : '—'}
+            baseClass={deltaClass(cmPctBase, cmPctCompare, false)}
           />
           <MetricRow
             label="# Sales Orders"
             base={fmtN(b.soCount)}
             compare={fmtN(c.soCount)}
+            baseClass={deltaClass(b.soCount, c.soCount)}
           />
           <MetricRow
             label="# Credit Memos"
             base={fmtN(b.cmCount)}
             compare={fmtN(c.cmCount)}
+            baseClass={deltaClass(b.cmCount, c.cmCount, false)}
           />
           <MetricRow
             label="# CMs / # SOs"
             base={cmRatioBase !== null ? cmRatioBase.toFixed(3) : '—'}
             compare={cmRatioCompare !== null ? cmRatioCompare.toFixed(3) : '—'}
+            baseClass={deltaClass(cmRatioBase, cmRatioCompare, false)}
           />
           <MetricRow
             label="Avg Sales Order $"
             base={fmtAvg(avgSoBase)}
             compare={fmtAvg(avgSoCompare)}
+            baseClass={deltaClass(avgSoBase, avgSoCompare)}
           />
           <MetricRow
             label="Avg Sales Order Weight (lbs)"
             base={avgWtBase !== null ? Math.round(avgWtBase).toLocaleString() : '—'}
             compare={avgWtCompare !== null ? Math.round(avgWtCompare).toLocaleString() : '—'}
+            baseClass={deltaClass(avgWtBase, avgWtCompare)}
           />
           <MetricRow
             label="Non-Stock Sales $"
             base={fmt$(b.nsSales)}
             compare={fmt$(c.nsSales)}
+            baseClass={deltaClass(b.nsSales, c.nsSales)}
           />
           <MetricRow
             label="Non-Stock GP $"
             base={fmt$(b.nsGp)}
             compare={fmt$(c.nsGp)}
+            baseClass={deltaClass(b.nsGp, c.nsGp)}
           />
           <MetricRow
             label="Non-Stock GP %"
             base={fmtPct(b.nsGp, b.nsSales)}
             compare={fmtPct(c.nsGp, c.nsSales)}
+            baseClass={deltaClass(
+              b.nsSales !== null && b.nsSales !== 0 && b.nsGp !== null ? b.nsGp / b.nsSales : null,
+              c.nsSales !== null && c.nsSales !== 0 && c.nsGp !== null ? c.nsGp / c.nsSales : null,
+            )}
           />
           <MetricRow
             label="Average Days to Pay"
             base={fmtDays(daysToPay.base)}
             compare={fmtDays(daysToPay.compare)}
             tooltip="Based on payment history from AR records"
+            baseClass={deltaClass(daysToPay.base, daysToPay.compare, false)}
           />
           <MetricRow
             label="% Quotes Won"
@@ -167,6 +192,10 @@ export default function BottomMetrics({ kpis, daysToPay, baseYear, compareYear }
             label="Value Add % of Sales"
             base={fmtPct(b.vaSales, b.sales)}
             compare={fmtPct(c.vaSales, c.sales)}
+            baseClass={deltaClass(
+              b.sales !== null && b.sales !== 0 && b.vaSales !== null ? b.vaSales / b.sales : null,
+              c.sales !== null && c.sales !== 0 && c.vaSales !== null ? c.vaSales / c.sales : null,
+            )}
           />
         </tbody>
       </table>
