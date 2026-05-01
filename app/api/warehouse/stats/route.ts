@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { requireCapability } from '../../../../src/lib/access-control';
+import { requireCapability, hasCapability } from '../../../../src/lib/access-control';
 import { fetchBranchStats } from '../../../../src/lib/warehouse-stats';
 export type { BranchStats } from '../../../../src/lib/warehouse-stats';
 
@@ -11,9 +11,7 @@ export async function GET() {
   if (authResult instanceof NextResponse) return authResult;
   const session = authResult;
 
-  const isAdmin =
-    session.user.role === 'admin' ||
-    (session.user.roles ?? []).some((r: string) => ['admin', 'supervisor', 'ops'].includes(r));
+  const isAdmin = hasCapability(session, 'branch.all');
 
   try {
     const result = await fetchBranchStats(isAdmin, session.user.branch);

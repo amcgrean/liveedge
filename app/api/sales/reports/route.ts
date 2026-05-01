@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { requireCapability } from '../../../../src/lib/access-control';
+import { requireCapability, hasCapability } from '../../../../src/lib/access-control';
 import { getErpSql } from '../../../../db/supabase';
 
 // GET /api/sales/reports?branch=&period=30
@@ -11,9 +11,7 @@ export async function GET(req: NextRequest) {
   const { searchParams } = req.nextUrl;
   const period = Math.max(7, Math.min(365, parseInt(searchParams.get('period') ?? '30', 10) || 30));
 
-  const isAdmin =
-    session.user.role === 'admin' ||
-    (session.user.roles ?? []).some((r) => ['admin', 'supervisor', 'ops', 'sales'].includes(r));
+  const isAdmin = hasCapability(session, 'branch.all');
 
   const effectiveBranch = isAdmin
     ? (searchParams.get('branch') ?? '')

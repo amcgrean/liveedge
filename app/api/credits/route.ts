@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { requireCapability } from '../../../src/lib/access-control';
+import { requireCapability, hasCapability } from '../../../src/lib/access-control';
 import { getErpSql } from '../../../db/supabase';
 import { ALLOWED_SORTS } from './_shared';
 import type { CreditMemo, SortCol } from './_shared';
@@ -42,9 +42,7 @@ export async function GET(req: NextRequest) {
     ? `${SORT_SQL[sort]} ${dir} ${nulls}`
     : `${SORT_SQL[sort]} ${dir} ${nulls}, soh.so_id DESC`;
 
-  const isAdmin =
-    session.user.role === 'admin' ||
-    (session.user.roles ?? []).some((r) => ['admin', 'supervisor', 'ops'].includes(r));
+  const isAdmin = hasCapability(session, 'branch.all');
   const userBranch      = session.user.branch ?? '';
   const effectiveBranch = isAdmin ? branch : userBranch;
 

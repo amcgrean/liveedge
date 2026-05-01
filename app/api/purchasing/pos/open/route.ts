@@ -1,14 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { auth } from '../../../../../auth';
+import { requireCapability, hasCapability } from '../../../../../src/lib/access-control';
 import { getErpSql } from '../../../../../db/supabase';
 import { type OpenPO, RECEIPT_COUNT_SUBQUERY, CLOSED_PO_STATUSES } from '../../../../../src/lib/purchasing';
 
 export async function GET(req: NextRequest) {
-  const session = await auth();
-  if (!session?.user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  const authResult = await requireCapability('purchasing.view');
+  if (authResult instanceof NextResponse) return authResult;
+  const session = authResult;
 
-  const isAdmin = session.user.role === 'admin' ||
-    (session.user.roles ?? []).some((r) => ['supervisor', 'admin'].includes(r));
+  const isAdmin = hasCapability(session, 'branch.all');
 
   // Admins can pass ?branch= and ?supplier_code= to filter; others are scoped to their own branch
   const branchParam   = req.nextUrl.searchParams.get('branch') ?? '';

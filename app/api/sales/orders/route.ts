@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { requireCapability } from '../../../../src/lib/access-control';
+import { requireCapability, hasCapability } from '../../../../src/lib/access-control';
 import { getErpSql } from '../../../../db/supabase';
 
 export interface SalesOrder {
@@ -37,9 +37,7 @@ export async function GET(req: NextRequest) {
   const rep1Param = (searchParams.get('rep1') ?? '').trim().toUpperCase();
   const rep3Param = (searchParams.get('rep3') ?? '').trim().toUpperCase();
 
-  const isAdmin =
-    session.user.role === 'admin' ||
-    (session.user.roles ?? []).some((r) => ['admin', 'supervisor', 'ops', 'sales'].includes(r));
+  const isAdmin = hasCapability(session, 'branch.all');
 
   const effectiveBranch = isAdmin ? branchParam : (session.user.branch ?? '');
   const offset = (page - 1) * limit;

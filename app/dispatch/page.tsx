@@ -1,12 +1,10 @@
-import { requirePageAccess } from '../../src/lib/access-control';
+import { requirePageAccess, hasCapability } from '../../src/lib/access-control';
 import DispatchClient from './DispatchClient';
 
 export default async function DispatchPage() {
   const session = await requirePageAccess('dispatch.view', 'dispatch.manage');
 
-  const isAdmin =
-    session.user.role === 'admin' ||
-    (session.user.roles ?? []).some((r) => ['admin', 'management', 'supervisor', 'ops'].includes(r));
+  const isAdmin = hasCapability(session, 'branch.all');
 
   return (
     <DispatchClient

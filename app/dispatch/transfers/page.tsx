@@ -9,9 +9,7 @@ export default async function TransfersPage() {
   const session = await auth();
   if (!session?.user) redirect('/login');
 
-  const isAdmin =
-    session.user.role === 'admin' ||
-    (session.user.roles ?? []).some((r) => ['admin', 'supervisor', 'ops', 'dispatch'].includes(r));
+  const isAdmin = hasCapability(session, 'branch.all');
 
   return (
     <div className="min-h-screen bg-gray-950">

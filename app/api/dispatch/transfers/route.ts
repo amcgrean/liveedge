@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { requireCapability } from '../../../../src/lib/access-control';
+import { requireCapability, hasCapability } from '../../../../src/lib/access-control';
 import { getErpSql } from '../../../../db/supabase';
 
 // Sale type used by Agility for inter-branch transfer SOs and POs.
@@ -40,9 +40,7 @@ export async function GET(req: NextRequest) {
   if (authResult instanceof NextResponse) return authResult;
   const session = authResult;
 
-  const isAdmin =
-    session.user.role === 'admin' ||
-    (session.user.roles ?? []).some((r) => ['admin', 'supervisor', 'ops', 'dispatch'].includes(r));
+  const isAdmin = hasCapability(session, 'branch.all');
 
   const branchParam = req.nextUrl.searchParams.get('branch') ?? '';
   const effectiveBranch = isAdmin ? branchParam : (session.user.branch ?? '');

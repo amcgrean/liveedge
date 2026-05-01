@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { requireCapability } from '../../../../src/lib/access-control';
+import { requireCapability, hasCapability } from '../../../../src/lib/access-control';
 import { getErpSql } from '../../../../db/supabase';
 
 export interface OpenWorkOrder {
@@ -30,9 +30,7 @@ export async function GET(req: NextRequest) {
   const deptParam = searchParams.get('department') ?? '';
   const limit = Math.min(1000, parseInt(searchParams.get('limit') ?? '500', 10) || 500);
 
-  const isAdmin =
-    session.user.role === 'admin' ||
-    (session.user.roles ?? []).some((r) => ['admin', 'supervisor', 'ops'].includes(r));
+  const isAdmin = hasCapability(session, 'branch.all');
 
   const effectiveBranch = isAdmin ? branchParam : (session.user.branch ?? '');
 

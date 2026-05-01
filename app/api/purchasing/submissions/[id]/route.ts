@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { auth } from '../../../../../auth';
+import { requireCapability } from '../../../../../src/lib/access-control';
 import { getDb } from '../../../../../db/index';
 import { poSubmissions } from '../../../../../db/schema';
 import { eq } from 'drizzle-orm';
@@ -7,8 +7,8 @@ import { eq } from 'drizzle-orm';
 type RouteContext = { params: Promise<{ id: string }> };
 
 export async function GET(_req: NextRequest, context: RouteContext) {
-  const session = await auth();
-  if (!session?.user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  const authResult = await requireCapability('purchasing.receive', 'purchasing.review', 'purchasing.view');
+  if (authResult instanceof NextResponse) return authResult;
 
   const { id } = await context.params;
   const db = getDb();
@@ -19,13 +19,9 @@ export async function GET(_req: NextRequest, context: RouteContext) {
 }
 
 export async function PATCH(req: NextRequest, context: RouteContext) {
-  const session = await auth();
-  if (!session?.user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-
-  // Review actions require supervisor or admin
-  const canReview = session.user.role === 'admin' ||
-    (session.user.roles ?? []).some((r) => ['supervisor', 'ops', 'admin'].includes(r));
-  if (!canReview) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+  const authResult = await requireCapability('purchasing.review');
+  if (authResult instanceof NextResponse) return authResult;
+  const session = authResult;
 
   const { id } = await context.params;
   const body = await req.json() as {

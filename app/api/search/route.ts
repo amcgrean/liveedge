@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { requireCapability } from '../../../src/lib/access-control';
+import { requireCapability, hasCapability } from '../../../src/lib/access-control';
 import { getErpSql } from '../../../db/supabase';
 
 export interface SearchResult {
@@ -20,9 +20,7 @@ export async function GET(req: NextRequest) {
   const q = (req.nextUrl.searchParams.get('q') ?? '').trim();
   if (q.length < 2) return NextResponse.json({ results: [] });
 
-  const isAdmin =
-    session.user.role === 'admin' ||
-    (session.user.roles ?? []).some((r: string) => ['admin', 'supervisor', 'ops'].includes(r));
+  const isAdmin = hasCapability(session, 'branch.all');
 
   const userBranch = session.user.branch ?? null;
   const branchFilter = isAdmin ? null : userBranch;

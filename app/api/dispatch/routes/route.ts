@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { requireCapability } from '../../../../src/lib/access-control';
+import { requireCapability, hasCapability } from '../../../../src/lib/access-control';
 import { getErpSql } from '../../../../db/supabase';
 
 // GET /api/dispatch/routes?date=2026-04-02&branch=20GR
@@ -12,9 +12,7 @@ export async function GET(req: NextRequest) {
   const dateParam = searchParams.get('date') ?? new Date().toISOString().slice(0, 10);
   const branchParam = searchParams.get('branch') ?? '';
 
-  const isAdmin =
-    session.user.role === 'admin' ||
-    (session.user.roles ?? []).some((r) => ['admin', 'supervisor', 'ops'].includes(r));
+  const isAdmin = hasCapability(session, 'branch.all');
   const effectiveBranch = isAdmin ? branchParam : (session.user.branch ?? '');
   const routeDate = /^\d{4}-\d{2}-\d{2}$/.test(dateParam) ? dateParam : new Date().toISOString().slice(0, 10);
 

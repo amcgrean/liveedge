@@ -1,5 +1,4 @@
-import { redirect } from 'next/navigation';
-import { auth } from '../../../auth';
+import { requirePageAccess, hasCapability } from '../../../src/lib/access-control';
 import { getDb } from '../../../db/index';
 import { poSubmissions } from '../../../db/schema';
 import { and, desc, eq, gte } from 'drizzle-orm';
@@ -10,21 +9,14 @@ export default async function ReviewPage({
 }: {
   searchParams: Promise<{ status?: string; branch?: string; days?: string }>;
 }) {
-  const session = await auth();
-  if (!session?.user) redirect('/login');
-
-  const canReview = session.user.role === 'admin' ||
-    (session.user.roles ?? []).some((r) => ['supervisor', 'ops', 'admin'].includes(r));
-  if (!canReview) redirect('/purchasing');
+  const session = await requirePageAccess('purchasing.review');
 
   const params = await searchParams;
   const statusFilter = params.status ?? 'all';
   const branchFilter = params.branch ?? '';
   const days = Math.max(1, parseInt(params.days ?? '7', 10) || 7);
 
-  const isAdmin = session.user.role === 'admin' ||
-    (session.user.roles ?? []).includes('admin') ||
-    (session.user.roles ?? []).includes('supervisor');
+  const isAdmin = hasCapability(session, 'branch.all');
 
   const since = new Date(Date.now() - days * 86_400_000);
   const db = getDb();
@@ -46,7 +38,6 @@ export default async function ReviewPage({
     .orderBy(desc(poSubmissions.createdAt))
     .limit(100);
 
-  // Distinct branches for filter dropdown (admin/supervisor only)
   let availableBranches: string[] = [];
   if (isAdmin) {
     const branchRows = await db

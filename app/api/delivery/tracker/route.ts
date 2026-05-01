@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { requireCapability } from '../../../../src/lib/access-control';
+import { requireCapability, hasCapability } from '../../../../src/lib/access-control';
 import { getErpSql } from '../../../../db/supabase';
 
 export interface DeliveryRecord {
@@ -31,9 +31,7 @@ export async function GET(req: NextRequest) {
   const branchParam = searchParams.get('branch') ?? '';
   const dateParam = searchParams.get('date') ?? new Date().toISOString().split('T')[0];
 
-  const isAdmin =
-    session.user.role === 'admin' ||
-    (session.user.roles ?? []).some((r) => ['admin', 'supervisor', 'ops', 'dispatch'].includes(r));
+  const isAdmin = hasCapability(session, 'branch.all');
 
   const effectiveBranch = isAdmin ? branchParam : (session.user.branch ?? '');
 

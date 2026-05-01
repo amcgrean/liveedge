@@ -1,15 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { auth } from '../../../../auth';
+import { requireCapability, hasCapability } from '../../../../src/lib/access-control';
 import { getErpSql } from '../../../../db/supabase';
 
 // GET /api/purchasing/suggested-buys?branch=20GR&q=lumber&limit=200
 export async function GET(req: NextRequest) {
-  const session = await auth();
-  if (!session?.user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  const authResult = await requireCapability('purchasing.view');
+  if (authResult instanceof NextResponse) return authResult;
+  const session = authResult;
 
-  const isAdmin =
-    session.user.role === 'admin' ||
-    (session.user.roles ?? []).some((r) => ['admin', 'supervisor', 'ops', 'purchasing'].includes(r));
+  const isAdmin = hasCapability(session, 'branch.all');
 
   const branchParam = req.nextUrl.searchParams.get('branch') ?? '';
   const branch = isAdmin ? branchParam || null : (session.user.branch ?? null);

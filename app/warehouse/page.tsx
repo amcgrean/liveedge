@@ -1,13 +1,11 @@
-import { requirePageAccess } from '../../src/lib/access-control';
+import { requirePageAccess, hasCapability } from '../../src/lib/access-control';
 import { fetchBranchStats, type BranchStats } from '../../src/lib/warehouse-stats';
 import WarehouseClient from './WarehouseClient';
 
 export default async function WarehousePage() {
   const session = await requirePageAccess('yard.view', 'picks.release', 'workorders.assign', 'pickers.manage');
 
-  const isAdmin =
-    session.user.role === 'admin' ||
-    (session.user.roles ?? []).some((r: string) => ['admin', 'supervisor', 'ops'].includes(r));
+  const isAdmin = hasCapability(session, 'branch.all');
 
   let stats: BranchStats[] = [];
   try {

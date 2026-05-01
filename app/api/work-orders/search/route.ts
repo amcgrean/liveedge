@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { requireCapability } from '../../../../src/lib/access-control';
+import { requireCapability, hasCapability } from '../../../../src/lib/access-control';
 import { getErpSql } from '../../../../db/supabase';
 
 // GET /api/work-orders/search?so=1234567
@@ -12,9 +12,7 @@ export async function GET(req: NextRequest) {
   const so = (req.nextUrl.searchParams.get('so') ?? '').trim().replace(/^0+/, '');
   if (!so) return NextResponse.json({ error: 'so parameter required' }, { status: 400 });
 
-  const isAdmin =
-    session.user.role === 'admin' ||
-    (session.user.roles ?? []).some((r) => ['admin', 'supervisor', 'ops'].includes(r));
+  const isAdmin = hasCapability(session, 'branch.all');
   const effectiveBranch = isAdmin ? '' : (session.user.branch ?? '');
 
   try {

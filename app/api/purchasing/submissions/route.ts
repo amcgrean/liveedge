@@ -1,13 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { auth } from '../../../../auth';
+import { requireCapability, hasCapability } from '../../../../src/lib/access-control';
 import { getDb } from '../../../../db/index';
 import { poSubmissions } from '../../../../db/schema';
 import { and, desc, eq, gt } from 'drizzle-orm';
 
 // POST /api/purchasing/submissions — create a check-in submission
 export async function POST(req: NextRequest) {
-  const session = await auth();
-  if (!session?.user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  const authResult = await requireCapability('purchasing.receive');
+  if (authResult instanceof NextResponse) return authResult;
+  const session = authResult;
 
   const body = await req.json() as {
     po_number?: string;
@@ -55,8 +56,9 @@ export async function POST(req: NextRequest) {
 // GET /api/purchasing/submissions — list submissions
 // Query params: branch, status, since (ISO), my=true
 export async function GET(req: NextRequest) {
-  const session = await auth();
-  if (!session?.user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  const authResult = await requireCapability('purchasing.receive', 'purchasing.review', 'purchasing.view');
+  if (authResult instanceof NextResponse) return authResult;
+  const session = authResult;
 
   const { searchParams } = req.nextUrl;
   const onlyMine = searchParams.get('my') === 'true';
@@ -65,8 +67,7 @@ export async function GET(req: NextRequest) {
   const sinceParam = searchParams.get('since') ?? '';
   const daysParam = parseInt(searchParams.get('days') ?? '0', 10) || 0;
 
-  const isAdmin = session.user.role === 'admin' ||
-    (session.user.roles ?? []).some((r) => ['supervisor', 'admin'].includes(r));
+  const isAdmin = hasCapability(session, 'branch.all');
 
   try {
     const db = getDb();

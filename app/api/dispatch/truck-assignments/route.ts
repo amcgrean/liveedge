@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { requireCapability } from '../../../../src/lib/access-control';
+import { requireCapability, hasCapability } from '../../../../src/lib/access-control';
 import { getErpSql } from '../../../../db/supabase';
 
 // GET /api/dispatch/truck-assignments?date=2026-04-03&branch=20GR
@@ -8,9 +8,7 @@ export async function GET(req: NextRequest) {
   if (authResult instanceof NextResponse) return authResult;
   const session = authResult;
 
-  const isAdmin =
-    session.user.role === 'admin' ||
-    (session.user.roles ?? []).some((r) => ['admin', 'supervisor', 'ops', 'dispatch'].includes(r));
+  const isAdmin = hasCapability(session, 'branch.all');
   const effectiveBranch = isAdmin
     ? (req.nextUrl.searchParams.get('branch') ?? '')
     : (session.user.branch ?? '');

@@ -1,12 +1,10 @@
-import { requirePageAccess } from '../../../src/lib/access-control';
+import { requirePageAccess, hasCapability } from '../../../src/lib/access-control';
 import DriversClient from './DriversClient';
 
 export default async function DriversPage() {
   const session = await requirePageAccess('dispatch.manage');
 
-  const isAdmin =
-    session.user.role === 'admin' ||
-    (session.user.roles ?? []).some((r) => ['admin', 'supervisor', 'ops'].includes(r));
+  const isAdmin = hasCapability(session, 'branch.all');
 
   return (
     <DriversClient

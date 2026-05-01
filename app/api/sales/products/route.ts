@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { auth } from '../../../../auth';
+import { requireCapability, hasCapability } from '../../../src/lib/access-control';
 import { getErpSql } from '../../../../db/supabase';
 import { getSelectedBranchCode } from '@/lib/branch-context';
 import {
@@ -9,9 +9,7 @@ import {
   buildItemSelect,
   buildSearchVector,
   getAgilityItemColumns,
-  isProductAdmin,
-  parseIncludeInactive,
-} from './_shared';
+  parseIncludeInactive} from './_shared';
 
 type ProductRow = {
   item_number: string;
@@ -37,8 +35,9 @@ type SearchMode = 'fts' | 'ilike' | null;
 // Branch is read from the nav cookie (beisser-branch) for admins, session for non-admins.
 // Item master comes from agility_items (ai); stock/branch data from agility_item_branch (bi).
 export async function GET(req: NextRequest) {
-  const session = await auth();
-  if (!session?.user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  const authResult = await requireCapability('sales.view');
+  if (authResult instanceof NextResponse) return authResult;
+  const session = authResult;
 
   const { searchParams } = req.nextUrl;
   const q = searchParams.get('q')?.trim() ?? '';
@@ -47,7 +46,7 @@ export async function GET(req: NextRequest) {
   const limit = Math.min(100, Math.max(10, parseInt(searchParams.get('limit') ?? '50', 10) || 50));
   const offset = Math.max(0, parseInt(searchParams.get('offset') ?? '0', 10) || 0);
 
-  const isAdmin = isProductAdmin(session.user);
+  const isAdmin =(session.user);
   const includeInactive = isAdmin && parseIncludeInactive(searchParams.get('includeInactive'));
   const effectiveBranch = isAdmin
     ? (await getSelectedBranchCode() ?? '')
