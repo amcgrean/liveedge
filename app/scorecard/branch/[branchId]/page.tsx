@@ -1,4 +1,3 @@
-import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import {
   fetchAggregateKpis,
@@ -14,7 +13,6 @@ import ProductMajorTable from '../../[customerId]/components/ProductMajorTable';
 import SaleTypeTable from '../../[customerId]/components/SaleTypeTable';
 import BottomMetrics from '../../[customerId]/components/BottomMetrics';
 import AggregateFilterBar from '../../_components/AggregateFilterBar';
-import ScorecardTabs from '../../_components/ScorecardTabs';
 import { TopCustomersTable } from '../../_components/AggregateTables';
 import {
   ThreeYearChart,
@@ -22,6 +20,8 @@ import {
   ProductMixTreemap,
   SaleTypeParetoChart,
 } from '../../_components/ScorecardCharts';
+import ScorecardSidebarNav from '../../_components/ScorecardSidebarNav';
+import BulletChart from '@/components/charts/BulletChart';
 
 const BRANCH_LABELS: Record<string, string> = {
   '10FD': 'Fort Dodge',
@@ -32,16 +32,32 @@ const BRANCH_LABELS: Record<string, string> = {
 
 const VALID_BRANCHES = Object.keys(BRANCH_LABELS);
 
-function Section({ title, children }: { title: string; children: React.ReactNode }) {
+function Section({ id, title, children }: { id?: string; title: string; children: React.ReactNode }) {
   return (
-    <section className="bg-slate-800/40 border border-slate-700 rounded-lg p-4 space-y-3">
-      <h2 className="text-sm font-semibold text-slate-300 uppercase tracking-wide">{title}</h2>
+    <section
+      id={id}
+      className="rounded-lg p-4 space-y-3"
+      style={{ background: 'var(--panel)', border: '1px solid var(--line)' }}
+    >
+      <h2
+        className="text-xs font-bold uppercase tracking-widest"
+        style={{ color: 'var(--text-3)' }}
+      >
+        {title}
+      </h2>
       {children}
     </section>
   );
 }
 
 const NO_DTP = { base: null, compare: null };
+
+// Branch benchmark targets (realistic industry/company targets)
+const BENCHMARKS = [
+  { label: 'GM %', valueFn: (gmPct: number | null) => gmPct !== null ? gmPct * 100 : null, target: 22, suffix: '%', goodWhen: 'high' as const },
+  { label: 'On-Time Delivery', value: null as number | null, target: 92, suffix: '%', goodWhen: 'high' as const },
+  { label: 'Pick Accuracy', value: null as number | null, target: 97, suffix: '%', goodWhen: 'high' as const },
+];
 
 export default async function BranchScorecardPage({
   params: routeParams,
@@ -96,125 +112,136 @@ export default async function BranchScorecardPage({
   const gmPctBase = kpis.base.sales && kpis.base.gp !== null ? kpis.base.gp / kpis.base.sales : null;
   const gmPctCompare = kpis.compare.sales && kpis.compare.gp !== null ? kpis.compare.gp / kpis.compare.sales : null;
 
+  const qs = `baseYear=${baseYear}&compareYear=${compareYear}&period=${period}&cutoffDate=${cutoffDate}`;
+
   return (
-    <div className="p-4 md:p-6 space-y-5 max-w-7xl mx-auto">
-      <style>{`
-        @media print {
-          body { background: white !important; color: black !important; }
-          .print\\:hidden { display: none !important; }
-          nav, header { display: none !important; }
-        }
-      `}</style>
+    <div className="flex" style={{ minHeight: 'calc(100vh - 54px)' }}>
+      {/* Sidebar nav */}
+      <ScorecardSidebarNav branchId={branchId} qs={qs} />
 
-      <ScorecardTabs />
+      {/* Main content */}
+      <div className="flex-1 min-w-0 p-4 md:p-6 space-y-5">
+        <style>{`
+          @media print {
+            body { background: white !important; color: black !important; }
+            .print\\:hidden { display: none !important; }
+            nav, header { display: none !important; }
+          }
+        `}</style>
 
-      <div className="print:hidden flex items-center gap-4">
-        <Link href="/management" className="text-sm text-cyan-400 hover:underline">
-          ← Management
-        </Link>
-        <span className="text-slate-600 text-sm">·</span>
-        <Link href="/scorecard/overview" className="text-sm text-slate-500 hover:text-cyan-400">
-          Company Overview
-        </Link>
-      </div>
-
-      {/* Branch selector chips */}
-      <div className="flex gap-2 flex-wrap print:hidden">
-        {VALID_BRANCHES.map((b) => (
-          <Link
-            key={b}
-            href={`/scorecard/branch/${b}?baseYear=${baseYear}&compareYear=${compareYear}&period=${period}&cutoffDate=${cutoffDate}`}
-            className={`px-3 py-1 rounded-full text-xs font-medium transition ${
-              b === branchId ? 'bg-cyan-600 text-white' : 'bg-slate-700 text-slate-300 hover:text-white'
-            }`}
-          >
-            {BRANCH_LABELS[b]}
-          </Link>
-        ))}
-      </div>
-
-      <div className="space-y-0.5">
-        <h1 className="text-2xl font-bold text-white">
-          {BRANCH_LABELS[branchId] ?? branchId}
-          <span className="text-slate-400 font-normal text-base ml-2">Branch Scorecard</span>
-        </h1>
-        <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-slate-400">
-          <span>{baseYear} vs {compareYear}</span>
-          <span className="text-slate-600">·</span>
-          <span>{periodLabel}</span>
+        {/* Page header */}
+        <div id="overview">
+          <h1 className="text-2xl font-bold" style={{ color: 'var(--text)' }}>
+            {BRANCH_LABELS[branchId] ?? branchId}
+            <span className="font-normal text-base ml-2" style={{ color: 'var(--text-3)' }}>Branch Scorecard</span>
+          </h1>
+          <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm mt-0.5 mono" style={{ color: 'var(--text-3)' }}>
+            <span>{baseYear} vs {compareYear}</span>
+            <span>·</span>
+            <span>{periodLabel}</span>
+          </div>
         </div>
-      </div>
 
-      <AggregateFilterBar
-        basePath={`/scorecard/branch/${branchId}`}
-        baseYear={baseYear}
-        compareYear={compareYear}
-        period={period}
-        cutoffDate={cutoffDate}
-        branchIds={[branchId]}
-        showBranchFilter={false}
-      />
-
-      <ThreeYearChart entries={threeYear} />
-
-      <Section title="3-Year Comparison">
-        <ComparisonTable entries={threeYear} exportFilename={`${BRANCH_LABELS[branchId] ?? branchId}-3year`} />
-      </Section>
-
-      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
-        <KpiTile label="Sales" base={kpis.base.sales} compare={kpis.compare.sales} format="currency" />
-        <KpiTile label="Gross Profit" base={kpis.base.gp} compare={kpis.compare.gp} format="currency" />
-        <KpiTile label="Gross Margin %" base={gmPctBase} compare={gmPctCompare} format="percent" />
-        <KpiTile label="Value Add %" base={vaPctBase} compare={vaPctCompare} format="percent" />
-        <KpiTile label="Non-Stock %" base={nsPctBase} compare={nsPctCompare} format="percent" higherIsBetter={false} />
-      </div>
-
-      <TopCustomersPareto rows={topCustomers} />
-
-      {/* Top customers for this branch */}
-      <Section title="Top Customers">
-        <TopCustomersTable
-          rows={topCustomers}
+        <AggregateFilterBar
+          basePath={`/scorecard/branch/${branchId}`}
           baseYear={baseYear}
           compareYear={compareYear}
           period={period}
           cutoffDate={cutoffDate}
-          branchId={branchId}
-          filename={`${BRANCH_LABELS[branchId] ?? branchId}-top-customers`}
+          branchIds={[branchId]}
+          showBranchFilter={false}
         />
-        <div className="pt-1 text-right">
-          <Link
-            href={`/scorecard?baseYear=${baseYear}&compareYear=${compareYear}&branch=${branchId}&period=${period}&cutoffDate=${cutoffDate}`}
-            className="text-xs text-cyan-400 hover:underline"
-          >
-            View all customers →
-          </Link>
+
+        <ThreeYearChart entries={threeYear} />
+
+        <Section id="overview" title="3-Year Comparison">
+          <ComparisonTable entries={threeYear} exportFilename={`${BRANCH_LABELS[branchId] ?? branchId}-3year`} />
+        </Section>
+
+        <div id="kpis" className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
+          <KpiTile label="Sales" base={kpis.base.sales} compare={kpis.compare.sales} format="currency" />
+          <KpiTile label="Gross Profit" base={kpis.base.gp} compare={kpis.compare.gp} format="currency" />
+          <KpiTile label="Gross Margin %" base={gmPctBase} compare={gmPctCompare} format="percent" />
+          <KpiTile label="Value Add %" base={vaPctBase} compare={vaPctCompare} format="percent" />
+          <KpiTile label="Non-Stock %" base={nsPctBase} compare={nsPctCompare} format="percent" higherIsBetter={false} />
         </div>
-      </Section>
 
-      <ProductMixTreemap rows={productMajors} />
+        {/* Benchmarks panel */}
+        <Section id="kpis" title="Branch Benchmarks">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-6 py-1">
+            <BulletChart
+              label="Gross Margin %"
+              value={gmPctBase !== null ? gmPctBase * 100 : null}
+              target={22}
+              prior={gmPctCompare !== null ? gmPctCompare * 100 : null}
+              max={40}
+              suffix="%"
+              goodWhen="high"
+            />
+            <BulletChart
+              label="On-Time Delivery %"
+              value={null}
+              target={92}
+              suffix="%"
+              goodWhen="high"
+            />
+            <BulletChart
+              label="Pick Accuracy %"
+              value={null}
+              target={97}
+              suffix="%"
+              goodWhen="high"
+            />
+          </div>
+          <p className="text-[10px] mt-2" style={{ color: 'var(--text-3)' }}>
+            Gold tick = target · Gray tick = prior year. On-time delivery and pick accuracy sourced from WMS — not yet wired.
+          </p>
+        </Section>
 
-      <Section title="Product Mix">
-        <ProductMajorTable
-          rows={productMajors}
-          params={fakeCustomerParams}
-          baseYear={baseYear}
-          compareYear={compareYear}
-          minorsApiPath="/api/scorecard/aggregate"
-          orderFrom={`/scorecard/branch/${branchId}`}
-          orderFromLabel={`${BRANCH_LABELS[branchId] ?? branchId} Branch`}
-        />
-      </Section>
+        <div id="customers">
+          <TopCustomersPareto rows={topCustomers} />
+        </div>
 
-      <SaleTypeParetoChart rows={saleTypes} baseYear={baseYear} />
+        <Section id="customers" title="Top Customers">
+          <TopCustomersTable
+            rows={topCustomers}
+            baseYear={baseYear}
+            compareYear={compareYear}
+            period={period}
+            cutoffDate={cutoffDate}
+            branchId={branchId}
+            filename={`${BRANCH_LABELS[branchId] ?? branchId}-top-customers`}
+          />
+        </Section>
 
-      <Section title="Sales by Type">
-        <SaleTypeTable rows={saleTypes} baseYear={baseYear} compareYear={compareYear} />
-      </Section>
+        <div id="product-mix">
+          <ProductMixTreemap rows={productMajors} />
+        </div>
 
-      <Section title="Detail Metrics">
-        <BottomMetrics kpis={kpis} daysToPay={NO_DTP} baseYear={baseYear} compareYear={compareYear} />
-      </Section>
+        <Section id="product-mix" title="Product Mix">
+          <ProductMajorTable
+            rows={productMajors}
+            params={fakeCustomerParams}
+            baseYear={baseYear}
+            compareYear={compareYear}
+            minorsApiPath="/api/scorecard/aggregate"
+            orderFrom={`/scorecard/branch/${branchId}`}
+            orderFromLabel={`${BRANCH_LABELS[branchId] ?? branchId} Branch`}
+          />
+        </Section>
+
+        <div id="sale-types">
+          <SaleTypeParetoChart rows={saleTypes} baseYear={baseYear} />
+        </div>
+
+        <Section id="sale-types" title="Sales by Type">
+          <SaleTypeTable rows={saleTypes} baseYear={baseYear} compareYear={compareYear} />
+        </Section>
+
+        <Section id="detail" title="Detail Metrics">
+          <BottomMetrics kpis={kpis} daysToPay={NO_DTP} baseYear={baseYear} compareYear={compareYear} />
+        </Section>
+      </div>
     </div>
   );
 }

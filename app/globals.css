@@ -4,6 +4,226 @@
 @tailwind components;
 @tailwind utilities;
 
+/* ── Design system tokens ─────────────────────────────────────────────────── */
+:root {
+  /* Surfaces */
+  --bg:       #0b1014;
+  --panel:    #131a20;
+  --panel-2:  #1a232b;
+  --panel-3:  #232f39;
+  --line:     #243038;
+  --line-soft:#1d262e;
+
+  /* Text */
+  --text:   #e6ecf0;
+  --text-2: #aab7c2;
+  --text-3: #6e7d89;
+  --text-4: #4a5762;
+
+  /* Brand */
+  --green:       #006834;
+  --green-bright:#1f8a4f;
+  --green-dim:   #0a3a20;
+  --gold:        #9e8635;
+  --gold-bright: #c9a83f;
+
+  /* Status */
+  --ok:  #1f8a4f;
+  --warn:#d4a23a;
+  --err: #d05050;
+  --info:#4a8fbf;
+
+  /* Branch — default fort-dodge until body[data-branch] overrides */
+  --branch:      #d05050;
+  --branch-soft: rgba(208,80,80,0.14);
+
+  /* Density */
+  --row: 32px;
+  --pad: 12px;
+  --r-sm: 4px;
+  --r:    6px;
+  --r-lg: 10px;
+}
+
+/* Branch-specific CSS variable overrides driven by data-branch on <body> */
+body[data-branch=""]     { --branch: #8b5cf6; --branch-soft: rgba(139,92,246,0.14); } /* All — violet */
+body[data-branch="10FD"] { --branch: #d05050; --branch-soft: rgba(208,80,80,0.14); }  /* Fort Dodge */
+body[data-branch="20GR"] { --branch: #1f8a4f; --branch-soft: rgba(31,138,79,0.16); }  /* Grimes */
+body[data-branch="25BW"] { --branch: #c9a83f; --branch-soft: rgba(201,168,63,0.14); } /* Birchwood */
+body[data-branch="40CV"] { --branch: #6e7d89; --branch-soft: rgba(110,125,137,0.16); }/* Coralville */
+
+/* ── Branch top-edge ─────────────────────────────────────────────────────── */
+.branch-edge {
+  position: fixed;
+  top: 0; left: 0; right: 0;
+  height: 2px;
+  background: var(--branch);
+  z-index: 100;
+  transition: background 200ms;
+}
+
+/* ── Live dot (pulsing indicator) ────────────────────────────────────────── */
+@keyframes live-pulse {
+  0%, 100% { opacity: 1; }
+  50%       { opacity: 0.35; }
+}
+.live-dot {
+  display: inline-block;
+  width: 7px; height: 7px;
+  border-radius: 50%;
+  background: #4ec48a;
+  animation: live-pulse 1.5s ease-in-out infinite;
+  flex-shrink: 0;
+}
+
+/* ── Monospace / tabular helpers ─────────────────────────────────────────── */
+.mono {
+  font-family: var(--font-mono, 'JetBrains Mono', ui-monospace, monospace);
+  font-variant-numeric: tabular-nums;
+}
+.num {
+  font-family: var(--font-mono, 'JetBrains Mono', ui-monospace, monospace);
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+/* ── Status chips ────────────────────────────────────────────────────────── */
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 20px;
+  padding: 0 8px;
+  border-radius: 3px;
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.02em;
+  border: 1px solid;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+.chip-open    { color: #6fb3d9; border-color: rgba(74,143,191,0.4);  background: rgba(74,143,191,0.1); }
+.chip-staged  { color: #c9a83f; border-color: rgba(201,168,63,0.4);  background: rgba(201,168,63,0.1); }
+.chip-prog    { color: #4ec48a; border-color: rgba(31,138,79,0.5);   background: rgba(31,138,79,0.12); }
+.chip-done    { color: #6e7d89; border-color: rgba(110,125,137,0.4); background: rgba(110,125,137,0.1); }
+.chip-hold    { color: #d05050; border-color: rgba(208,80,80,0.4);   background: rgba(208,80,80,0.1); }
+.chip-priority{ color: #d4a23a; border-color: rgba(212,162,58,0.5);  background: rgba(212,162,58,0.12); }
+
+/* ── Segmented control ───────────────────────────────────────────────────── */
+.seg {
+  display: inline-flex;
+  background: var(--panel-2);
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  padding: 2px;
+  gap: 1px;
+}
+.seg button {
+  padding: 4px 10px;
+  font-size: 12px;
+  color: var(--text-2);
+  border-radius: 3px;
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-weight: 500;
+  white-space: nowrap;
+  transition: background 80ms, color 80ms;
+}
+.seg button.active,
+.seg button[data-active="true"] {
+  background: var(--panel-3);
+  color: var(--text);
+}
+
+/* ── Filter pills ────────────────────────────────────────────────────────── */
+.filter-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 26px;
+  padding: 0 10px;
+  background: var(--panel-2);
+  border: 1px solid var(--line);
+  border-radius: 13px;
+  font-size: 12px;
+  color: var(--text-2);
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background 80ms, border-color 80ms, color 80ms;
+}
+.filter-pill:hover { background: var(--panel-3); }
+.filter-pill.active {
+  color: var(--text);
+  border-color: var(--green-bright);
+  background: rgba(31,138,79,0.08);
+}
+
+/* ── Panel / card primitives ─────────────────────────────────────────────── */
+.ds-panel {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: var(--r);
+}
+.ds-panel-header {
+  padding: 12px 14px;
+  border-bottom: 1px solid var(--line);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.ds-panel-title  { font-size: 13px; font-weight: 600; color: var(--text); letter-spacing: 0.01em; }
+.ds-panel-sub    { font-size: 11px; color: var(--text-3); font-family: var(--font-mono, ui-monospace, monospace); }
+
+/* ── Dense data table ────────────────────────────────────────────────────── */
+.tbl {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
+  font-size: 13px;
+}
+.tbl thead th {
+  text-align: left;
+  padding: 8px 12px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-3);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  background: var(--panel);
+  border-bottom: 1px solid var(--line);
+  position: sticky;
+  top: 0;
+  user-select: none;
+  white-space: nowrap;
+}
+.tbl thead th.sortable { cursor: pointer; }
+.tbl thead th.sortable:hover { color: var(--text); }
+.tbl thead th.active { color: var(--green-bright); }
+.tbl tbody td {
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--line-soft);
+  color: var(--text);
+  white-space: nowrap;
+}
+.tbl tbody tr:hover td { background: rgba(255,255,255,0.015); }
+.tbl tbody tr.selected td { background: rgba(31,138,79,0.06); }
+.tbl .num { text-align: right; }
+
+/* ── KPI tile sparkline container ────────────────────────────────────────── */
+.kpi-spark {
+  position: absolute;
+  right: 12px;
+  bottom: 8px;
+  opacity: 0.6;
+  pointer-events: none;
+}
+
+/* ── Scrollbar ───────────────────────────────────────────────────────────── */
+::-webkit-scrollbar       { width: 10px; height: 10px; }
+::-webkit-scrollbar-track { background: var(--bg); }
+::-webkit-scrollbar-thumb { background: var(--line); border-radius: 4px; border: 2px solid var(--bg); }
+::-webkit-scrollbar-thumb:hover { background: var(--panel-3); }
+
 @layer base {
   body {
     @apply text-slate-100 antialiased;

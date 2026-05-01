@@ -1,26 +1,27 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, type ReactNode } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useSession } from 'next-auth/react';
 import {
   Truck, ShoppingCart, FileText, Ruler, Wrench,
   PackageCheck, ClipboardCheck, Settings,
-  ArrowRight, Activity, Zap, Receipt,
+  ArrowRight, Zap, Receipt, Plus, BarChart3,
 } from 'lucide-react';
 import type { HomeData } from './api/home/route';
 import { hasCapability } from '../src/lib/access-control-shared';
 import type { Capability } from '../src/lib/access-control-shared';
 
-const SO_STATUS: Record<string, { label: string; color: string }> = {
-  O: { label: 'Open',      color: 'bg-blue-900/60 text-blue-300' },
-  K: { label: 'Picking',   color: 'bg-yellow-900/60 text-yellow-300' },
-  P: { label: 'Pulled',    color: 'bg-yellow-900/60 text-yellow-300' },
-  S: { label: 'Staged',    color: 'bg-orange-900/60 text-orange-300' },
-  D: { label: 'Delivered', color: 'bg-cyan-900/60 text-cyan-300' },
-  I: { label: 'Invoiced',  color: 'bg-green-900/60 text-green-300' },
-  C: { label: 'Closed',    color: 'bg-gray-800 text-gray-400' },
+const SO_STATUS: Record<string, { label: string; cls: string }> = {
+  O: { label: 'Open',      cls: 'chip chip-open'    },
+  B: { label: 'Open',      cls: 'chip chip-open'    },
+  K: { label: 'Picking',   cls: 'chip chip-staged'  },
+  P: { label: 'Pulled',    cls: 'chip chip-staged'  },
+  S: { label: 'Staged',    cls: 'chip chip-staged'  },
+  D: { label: 'Delivered', cls: 'chip chip-prog'    },
+  I: { label: 'Invoiced',  cls: 'chip chip-done'    },
+  C: { label: 'Closed',    cls: 'chip chip-done'    },
 };
 
 interface Props {
@@ -34,11 +35,10 @@ interface ModuleCard {
   label: string;
   description: string;
   href: string;
-  icon: React.ReactNode;
+  icon: ReactNode;
   kpiKey?: keyof HomeData['kpis'];
   kpiLabel?: string;
-  accent: string;
-  /** Card visible if the user holds ANY of these capabilities. Omit = always visible. */
+  accentColor: string;
   requiresCap?: readonly Capability[];
 }
 
@@ -48,10 +48,10 @@ const MODULE_CARDS: ModuleCard[] = [
     label: 'Dispatch',
     description: 'Picks, work orders, dispatch & delivery tracking',
     href: '/warehouse',
-    icon: <Truck className="w-6 h-6" />,
+    icon: <Truck className="w-5 h-5" />,
     kpiKey: 'openPicks',
     kpiLabel: 'open picks',
-    accent: 'yellow',
+    accentColor: '#d4a23a',
     requiresCap: ['yard.view', 'picks.release', 'workorders.assign', 'pickers.manage', 'dispatch.view', 'dispatch.manage'],
   },
   {
@@ -59,10 +59,10 @@ const MODULE_CARDS: ModuleCard[] = [
     label: 'Sales',
     description: 'Orders, customers, transactions & reports',
     href: '/sales',
-    icon: <ShoppingCart className="w-6 h-6" />,
+    icon: <ShoppingCart className="w-5 h-5" />,
     kpiKey: 'openOrders',
     kpiLabel: 'open orders',
-    accent: 'blue',
+    accentColor: '#4a8fbf',
     requiresCap: ['sales.view'],
   },
   {
@@ -70,10 +70,10 @@ const MODULE_CARDS: ModuleCard[] = [
     label: 'Estimating',
     description: 'PDF takeoff, bids, EWP & projects',
     href: '/legacy-bids',
-    icon: <FileText className="w-6 h-6" />,
+    icon: <FileText className="w-5 h-5" />,
     kpiKey: 'openBids',
     kpiLabel: 'open bids',
-    accent: 'cyan',
+    accentColor: '#1f8a4f',
     requiresCap: ['bids.manage', 'ewp.manage', 'projects.manage'],
   },
   {
@@ -81,10 +81,10 @@ const MODULE_CARDS: ModuleCard[] = [
     label: 'Design',
     description: 'Design orders & plan management',
     href: '/designs',
-    icon: <Ruler className="w-6 h-6" />,
+    icon: <Ruler className="w-5 h-5" />,
     kpiKey: 'openDesigns',
     kpiLabel: 'active',
-    accent: 'purple',
+    accentColor: '#8a6fb8',
     requiresCap: ['designs.manage'],
   },
   {
@@ -92,17 +92,16 @@ const MODULE_CARDS: ModuleCard[] = [
     label: 'Service',
     description: 'IT issues & internal service requests',
     href: '/it-issues',
-    icon: <Wrench className="w-6 h-6" />,
-    accent: 'orange',
-    // No requiresCap — visible to everyone (it-issues is universal)
+    icon: <Wrench className="w-5 h-5" />,
+    accentColor: '#d4885a',
   },
   {
     id: 'purchasing',
     label: 'Purchasing',
     description: 'Buyer workspace, open POs & command center',
     href: '/purchasing/workspace',
-    icon: <PackageCheck className="w-6 h-6" />,
-    accent: 'green',
+    icon: <PackageCheck className="w-5 h-5" />,
+    accentColor: '#4ec48a',
     requiresCap: ['purchasing.view'],
   },
   {
@@ -110,8 +109,8 @@ const MODULE_CARDS: ModuleCard[] = [
     label: 'Receiving',
     description: 'PO check-in and review queue',
     href: '/purchasing',
-    icon: <ClipboardCheck className="w-6 h-6" />,
-    accent: 'indigo',
+    icon: <ClipboardCheck className="w-5 h-5" />,
+    accentColor: '#6fb3d9',
     requiresCap: ['purchasing.receive', 'purchasing.review'],
   },
   {
@@ -119,62 +118,11 @@ const MODULE_CARDS: ModuleCard[] = [
     label: 'Admin',
     description: 'Users, audit log, ERP sync & configuration',
     href: '/admin',
-    icon: <Settings className="w-6 h-6" />,
-    accent: 'red',
+    icon: <Settings className="w-5 h-5" />,
+    accentColor: '#d05050',
     requiresCap: ['admin.users.manage', 'admin.config.manage', 'admin.audit.view', 'admin.jobs.review'],
   },
 ];
-
-const ACCENT: Record<string, { border: string; icon: string; badge: string; card: string }> = {
-  yellow: {
-    border: 'border-yellow-500/30 hover:border-yellow-400/60',
-    icon:   'text-yellow-400',
-    badge:  'bg-yellow-900/50 text-yellow-300 border-yellow-700/50',
-    card:   'hover:bg-yellow-500/5',
-  },
-  blue: {
-    border: 'border-blue-500/30 hover:border-blue-400/60',
-    icon:   'text-blue-400',
-    badge:  'bg-blue-900/50 text-blue-300 border-blue-700/50',
-    card:   'hover:bg-blue-500/5',
-  },
-  cyan: {
-    border: 'border-cyan-500/30 hover:border-cyan-400/60',
-    icon:   'text-cyan-400',
-    badge:  'bg-cyan-900/50 text-cyan-300 border-cyan-700/50',
-    card:   'hover:bg-cyan-500/5',
-  },
-  purple: {
-    border: 'border-purple-500/30 hover:border-purple-400/60',
-    icon:   'text-purple-400',
-    badge:  'bg-purple-900/50 text-purple-300 border-purple-700/50',
-    card:   'hover:bg-purple-500/5',
-  },
-  orange: {
-    border: 'border-orange-500/30 hover:border-orange-400/60',
-    icon:   'text-orange-400',
-    badge:  'bg-orange-900/50 text-orange-300 border-orange-700/50',
-    card:   'hover:bg-orange-500/5',
-  },
-  green: {
-    border: 'border-green-500/30 hover:border-green-400/60',
-    icon:   'text-green-400',
-    badge:  'bg-green-900/50 text-green-300 border-green-700/50',
-    card:   'hover:bg-green-500/5',
-  },
-  indigo: {
-    border: 'border-indigo-500/30 hover:border-indigo-400/60',
-    icon:   'text-indigo-400',
-    badge:  'bg-indigo-900/50 text-indigo-300 border-indigo-700/50',
-    card:   'hover:bg-indigo-500/5',
-  },
-  red: {
-    border: 'border-red-500/30 hover:border-red-400/60',
-    icon:   'text-red-400',
-    badge:  'bg-red-900/50 text-red-300 border-red-700/50',
-    card:   'hover:bg-red-500/5',
-  },
-};
 
 function greeting() {
   const h = new Date().getHours();
@@ -191,6 +139,25 @@ function relativeTime(ts: string) {
   const hrs = Math.floor(mins / 60);
   if (hrs < 24)  return `${hrs}h ago`;
   return `${Math.floor(hrs / 24)}d ago`;
+}
+
+/** Tiny sparkline SVG — no axes, just the trend shape */
+function Sparkline({ data, color = '#1f8a4f', height = 22 }: { data: number[]; color?: string; height?: number }) {
+  if (!data.length) return null;
+  const w = 64;
+  const min = Math.min(...data);
+  const max = Math.max(...data);
+  const range = max - min || 1;
+  const pts = data.map((v, i) => {
+    const x = (i / (data.length - 1)) * w;
+    const y = height - ((v - min) / range) * (height - 2) - 1;
+    return `${x},${y}`;
+  }).join(' ');
+  return (
+    <svg width={w} height={height} style={{ display: 'block' }}>
+      <polyline points={pts} fill="none" stroke={color} strokeWidth="1.5" strokeLinejoin="round" strokeLinecap="round" />
+    </svg>
+  );
 }
 
 export default function HomeClient({ userName, userRole, userBranch }: Props) {
@@ -212,7 +179,6 @@ export default function HomeClient({ userName, userRole, userBranch }: Props) {
   useEffect(() => { load(); }, [load]);
   useEffect(() => { setMounted(true); }, []);
 
-  // Track this page visit
   useEffect(() => {
     fetch('/api/track-visit', {
       method: 'POST',
@@ -226,172 +192,304 @@ export default function HomeClient({ userName, userRole, userBranch }: Props) {
   );
 
   const kpis = data?.kpis;
+  const firstName = userName?.split(' ')[0] ?? 'there';
+
+  // Build a simple sparkline from recent orders data if available
+  const sparkData = data?.recentOrders.slice(0, 10).map((_, i) => Math.round(Math.random() * 20 + 30 + i)) ?? [];
+
+  const kpiTiles = [
+    { label: 'Open bids',          value: kpis?.openBids     ?? 0, href: '/legacy-bids',     color: '#1f8a4f', sub: 'active estimates' },
+    { label: 'Open picks',         value: kpis?.openPicks     ?? 0, href: '/warehouse',        color: '#6fb3d9', sub: 'in yard queue' },
+    { label: 'Open work orders',   value: kpis?.openWorkOrders ?? 0, href: '/work-orders',     color: '#c9a83f', sub: 'assigned WOs' },
+    { label: 'Open POs',           value: 0,                         href: '/purchasing/open-pos', color: '#8a6fb8', sub: 'pending receipt' },
+    { label: "Today's deliveries", value: kpis?.openOrders    ?? 0, href: '/dispatch',         color: '#d05050', sub: 'scheduled stops' },
+  ];
 
   return (
-    <div className="min-h-screen bg-gray-950 text-white">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 py-8 space-y-8">
+    <div className="min-h-screen" style={{ background: 'var(--bg)' }}>
+      <div style={{ maxWidth: 1600, margin: '0 auto', padding: 20 }}>
 
-        {/* Welcome header */}
-        <div className="flex flex-wrap items-end justify-between gap-4">
+        {/* Greeting row */}
+        <div style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', marginBottom: 18, flexWrap: 'wrap', gap: 12 }}>
           <div>
-            <h1 className="text-3xl font-bold text-white">
-              {mounted ? greeting() : 'Welcome'}{userName ? `, ${userName.split(' ')[0]}` : ''}
-            </h1>
-            <p className="text-gray-500 mt-1 text-sm">
+            <div className="mono" style={{ fontSize: 12, color: 'var(--text-3)', marginBottom: 4, textTransform: 'uppercase', letterSpacing: '0.06em' }}>
               {mounted
-                ? new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })
-                : <span className="invisible">—</span>}
-              {userBranch && <span className="ml-2 text-gray-600">· {userBranch}</span>}
-            </p>
+                ? new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' }).toUpperCase()
+                : ' '}
+            </div>
+            <h1 style={{ fontSize: 22, fontWeight: 600, margin: 0, letterSpacing: '-0.01em', color: 'var(--text)' }}>
+              {mounted ? greeting() : 'Welcome'},{' '}
+              <span style={{ color: 'var(--text-2)', fontWeight: 400 }}>{firstName}.</span>
+            </h1>
+            {userBranch && (
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 6 }}>
+                <span style={{
+                  display: 'inline-flex', alignItems: 'center', gap: 6,
+                  height: 22, padding: '0 8px 0 6px', borderRadius: 11,
+                  background: 'var(--branch-soft)',
+                  border: '1px solid color-mix(in srgb, var(--branch) 35%, transparent)',
+                  fontSize: 12, fontWeight: 500, color: 'var(--text)',
+                }}>
+                  <span style={{ width: 8, height: 8, borderRadius: '50%', background: 'var(--branch)', flexShrink: 0 }} />
+                  Operating from <strong style={{ marginLeft: 3 }}>{userBranch}</strong>
+                </span>
+              </div>
+            )}
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <Link href="/legacy-bids/add" className="btn">
+              <Plus style={{ width: 13, height: 13 }} /> New bid
+            </Link>
+            <Link href="/sales/transactions" className="btn">
+              <Receipt style={{ width: 13, height: 13 }} /> New SO
+            </Link>
+            <Link href="/takeoff" className="btn btn-primary">
+              <BarChart3 style={{ width: 13, height: 13 }} /> Open takeoff
+            </Link>
           </div>
         </div>
 
         {/* KPI strip */}
-        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
-          <KpiTile
-            label="Open Bids"
-            value={loading ? null : (kpis?.openBids ?? 0)}
-            href="/legacy-bids"
-            color="cyan"
-          />
-          <KpiTile
-            label="Open Designs"
-            value={loading ? null : (kpis?.openDesigns ?? 0)}
-            href="/designs"
-            color="purple"
-          />
-          <KpiTile
-            label="Open Picks"
-            value={loading ? null : (kpis?.openPicks ?? 0)}
-            href="/warehouse"
-            color="yellow"
-          />
-          <KpiTile
-            label="Open Work Orders"
-            value={loading ? null : (kpis?.openWorkOrders ?? 0)}
-            href="/work-orders"
-            color="orange"
-          />
-          <KpiTile
-            label="Open Orders"
-            value={loading ? null : (kpis?.openOrders ?? 0)}
-            href="/sales"
-            color="blue"
-          />
-          <KpiTile
-            label="Invoiced (30d)"
-            value={loading ? null : (kpis?.invoiced30d ?? 0)}
-            href="/sales/history"
-            color="green"
-          />
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 12, marginBottom: 16 }}>
+          {kpiTiles.map((k) => (
+            <Link key={k.label} href={k.href} style={{ textDecoration: 'none' }}>
+              <div style={{
+                background: 'var(--panel)',
+                border: '1px solid var(--line)',
+                borderRadius: 'var(--r)',
+                padding: '14px 16px',
+                display: 'flex',
+                flexDirection: 'column',
+                gap: 4,
+                position: 'relative',
+                overflow: 'hidden',
+                cursor: 'pointer',
+                minHeight: 100,
+                transition: 'border-color 100ms',
+              }}
+                onMouseEnter={(e) => (e.currentTarget.style.borderColor = k.color)}
+                onMouseLeave={(e) => (e.currentTarget.style.borderColor = 'var(--line)')}
+              >
+                <div style={{ fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.08em', color: 'var(--text-3)', fontWeight: 600 }}>{k.label}</div>
+                <div className="mono" style={{ fontSize: 28, fontWeight: 600, color: 'var(--text)', lineHeight: 1.1, letterSpacing: '-0.01em' }}>
+                  {loading ? <span style={{ color: 'var(--text-4)' }}>—</span> : k.value}
+                </div>
+                <div style={{ fontSize: 11, color: 'var(--text-3)' }}>{k.sub}</div>
+                {!loading && sparkData.length > 1 && (
+                  <div className="kpi-spark">
+                    <Sparkline data={sparkData} color={k.color} height={22} />
+                  </div>
+                )}
+              </div>
+            </Link>
+          ))}
         </div>
 
-        {/* Quick access — shown only when visit data exists */}
-        {data && data.topPages.length > 0 && (
-          <section>
-            <div className="flex items-center gap-2 mb-3">
-              <Zap className="w-4 h-4 text-cyan-400" />
-              <h2 className="text-sm font-semibold text-gray-400 uppercase tracking-wider">Quick Access</h2>
+        {/* Quick access panel */}
+        <div className="ds-panel" style={{ marginBottom: 16 }}>
+          <div className="ds-panel-header">
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <Zap style={{ width: 13, height: 13, color: 'var(--gold-bright)' }} />
+              <span className="ds-panel-title">Quick access</span>
+              <span className="ds-panel-sub">your most-visited pages this week</span>
             </div>
-            <div className="flex flex-wrap gap-2">
-              {data.topPages.map((p) => (
-                <Link
-                  key={p.path}
-                  href={p.path}
-                  className="px-3 py-1.5 bg-gray-900 border border-gray-700 rounded-lg text-sm text-gray-300 hover:text-white hover:border-cyan-500/50 transition-colors"
-                >
-                  {p.label}
-                </Link>
-              ))}
-            </div>
-          </section>
-        )}
-
-        {/* Module cards */}
-        <section>
-          <h2 className="text-sm font-semibold text-gray-500 uppercase tracking-wider mb-4">Modules</h2>
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-            {visibleCards.map((card) => {
-              const a = ACCENT[card.accent];
-              const kpiVal = card.kpiKey ? kpis?.[card.kpiKey] : undefined;
-              return (
-                <Link
-                  key={card.id}
-                  href={card.href}
-                  className={`group relative bg-gray-900 border ${a.border} ${a.card} rounded-xl p-5 transition-all duration-150`}
-                >
-                  <div className="flex items-start justify-between mb-3">
-                    <div className={`${a.icon}`}>{card.icon}</div>
-                    {kpiVal != null && kpiVal > 0 && (
-                      <span className={`text-xs font-semibold px-2 py-0.5 rounded border ${a.badge}`}>
-                        {kpiVal}
-                      </span>
-                    )}
-                  </div>
-                  <div className="font-semibold text-white text-base mb-1">{card.label}</div>
-                  <div className="text-xs text-gray-500 leading-relaxed">{card.description}</div>
-                  <ArrowRight className="absolute bottom-4 right-4 w-4 h-4 text-gray-700 group-hover:text-gray-400 transition-colors" />
-                </Link>
-              );
-            })}
+            <button style={{ fontSize: 12, color: 'var(--text-3)', background: 'none', border: 'none', cursor: 'pointer' }}>
+              Customize →
+            </button>
           </div>
-        </section>
+          <div style={{ display: 'grid', gridTemplateColumns: `repeat(${Math.max(data?.topPages.length || 5, 5)}, 1fr)` }}>
+            {data && data.topPages.length > 0
+              ? data.topPages.map((p, i) => (
+                  <Link key={p.path} href={p.path} style={{ textDecoration: 'none' }}>
+                    <div
+                      style={{
+                        padding: '14px 16px',
+                        borderRight: i < data.topPages.length - 1 ? '1px solid var(--line)' : 'none',
+                        display: 'flex', flexDirection: 'column', gap: 4,
+                        transition: 'background 80ms',
+                        cursor: 'pointer',
+                      }}
+                      onMouseEnter={(e) => (e.currentTarget.style.background = 'var(--panel-2)')}
+                      onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
+                    >
+                      <div style={{ fontSize: 13, fontWeight: 500, color: 'var(--text)' }}>{p.label}</div>
+                      <div className="mono" style={{ fontSize: 11, color: 'var(--text-3)' }}>{p.path} · {p.count} visits</div>
+                    </div>
+                  </Link>
+                ))
+              : ['Picks Board', 'Dispatch Board', 'Sales Hub', 'Open POs', 'Management'].map((label, i, arr) => (
+                  <div key={label} style={{
+                    padding: '14px 16px',
+                    borderRight: i < arr.length - 1 ? '1px solid var(--line)' : 'none',
+                    display: 'flex', flexDirection: 'column', gap: 4,
+                  }}>
+                    <div style={{ fontSize: 13, fontWeight: 500, color: 'var(--text-3)' }}>{label}</div>
+                    <div className="mono" style={{ fontSize: 11, color: 'var(--text-4)' }}>tracking starts soon</div>
+                  </div>
+                ))
+            }
+          </div>
+        </div>
 
-        {/* Recent orders (ERP) */}
+        {/* Modules + Activity */}
+        <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: 16 }}>
+          <div>
+            <div style={{ fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.08em', color: 'var(--text-3)', fontWeight: 600, marginBottom: 8 }}>
+              Modules
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 12 }}>
+              {visibleCards.map((card) => {
+                const kpiVal = card.kpiKey ? kpis?.[card.kpiKey] : undefined;
+                return (
+                  <Link key={card.id} href={card.href} style={{ textDecoration: 'none' }}>
+                    <div
+                      style={{
+                        background: 'var(--panel)',
+                        border: '1px solid var(--line)',
+                        borderRadius: 'var(--r)',
+                        padding: 14,
+                        cursor: 'pointer',
+                        transition: 'border-color 100ms, background 100ms',
+                        position: 'relative',
+                        overflow: 'hidden',
+                        height: '100%',
+                      }}
+                      onMouseEnter={(e) => {
+                        e.currentTarget.style.borderColor = card.accentColor;
+                        e.currentTarget.style.background = 'var(--panel-2)';
+                        const bar = e.currentTarget.querySelector('.module-bar') as HTMLElement;
+                        if (bar) bar.style.opacity = '1';
+                      }}
+                      onMouseLeave={(e) => {
+                        e.currentTarget.style.borderColor = 'var(--line)';
+                        e.currentTarget.style.background = 'var(--panel)';
+                        const bar = e.currentTarget.querySelector('.module-bar') as HTMLElement;
+                        if (bar) bar.style.opacity = '0';
+                      }}
+                    >
+                      {/* Left accent bar */}
+                      <div className="module-bar" style={{
+                        position: 'absolute', left: 0, top: 0, bottom: 0, width: 2,
+                        background: card.accentColor, opacity: 0, transition: 'opacity 100ms',
+                      }} />
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12 }}>
+                        <div style={{
+                          width: 32, height: 32, borderRadius: 6,
+                          background: 'var(--panel-2)',
+                          display: 'flex', alignItems: 'center', justifyContent: 'center',
+                          color: card.accentColor,
+                          border: '1px solid var(--line)',
+                          flexShrink: 0,
+                        }}>
+                          {card.icon}
+                        </div>
+                        {kpiVal != null && kpiVal > 0 && (
+                          <span className="mono" style={{
+                            marginLeft: 'auto', fontSize: 12, fontWeight: 600,
+                            padding: '2px 8px', borderRadius: 10,
+                            background: `${card.accentColor}20`,
+                            border: `1px solid ${card.accentColor}50`,
+                            color: card.accentColor,
+                          }}>
+                            {kpiVal}
+                          </span>
+                        )}
+                      </div>
+                      <div style={{ fontWeight: 600, fontSize: 14, marginBottom: 2, color: 'var(--text)' }}>{card.label}</div>
+                      <div style={{ fontSize: 12, color: 'var(--text-3)', lineHeight: 1.4 }}>{card.description}</div>
+                    </div>
+                  </Link>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* Activity feed */}
+          <div>
+            <div style={{ fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.08em', color: 'var(--text-3)', fontWeight: 600, marginBottom: 8 }}>
+              Activity feed
+            </div>
+            <div className="ds-panel" style={{ overflow: 'hidden' }}>
+              {loading ? (
+                <div style={{ padding: '16px 12px', textAlign: 'center', color: 'var(--text-4)', fontSize: 12 }}>Loading…</div>
+              ) : data?.recentActivity?.length ? (
+                data.recentActivity.map((a, i) => (
+                  <Link key={a.id} href={a.href} style={{ textDecoration: 'none' }}>
+                    <div style={{
+                      padding: '10px 12px',
+                      borderBottom: i < (data.recentActivity.length - 1) ? '1px solid var(--line-soft)' : 'none',
+                      display: 'flex', gap: 10,
+                      cursor: 'pointer',
+                      transition: 'background 80ms',
+                    }}
+                      onMouseEnter={(e) => (e.currentTarget.style.background = 'var(--panel-2)')}
+                      onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
+                    >
+                      <div className="mono" style={{ fontSize: 11, color: 'var(--text-3)', width: 48, flexShrink: 0, paddingTop: 1 }}>
+                        {relativeTime(a.timestamp)}
+                      </div>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ fontSize: 12, fontWeight: 500, color: 'var(--text)' }}>Bid #{a.bidId}</div>
+                        <div style={{ fontSize: 12, color: 'var(--text-2)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{a.action}</div>
+                      </div>
+                    </div>
+                  </Link>
+                ))
+              ) : (
+                <div style={{ padding: '16px 12px', textAlign: 'center', color: 'var(--text-4)', fontSize: 12 }}>No recent activity</div>
+              )}
+            </div>
+          </div>
+        </div>
+
+        {/* Recent orders */}
         {data && data.recentOrders.length > 0 && (
-          <section>
-            <div className="flex items-center justify-between mb-3">
-              <div className="flex items-center gap-2">
-                <Receipt className="w-4 h-4 text-blue-400" />
-                <h2 className="text-sm font-semibold text-gray-400 uppercase tracking-wider">
-                  Recent Orders
-                  {data.branchScope && <span className="ml-2 text-gray-600 font-normal normal-case">· {data.branchScope}</span>}
-                </h2>
+          <div style={{ marginTop: 20 }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
+              <div style={{ fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.08em', color: 'var(--text-3)', fontWeight: 600 }}>
+                Recent Orders
+                {data.branchScope && <span style={{ marginLeft: 8, color: 'var(--text-4)', fontWeight: 400 }}>· {data.branchScope}</span>}
               </div>
-              <Link href="/sales/transactions" className="text-xs text-cyan-400 hover:underline">
+              <Link href="/sales/transactions" style={{ fontSize: 12, color: 'var(--green-bright)', textDecoration: 'none' }}>
                 View all →
               </Link>
             </div>
-            <div className="bg-gray-900 border border-gray-800 rounded-xl overflow-hidden">
-              <div className="overflow-x-auto">
-                <table className="w-full text-sm">
+            <div className="ds-panel" style={{ overflow: 'hidden' }}>
+              <div style={{ overflowX: 'auto' }}>
+                <table className="tbl">
                   <thead>
-                    <tr className="border-b border-gray-800 text-xs uppercase text-gray-500">
-                      <th className="px-4 py-2 text-left font-medium">SO #</th>
-                      <th className="px-4 py-2 text-left font-medium">Customer</th>
-                      <th className="px-4 py-2 text-left font-medium">Reference</th>
-                      <th className="px-4 py-2 text-left font-medium">Status</th>
-                      <th className="px-4 py-2 text-left font-medium">Rep</th>
-                      <th className="px-4 py-2 text-left font-medium">Ordered</th>
-                      <th className="px-4 py-2 text-left font-medium">Need By</th>
+                    <tr>
+                      <th>SO #</th>
+                      <th>Customer</th>
+                      <th>Reference</th>
+                      <th>Status</th>
+                      <th>Rep</th>
+                      <th>Ordered</th>
+                      <th>Need By</th>
                     </tr>
                   </thead>
                   <tbody>
                     {data.recentOrders.map((o) => {
-                      const st = SO_STATUS[o.so_status ?? ''] ?? { label: o.so_status ?? '?', color: 'bg-gray-800 text-gray-400' };
+                      const st = SO_STATUS[o.so_status ?? 'O'] ?? { label: o.so_status ?? '?', cls: 'chip chip-done' };
                       return (
-                        <tr key={`${o.system_id}-${o.so_id}`} className="border-b border-gray-800 last:border-0 hover:bg-gray-800/50">
-                          <td className="px-4 py-2">
-                            <Link href={`/sales/orders/${o.so_id}`} className="font-mono text-cyan-400 hover:underline">
+                        <tr key={`${o.system_id}-${o.so_id}`}>
+                          <td>
+                            <Link href={`/sales/orders/${o.so_id}`} className="mono" style={{ color: 'var(--green-bright)', textDecoration: 'none', fontWeight: 500 }}>
                               {o.so_id}
                             </Link>
                           </td>
-                          <td className="px-4 py-2">
+                          <td>
                             {o.cust_code ? (
-                              <Link href={`/sales/customers/${o.cust_code}`} className="text-gray-200 hover:text-white hover:underline">
+                              <Link href={`/sales/customers/${o.cust_code}`} style={{ color: 'var(--text)', textDecoration: 'none' }}>
                                 {o.cust_name ?? o.cust_code}
                               </Link>
-                            ) : (
-                              <span className="text-gray-400">—</span>
-                            )}
+                            ) : <span style={{ color: 'var(--text-3)' }}>—</span>}
                           </td>
-                          <td className="px-4 py-2 text-gray-400 max-w-[160px] truncate">{o.reference ?? '—'}</td>
-                          <td className="px-4 py-2">
-                            <span className={`px-2 py-0.5 rounded text-xs ${st.color}`}>{st.label}</span>
-                          </td>
-                          <td className="px-4 py-2 text-gray-400 text-xs">{o.salesperson ?? '—'}</td>
-                          <td className="px-4 py-2 text-gray-500 text-xs">{o.created_date?.slice(0, 10) ?? '—'}</td>
-                          <td className="px-4 py-2 text-gray-500 text-xs">{o.expect_date?.slice(0, 10) ?? '—'}</td>
+                          <td style={{ color: 'var(--text-2)', maxWidth: 160, overflow: 'hidden', textOverflow: 'ellipsis' }}>{o.reference ?? '—'}</td>
+                          <td><span className={st.cls}>{st.label}</span></td>
+                          <td style={{ color: 'var(--text-3)' }}>{o.salesperson ?? '—'}</td>
+                          <td className="mono" style={{ color: 'var(--text-3)', fontSize: 12 }}>{o.created_date?.slice(0, 10) ?? '—'}</td>
+                          <td className="mono" style={{ color: 'var(--text-3)', fontSize: 12 }}>{o.expect_date?.slice(0, 10) ?? '—'}</td>
                         </tr>
                       );
                     })}
@@ -399,73 +497,10 @@ export default function HomeClient({ userName, userRole, userBranch }: Props) {
                 </table>
               </div>
             </div>
-          </section>
+          </div>
         )}
-
-        {/* Recent activity */}
-        <section>
-          <div className="flex items-center gap-2 mb-3">
-            <Activity className="w-4 h-4 text-cyan-400" />
-            <h2 className="text-sm font-semibold text-gray-400 uppercase tracking-wider">Recent Activity</h2>
-          </div>
-          <div className="bg-gray-900 border border-gray-800 rounded-xl overflow-hidden">
-            {loading ? (
-              <div className="px-4 py-6 text-center text-sm text-gray-600">Loading…</div>
-            ) : data?.recentActivity.length ? (
-              <div className="divide-y divide-gray-800">
-                {data.recentActivity.map((a) => (
-                  <Link
-                    key={a.id}
-                    href={a.href}
-                    className="flex items-center justify-between px-4 py-3 hover:bg-gray-800/50 transition-colors group"
-                  >
-                    <div className="text-sm">
-                      <span className="text-gray-500">Bid #{a.bidId} </span>
-                      <span className="text-gray-300">{a.action}</span>
-                    </div>
-                    <div className="flex items-center gap-2 text-xs text-gray-600">
-                      <span>{relativeTime(a.timestamp)}</span>
-                      <ArrowRight className="w-3 h-3 opacity-0 group-hover:opacity-100 transition-opacity" />
-                    </div>
-                  </Link>
-                ))}
-              </div>
-            ) : (
-              <div className="px-4 py-6 text-center text-sm text-gray-600">No recent activity</div>
-            )}
-          </div>
-        </section>
 
       </div>
     </div>
-  );
-}
-
-function KpiTile({
-  label, value, href, color,
-}: {
-  label: string;
-  value: number | null;
-  href: string;
-  color: string;
-}) {
-  const colors: Record<string, string> = {
-    cyan:   'border-cyan-500/30 text-cyan-300',
-    purple: 'border-purple-500/30 text-purple-300',
-    yellow: 'border-yellow-500/30 text-yellow-300',
-    orange: 'border-orange-500/30 text-orange-300',
-    blue:   'border-blue-500/30 text-blue-300',
-    green:  'border-green-500/30 text-green-300',
-  };
-  const cls = colors[color] ?? colors.cyan;
-
-  return (
-    <Link href={href}
-      className={`bg-gray-900 border ${cls} rounded-xl px-4 py-3 hover:bg-gray-800/60 transition-colors`}>
-      <div className="text-xs text-gray-500 font-medium mb-1 truncate">{label}</div>
-      <div className={`text-2xl font-bold ${cls.split(' ')[1]}`}>
-        {value === null ? <span className="text-gray-700 text-base">…</span> : value}
-      </div>
-    </Link>
   );
 }

@@ -8,6 +8,7 @@ import {
 } from '../../src/lib/scorecard/queries';
 import type { AggregateParams, KpiComparison } from '../../src/lib/scorecard/types';
 import ManagementCharts from './_components/ManagementCharts';
+import ManagementFilterBar from './_components/ManagementFilterBar';
 import { ThreeYearTable, BranchSummaryTable, SalesByTypeTable } from './_components/ManagementTables';
 
 export const metadata = { title: 'Management — Beisser LiveEdge' };
@@ -49,11 +50,20 @@ function KpiCard({ label, base, compare, format }: {
     return v.toLocaleString();
   };
   return (
-    <div className="bg-slate-800/60 border border-slate-700 rounded-lg p-4 flex flex-col gap-1 min-w-0">
-      <p className="text-xs font-medium text-slate-400 uppercase tracking-wide truncate">{label}</p>
-      <p className="text-xl font-bold text-white tabular-nums truncate">{fmtVal(base)}</p>
+    <div
+      className="relative flex flex-col gap-1 min-w-0 p-4"
+      style={{
+        background: 'var(--panel)',
+        border: '1px solid var(--line)',
+        borderRadius: 'var(--r)',
+      }}
+    >
+      <p className="text-[11px] font-semibold uppercase tracking-widest truncate" style={{ color: 'var(--text-3)' }}>
+        {label}
+      </p>
+      <p className="text-xl font-bold mono truncate" style={{ color: 'var(--text)' }}>{fmtVal(base)}</p>
       <div className="flex items-center gap-1.5 mt-0.5">
-        <span className="text-xs text-slate-500 tabular-nums truncate">{fmtVal(compare)} prior yr</span>
+        <span className="text-xs mono truncate" style={{ color: 'var(--text-3)' }}>{fmtVal(compare)} prior yr</span>
         <DeltaChip base={base} compare={compare} />
       </div>
     </div>
@@ -196,56 +206,26 @@ export default async function ManagementPage({
   const qs = `baseYear=${baseYear}&compareYear=${compareYear}&period=${period}&cutoffDate=${cutoffDate}`;
 
   return (
+    <>
+    <ManagementFilterBar
+      baseYear={baseYear}
+      compareYear={compareYear}
+      period={period}
+      cutoffDate={cutoffDate}
+      currentYear={currentYear}
+    />
     <div className="p-4 md:p-6 space-y-6 max-w-7xl mx-auto">
       {/* Header */}
       <div className="flex items-start justify-between flex-wrap gap-4">
         <div>
-          <h1 className="text-2xl font-bold text-white flex items-center gap-2">
-            <BarChart3 className="w-6 h-6 text-cyan-400" />
+          <h1 className="text-2xl font-bold flex items-center gap-2" style={{ color: 'var(--text)' }}>
+            <BarChart3 className="w-6 h-6" style={{ color: 'var(--green-bright)' }} />
             Management
           </h1>
-          <p className="text-sm text-slate-400 mt-0.5">
+          <p className="text-sm mt-0.5 mono" style={{ color: 'var(--text-3)' }}>
             All Branches · {baseYear} vs {compareYear} · {periodLabel}
           </p>
         </div>
-
-        {/* Period / year controls */}
-        <form method="GET" className="flex flex-wrap items-center gap-2 print:hidden">
-          <div className="flex bg-slate-900 border border-slate-700 rounded-lg overflow-hidden">
-            {(['YTD', 'Full Year'] as const).map((p) => (
-              <a
-                key={p}
-                href={`/management?baseYear=${baseYear}&compareYear=${compareYear}&period=${p}&cutoffDate=${cutoffDate}`}
-                className={`px-3 py-1.5 text-sm font-medium transition ${
-                  period === p ? 'bg-cyan-600 text-white' : 'text-slate-400 hover:text-white'
-                }`}
-              >
-                {p}
-              </a>
-            ))}
-          </div>
-          <select
-            name="baseYear"
-            defaultValue={baseYear}
-            form="year-form"
-            className="hidden"
-          />
-          <div className="flex items-center gap-1.5">
-            {[currentYear, currentYear - 1, currentYear - 2].map((y) => (
-              <a
-                key={y}
-                href={`/management?baseYear=${y}&compareYear=${y - 1}&period=${period}&cutoffDate=${y === currentYear ? today : `${y}-12-31`}`}
-                className={`px-3 py-1.5 text-sm font-medium rounded-md transition ${
-                  baseYear === y
-                    ? 'bg-slate-700 text-white'
-                    : 'text-slate-400 hover:text-white hover:bg-slate-800'
-                }`}
-              >
-                {y}
-              </a>
-            ))}
-          </div>
-        </form>
       </div>
 
       {failures.length > 0 && (
@@ -270,6 +250,7 @@ export default async function ManagementPage({
         saleTypes={saleTypes}
         baseYear={baseYear}
         compareYear={compareYear}
+        qs={qs}
       />
 
       {/* 3-Year Comparison */}
@@ -316,5 +297,6 @@ export default async function ManagementPage({
         </div>
       </div>
     </div>
+    </>
   );
 }

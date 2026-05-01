@@ -1,8 +1,15 @@
 import type { Metadata, Viewport } from 'next';
 import './globals.css';
+import { JetBrains_Mono } from 'next/font/google';
 import { SessionProvider } from 'next-auth/react';
 import { auth } from '../auth';
 import { ServiceWorkerRegister } from '@/components/pwa/ServiceWorkerRegister';
+
+const jetbrainsMono = JetBrains_Mono({
+  subsets: ['latin'],
+  variable: '--font-mono',
+  display: 'swap',
+});
 
 export const metadata: Metadata = {
   title: 'Beisser LiveEdge',
@@ -36,7 +43,8 @@ export default async function RootLayout({
   const session = await auth();
   return (
     <html lang="en">
-      <body>
+      <body className={jetbrainsMono.variable}>
+        <div className="branch-edge" />
         <SessionProvider session={session}>{children}</SessionProvider>
         <ServiceWorkerRegister />
       </body>
