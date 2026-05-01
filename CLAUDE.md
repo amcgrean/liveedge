@@ -6,8 +6,32 @@ Beisser Lumber Co. internal estimating app (Next.js 15, TypeScript, Tailwind, Dr
 ## Route Reference
 Full API and page route inventory: **`docs/routes.md`** (last audited 2026-04-17, 147 API routes / 77 pages).
 
-## Access Control (in progress)
-Capability-based access control is being rolled out in phases. Phase 1 (foundation) is complete on branch `claude/improve-access-control-b8Le1`. See **`docs/access-control-plan.md`** for the full plan, the 28-capability vocabulary, the role-defaults table, and the Phase 2 handoff. Helpers live in `src/lib/access-control.ts`; menu config in `src/lib/menu-config.ts`. Existing role checks remain in place — capabilities are additive until Phase 4 sweeps them.
+## Access Control — COMPLETE
+Capability-based access control is fully rolled out (all 5 phases). See **`docs/access-control-plan.md`** for the full design, 28-capability vocabulary, and role-defaults table.
+
+**Key files:**
+- `src/lib/access-control.ts` — `CAPABILITIES`, `ROLE_DEFAULTS`, `effectiveCapabilities()`, `requireCapability()` (API routes), `requirePageAccess()` (server pages), `hasCapability()` (inline checks)
+- `src/lib/access-control-shared.ts` — client-safe subset (`hasCapability`, `Capability` type) — import this in `'use client'` components, NOT `access-control.ts`
+- `src/lib/menu-config.ts` — `MENU` array (ground-truth nav items with `requires` per item), `visibleMenu()` filter helper
+- `db/migrations/0015_user_capabilities.sql` — adds `granted_capabilities text[]` and `revoked_capabilities text[]` to `public.app_users` (already applied)
+
+**Auth flow:** `auth.ts` reads `granted_capabilities`/`revoked_capabilities` from `app_users` at login, computes the effective set via `effectiveCapabilities(roles, granted, revoked)`, and persists it on the JWT. A permission change takes effect on the user's **next sign-in**.
+
+**Admin UI:** `/admin/users/[id]/permissions/` — 3-tab capability editor (Pages & Menus / Actions / Admin). Each row shows a 3-state toggle (Inherited / Granted / Revoked) with a live green dot for the effective resolved value. Changes are audit-logged.
+
+**Pattern for new routes:**
+```ts
+// API route
+const authResult = await requireCapability('sales.view');
+if (authResult instanceof NextResponse) return authResult;
+const session = authResult;
+const isAdmin = hasCapability(session, 'branch.all');
+
+// Server page
+const session = await requirePageAccess('admin.users.manage');
+```
+
+**Deleted (Phase 5):** `src/lib/permissions.ts` and `src/lib/auth-helpers.ts` — the legacy `bids.user_security` matrix system. `legacyUserType` and `legacyUserSecurity` Drizzle table definitions removed from `db/schema-legacy.ts`.
 
 ## Architecture Overview
 
@@ -149,7 +173,7 @@ Full migration plan in `docs/migration-plan.md`. Six phases.
 - **Layouts/EWP CRUD (2B)**: Full CRUD + CSV import. Activity tracked via `legacyGeneralAudit` (modelName=`'ewp'`, ewpId stored in `changes` JSONB — no dedicated ewp_activity table in legacy DB).
 
 ### Phase 3: Admin Portal Expansion — COMPLETE
-- Permissions: `app/admin/users/[id]/permissions/`
+- Permissions: `app/admin/users/[id]/permissions/` (rewritten in access-control Phase 2 — now edits `app_users` capabilities, not the legacy `user_security` matrix)
 - Bid Fields: `app/admin/bid-fields/`
 - Notifications: `app/admin/notifications/`
 - Audit: `app/admin/audit/`
@@ -516,17 +540,15 @@ Adds **Recharts** (`recharts@^2.15`) and a small set of opinionated dark-theme c
 - **Dispatch enrichment** (driver/truck mgmt, order timeline per stop): WH-Tracker had these; LiveEdge dispatch shows basic stops only. **AR balance intentionally excluded from dispatch** — see AR Data Policy in the Agility Live API section.
 - **Sales delivery board** (`/sales/tracker`, `/sales/deliveries`): WH-Tracker had sales-rep-facing delivery views not yet ported
 - **Generic file management**: WH-Tracker's `files` + `file_versions` system not ported to LiveEdge
-- **`app_users` admin UI**: `/admin/users` queries `public.app_users` but the create/edit UI was built for `bids."user"` fields. Should be updated to match `app_users` schema (roles JSON array, branch string, no password field).
 - **Page tracking rollout**: `POST /api/track-visit` exists but not yet wired into module client components — Quick Access strip on homepage stays empty until called
 
 ## Pending Actions
 1. **Apply page_visits migration**: Run `db/migrations/0004_page_visits.sql` in Supabase SQL editor to enable Quick Access tracking on homepage
 2. **Extend page tracking to module clients**: Add `POST /api/track-visit` call to each module's main client component (or extract a shared `usePageTracking` hook in `src/hooks/`) so Quick Access fills with real data
-3. **`app_users` admin UI**: Update `/admin/users` create/edit forms to match `public.app_users` schema (roles JSON array, branch string) — currently shows bids."user" field layout which no longer matches the auth source of truth
-4. **RMA Credits thumbnails**: Email pipeline, doc counts, address-based RMA matching, and nested `.eml` parsing are live. Next: add `GET /api/credits/[id]/images` presigned URL route + thumbnail previews in CreditsClient so users can view docs inline.
-5. **Purchasing workflow gaps**: Before building, verify tables exist: `SELECT table_name FROM information_schema.tables WHERE table_schema='public' AND table_name IN ('purchasing_tasks','purchasing_approvals','purchasing_notes','purchasing_exceptions')` — if found, build PO notes API, exceptions view, approval workflow
-6. **Suggested Buys**: `app_purchasing_queue` confirmed missing. Check `agility_suggested_po_header` + `agility_suggested_po_lines` before building `/purchasing/suggested-buys`
-7. **Flask sunset**: DNS cutover + archive `C:\Users\amcgrean\python\wh-tracker-fly\WH-Tracker` after user testing confirms parity
+3. **RMA Credits thumbnails**: Email pipeline, doc counts, address-based RMA matching, and nested `.eml` parsing are live. Next: add `GET /api/credits/[id]/images` presigned URL route + thumbnail previews in CreditsClient so users can view docs inline.
+4. **Purchasing workflow gaps**: Before building, verify tables exist: `SELECT table_name FROM information_schema.tables WHERE table_schema='public' AND table_name IN ('purchasing_tasks','purchasing_approvals','purchasing_notes','purchasing_exceptions')` — if found, build PO notes API, exceptions view, approval workflow
+5. **Suggested Buys**: `app_purchasing_queue` confirmed missing. Check `agility_suggested_po_header` + `agility_suggested_po_lines` before building `/purchasing/suggested-buys`
+6. **Flask sunset**: DNS cutover + archive `C:\Users\amcgrean\python\wh-tracker-fly\WH-Tracker` after user testing confirms parity
 
 ## Takeoff Debugging (in progress, 2026-04-14)
 

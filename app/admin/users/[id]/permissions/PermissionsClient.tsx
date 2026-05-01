@@ -103,9 +103,15 @@ export default function PermissionsClient() {
   const fetchData = useCallback(async () => {
     setLoading(true);
     setError('');
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 12000);
     try {
-      const res = await fetch(`/api/admin/users/${userId}/permissions`);
-      if (!res.ok) { setError('Failed to load'); return; }
+      const res = await fetch(`/api/admin/users/${userId}/permissions`, { signal: controller.signal });
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        setError(`Error ${res.status}: ${(body as { error?: string }).error ?? 'Failed to load'}`);
+        return;
+      }
       const d: PermissionsData = await res.json();
       setData(d);
 
@@ -121,8 +127,14 @@ export default function PermissionsClient() {
         }
       }
       setCapStates(states);
-    } catch { setError('Failed to load'); }
-    finally { setLoading(false); }
+    } catch (e) {
+      if ((e as { name?: string }).name === 'AbortError') {
+        setError('Request timed out — the server is slow. Please try again.');
+      } else {
+        setError('Network error — please check your connection and try again.');
+      }
+    }
+    finally { clearTimeout(timeout); setLoading(false); }
   }, [userId]);
 
   useEffect(() => { fetchData(); }, [fetchData]);
@@ -164,8 +176,17 @@ export default function PermissionsClient() {
     setSuccess('');
   };
 
-  if (loading) return <div className="max-w-3xl p-8 text-slate-400">Loading...</div>;
-  if (!data) return <div className="max-w-3xl p-8 text-red-400">{error || 'User not found'}</div>;
+  if (loading) return <div className="max-w-3xl p-8 text-slate-400">Loading…</div>;
+  if (!data) return (
+    <div className="max-w-3xl p-8">
+      <p className="text-red-400 mb-4">{error || 'User not found'}</p>
+      {error && (
+        <button onClick={() => fetchData()} className="btn-secondary text-sm">
+          Retry
+        </button>
+      )}
+    </div>
+  );
 
   const { user } = data;
   const effectiveSet = new Set(data.effective_capabilities);
