@@ -6,8 +6,7 @@ import { usePathname, useRouter } from 'next/navigation';
 import { signOut, useSession } from 'next-auth/react';
 import {
   LogOut, ChevronDown, Menu, X, Settings,
-  Truck, ShoppingCart, FileText, Wrench, PackageCheck, Search,
-  Boxes, HelpCircle, User, BarChart3, Bell,
+  Search, Wrench, HelpCircle, User, Bell,
 } from 'lucide-react';
 import { cn } from '../../lib/utils';
 import { hasCapability } from '../../lib/access-control-shared';
@@ -152,7 +151,7 @@ function GlobalSearch() {
   }
 
   return (
-    <form onSubmit={submit} className="hidden md:flex items-center gap-1.5 h-[28px] px-2.5 bg-slate-800/60 border border-white/10 rounded-md min-w-[240px] focus-within:border-cyan-500/50 transition">
+    <form onSubmit={submit} className="flex items-center gap-1.5 h-[28px] px-2.5 bg-slate-800/60 border border-white/10 rounded-md min-w-[200px] max-w-xs focus-within:border-cyan-500/50 transition">
       <Search className="w-3.5 h-3.5 text-slate-500 flex-shrink-0" />
       <input
         ref={inputRef}
@@ -180,7 +179,6 @@ interface NavLink {
 interface Domain {
   id: string;
   label: string;
-  icon: React.ReactNode;
   links: NavLink[];
   isActive: (p: string) => boolean;
   dropdown: boolean;
@@ -194,7 +192,6 @@ function getDomains(tvBranch: string): Domain[] {
     {
       id: 'yard',
       label: 'Yard',
-      icon: <Boxes className="w-4 h-4" />,
       dropdown: true,
       requiresCap: ['yard.view', 'picks.release', 'workorders.assign', 'pickers.manage'],
       isActive: (p) =>
@@ -214,7 +211,6 @@ function getDomains(tvBranch: string): Domain[] {
     {
       id: 'dispatch',
       label: 'Dispatch',
-      icon: <Truck className="w-4 h-4" />,
       dropdown: true,
       requiresCap: ['dispatch.view', 'dispatch.manage'],
       isActive: (p) =>
@@ -234,7 +230,6 @@ function getDomains(tvBranch: string): Domain[] {
     {
       id: 'sales',
       label: 'Sales',
-      icon: <ShoppingCart className="w-4 h-4" />,
       dropdown: true,
       requiresCap: ['sales.view', 'credits.view', 'credits.manage', 'hubbell.review'],
       isActive: (p) =>
@@ -254,8 +249,7 @@ function getDomains(tvBranch: string): Domain[] {
     },
     {
       id: 'management',
-      label: 'Management',
-      icon: <BarChart3 className="w-4 h-4" />,
+      label: 'MGMT',
       dropdown: true,
       // branch.all is held by admin, management role, and ops — correct audience for these pages
       requiresCap: ['branch.all'],
@@ -274,7 +268,6 @@ function getDomains(tvBranch: string): Domain[] {
     {
       id: 'estimating',
       label: 'Services',
-      icon: <FileText className="w-4 h-4" />,
       dropdown: true,
       requiresCap: ['bids.manage', 'designs.manage', 'ewp.manage', 'projects.manage'],
       isActive: (p) =>
@@ -299,7 +292,6 @@ function getDomains(tvBranch: string): Domain[] {
     {
       id: 'purchasing',
       label: 'Purchasing',
-      icon: <PackageCheck className="w-4 h-4" />,
       dropdown: true,
       requiresCap: ['purchasing.view', 'purchasing.receive', 'purchasing.review'],
       isActive: (p) =>
@@ -475,12 +467,14 @@ export function TopNav({ userName, userRole }: Props) {
               </div>
             </Link>
 
-            {/* Desktop domain nav — capability-filtered */}
+            {/* Desktop search + domain nav — capability-filtered */}
             <div className="hidden lg:flex items-center gap-0.5">
+              <GlobalSearch />
+              <div className="w-px h-5 bg-slate-700 mx-1.5" />
               {visibleDomains.map((domain) => {
                 const active = domain.isActive(pathname);
                 const baseCls = cn(
-                  'flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium transition',
+                  'flex items-center gap-1 px-3 py-2 rounded-lg text-sm font-medium transition',
                   active
                     ? 'bg-cyan-500/20 text-cyan-400'
                     : 'text-slate-300 hover:text-white hover:bg-slate-800'
@@ -489,7 +483,6 @@ export function TopNav({ userName, userRole }: Props) {
                 if (!domain.dropdown) {
                   return (
                     <Link key={domain.id} href={domain.href!} className={baseCls}>
-                      {domain.icon}
                       {domain.label}
                     </Link>
                   );
@@ -498,7 +491,6 @@ export function TopNav({ userName, userRole }: Props) {
                 return (
                   <div key={domain.id} className="relative">
                     <button onClick={() => toggle(domain.id)} className={baseCls}>
-                      {domain.icon}
                       <span>{domain.label}</span>
                       <ChevronDown
                         className={cn(
@@ -515,12 +507,36 @@ export function TopNav({ userName, userRole }: Props) {
                   </div>
                 );
               })}
+
+              {/* Admin inline with domain nav — capability-gated */}
+              {showAdmin && (
+                <div className="relative">
+                  <button
+                    onClick={() => toggle('admin')}
+                    className={cn(
+                      'flex items-center gap-1 px-3 py-2 rounded-lg text-sm font-medium transition',
+                      pathname.startsWith('/admin')
+                        ? 'bg-cyan-500/20 text-cyan-400'
+                        : 'text-slate-300 hover:text-white hover:bg-slate-800'
+                    )}
+                  >
+                    <span>Admin</span>
+                    <ChevronDown
+                      className={cn('w-3 h-3 transition-transform', openMenu === 'admin' && 'rotate-180')}
+                    />
+                  </button>
+                  {openMenu === 'admin' && (
+                    <div className="absolute left-0 mt-1 min-w-[200px] bg-slate-900 border border-white/10 rounded-lg shadow-2xl shadow-black/50 overflow-hidden z-50 py-1">
+                      {adminLinks.map((l) => renderDropdownLink(l))}
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
           </div>
 
-          {/* Right side */}
-          <div className="flex items-center gap-2">
-            <GlobalSearch />
+          {/* Right side: branch + bell + user */}
+          <div className="flex items-center gap-1.5">
             <BranchSwitcher />
 
             {/* Notifications bell */}
@@ -532,34 +548,8 @@ export function TopNav({ userName, userRole }: Props) {
               <span className="absolute top-1.5 right-1.5 w-1.5 h-1.5 rounded-full bg-amber-400" />
             </button>
 
-            {/* Admin dropdown — desktop only, capability-gated */}
-            {showAdmin && (
-              <div className="relative hidden lg:block">
-                <button
-                  onClick={() => toggle('admin')}
-                  className={cn(
-                    'flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium transition',
-                    pathname.startsWith('/admin')
-                      ? 'bg-cyan-500/20 text-cyan-400'
-                      : 'text-slate-300 hover:text-white hover:bg-slate-800'
-                  )}
-                >
-                  <Settings className="w-4 h-4" />
-                  <span>Admin</span>
-                  <ChevronDown
-                    className={cn('w-3 h-3 transition-transform', openMenu === 'admin' && 'rotate-180')}
-                  />
-                </button>
-                {openMenu === 'admin' && (
-                  <div className="absolute right-0 mt-1 min-w-[200px] bg-slate-900 border border-white/10 rounded-lg shadow-2xl shadow-black/50 overflow-hidden z-50 py-1">
-                    {adminLinks.map((l) => renderDropdownLink(l))}
-                  </div>
-                )}
-              </div>
-            )}
-
             {/* User dropdown — desktop */}
-            <div className="relative hidden sm:block pl-3 border-l border-slate-700">
+            <div className="relative hidden sm:block pl-2 border-l border-slate-700">
               <button
                 onClick={() => toggle('user')}
                 className="flex items-center gap-1.5 px-2 py-1.5 rounded-lg text-sm text-slate-300 hover:text-white hover:bg-slate-800 transition"
@@ -631,13 +621,9 @@ export function TopNav({ userName, userRole }: Props) {
             <div className="px-4 py-3 space-y-0.5">
 
               {/* Mobile search */}
-              <Link
-                href="/search"
-                className="flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm transition text-slate-400 hover:text-white hover:bg-slate-800"
-              >
-                <Search className="w-4 h-4" />
-                Search
-              </Link>
+              <div className="pb-2">
+                <GlobalSearch />
+              </div>
               <div className="border-t border-slate-800 my-1" />
 
               {/* Domain sections */}
@@ -650,13 +636,12 @@ export function TopNav({ userName, userRole }: Props) {
                       key={domain.id}
                       href={domain.href!}
                       className={cn(
-                        'flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition',
+                        'flex items-center px-3 py-2.5 rounded-lg text-sm font-medium transition',
                         domain.isActive(pathname)
                           ? 'bg-cyan-500/20 text-cyan-400'
                           : 'text-slate-300 hover:text-white hover:bg-slate-800'
                       )}
                     >
-                      {domain.icon}
                       {domain.label}
                     </Link>
                   );
@@ -673,10 +658,7 @@ export function TopNav({ userName, userRole }: Props) {
                           : 'text-slate-400 hover:text-white hover:bg-slate-800'
                       )}
                     >
-                      <span className="flex items-center gap-2">
-                        {domain.icon}
-                        {domain.label}
-                      </span>
+                      <span>{domain.label}</span>
                       <ChevronDown
                         className={cn('w-4 h-4 transition-transform', sectionOpen && 'rotate-180')}
                       />
@@ -723,10 +705,7 @@ export function TopNav({ userName, userRole }: Props) {
                         : 'text-slate-400 hover:text-white hover:bg-slate-800'
                     )}
                   >
-                    <span className="flex items-center gap-2">
-                      <Settings className="w-4 h-4" />
-                      Admin
-                    </span>
+                    <span>Admin</span>
                     <ChevronDown
                       className={cn(
                         'w-4 h-4 transition-transform',
