@@ -1,8 +1,8 @@
 import { NextResponse } from 'next/server';
 import { requireCapability } from '../../../../../src/lib/access-control';
 import { getDb } from '../../../../../db/index';
-import { legacyUser, legacyUserType } from '../../../../../db/schema-legacy';
-import { eq, asc } from 'drizzle-orm';
+import { legacyUser } from '../../../../../db/schema-legacy';
+import { asc } from 'drizzle-orm';
 import { generateCSV, csvResponse } from '@/lib/csv-utils';
 
 export async function GET() {
@@ -20,11 +20,9 @@ export async function GET() {
         isAdmin: legacyUser.isAdmin,
         isEstimator: legacyUser.isEstimator,
         isDesigner: legacyUser.isDesigner,
-        userType: legacyUserType.name,
         createdAt: legacyUser.createdAt,
       })
       .from(legacyUser)
-      .leftJoin(legacyUserType, eq(legacyUser.usertypeId, legacyUserType.id))
       .orderBy(asc(legacyUser.username));
 
     const csv = generateCSV(rows);
