@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { auth } from '../../../../auth';
+import { requireCapability, hasCapability } from '../../../../src/lib/access-control';
 import { getErpSql } from '../../../../db/supabase';
 import type { DeliveryStop } from '../deliveries/route';
 import type { DispatchKpis } from '../kpis/route';
@@ -52,16 +52,15 @@ export interface DispatchInitResponse {
 // Single endpoint replacing the 4 parallel calls + N route-stop calls on page load.
 // All queries run sequentially on one DB connection.
 export async function GET(req: NextRequest) {
-  const session = await auth();
-  if (!session?.user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  const authResult = await requireCapability('dispatch.view', 'dispatch.manage');
+  if (authResult instanceof NextResponse) return authResult;
+  const session = authResult;
 
   const { searchParams } = req.nextUrl;
   const dateParam = searchParams.get('date') ?? new Date().toISOString().slice(0, 10);
   const branchParam = searchParams.get('branch') ?? '';
 
-  const isAdmin =
-    session.user.role === 'admin' ||
-    (session.user.roles ?? []).some((r) => ['admin', 'supervisor', 'ops', 'dispatch'].includes(r));
+  const isAdmin = hasCapability(session, 'branch.all');
   const effectiveBranch = isAdmin ? branchParam : (session.user.branch ?? '');
   const deliveryDate = /^\d{4}-\d{2}-\d{2}$/.test(dateParam) ? dateParam : new Date().toISOString().slice(0, 10);
 

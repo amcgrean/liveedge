@@ -1,10 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { auth } from '../../../../auth';
+import { requireCapability } from '../../../../src/lib/access-control';
 import { searchCustomers } from '../../../../src/lib/scorecard/queries';
 
 export async function GET(req: NextRequest) {
-  const session = await auth();
-  if (!session?.user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  const authResult = await requireCapability('sales.view');
+  if (authResult instanceof NextResponse) return authResult;
 
   const q = req.nextUrl.searchParams.get('q') ?? '';
   if (q.length < 1) return NextResponse.json({ customers: [] });

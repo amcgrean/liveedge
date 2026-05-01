@@ -1,11 +1,11 @@
 import { NextResponse } from 'next/server';
-import { auth } from '../../../../../auth';
+import { requireCapability } from '../../../../../src/lib/access-control';
 import { fetchProductScorecardItems } from '../../../../../src/lib/scorecard/queries';
 import type { AggregateParams } from '../../../../../src/lib/scorecard/types';
 
 export async function GET(request: Request) {
-  const session = await auth();
-  if (!session?.user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  const authResult = await requireCapability('sales.view');
+  if (authResult instanceof NextResponse) return authResult;
 
   const { searchParams } = new URL(request.url);
   const majorCode = searchParams.get('majorCode') ?? '';

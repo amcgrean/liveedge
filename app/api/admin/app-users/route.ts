@@ -1,12 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { auth } from '../../../../auth';
+import { requireCapability } from '../../../../src/lib/access-control';
 import { getErpSql } from '../../../../db/supabase';
 
 // GET /api/admin/app-users — list all OTP auth users
 export async function GET() {
-  const session = await auth();
-  if (!session?.user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-  if (session.user.role !== 'admin') return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+  const authResult = await requireCapability('admin.users.manage');
+  if (authResult instanceof NextResponse) return authResult;
 
   try {
     const sql = getErpSql();
@@ -25,9 +24,8 @@ export async function GET() {
 
 // PUT /api/admin/app-users — upsert an OTP user by email (create or update display_name/roles)
 export async function PUT(req: NextRequest) {
-  const session = await auth();
-  if (!session?.user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-  if (session.user.role !== 'admin') return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+  const authResult = await requireCapability('admin.users.manage');
+  if (authResult instanceof NextResponse) return authResult;
 
   const body = await req.json() as {
     email?: string;
@@ -64,9 +62,8 @@ export async function PUT(req: NextRequest) {
 
 // POST /api/admin/app-users — create a new OTP user
 export async function POST(req: NextRequest) {
-  const session = await auth();
-  if (!session?.user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-  if (session.user.role !== 'admin') return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+  const authResult = await requireCapability('admin.users.manage');
+  if (authResult instanceof NextResponse) return authResult;
 
   const body = await req.json() as {
     email?: string;

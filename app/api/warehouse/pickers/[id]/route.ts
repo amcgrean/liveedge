@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { auth } from '../../../../../auth';
+import { requireCapability } from '../../../../../src/lib/access-control';
 import { getErpSql } from '../../../../../db/supabase';
 
 // GET   /api/warehouse/pickers/[id]   — picker detail + recent picks
@@ -9,8 +9,8 @@ export async function GET(
   _req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const session = await auth();
-  if (!session?.user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  const authResult = await requireCapability('yard.view', 'picks.release', 'workorders.assign', 'pickers.manage');
+  if (authResult instanceof NextResponse) return authResult;
 
   const { id } = await params;
   const pickerId = parseInt(id, 10);
@@ -69,13 +69,8 @@ export async function PATCH(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const session = await auth();
-  if (!session?.user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-
-  const isAdmin =
-    session.user.role === 'admin' ||
-    (session.user.roles ?? []).some((r) => ['admin', 'supervisor'].includes(r));
-  if (!isAdmin) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+  const authResult = await requireCapability('pickers.manage');
+  if (authResult instanceof NextResponse) return authResult;
 
   const { id } = await params;
   const pickerId = parseInt(id, 10);
@@ -115,13 +110,8 @@ export async function DELETE(
   _req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const session = await auth();
-  if (!session?.user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-
-  const isAdmin =
-    session.user.role === 'admin' ||
-    (session.user.roles ?? []).some((r) => ['admin'].includes(r));
-  if (!isAdmin) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+  const authResult = await requireCapability('pickers.manage');
+  if (authResult instanceof NextResponse) return authResult;
 
   const { id } = await params;
   const pickerId = parseInt(id, 10);

@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { hasCapability } from '../../../../src/lib/access-control-shared';
 import { auth } from '../../../../auth';
 import { getDb } from '../../../../db/index';
 import { getPresignedPdfUrl, deletePdf } from '@/lib/r2';
@@ -45,7 +46,7 @@ export async function DELETE(_req: NextRequest, { params }: { params: Promise<{ 
 
     if (!rows[0]) return NextResponse.json({ error: 'File not found.' }, { status: 404 });
 
-    const isAdmin = session.user.role === 'admin';
+    const isAdmin = hasCapability(session, 'admin.config.manage');
     const isOwner = rows[0].uploaded_by != null && String(rows[0].uploaded_by) === String(session.user.id);
     if (!isAdmin && !isOwner) {
       return NextResponse.json({ error: 'Forbidden.' }, { status: 403 });

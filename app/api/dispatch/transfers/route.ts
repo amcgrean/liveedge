@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { auth } from '../../../../auth';
+import { requireCapability, hasCapability } from '../../../../src/lib/access-control';
 import { getErpSql } from '../../../../db/supabase';
 
 // Sale type used by Agility for inter-branch transfer SOs and POs.
@@ -36,12 +36,11 @@ export interface TransferPO {
 // Returns outbound transfer SOs this branch must fill, and inbound transfer POs
 // this branch is waiting to receive from another branch.
 export async function GET(req: NextRequest) {
-  const session = await auth();
-  if (!session?.user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  const authResult = await requireCapability('dispatch.view', 'dispatch.manage');
+  if (authResult instanceof NextResponse) return authResult;
+  const session = authResult;
 
-  const isAdmin =
-    session.user.role === 'admin' ||
-    (session.user.roles ?? []).some((r) => ['admin', 'supervisor', 'ops', 'dispatch'].includes(r));
+  const isAdmin = hasCapability(session, 'branch.all');
 
   const branchParam = req.nextUrl.searchParams.get('branch') ?? '';
   const effectiveBranch = isAdmin ? branchParam : (session.user.branch ?? '');

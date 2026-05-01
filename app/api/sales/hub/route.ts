@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { auth } from '../../../../auth';
+import { requireCapability } from '../../../../src/lib/access-control';
 import { getErpSql } from '../../../../db/supabase';
 
 type Count = { cnt: string };
@@ -71,8 +71,9 @@ const EMPTY: HubData = {
 };
 
 export async function GET() {
-  const session = await auth();
-  if (!session?.user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  const authResult = await requireCapability('sales.view');
+  if (authResult instanceof NextResponse) return authResult;
+  const session = authResult;
 
   const userId = parseInt(session.user.id, 10);
   const branch = session.user.branch ?? null;

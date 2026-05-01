@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { auth } from '../../../../auth';
+import { requireCapability, hasCapability } from '../../../../src/lib/access-control';
 import { getErpSql } from '../../../../db/supabase';
 
 // All admin/users routes now operate on public.app_users (unified auth table).
@@ -9,13 +9,6 @@ import { getErpSql } from '../../../../db/supabase';
 function dbError(err: unknown) {
   console.error('[admin/users API]', err);
   return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
-}
-
-async function requireAdmin() {
-  const session = await auth();
-  if (!session?.user) return { error: NextResponse.json({ error: 'Unauthorized' }, { status: 401 }) };
-  if (session.user.role !== 'admin') return { error: NextResponse.json({ error: 'Admin access required' }, { status: 403 }) };
-  return { session };
 }
 
 type AppUserRow = {
@@ -75,8 +68,8 @@ function toUserDto(r: AppUserRow) {
 }
 
 export async function GET() {
-  const { error } = await requireAdmin();
-  if (error) return error;
+  const authResult = await requireCapability('admin.users.manage');
+  if (authResult instanceof NextResponse) return authResult;
 
   try {
     const sql = getErpSql();
@@ -93,8 +86,8 @@ export async function GET() {
 }
 
 export async function POST(req: NextRequest) {
-  const { error } = await requireAdmin();
-  if (error) return error;
+  const authResult = await requireCapability('admin.users.manage');
+  if (authResult instanceof NextResponse) return authResult;
 
   let body: {
     name?: string;       // display name

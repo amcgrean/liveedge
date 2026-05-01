@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { auth } from '../../../../auth';
+import { requireCapability } from '../../../../src/lib/access-control';
 import { getErpSql } from '../../../../db/supabase';
 import {
   BRANCHES,
@@ -15,15 +15,8 @@ import {
 // round-trip (open orders + delivery forecast) since they share the same
 // underlying agility_so_header scan.
 export async function GET(req: NextRequest) {
-  const session = await auth();
-  if (!session?.user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-
-  const canAccess =
-    session.user.role === 'admin' ||
-    (session.user.roles ?? []).some((r) =>
-      ['admin', 'supervisor', 'ops', 'sales', 'dispatch', 'management'].includes(r),
-    );
-  if (!canAccess) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+  const authResult = await requireCapability('branch.all');
+  if (authResult instanceof NextResponse) return authResult;
 
   const { searchParams } = req.nextUrl;
   const branch = searchParams.get('branch') ?? '';

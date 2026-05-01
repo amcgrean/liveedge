@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { auth } from '../../../../../auth';
+import { requireCapability } from '../../../../../src/lib/access-control';
 import { getErpSql } from '../../../../../db/supabase';
 
 /**
@@ -7,8 +7,8 @@ import { getErpSql } from '../../../../../db/supabase';
  * Returns all current pick assignments as { so_number → { picker_id, picker_name } }.
  */
 export async function GET() {
-  const session = await auth();
-  if (!session?.user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  const authResult = await requireCapability('yard.view', 'picks.release', 'workorders.assign', 'pickers.manage');
+  if (authResult instanceof NextResponse) return authResult;
 
   try {
     const sql = getErpSql();
@@ -47,15 +47,8 @@ export async function GET() {
  * pick_assignments table: picker_id, so_number, assigned_at
  */
 export async function POST(req: NextRequest) {
-  const session = await auth();
-  if (!session?.user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-
-  const canAssign =
-    session.user.role === 'admin' ||
-    (session.user.roles ?? []).some((r) =>
-      ['admin', 'supervisor', 'ops', 'warehouse'].includes(r)
-    );
-  if (!canAssign) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+  const authResult = await requireCapability('yard.view', 'picks.release', 'workorders.assign', 'pickers.manage');
+  if (authResult instanceof NextResponse) return authResult;
 
   const body = await req.json() as { so_number?: string; picker_id?: number | null };
   const { so_number, picker_id } = body;

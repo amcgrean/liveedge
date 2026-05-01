@@ -1,14 +1,10 @@
-import { auth } from '../../auth';
-import { redirect } from 'next/navigation';
+import { requirePageAccess, hasCapability } from '../../src/lib/access-control';
 import DeliveryClient from './DeliveryClient';
 
 export default async function DeliveryPage() {
-  const session = await auth();
-  if (!session?.user) redirect('/login');
+  const session = await requirePageAccess('dispatch.view', 'dispatch.manage');
 
-  const isAdmin =
-    session.user.role === 'admin' ||
-    (session.user.roles ?? []).some((r) => ['admin', 'supervisor', 'ops', 'dispatch'].includes(r));
+  const isAdmin = hasCapability(session, 'branch.all');
 
   return (
     <DeliveryClient

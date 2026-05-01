@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { auth } from '../../../../../auth';
+import { requireCapability } from '../../../../../src/lib/access-control';
 import { agilityApi, isAgilityConfigured, BRANCH_MAP, AgilityApiError } from '../../../../../src/lib/agility-api';
 import { getErpSql } from '../../../../../db/supabase';
 
@@ -30,19 +30,8 @@ interface CreatePickFileBody {
 }
 
 export async function POST(req: NextRequest) {
-  const session = await auth();
-  if (!session?.user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-
-  // Must be supervisor, ops, or admin
-  const roles: string[] = (session.user as { roles?: string[] }).roles ?? [];
-  const role = (session.user as { role?: string }).role ?? '';
-  const canCreate =
-    role === 'admin' ||
-    roles.some((r) => ['admin', 'supervisor', 'ops', 'warehouse'].includes(r));
-
-  if (!canCreate) {
-    return NextResponse.json({ error: 'Insufficient permissions' }, { status: 403 });
-  }
+  const authResult = await requireCapability('picks.release');
+  if (authResult instanceof NextResponse) return authResult;
 
   if (!isAgilityConfigured()) {
     return NextResponse.json(

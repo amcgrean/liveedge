@@ -1,17 +1,12 @@
-import { auth } from '../../../../auth';
-import { redirect } from 'next/navigation';
+import { requirePageAccess, hasCapability } from '../../../../src/lib/access-control';
 import { TopNav } from '../../../../src/components/nav/TopNav';
 import PosDetailClient from './PosDetailClient';
 
 export default async function PosDetailPage({ params }: { params: Promise<{ po: string }> }) {
-  const session = await auth();
-  if (!session?.user) redirect('/login');
+  const session = await requirePageAccess('purchasing.view', 'purchasing.receive');
 
   const { po } = await params;
-
-  const isAdmin =
-    session.user.role === 'admin' ||
-    (session.user.roles ?? []).some((r) => ['admin', 'supervisor', 'ops', 'purchasing'].includes(r));
+  const isAdmin = hasCapability(session, 'branch.all');
 
   return (
     <div className="min-h-screen bg-gray-950">

@@ -1,11 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { auth } from '../../../../auth';
+import { requireCapability } from '../../../../src/lib/access-control';
 import { getErpSql } from '../../../../db/supabase';
 
 // GET /api/purchasing/exceptions?branch=&type=&severity=&buyer=&limit=200
 export async function GET(req: NextRequest) {
-  const session = await auth();
-  if (!session?.user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  const authResult = await requireCapability('purchasing.view', 'purchasing.review');
+  if (authResult instanceof NextResponse) return authResult;
 
   const { searchParams } = req.nextUrl;
   const branch   = searchParams.get('branch') ?? '';

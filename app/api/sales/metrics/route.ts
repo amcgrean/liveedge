@@ -1,19 +1,18 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { auth } from '../../../../auth';
+import { requireCapability, hasCapability } from '../../../../src/lib/access-control';
 import { getErpSql } from '../../../../db/supabase';
 
 // GET /api/sales/metrics?branch=20GR&period=30
 export async function GET(req: NextRequest) {
-  const session = await auth();
-  if (!session?.user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  const authResult = await requireCapability('sales.view');
+  if (authResult instanceof NextResponse) return authResult;
+  const session = authResult;
 
   const { searchParams } = req.nextUrl;
   const branchParam = searchParams.get('branch') ?? '';
   const period = Math.max(7, Math.min(365, parseInt(searchParams.get('period') ?? '30', 10) || 30));
 
-  const isAdmin =
-    session.user.role === 'admin' ||
-    (session.user.roles ?? []).some((r) => ['admin', 'supervisor', 'ops', 'sales'].includes(r));
+  const isAdmin = hasCapability(session, 'branch.all');
 
   const effectiveBranch = isAdmin ? branchParam : (session.user.branch ?? '');
 

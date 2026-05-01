@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { auth } from '../../../../auth';
+import { requireCapability, hasCapability } from '../../../../src/lib/access-control';
 import { getErpSql } from '../../../../db/supabase';
 
 export interface SalesOrder {
@@ -21,8 +21,9 @@ export interface SalesOrder {
 
 // GET /api/sales/orders?q=&branch=&status=O&limit=100&page=1&date_from=&date_to=&sale_type=&rep1=&rep3=
 export async function GET(req: NextRequest) {
-  const session = await auth();
-  if (!session?.user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  const authResult = await requireCapability('sales.view');
+  if (authResult instanceof NextResponse) return authResult;
+  const session = authResult;
 
   const { searchParams } = req.nextUrl;
   const q = (searchParams.get('q') ?? '').trim();
@@ -36,9 +37,7 @@ export async function GET(req: NextRequest) {
   const rep1Param = (searchParams.get('rep1') ?? '').trim().toUpperCase();
   const rep3Param = (searchParams.get('rep3') ?? '').trim().toUpperCase();
 
-  const isAdmin =
-    session.user.role === 'admin' ||
-    (session.user.roles ?? []).some((r) => ['admin', 'supervisor', 'ops', 'sales'].includes(r));
+  const isAdmin = hasCapability(session, 'branch.all');
 
   const effectiveBranch = isAdmin ? branchParam : (session.user.branch ?? '');
   const offset = (page - 1) * limit;

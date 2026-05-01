@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { auth } from '../../../../../auth';
+import { requireCapability } from '../../../../../src/lib/access-control';
 import { getErpSql } from '../../../../../db/supabase';
 import { JUNK_ADDRESS_SQL_REGEX } from '../../../../../src/lib/geocode';
 
@@ -13,10 +13,8 @@ export interface GeocodeStatus {
 }
 
 export async function GET() {
-  const session = await auth();
-  if (!session?.user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-  const role = (session.user as { role?: string }).role ?? 'estimator';
-  if (role !== 'admin') return NextResponse.json({ error: 'Admin access required' }, { status: 403 });
+  const authResult = await requireCapability('admin.config.manage');
+  if (authResult instanceof NextResponse) return authResult;
 
   try {
     const sql = getErpSql();

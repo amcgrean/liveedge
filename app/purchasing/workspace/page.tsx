@@ -1,14 +1,11 @@
-import { auth } from '../../../auth';
-import { redirect } from 'next/navigation';
+import { requirePageAccess } from '../../../src/lib/access-control';
 import { TopNav } from '../../../src/components/nav/TopNav';
 import WorkspaceClient from './WorkspaceClient';
 
 export const metadata = { title: 'Buyer Workspace' };
 
 export default async function BuyerWorkspacePage() {
-  const session = await auth();
-  if (!session?.user) redirect('/login');
-  if ((session.user.roles ?? []).includes('receiving_yard')) redirect('/purchasing');
+  const session = await requirePageAccess('purchasing.view');
 
   return (
     <div className="min-h-screen bg-gray-950">

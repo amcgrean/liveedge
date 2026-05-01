@@ -1,14 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { auth } from '../../../../../auth';
+import { requireCapability, hasCapability } from '../../../../../src/lib/access-control';
 import { getErpSql } from '../../../../../db/supabase';
 import { getSelectedBranchCode } from '@/lib/branch-context';
 import {
   addParam,
   appendBranchItemFilter,
   formatProductLabel,
-  isProductAdmin,
-  parseIncludeInactive,
-} from '../_shared';
+  parseIncludeInactive} from '../_shared';
 
 type MinorRow = {
   code: string;
@@ -20,13 +18,14 @@ type MinorRow = {
 // Returns distinct product minors within the given major, scoped to items
 // that exist in agility_item_branch for the selected branch.
 export async function GET(req: NextRequest) {
-  const session = await auth();
-  if (!session?.user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  const authResult = await requireCapability('sales.view');
+  if (authResult instanceof NextResponse) return authResult;
+  const session = authResult;
 
   const majorCode = req.nextUrl.searchParams.get('group')?.trim() ?? '';
   if (!majorCode) return NextResponse.json({ error: 'Missing group' }, { status: 400 });
 
-  const isAdmin = isProductAdmin(session.user);
+  const isAdmin =(session.user);
   const includeInactive = isAdmin && parseIncludeInactive(req.nextUrl.searchParams.get('includeInactive'));
   const effectiveBranch = isAdmin
     ? (await getSelectedBranchCode() ?? '')
@@ -57,10 +56,8 @@ export async function GET(req: NextRequest) {
       majors: rows.map((r) => ({
         code: r.code,
         label: formatProductLabel(r.label ?? r.code),
-        item_count: r.item_count,
-      })),
-      available: rows.length > 0,
-    });
+        item_count: r.item_count})),
+      available: rows.length > 0});
   } catch (err) {
     console.error('[sales/products/majors GET]', err);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });

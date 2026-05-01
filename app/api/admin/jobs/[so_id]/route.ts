@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { auth } from '../../../../../auth';
+import { requireCapability } from '../../../../../src/lib/access-control';
 import { getErpSql } from '../../../../../db/supabase';
 
 export interface JobDetail {
@@ -32,10 +32,8 @@ export async function GET(
   _req: NextRequest,
   { params }: { params: Promise<{ so_id: string }> }
 ) {
-  const session = await auth();
-  if (!session?.user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-  const role = (session.user as { role?: string }).role ?? 'estimator';
-  if (role !== 'admin') return NextResponse.json({ error: 'Admin access required' }, { status: 403 });
+  const authResult = await requireCapability('admin.jobs.review');
+  if (authResult instanceof NextResponse) return authResult;
 
   const { so_id } = await params;
   if (!so_id) return NextResponse.json({ error: 'so_id required' }, { status: 400 });

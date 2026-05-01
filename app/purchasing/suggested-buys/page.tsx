@@ -1,15 +1,10 @@
-import { auth } from '../../../auth';
-import { redirect } from 'next/navigation';
+import { requirePageAccess, hasCapability } from '../../../src/lib/access-control';
 import SuggestedBuysClient from './SuggestedBuysClient';
 
 export default async function SuggestedBuysPage() {
-  const session = await auth();
-  if (!session?.user) redirect('/login');
-  if ((session.user.roles ?? []).includes('receiving_yard')) redirect('/purchasing');
+  const session = await requirePageAccess('purchasing.view');
 
-  const isAdmin =
-    session.user.role === 'admin' ||
-    (session.user.roles ?? []).some((r) => ['admin', 'supervisor', 'ops', 'purchasing'].includes(r));
+  const isAdmin = hasCapability(session, 'branch.all');
 
   return (
     <SuggestedBuysClient

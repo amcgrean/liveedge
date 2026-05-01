@@ -1,14 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { auth } from '../../../../auth';
+import { requireCapability } from '../../../../src/lib/access-control';
 import { getDb } from '../../../../db/index';
 
 // GET /api/admin/analytics?limit=50&sort=visits
 // Returns page visit stats by user from bids.page_visits
 export async function GET(req: NextRequest) {
-  const session = await auth();
-  if (!session?.user || session.user.role !== 'admin') {
-    return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
-  }
+  const authResult = await requireCapability('admin.config.manage');
+  if (authResult instanceof NextResponse) return authResult;
 
   const { searchParams } = req.nextUrl;
   const sort  = searchParams.get('sort') ?? 'visits';  // 'visits' | 'recent'

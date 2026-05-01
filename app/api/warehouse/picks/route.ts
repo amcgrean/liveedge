@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { auth } from '../../../../auth';
+import { requireCapability, hasCapability } from '../../../../src/lib/access-control';
 import { getErpSql } from '../../../../db/supabase';
 
 export interface OpenPickSummary {
@@ -23,16 +23,15 @@ export interface OpenPickSummary {
 // Returns open picks (distinct SOs) from ERP mirror tables.
 // Mirrors WH-Tracker's get_open_so_summary logic.
 export async function GET(req: NextRequest) {
-  const session = await auth();
-  if (!session?.user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  const authResult = await requireCapability('yard.view', 'picks.release', 'workorders.assign', 'pickers.manage');
+  if (authResult instanceof NextResponse) return authResult;
+  const session = authResult;
 
   const { searchParams } = req.nextUrl;
   const branchParam = searchParams.get('branch') ?? '';
   const limit = Math.min(500, parseInt(searchParams.get('limit') ?? '200', 10) || 200);
 
-  const isAdmin =
-    session.user.role === 'admin' ||
-    (session.user.roles ?? []).some((r) => ['admin', 'supervisor', 'ops'].includes(r));
+  const isAdmin = hasCapability(session, 'branch.all');
 
   // Determine branch filter: non-admin users are locked to their branch
   const effectiveBranch = isAdmin ? (branchParam || null) : (session.user.branch || null);

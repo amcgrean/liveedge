@@ -1,14 +1,10 @@
-import { auth } from '../../auth';
-import { redirect } from 'next/navigation';
+import { requirePageAccess, hasCapability } from '../../src/lib/access-control';
 import SupervisorClient from './SupervisorClient';
 
 export default async function SupervisorPage() {
-  const session = await auth();
-  if (!session?.user) redirect('/login');
+  const session = await requirePageAccess('pickers.manage', 'workorders.assign');
 
-  const isAdmin =
-    session.user.role === 'admin' ||
-    (session.user.roles ?? []).some((r) => ['admin', 'supervisor', 'ops'].includes(r));
+  const isAdmin = hasCapability(session, 'branch.all');
 
   return (
     <SupervisorClient

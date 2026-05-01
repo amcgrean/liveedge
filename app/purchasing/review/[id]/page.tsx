@@ -1,17 +1,9 @@
-import { auth } from '../../../../auth';
-import { redirect } from 'next/navigation';
+import { requirePageAccess } from '../../../../src/lib/access-control';
 import { TopNav } from '../../../../src/components/nav/TopNav';
 import ReviewDetailClient from './ReviewDetailClient';
 
 export default async function ReviewDetailPage({ params }: { params: Promise<{ id: string }> }) {
-  const session = await auth();
-  if (!session?.user) redirect('/login');
-
-  const isAdmin =
-    session.user.role === 'admin' ||
-    (session.user.roles ?? []).some((r) => ['admin', 'supervisor', 'ops'].includes(r));
-
-  if (!isAdmin) redirect('/purchasing/review');
+  const session = await requirePageAccess('purchasing.review');
 
   const { id } = await params;
 

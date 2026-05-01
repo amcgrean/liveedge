@@ -1,16 +1,7 @@
-import { redirect } from 'next/navigation';
-import { auth } from '../../auth';
+import { requirePageAccess } from '../../src/lib/access-control';
 
 export default async function SupervisorLayout({ children }: { children: React.ReactNode }) {
-  const session = await auth();
-  if (!session?.user) redirect('/login');
-
-  const canAccess =
-    session.user.role === 'admin' ||
-    (session.user.roles ?? []).some((r) =>
-      ['admin', 'supervisor', 'ops', 'warehouse', 'management'].includes(r)
-    );
-  if (!canAccess) redirect('/dashboard');
+  await requirePageAccess('pickers.manage', 'workorders.assign');
 
   return <>{children}</>;
 }

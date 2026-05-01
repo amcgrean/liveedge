@@ -1,5 +1,4 @@
-import { auth } from '../../auth';
-import { redirect } from 'next/navigation';
+import { requirePageAccess, hasCapability } from '../../src/lib/access-control';
 import { getErpSql } from '../../db/supabase';
 import WorkOrdersClient from './WorkOrdersClient';
 
@@ -11,12 +10,9 @@ interface Builder {
 }
 
 export default async function WorkOrdersPage() {
-  const session = await auth();
-  if (!session?.user) redirect('/login');
+  const session = await requirePageAccess('workorders.assign', 'yard.view');
 
-  const isAdmin =
-    session.user.role === 'admin' ||
-    (session.user.roles ?? []).some((r) => ['admin', 'supervisor', 'ops'].includes(r));
+  const isAdmin = hasCapability(session, 'branch.all');
 
   let builders: Builder[] = [];
   try {

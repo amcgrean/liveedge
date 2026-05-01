@@ -1,16 +1,12 @@
-import { NextRequest, NextResponse } from 'next/server';
-import { auth } from '../../../../auth';
+import { NextResponse } from 'next/server';
+import { requireCapability } from '../../../../src/lib/access-control';
 import { getErpSql } from '../../../../db/supabase';
 
 // GET /api/warehouse/open-picks?branch=
 // Returns picks grouped by picker (from local pick + pickster tables)
-export async function GET(req: NextRequest) {
-  const session = await auth();
-  if (!session?.user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-
-  const isAdmin =
-    session.user.role === 'admin' ||
-    (session.user.roles ?? []).some((r) => ['admin', 'supervisor', 'ops', 'warehouse'].includes(r));
+export async function GET() {
+  const authResult = await requireCapability('yard.view', 'picks.release', 'workorders.assign', 'pickers.manage');
+  if (authResult instanceof NextResponse) return authResult;
 
   // open-picks is purely from local tables (pick, pickster); no branch filter needed for pickers
   try {

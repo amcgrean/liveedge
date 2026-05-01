@@ -1,11 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { auth } from '../../../../auth';
+import { requireCapability, hasCapability } from '../../../../src/lib/access-control';
 import { getErpSql } from '../../../../db/supabase';
 
 // GET /api/sales/history?q=&customer_number=&date_from=&date_to=&branch=&page=1&limit=50
 export async function GET(req: NextRequest) {
-  const session = await auth();
-  if (!session?.user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  const authResult = await requireCapability('sales.view');
+  if (authResult instanceof NextResponse) return authResult;
+  const session = authResult;
 
   const { searchParams } = req.nextUrl;
   const q = searchParams.get('q')?.trim() ?? '';
@@ -16,9 +17,7 @@ export async function GET(req: NextRequest) {
   const limit = Math.min(100, Math.max(10, parseInt(searchParams.get('limit') ?? '50', 10) || 50));
   const offset = (page - 1) * limit;
 
-  const isAdmin =
-    session.user.role === 'admin' ||
-    (session.user.roles ?? []).some((r) => ['admin', 'supervisor', 'ops', 'sales'].includes(r));
+  const isAdmin = hasCapability(session, 'branch.all');
 
   let effectiveBranch = isAdmin ? (searchParams.get('branch') ?? '') : (session.user.branch ?? '');
 

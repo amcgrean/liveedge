@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { auth } from '../../../../auth';
+import { requireCapability } from '../../../../src/lib/access-control';
 import { getErpSql } from '../../../../db/supabase';
 
 export interface DeliveryReportRow {
@@ -42,13 +42,8 @@ export interface DeliveryReportPayload {
 // Saturday inclusion is a client-side toggle since most metrics differ
 // dramatically when Saturdays are mixed in (low-volume delivery days).
 export async function GET(req: NextRequest) {
-  const session = await auth();
-  if (!session?.user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-
-  const canAccess =
-    session.user.role === 'admin' ||
-    (session.user.roles ?? []).some((r) => ['admin', 'supervisor', 'ops'].includes(r));
-  if (!canAccess) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+  const authResult = await requireCapability('dispatch.manage');
+  if (authResult instanceof NextResponse) return authResult;
 
   const { searchParams } = req.nextUrl;
   const saleTypeParam = searchParams.get('sale_type') ?? 'all';

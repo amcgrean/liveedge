@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { auth } from '../../../../../auth';
+import { requireCapability } from '../../../../../src/lib/access-control';
 import { getDb } from '../../../../../db/index';
 import { legacyNotificationRule } from '../../../../../db/schema-legacy';
 import { eq } from 'drizzle-orm';
@@ -7,9 +7,8 @@ import { eq } from 'drizzle-orm';
 type RouteContext = { params: Promise<{ id: string }> };
 
 export async function PUT(req: NextRequest, context: RouteContext) {
-  const session = await auth();
-  if (!session?.user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-  if ((session.user as { role?: string }).role !== 'admin') return NextResponse.json({ error: 'Admin access required' }, { status: 403 });
+  const authResult = await requireCapability('admin.config.manage');
+  if (authResult instanceof NextResponse) return authResult;
 
   const { id } = await context.params;
   const ruleId = parseInt(id, 10);
@@ -36,9 +35,8 @@ export async function PUT(req: NextRequest, context: RouteContext) {
 }
 
 export async function DELETE(_req: NextRequest, context: RouteContext) {
-  const session = await auth();
-  if (!session?.user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-  if ((session.user as { role?: string }).role !== 'admin') return NextResponse.json({ error: 'Admin access required' }, { status: 403 });
+  const authResult = await requireCapability('admin.config.manage');
+  if (authResult instanceof NextResponse) return authResult;
 
   const { id } = await context.params;
   const ruleId = parseInt(id, 10);

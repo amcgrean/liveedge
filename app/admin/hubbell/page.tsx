@@ -1,15 +1,9 @@
-import { redirect } from 'next/navigation';
-import { auth } from '../../../auth';
+import { requirePageAccess } from '../../../src/lib/access-control';
 import HubbellClient from './HubbellClient';
 
 export const metadata = { title: 'Hubbell Emails — LiveEdge Admin' };
 
 export default async function HubbellPage() {
-  const session = await auth();
-  if (!session) redirect('/login');
-  const role = (session.user as { role?: string }).role ?? '';
-  const roles = (session.user as { roles?: string[] }).roles ?? [];
-  if (role !== 'admin' && !roles.includes('hubbell')) redirect('/');
-
+  await requirePageAccess('hubbell.review');
   return <HubbellClient />;
 }

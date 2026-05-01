@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { auth } from '../../../../../../auth';
+import { requireCapability } from '../../../../../../src/lib/access-control';
 import { getDb } from '../../../../../../db/index';
 import { hubbellEmails, hubbellEmailCandidates } from '../../../../../../db/schema';
 import { eq, and, or, ne, inArray, sql } from 'drizzle-orm';
@@ -9,11 +9,8 @@ type Params = Promise<{ id: string }>;
 
 // GET /api/admin/hubbell/emails/[id]
 export async function GET(req: NextRequest, { params }: { params: Params }) {
-  const session = await auth();
-  if (!session?.user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-  const role = (session.user as { role?: string }).role ?? '';
-  const roles = (session.user as { roles?: string[] }).roles ?? [];
-  if (role !== 'admin' && !roles.includes('hubbell')) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+  const authResult = await requireCapability('hubbell.review');
+  if (authResult instanceof NextResponse) return authResult;
 
   const { id } = await params;
   const db = getDb();
@@ -33,11 +30,9 @@ export async function GET(req: NextRequest, { params }: { params: Params }) {
 // POST /api/admin/hubbell/emails/[id]
 // Body: { action: 'confirm', soId, custCode, custName, confidence } | { action: 'reject' } | { action: 'reset' }
 export async function POST(req: NextRequest, { params }: { params: Params }) {
-  const session = await auth();
-  if (!session?.user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-  const role = (session.user as { role?: string }).role ?? '';
-  const roles = (session.user as { roles?: string[] }).roles ?? [];
-  if (role !== 'admin' && !roles.includes('hubbell')) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+  const authResult = await requireCapability('hubbell.review');
+  if (authResult instanceof NextResponse) return authResult;
+  const session = authResult;
 
   const { id } = await params;
   const body = await req.json() as {

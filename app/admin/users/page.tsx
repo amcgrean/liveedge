@@ -1,6 +1,5 @@
 import { Metadata } from 'next';
-import { redirect } from 'next/navigation';
-import { auth } from '../../../auth';
+import { requirePageAccess } from '../../../src/lib/access-control';
 import { getErpSql } from '../../../db/supabase';
 import UsersClient, { type AppUser } from './UsersClient';
 
@@ -34,8 +33,7 @@ function deriveRole(roles: string[]): string {
 }
 
 export default async function UsersPage() {
-  const session = await auth();
-  if (!session?.user || session.user.role !== 'admin') redirect('/');
+  await requirePageAccess('admin.users.manage');
 
   let initialUsers: AppUser[] | undefined;
   try {

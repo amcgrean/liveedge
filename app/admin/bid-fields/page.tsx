@@ -1,13 +1,9 @@
-import { auth } from '../../../auth';
-import { redirect } from 'next/navigation';
+import { requirePageAccess } from '../../../src/lib/access-control';
 import BidFieldsClient from './BidFieldsClient';
 
 export const metadata = { title: 'Bid Fields | LiveEdge' };
 
 export default async function BidFieldsPage() {
-  const session = await auth();
-  if (!session) redirect('/login');
-  const role = (session.user as { role?: string }).role ?? 'estimator';
-  if (role !== 'admin') redirect('/dashboard');
+  await requirePageAccess('admin.config.manage');
   return <BidFieldsClient />;
 }

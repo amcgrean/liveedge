@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { auth } from '../../../../../auth';
+import { requireCapability } from '../../../../../src/lib/access-control';
 import { getErpSql } from '../../../../../db/supabase';
 
 function dbError(err: unknown) {
@@ -11,9 +11,9 @@ export async function PUT(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const session = await auth();
-  if (!session?.user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-  if (session.user.role !== 'admin') return NextResponse.json({ error: 'Admin access required' }, { status: 403 });
+  const authResult = await requireCapability('admin.users.manage');
+  if (authResult instanceof NextResponse) return authResult;
+  const session = authResult;
 
   const { id } = await params;
   const userId = parseInt(id, 10);
@@ -104,9 +104,9 @@ export async function DELETE(
   _req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const session = await auth();
-  if (!session?.user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-  if (session.user.role !== 'admin') return NextResponse.json({ error: 'Admin access required' }, { status: 403 });
+  const authResult = await requireCapability('admin.users.manage');
+  if (authResult instanceof NextResponse) return authResult;
+  const session = authResult;
 
   const { id } = await params;
   const userId = parseInt(id, 10);

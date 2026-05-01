@@ -1,18 +1,13 @@
-import { auth } from '../../../auth';
-import { redirect } from 'next/navigation';
+import { requirePageAccess, hasCapability } from '../../../src/lib/access-control';
 import { TopNav } from '../../../src/components/nav/TopNav';
 import CommandCenterClient from './CommandCenterClient';
 
 export const metadata = { title: 'Purchasing Command Center' };
 
 export default async function CommandCenterPage() {
-  const session = await auth();
-  if (!session?.user) redirect('/login');
-  if ((session.user.roles ?? []).includes('receiving_yard')) redirect('/purchasing');
+  const session = await requirePageAccess('purchasing.view');
 
-  const isAdmin =
-    session.user.role === 'admin' ||
-    (session.user.roles ?? []).some((r) => ['admin', 'supervisor', 'ops', 'manager'].includes(r));
+  const isAdmin = hasCapability(session, 'branch.all');
 
   return (
     <div className="min-h-screen bg-gray-950">

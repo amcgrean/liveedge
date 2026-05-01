@@ -1,12 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { auth } from '../../../../auth';
+import { requireCapability } from '../../../../src/lib/access-control';
 import { getErpSql } from '../../../../db/supabase';
 
 // GET  /api/warehouse/pickers         — list pickers; ?branch=XX filters by branch_code
 // POST /api/warehouse/pickers         — add a picker { name, user_type, branch_code }
 export async function GET(req: NextRequest) {
-  const session = await auth();
-  if (!session?.user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  const authResult = await requireCapability('yard.view', 'picks.release', 'workorders.assign', 'pickers.manage');
+  if (authResult instanceof NextResponse) return authResult;
 
   const branch = req.nextUrl.searchParams.get('branch');
 
@@ -31,13 +31,8 @@ export async function GET(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
-  const session = await auth();
-  if (!session?.user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-
-  const isAdmin =
-    session.user.role === 'admin' ||
-    (session.user.roles ?? []).some((r) => ['admin', 'supervisor'].includes(r));
-  if (!isAdmin) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+  const authResult = await requireCapability('pickers.manage');
+  if (authResult instanceof NextResponse) return authResult;
 
   let body: { name?: string; user_type?: string; branch_code?: string };
   try {

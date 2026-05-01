@@ -84,9 +84,9 @@ export async function GET() {
   if (!session?.user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
   const userId = session.user.id ?? '';
-  const userRole = (session.user as { role?: string }).role ?? '';
-  const userRoles = ((session.user as { roles?: string[] }).roles ?? []) as string[];
-  const userBranch = (session.user as { branch?: string | null }).branch ?? null;
+  const userRole = session.user.role ?? '';
+  const userRoles = (session.user.roles ?? []) as string[];
+  const userBranch = session.user.branch ?? null;
 
   // Admin / ops / supervisor see all branches. Everyone else is scoped to their branch.
   const seesAllBranches =

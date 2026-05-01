@@ -1,5 +1,4 @@
-import { auth } from '../../../auth';
-import { redirect } from 'next/navigation';
+import { requirePageAccess, hasCapability } from '../../../src/lib/access-control';
 import { TopNav } from '../../../src/components/nav/TopNav';
 import { getSelectedBranchCode } from '../../../src/lib/branch-context';
 import OpenPosClient from './OpenPosClient';
@@ -7,18 +6,9 @@ import OpenPosClient from './OpenPosClient';
 export const metadata = { title: 'Open Purchase Orders' };
 
 export default async function OpenPosPage() {
-  const session = await auth();
-  if (!session?.user) redirect('/login');
+  const session = await requirePageAccess('purchasing.view');
 
-  const isAdmin =
-    session.user.role === 'admin' ||
-    (session.user.roles ?? []).some((r) => ['admin', 'supervisor', 'ops', 'purchasing'].includes(r));
-
-  if (!isAdmin && !(session.user.roles ?? []).some((r) => ['purchasing', 'warehouse'].includes(r))) {
-    redirect('/purchasing');
-  }
-
-  // Use branch cookie for admins so TopNav switcher auto-filters the list
+  const isAdmin = hasCapability(session, 'branch.all');
   const cookieBranch = isAdmin ? (await getSelectedBranchCode()) : null;
   const initialBranch = session.user.branch ?? cookieBranch ?? '';
 

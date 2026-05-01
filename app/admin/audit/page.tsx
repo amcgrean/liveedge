@@ -1,13 +1,9 @@
-import { auth } from '../../../auth';
-import { redirect } from 'next/navigation';
+import { requirePageAccess } from '../../../src/lib/access-control';
 import AuditClient from './AuditClient';
 
 export const metadata = { title: 'Audit Log | LiveEdge' };
 
 export default async function AuditPage() {
-  const session = await auth();
-  if (!session) redirect('/login');
-  const role = (session.user as { role?: string }).role ?? 'estimator';
-  if (role !== 'admin') redirect('/dashboard');
+  await requirePageAccess('admin.audit.view');
   return <AuditClient />;
 }
