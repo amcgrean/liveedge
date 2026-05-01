@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { auth } from '../../../../../../auth';
+import { requireCapability } from '../../../../../../src/lib/access-control';
 import { agilityApi, isAgilityConfigured, BRANCH_MAP, AgilityApiError } from '../../../../../../src/lib/agility-api';
 import { getErpSql } from '../../../../../../db/supabase';
 
@@ -25,16 +25,8 @@ interface ReleaseBody {
 }
 
 export async function POST(req: NextRequest, context: RouteContext) {
-  const session = await auth();
-  if (!session?.user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-
-  const roles: string[] = (session.user as { roles?: string[] }).roles ?? [];
-  const role = (session.user as { role?: string }).role ?? '';
-  const canRelease =
-    role === 'admin' ||
-    roles.some((r) => ['admin', 'supervisor', 'ops', 'warehouse', 'dispatch'].includes(r));
-
-  if (!canRelease) return NextResponse.json({ error: 'Insufficient permissions' }, { status: 403 });
+  const authResult = await requireCapability('picks.release');
+  if (authResult instanceof NextResponse) return authResult;
 
   if (!isAgilityConfigured()) {
     return NextResponse.json({ error: 'Agility API not configured' }, { status: 503 });

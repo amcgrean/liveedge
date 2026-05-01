@@ -1,11 +1,9 @@
-import { auth } from '../../auth';
-import { redirect } from 'next/navigation';
+import { requirePageAccess } from '../../src/lib/access-control';
 import { fetchBranchStats, type BranchStats } from '../../src/lib/warehouse-stats';
 import WarehouseClient from './WarehouseClient';
 
 export default async function WarehousePage() {
-  const session = await auth();
-  if (!session?.user) redirect('/login');
+  const session = await requirePageAccess('yard.view', 'picks.release', 'workorders.assign', 'pickers.manage');
 
   const isAdmin =
     session.user.role === 'admin' ||

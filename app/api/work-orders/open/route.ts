@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { auth } from '../../../../auth';
+import { requireCapability } from '../../../../src/lib/access-control';
 import { getErpSql } from '../../../../db/supabase';
 
 export interface OpenWorkOrder {
@@ -21,8 +21,9 @@ export interface OpenWorkOrder {
 
 // GET /api/work-orders/open?branch=20GR&department=DOOR1&limit=500
 export async function GET(req: NextRequest) {
-  const session = await auth();
-  if (!session?.user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  const authResult = await requireCapability('workorders.assign', 'yard.view');
+  if (authResult instanceof NextResponse) return authResult;
+  const session = authResult;
 
   const { searchParams } = req.nextUrl;
   const branchParam = searchParams.get('branch') ?? '';

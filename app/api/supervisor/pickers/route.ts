@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { auth } from '../../../../auth';
+import { requireCapability } from '../../../../src/lib/access-control';
 import { getErpSql } from '../../../../db/supabase';
 import { businessMinutesElapsed } from '@/lib/central-time';
 
@@ -23,13 +23,8 @@ export interface RecentPick {
 
 // GET /api/supervisor/pickers
 export async function GET() {
-  const session = await auth();
-  if (!session?.user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-
-  const canAccess =
-    session.user.role === 'admin' ||
-    (session.user.roles ?? []).some((r) => ['admin', 'supervisor', 'ops', 'warehouse'].includes(r));
-  if (!canAccess) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+  const authResult = await requireCapability('pickers.manage', 'workorders.assign');
+  if (authResult instanceof NextResponse) return authResult;
 
   try {
     const sql = getErpSql();

@@ -1,12 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { auth } from '../../../../auth';
+import { requireCapability } from '../../../../src/lib/access-control';
 import { getErpSql } from '../../../../db/supabase';
 
 // GET /api/warehouse/picker-stats?days=30
 // Returns aggregate pick performance per picker
 export async function GET(req: NextRequest) {
-  const session = await auth();
-  if (!session?.user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  const authResult = await requireCapability('pickers.manage', 'yard.view');
+  if (authResult instanceof NextResponse) return authResult;
 
   const days = Math.max(1, Math.min(365, parseInt(req.nextUrl.searchParams.get('days') ?? '30', 10) || 30));
 

@@ -1,11 +1,9 @@
-import { auth } from '../../../auth';
-import { redirect } from 'next/navigation';
+import { requirePageAccess } from '../../../src/lib/access-control';
 import { TopNav } from '../../../src/components/nav/TopNav';
 import PickerStatsClient from './PickerStatsClient';
 
 export default async function PickerStatsPage() {
-  const session = await auth();
-  if (!session?.user) redirect('/login');
+  const session = await requirePageAccess('pickers.manage', 'yard.view');
 
   const isAdmin =
     session.user.role === 'admin' ||

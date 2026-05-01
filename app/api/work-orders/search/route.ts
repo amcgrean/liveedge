@@ -1,12 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { auth } from '../../../../auth';
+import { requireCapability } from '../../../../src/lib/access-control';
 import { getErpSql } from '../../../../db/supabase';
 
 // GET /api/work-orders/search?so=1234567
 // Returns work orders for a specific SO number (for barcode scan / lookup).
 export async function GET(req: NextRequest) {
-  const session = await auth();
-  if (!session?.user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  const authResult = await requireCapability('workorders.assign', 'yard.view');
+  if (authResult instanceof NextResponse) return authResult;
+  const session = authResult;
 
   const so = (req.nextUrl.searchParams.get('so') ?? '').trim().replace(/^0+/, '');
   if (!so) return NextResponse.json({ error: 'so parameter required' }, { status: 400 });

@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { auth } from '../../../../auth';
+import { requireCapability } from '../../../../src/lib/access-control';
 import { fetchBranchStats } from '../../../../src/lib/warehouse-stats';
 export type { BranchStats } from '../../../../src/lib/warehouse-stats';
 
@@ -7,8 +7,9 @@ export type { BranchStats } from '../../../../src/lib/warehouse-stats';
 // Returns per-branch open pick order and work order counts (by order, not by line).
 // Non-admin users get their branch only.
 export async function GET() {
-  const session = await auth();
-  if (!session?.user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  const authResult = await requireCapability('yard.view', 'picks.release', 'workorders.assign', 'pickers.manage');
+  if (authResult instanceof NextResponse) return authResult;
+  const session = authResult;
 
   const isAdmin =
     session.user.role === 'admin' ||

@@ -1,11 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { auth } from '../../../../auth';
+import { requireCapability } from '../../../../src/lib/access-control';
 import { getErpSql } from '../../../../db/supabase';
 
 // GET /api/work-orders/assignments — list open assignments + available builders
 export async function GET() {
-  const session = await auth();
-  if (!session?.user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  const authResult = await requireCapability('workorders.assign', 'yard.view');
+  if (authResult instanceof NextResponse) return authResult;
+  const session = authResult;
 
   const isAdmin =
     session.user.role === 'admin' ||
@@ -70,13 +71,8 @@ export async function GET() {
 
 // POST /api/work-orders/assignments — assign a work order to a builder
 export async function POST(req: NextRequest) {
-  const session = await auth();
-  if (!session?.user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-
-  const canAssign =
-    session.user.role === 'admin' ||
-    (session.user.roles ?? []).some((r) => ['admin', 'supervisor', 'ops', 'warehouse'].includes(r));
-  if (!canAssign) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+  const authResult = await requireCapability('workorders.assign');
+  if (authResult instanceof NextResponse) return authResult;
 
   const body = await req.json() as {
     wo_id?: string;

@@ -1,17 +1,9 @@
-import { auth } from '../../../auth';
-import { redirect } from 'next/navigation';
+import { requirePageAccess } from '../../../src/lib/access-control';
 import { TopNav } from '../../../src/components/nav/TopNav';
 import PickerAdminClient from './PickerAdminClient';
 
 export default async function PickerAdminPage() {
-  const session = await auth();
-  if (!session?.user) redirect('/login');
-
-  const isAdmin =
-    session.user.role === 'admin' ||
-    (session.user.roles ?? []).some((r) => ['admin', 'supervisor'].includes(r));
-
-  if (!isAdmin) redirect('/warehouse');
+  const session = await requirePageAccess('pickers.manage');
 
   return (
     <div className="min-h-screen bg-gray-950">

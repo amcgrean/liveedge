@@ -1,11 +1,9 @@
-import { auth } from '../../../auth';
-import { redirect } from 'next/navigation';
+import { requirePageAccess } from '../../../src/lib/access-control';
 import { TopNav } from '../../../src/components/nav/TopNav';
 import OpenPicksClient from './OpenPicksClient';
 
 export default async function OpenPicksPage() {
-  const session = await auth();
-  if (!session?.user) redirect('/login');
+  const session = await requirePageAccess('yard.view', 'picks.release', 'workorders.assign', 'pickers.manage');
 
   const isAdmin =
     session.user.role === 'admin' ||
