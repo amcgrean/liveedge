@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { requireCapability, hasCapability } from '../../../../src/lib/access-control';
+import { requireCapability, hasCapability } from '../../../../../src/lib/access-control';
 import { getErpSql } from '../../../../../db/supabase';
 import { getSelectedBranchCode } from '@/lib/branch-context';
 import {

@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { requireCapability } from '../../../../src/lib/access-control';
+import { requireCapability } from '../../../../../src/lib/access-control';
 import { fetchProductScorecardItems } from '../../../../../src/lib/scorecard/queries';
 import type { AggregateParams } from '../../../../../src/lib/scorecard/types';
 
