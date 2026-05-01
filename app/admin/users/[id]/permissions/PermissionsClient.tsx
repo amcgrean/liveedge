@@ -4,14 +4,13 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { useParams } from 'next/navigation';
 import { ArrowLeft, Save, Shield, Check, X } from 'lucide-react';
 import Link from 'next/link';
-import { CAPABILITIES } from '../../../../../src/lib/access-control';
-
 // ─── Tab definitions ──────────────────────────────────────────────────────────
-
-type CapabilityCode = string;
+// Capability codes are string literals here — do NOT import from access-control.ts
+// in this client component; that module re-exports auth.ts which pulls in
+// the postgres package (Node-only), breaking the browser bundle.
 
 interface CapabilityDef {
-  code: CapabilityCode;
+  code: string;
   label: string;
   desc: string;
 }
@@ -21,46 +20,46 @@ const TABS: { id: string; label: string; caps: CapabilityDef[] }[] = [
     id: 'pages',
     label: 'Pages & Menus',
     caps: [
-      { code: CAPABILITIES.YARD_VIEW,             label: 'Yard View',             desc: 'Access to picks board, open picks, picker stats, work orders' },
-      { code: CAPABILITIES.DISPATCH_VIEW,          label: 'Dispatch View',         desc: 'Access to dispatch board, delivery tracker, fleet map' },
-      { code: CAPABILITIES.SALES_VIEW,             label: 'Sales View',            desc: 'Access to sales hub, customers, transactions, orders' },
-      { code: CAPABILITIES.CREDITS_VIEW,           label: 'Credits View',          desc: 'Access to RMA credits list' },
-      { code: CAPABILITIES.PURCHASING_VIEW,        label: 'Purchasing View',       desc: 'Access to buyer workspace, open POs, command center' },
-      { code: CAPABILITIES.AR_VIEW,               label: 'AR View',               desc: 'Access to accounts receivable data' },
-      { code: CAPABILITIES.ADMIN_AUDIT_VIEW,       label: 'Admin — Audit Log',     desc: 'Access to the audit log page' },
-      { code: CAPABILITIES.ADMIN_PRODUCTS_VIEW,    label: 'Admin — Products/SKUs', desc: 'Access to product and SKU management' },
-      { code: CAPABILITIES.ADMIN_CUSTOMERS_VIEW,   label: 'Admin — Customers',     desc: 'Access to admin customer detail pages' },
-      { code: CAPABILITIES.BRANCH_ALL,             label: 'All Branches',          desc: 'Can view data across all branches (not scoped to own branch)' },
+      { code: 'yard.view',             label: 'Yard View',             desc: 'Access to picks board, open picks, picker stats, work orders' },
+      { code: 'dispatch.view',         label: 'Dispatch View',         desc: 'Access to dispatch board, delivery tracker, fleet map' },
+      { code: 'sales.view',            label: 'Sales View',            desc: 'Access to sales hub, customers, transactions, orders' },
+      { code: 'credits.view',          label: 'Credits View',          desc: 'Access to RMA credits list' },
+      { code: 'purchasing.view',       label: 'Purchasing View',       desc: 'Access to buyer workspace, open POs, command center' },
+      { code: 'ar.view',              label: 'AR View',               desc: 'Access to accounts receivable data' },
+      { code: 'admin.audit.view',      label: 'Admin — Audit Log',     desc: 'Access to the audit log page' },
+      { code: 'admin.products.view',   label: 'Admin — Products/SKUs', desc: 'Access to product and SKU management' },
+      { code: 'admin.customers.view',  label: 'Admin — Customers',     desc: 'Access to admin customer detail pages' },
+      { code: 'branch.all',            label: 'All Branches',          desc: 'Can view data across all branches (not scoped to own branch)' },
     ],
   },
   {
     id: 'actions',
     label: 'Actions',
     caps: [
-      { code: CAPABILITIES.PICKS_RELEASE,          label: 'Release Picks',         desc: 'Release pick files for warehouse orders' },
-      { code: CAPABILITIES.PICKERS_MANAGE,         label: 'Manage Pickers',        desc: 'Add, edit, delete picker accounts' },
-      { code: CAPABILITIES.WORKORDERS_ASSIGN,      label: 'Assign Work Orders',    desc: 'Assign and complete work orders' },
-      { code: CAPABILITIES.DISPATCH_MANAGE,        label: 'Manage Dispatch',       desc: 'Create routes, mark deliveries complete, POD signatures' },
-      { code: CAPABILITIES.CUSTOMERS_NOTES_WRITE,  label: 'Write Customer Notes',  desc: 'Add and edit notes on customer profiles' },
-      { code: CAPABILITIES.ORDERS_PUSH_TO_ERP,     label: 'Push Orders to ERP',    desc: 'Create or cancel sales orders in Agility' },
-      { code: CAPABILITIES.QUOTES_MANAGE,          label: 'Manage Quotes',         desc: 'Create and release Agility quotes' },
-      { code: CAPABILITIES.BIDS_MANAGE,            label: 'Manage Bids',           desc: 'Create, edit, and manage estimating bids' },
-      { code: CAPABILITIES.DESIGNS_MANAGE,         label: 'Manage Designs',        desc: 'Create, edit, and manage design records' },
-      { code: CAPABILITIES.EWP_MANAGE,             label: 'Manage EWP',            desc: 'Create, edit, and manage EWP records' },
-      { code: CAPABILITIES.PROJECTS_MANAGE,        label: 'Manage Projects',       desc: 'Create, edit, and manage estimating projects' },
-      { code: CAPABILITIES.PURCHASING_RECEIVE,     label: 'Receive POs',           desc: 'Submit PO check-ins and receiving records' },
-      { code: CAPABILITIES.PURCHASING_REVIEW,      label: 'Review PO Submissions', desc: 'Access the purchasing review queue' },
-      { code: CAPABILITIES.CREDITS_MANAGE,         label: 'Manage Credits',        desc: 'Upload documents and manage RMA credit records' },
+      { code: 'picks.release',         label: 'Release Picks',         desc: 'Release pick files for warehouse orders' },
+      { code: 'pickers.manage',        label: 'Manage Pickers',        desc: 'Add, edit, delete picker accounts' },
+      { code: 'workorders.assign',     label: 'Assign Work Orders',    desc: 'Assign and complete work orders' },
+      { code: 'dispatch.manage',       label: 'Manage Dispatch',       desc: 'Create routes, mark deliveries complete, POD signatures' },
+      { code: 'customers.notes.write', label: 'Write Customer Notes',  desc: 'Add and edit notes on customer profiles' },
+      { code: 'orders.push_to_erp',    label: 'Push Orders to ERP',    desc: 'Create or cancel sales orders in Agility' },
+      { code: 'quotes.manage',         label: 'Manage Quotes',         desc: 'Create and release Agility quotes' },
+      { code: 'bids.manage',           label: 'Manage Bids',           desc: 'Create, edit, and manage estimating bids' },
+      { code: 'designs.manage',        label: 'Manage Designs',        desc: 'Create, edit, and manage design records' },
+      { code: 'ewp.manage',            label: 'Manage EWP',            desc: 'Create, edit, and manage EWP records' },
+      { code: 'projects.manage',       label: 'Manage Projects',       desc: 'Create, edit, and manage estimating projects' },
+      { code: 'purchasing.receive',    label: 'Receive POs',           desc: 'Submit PO check-ins and receiving records' },
+      { code: 'purchasing.review',     label: 'Review PO Submissions', desc: 'Access the purchasing review queue' },
+      { code: 'credits.manage',        label: 'Manage Credits',        desc: 'Upload documents and manage RMA credit records' },
     ],
   },
   {
     id: 'admin',
     label: 'Admin',
     caps: [
-      { code: CAPABILITIES.ADMIN_USERS_MANAGE,     label: 'Manage Users',          desc: 'Add, edit, deactivate users and change permissions' },
-      { code: CAPABILITIES.ADMIN_CONFIG_MANAGE,    label: 'Manage Config',         desc: 'Edit bid fields, formulas, and system configuration' },
-      { code: CAPABILITIES.ADMIN_JOBS_REVIEW,      label: 'Review Jobs',           desc: 'Access the admin job review (SO GPS status) page' },
-      { code: CAPABILITIES.HUBBELL_REVIEW,         label: 'Hubbell Review',        desc: 'Access Hubbell email reconciliation tool' },
+      { code: 'admin.users.manage',    label: 'Manage Users',          desc: 'Add, edit, deactivate users and change permissions' },
+      { code: 'admin.config.manage',   label: 'Manage Config',         desc: 'Edit bid fields, formulas, and system configuration' },
+      { code: 'admin.jobs.review',     label: 'Review Jobs',           desc: 'Access the admin job review (SO GPS status) page' },
+      { code: 'hubbell.review',        label: 'Hubbell Review',        desc: 'Access Hubbell email reconciliation tool' },
     ],
   },
 ];
