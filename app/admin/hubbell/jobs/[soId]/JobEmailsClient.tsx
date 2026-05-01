@@ -79,21 +79,22 @@ function normPo(s: string | null | undefined): string {
 
 // Build rows for export/copy
 function buildExportRows(emails: EmailEntry[], relatedSOs: RelatedSO[], soHeader: SoHeader | null) {
-  const poToLinkedSo = new Map<string, string>();
+  const poToLinkedSo = new Map<string, RelatedSO>();
   for (const so of relatedSOs) {
-    if (so.po_number) poToLinkedSo.set(normPo(so.po_number), so.so_id);
+    if (so.po_number) poToLinkedSo.set(normPo(so.po_number), so);
   }
   return emails.map((e) => {
-    const num = e.extractedWoNumber ?? e.extractedPoNumber ?? '';
-    const linkedSo = poToLinkedSo.get(normPo(num)) ?? '';
+    const num      = e.extractedWoNumber ?? e.extractedPoNumber ?? '';
+    const linkedSo = poToLinkedSo.get(normPo(num));
+    const description = linkedSo?.reference || e.extractedDescription || e.subject || '';
     return {
       Type:        (e.emailType ?? '').toUpperCase(),
       'WO / PO #': num,
-      Description: e.extractedDescription || e.subject || '',
+      Description: description,
       Amount:      formatAmount(e.extractedAmount),
       Address:     [e.extractedAddress, e.extractedCity].filter(Boolean).join(', '),
       Customer:    soHeader?.cust_name ?? '',
-      'SO #':      linkedSo,
+      'SO #':      linkedSo?.so_id ?? '',
       Received:    formatDate(e.receivedAt),
     };
   });
@@ -448,10 +449,8 @@ export default function JobEmailsClient({ soId }: { soId: string }) {
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-white/10 bg-slate-900/60">
-                  <th className="px-4 py-3 text-left text-xs font-semibold text-slate-400 uppercase tracking-wider">Type</th>
                   <th className="px-4 py-3 text-left text-xs font-semibold text-slate-400 uppercase tracking-wider">WO / PO #</th>
-                  <th className="px-4 py-3 text-left text-xs font-semibold text-slate-400 uppercase tracking-wider">Description / Subject</th>
-                  <th className="px-4 py-3 text-left text-xs font-semibold text-slate-400 uppercase tracking-wider">Address</th>
+                  <th className="px-4 py-3 text-left text-xs font-semibold text-slate-400 uppercase tracking-wider">Description</th>
                   <th className="px-4 py-3 text-right text-xs font-semibold text-slate-400 uppercase tracking-wider">Amount</th>
                   <th className="px-4 py-3 text-left text-xs font-semibold text-slate-400 uppercase tracking-wider">Linked SO</th>
                   <th className="px-4 py-3 text-left text-xs font-semibold text-slate-400 uppercase tracking-wider">Received</th>
@@ -462,36 +461,41 @@ export default function JobEmailsClient({ soId }: { soId: string }) {
                   const emailKey = normPo(email.extractedWoNumber ?? email.extractedPoNumber);
                   const linkedSO = relatedSOs.find((so) => so.po_number && normPo(so.po_number) === emailKey);
                   const num = email.extractedWoNumber ?? email.extractedPoNumber;
+                  const isWo = email.emailType === 'wo' || !!email.extractedWoNumber;
+                  // Use linked SO's reference as description if available, then extracted, then subject
+                  const description = linkedSO?.reference || email.extractedDescription || email.subject;
                   return (
                     <tr key={email.id} className="hover:bg-white/5 transition">
+                      {/* WO/PO badge — styled like ECI */}
                       <td className="px-4 py-3 whitespace-nowrap">
-                        <div className="flex items-center gap-1.5">
-                          <TypeIcon type={email.emailType} />
-                          <span className={cn('text-[10px] font-bold uppercase', email.emailType === 'po' ? 'text-blue-400' : 'text-purple-400')}>
-                            {email.emailType ?? '—'}
+                        {num ? (
+                          <span className={cn(
+                            'inline-flex items-center px-2.5 py-1 rounded-md text-xs font-bold font-mono tracking-wide',
+                            isWo
+                              ? 'bg-purple-500/20 text-purple-200 border border-purple-500/30'
+                              : 'bg-blue-500/20 text-blue-200 border border-blue-500/30'
+                          )}>
+                            {num}
                           </span>
-                        </div>
+                        ) : (
+                          <span className="text-slate-600">—</span>
+                        )}
                       </td>
-                      <td className="px-4 py-3 whitespace-nowrap">
-                        {num
-                          ? <span className="font-mono text-sm text-white font-semibold">{num}</span>
-                          : <span className="text-slate-600">—</span>
-                        }
-                      </td>
+                      {/* Description — the focal column */}
                       <td className="px-4 py-3">
                         <Link
                           href={`/admin/hubbell/${email.id}`}
-                          className="text-slate-200 hover:text-cyan-400 transition text-xs leading-snug block"
+                          className="text-white hover:text-cyan-400 transition text-sm font-medium leading-snug block"
                           title={email.subject}
                         >
-                          {email.extractedDescription || email.subject}
+                          {description || <span className="text-slate-500 italic font-normal">no description</span>}
                         </Link>
-                      </td>
-                      <td className="px-4 py-3 text-xs text-slate-400 whitespace-nowrap">
-                        {email.extractedAddress
-                          ? <>{email.extractedAddress}{email.extractedCity ? <span className="text-slate-600">, {email.extractedCity}</span> : null}</>
-                          : <span className="text-slate-600">—</span>
-                        }
+                        {email.extractedAddress && (
+                          <p className="text-xs text-slate-500 mt-0.5 flex items-center gap-1">
+                            <MapPin className="w-3 h-3 shrink-0" />
+                            {email.extractedAddress}{email.extractedCity ? `, ${email.extractedCity}` : ''}
+                          </p>
+                        )}
                       </td>
                       <td className="px-4 py-3 text-right whitespace-nowrap font-mono text-sm font-medium text-slate-200">
                         {formatAmountDisplay(email.extractedAmount)}
