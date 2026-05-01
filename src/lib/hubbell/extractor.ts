@@ -51,6 +51,7 @@ function extractWoNumber(subject: string, body: string): string | null {
   return firstMatch([
     /\bW\.?O\.?\s*#\s*([A-Z0-9\-]{3,20})/i,
     /\bWork\s+Order\s*#?\s*([A-Z0-9\-]{3,20})/i,
+    /\bService\s+Order\s*#?\s*([A-Z0-9\-]{3,20})/i,
     /\bJob\s*(?:No\.?|Number|#)\s*:?\s*([A-Z0-9\-]{3,20})/i,
     /\bWO\s*[-#:]\s*([A-Z0-9\-]{3,20})/i,
     /\bWO\s+([A-Z0-9]{4,20})\b/i,
@@ -99,6 +100,23 @@ function parsePoSubject(subject: string): {
   address: string | null; city: string | null; state: string | null; zip: string | null;
 } | null {
   const m = subject.match(/\bNew\s+PO\d+[-\s]+[^-]+-\s*(\d{1,5}\s+.{3,60}?)(?:\s*,\s*([A-Za-z\s]+?)\s*,?\s*([A-Z]{2})\s+(\d{5}))?$/i);
+  if (!m) return null;
+  const rawAddr = m[1].trim();
+  const address = rawAddr.split(/,|;|\s{2,}/)[0].trim();
+  const city  = m[2]?.trim() ?? null;
+  const state = m[3]?.toUpperCase() ?? null;
+  const zip   = m[4] ?? null;
+  return { address, city, state, zip };
+}
+
+// Handles Hubbell's "Service Order <n> Assigned for <Address>, <City>, <ST> <zip>" subject format.
+// Also matches "Service Order <n> at <Address>" variants.
+function parseServiceOrderSubject(subject: string): {
+  address: string | null; city: string | null; state: string | null; zip: string | null;
+} | null {
+  const m = subject.match(
+    /\bService\s+Order\s+\d+\s+(?:Assigned\s+for|at|@|for)\s+(\d{1,5}\s+.{3,80}?)(?:\s*,\s*([A-Za-z\s]+?)\s*,?\s*([A-Z]{2})\s+(\d{5}(?:-\d{4})?))?$/i
+  );
   if (!m) return null;
   const rawAddr = m[1].trim();
   const address = rawAddr.split(/,|;|\s{2,}/)[0].trim();
@@ -302,9 +320,9 @@ function extractDescription(subject: string, body: string): string | null {
   );
   if (labeled) return labeled[1].trim();
 
-  // Fall back to subject (strip PO/WO number prefix if present)
+  // Fall back to subject (strip PO/WO/Service Order number prefix if present)
   const cleaned = subject
-    .replace(/\b(?:P\.?O\.?|W\.?O\.?|Purchase\s+Order|Work\s+Order)\s*#?\s*[\w\-]+\s*/gi, '')
+    .replace(/\b(?:P\.?O\.?|W\.?O\.?|Purchase\s+Order|Work\s+Order|Service\s+Order)\s*#?\s*[\w\-]+\s*/gi, '')
     .replace(/^(?:FW:|RE:|Fwd:)\s*/i, '')
     .trim();
   return cleaned.length >= 5 ? cleaned : null;
@@ -313,7 +331,7 @@ function extractDescription(subject: string, body: string): string | null {
 function detectEmailType(subject: string, body: string): 'po' | 'wo' | 'other' {
   const combined = `${subject}\n${body.slice(0, 500)}`.toLowerCase();
   const poScore = (combined.match(/\bpurchase\s+order\b|\bp\.?o\.?\b|\bpo\s*#|\bpo\d{3,}/g) ?? []).length;
-  const woScore = (combined.match(/\bwork\s+order\b|\bw\.?o\.?\b|\bwo\s*#|\bjob\s+(?:number|no|#)|\bwo\d{4,}|\bnew\s+wo\d/g) ?? []).length;
+  const woScore = (combined.match(/\bwork\s+order\b|\bservice\s+order\b|\bw\.?o\.?\b|\bwo\s*#|\bjob\s+(?:number|no|#)|\bwo\d{4,}|\bnew\s+wo\d/g) ?? []).length;
   if (poScore > woScore) return 'po';
   if (woScore > poScore) return 'wo';
   if (poScore > 0) return 'po';
@@ -334,15 +352,16 @@ export function extractEmailData(subject: string, bodyText: string | null): Extr
   const contactPhone = extractContactPhone(body);
   const desc      = extractDescription(subject, body);
 
-  // Try structured subject formats first ("New WO<n>-Customer-Address" / "New PO<n>-...")
+  // Try structured subject formats first ("New WO<n>-Customer-Address" / "New PO<n>-..." / "Service Order <n> Assigned for ...")
   const woSubject = parseWoSubject(subject);
   const poSubject = parsePoSubject(subject);
+  const soSubject = parseServiceOrderSubject(subject);
   const bodyAddr  = extractAddress(body || subject);
 
-  const address = woSubject?.address ?? poSubject?.address ?? bodyAddr.address;
-  const city    = woSubject?.city    ?? poSubject?.city    ?? bodyAddr.city;
-  const state   = woSubject?.state   ?? poSubject?.state   ?? bodyAddr.state;
-  const zip     = woSubject?.zip     ?? poSubject?.zip     ?? bodyAddr.zip;
+  const address = woSubject?.address ?? poSubject?.address ?? soSubject?.address ?? bodyAddr.address;
+  const city    = woSubject?.city    ?? poSubject?.city    ?? soSubject?.city    ?? bodyAddr.city;
+  const state   = woSubject?.state   ?? poSubject?.state   ?? soSubject?.state   ?? bodyAddr.state;
+  const zip     = woSubject?.zip     ?? poSubject?.zip     ?? soSubject?.zip     ?? bodyAddr.zip;
 
   return {
     emailType, poNumber, woNumber,
