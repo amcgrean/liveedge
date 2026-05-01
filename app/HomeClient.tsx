@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback, type ReactNode } from 'react';
+import { useState, useEffect, useCallback, useMemo, type ReactNode } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useSession } from 'next-auth/react';
@@ -194,8 +194,16 @@ export default function HomeClient({ userName, userRole, userBranch }: Props) {
   const kpis = data?.kpis;
   const firstName = userName?.split(' ')[0] ?? 'there';
 
-  // Build a simple sparkline from recent orders data if available
-  const sparkData = data?.recentOrders.slice(0, 10).map((_, i) => Math.round(Math.random() * 20 + 30 + i)) ?? [];
+  // Build sparkline: orders-per-day from the last 10 days in recentOrders
+  const sparkData = useMemo(() => {
+    if (!data?.recentOrders.length) return [];
+    const counts: Record<string, number> = {};
+    data.recentOrders.forEach((o: { created_date?: string | null }) => {
+      const d = (o.created_date ?? '').slice(0, 10);
+      if (d) counts[d] = (counts[d] ?? 0) + 1;
+    });
+    return Object.keys(counts).sort().slice(-10).map((d) => counts[d]);
+  }, [data]);
 
   const kpiTiles = [
     { label: 'Open bids',          value: kpis?.openBids     ?? 0, href: '/legacy-bids',     color: '#1f8a4f', sub: 'active estimates' },

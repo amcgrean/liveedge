@@ -4,7 +4,7 @@ import { useRouter, usePathname, useSearchParams } from 'next/navigation';
 import { useCallback } from 'react';
 import { Printer } from 'lucide-react';
 
-const RANGES = ['MTD', 'YTD', 'Full Year'] as const;
+const RANGES = ['YTD', 'Full Year'] as const;
 type Range = typeof RANGES[number];
 
 const BRANCHES = [
@@ -42,11 +42,8 @@ export default function ManagementFilterBar({ baseYear, compareYear, period, cut
 
   // Date context label
   const now = new Date();
-  const monthName = now.toLocaleString('en-US', { month: 'long' });
   const monthNum = now.getMonth() + 1;
-  const contextLabel = period === 'MTD'
-    ? `${monthName} ${baseYear} · month-to-date`
-    : period === 'Full Year'
+  const contextLabel = period === 'Full Year'
     ? `Full Year ${baseYear}`
     : `${baseYear} YTD through ${cutoffDate} · ${monthNum} of 12 mo`;
 

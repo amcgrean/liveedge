@@ -152,8 +152,9 @@ export default async function ManagementPage({
   const period = (String(sp.period ?? 'YTD')) as AggregateParams['period'];
   const cutoffDate = String(sp.cutoffDate ?? today);
 
+  const branchParam = String(sp.branch ?? '');
   const params: AggregateParams = {
-    branchIds: [],
+    branchIds: branchParam ? [branchParam] : [],
     baseYear,
     compareYear,
     period,
