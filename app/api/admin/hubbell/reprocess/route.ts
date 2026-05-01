@@ -21,7 +21,7 @@ export async function POST(req: NextRequest) {
 
   const body = await req.json().catch(() => ({}));
   const statuses: string[] = body.statuses ?? ['unmatched'];
-  const batchLimit: number = Math.min(body.limit ?? 200, 500);
+  const batchLimit: number = Math.min(body.limit ?? 20, 50);
 
   const db = getDb();
 
