@@ -12,6 +12,7 @@ import ManagementFilterBar from './_components/ManagementFilterBar';
 import { ThreeYearTable, BranchSummaryTable, SalesByTypeTable } from './_components/ManagementTables';
 
 export const metadata = { title: 'Management — Beisser LiveEdge' };
+export const maxDuration = 60;
 
 function fmt$(n: number | null): string {
   if (!n) return '—';

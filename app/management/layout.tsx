@@ -2,6 +2,7 @@ import { requirePageAccess } from '../../src/lib/access-control';
 import { TopNav } from '../../src/components/nav/TopNav';
 
 export const metadata = { title: 'Management — Beisser LiveEdge' };
+export const maxDuration = 60;
 
 export default async function ManagementLayout({ children }: { children: React.ReactNode }) {
   const session = await requirePageAccess('branch.all');
