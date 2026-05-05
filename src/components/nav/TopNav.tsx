@@ -22,13 +22,12 @@ const BRANCH_OPTIONS = [
   { code: '40CV', label: '40CV · Coralville' },
 ] as const;
 
-/** Per-branch color tokens — dot indicator, button, active state */
 const BRANCH_COLORS: Record<string, { btn: string; dot: string; active: string }> = {
-  '':    { btn: 'bg-violet-900/30 text-violet-300 hover:bg-violet-900/50', dot: 'bg-violet-300',  active: 'bg-violet-500/20 text-violet-200' }, // All — lavender
-  '10FD': { btn: 'bg-red-900/40   text-red-300    hover:bg-red-900/60',    dot: 'bg-red-500',    active: 'bg-red-500/20    text-red-300'    }, // Fort Dodge — red
-  '20GR': { btn: 'bg-cyan-900/40  text-cyan-300   hover:bg-cyan-900/60',   dot: 'bg-cyan-400',   active: 'bg-cyan-500/20   text-cyan-300'   }, // Grimes — Beisser green
-  '25BW': { btn: 'bg-gold-800/40  text-gold-300   hover:bg-gold-800/60',   dot: 'bg-gold-400',   active: 'bg-gold-500/20   text-gold-300'   }, // Birchwood — gold
-  '40CV': { btn: 'bg-slate-800    text-slate-200  hover:bg-slate-700',     dot: 'bg-slate-100',  active: 'bg-slate-700     text-white'       }, // Coralville — black
+  '':    { btn: 'bg-violet-900/30 text-violet-300 hover:bg-violet-900/50', dot: 'bg-violet-300',  active: 'bg-violet-500/20 text-violet-200' },
+  '10FD': { btn: 'bg-red-900/40   text-red-300    hover:bg-red-900/60',    dot: 'bg-red-500',    active: 'bg-red-500/20    text-red-300'    },
+  '20GR': { btn: 'bg-cyan-900/40  text-cyan-300   hover:bg-cyan-900/60',   dot: 'bg-cyan-400',   active: 'bg-cyan-500/20   text-cyan-300'   },
+  '25BW': { btn: 'bg-gold-800/40  text-gold-300   hover:bg-gold-800/60',   dot: 'bg-gold-400',   active: 'bg-gold-500/20   text-gold-300'   },
+  '40CV': { btn: 'bg-slate-800    text-slate-200  hover:bg-slate-700',     dot: 'bg-slate-100',  active: 'bg-slate-700     text-white'       },
 };
 
 function readBranchCookie(): string {
@@ -145,7 +144,6 @@ function GlobalSearch() {
   const containerRef = React.useRef<HTMLDivElement>(null);
   const debounceRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // ⌘K shortcut + Escape
   React.useEffect(() => {
     function handler(e: KeyboardEvent) {
       if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
@@ -165,7 +163,6 @@ function GlobalSearch() {
     return () => document.removeEventListener('keydown', handler);
   }, []);
 
-  // Close dropdown on outside click
   React.useEffect(() => {
     function handler(e: MouseEvent) {
       if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
@@ -176,7 +173,6 @@ function GlobalSearch() {
     return () => document.removeEventListener('mousedown', handler);
   }, []);
 
-  // Debounced live search
   React.useEffect(() => {
     if (debounceRef.current) clearTimeout(debounceRef.current);
     const trimmed = q.trim();
@@ -269,9 +265,7 @@ function GlobalSearch() {
 interface NavLink {
   href: string;
   label: string;
-  /** Item visible if user holds ANY of these capabilities. Omit = always visible within group. */
   requiresCap?: readonly Capability[];
-  /** Renders a labeled section divider above this link in the dropdown */
   sectionBefore?: string;
 }
 
@@ -282,9 +276,7 @@ interface Domain {
   isActive: (p: string) => boolean;
   dropdown: boolean;
   href?: string;
-  /** When set, the group label itself links to this hub page; chevron still opens dropdown. */
   hubHref?: string;
-  /** Domain tab visible if user holds ANY of these capabilities. */
   requiresCap: readonly Capability[];
 }
 
@@ -303,10 +295,10 @@ function getDomains(tvBranch: string): Domain[] {
         { href: '/warehouse',              label: 'Picks Board' },
         { href: '/warehouse/open-picks',   label: 'Open Picks' },
         { href: '/work-orders',            label: 'Work Orders' },
-        { href: '/warehouse/picker-stats', label: 'Picker Stats',         sectionBefore: 'Performance' },
-        { href: '/supervisor',             label: 'Supervisor',           requiresCap: ['pickers.manage', 'workorders.assign'] },
-        { href: `/tv/${tvBranch}`,         label: 'TV Board',             sectionBefore: 'Kiosks', requiresCap: ['pickers.manage', 'workorders.assign'] },
-        { href: `/kiosk/${tvBranch}`,      label: 'Pick Tracker Kiosk',   requiresCap: ['pickers.manage', 'workorders.assign'] },
+        { href: '/warehouse/picker-stats', label: 'Picker Stats',       sectionBefore: 'Performance' },
+        { href: '/supervisor',             label: 'Supervisor',         requiresCap: ['pickers.manage', 'workorders.assign'] },
+        { href: `/tv/${tvBranch}`,         label: 'TV Board',           sectionBefore: 'Kiosks', requiresCap: ['pickers.manage', 'workorders.assign'] },
+        { href: `/kiosk/${tvBranch}`,      label: 'Pick Tracker Kiosk', requiresCap: ['pickers.manage', 'workorders.assign'] },
       ],
     },
     {
@@ -353,9 +345,9 @@ function getDomains(tvBranch: string): Domain[] {
       label: 'MGMT',
       dropdown: true,
       hubHref: '/management',
-      // branch.all is held by admin, management role, and ops — correct audience for these pages
       requiresCap: ['branch.all'],
-      isActive: (p) => p.startsWith('/management') || p.startsWith('/sales/reports') || p.startsWith('/scorecard'),
+      isActive: (p) =>
+        p.startsWith('/management') || p.startsWith('/sales/reports') || p.startsWith('/scorecard'),
       links: [
         { href: '/scorecard/overview',    label: 'Company Overview' },
         { href: '/scorecard/branch/20GR', label: 'By Branch' },
@@ -364,7 +356,8 @@ function getDomains(tvBranch: string): Domain[] {
         { href: '/scorecard',             label: 'Customer Scorecard' },
         { href: '/sales/reports',         label: 'Sales Reports' },
         { href: '/management/forecast',   label: 'Open Orders & Forecast' },
-        { href: '/purchasing/scorecard',  label: 'Vendor Scorecard', sectionBefore: 'Purchasing', requiresCap: ['purchasing.view'] },
+        { href: '/purchasing/scorecard',  label: 'Vendor Scorecard',  sectionBefore: 'Purchasing', requiresCap: ['purchasing.view'] },
+        { href: '/management/rebates',    label: 'Rebate Rules',      requiresCap: ['purchasing.view'] },
       ],
     },
     {
@@ -418,7 +411,6 @@ function getDomains(tvBranch: string): Domain[] {
   ];
 }
 
-// Admin dropdown links with per-item capability gates
 interface AdminLink {
   href: string;
   label: string;
@@ -443,14 +435,10 @@ const ADMIN_LINKS: AdminLink[] = [
   { href: '/admin/analytics',     label: 'Page Analytics',                                requiresCap: ['admin.config.manage'] },
 ];
 
-// ─── Props ────────────────────────────────────────────────────────────────────
-
 interface Props {
   userName?: string | null;
   userRole?: string;
 }
-
-// ─── Component ────────────────────────────────────────────────────────────────
 
 export function TopNav({ userName, userRole }: Props) {
   const { data: session } = useSession();
@@ -471,7 +459,6 @@ export function TopNav({ userName, userRole }: Props) {
 
   const DOMAINS = getDomains(tvBranch);
 
-  // Filter domains and their links by the session's effective capabilities
   const visibleDomains = DOMAINS
     .filter((d) => hasCapability(session, ...d.requiresCap))
     .map((d) => ({
@@ -479,7 +466,6 @@ export function TopNav({ userName, userRole }: Props) {
       links: d.links.filter((l) => !l.requiresCap || hasCapability(session, ...l.requiresCap)),
     }));
 
-  // Admin: visible if any admin-scope capability is held
   const adminLinks = ADMIN_LINKS.filter((l) => hasCapability(session, ...l.requiresCap));
   const showAdmin = adminLinks.length > 0;
 
@@ -510,7 +496,6 @@ export function TopNav({ userName, userRole }: Props) {
     });
   }
 
-  /** Renders a single dropdown link, with an optional labeled section divider above it */
   function renderDropdownLink(l: NavLink | AdminLink) {
     const isCurrentPath =
       pathname === l.href || (l.href !== '/' && pathname.startsWith(l.href + '/'));
@@ -540,7 +525,6 @@ export function TopNav({ userName, userRole }: Props) {
     );
   }
 
-
   return (
     <>
       <nav
@@ -549,7 +533,6 @@ export function TopNav({ userName, userRole }: Props) {
       >
         <div className="max-w-screen-2xl mx-auto px-4 flex items-center justify-between h-[52px]">
 
-          {/* Brand */}
           <div className="flex items-center gap-1">
             <Link href="/" className="flex items-center gap-2.5 flex-shrink-0 mr-3">
               <span className="flex items-center justify-center w-8 h-8 bg-white rounded-lg overflow-hidden flex-shrink-0 shadow-sm">
@@ -569,7 +552,6 @@ export function TopNav({ userName, userRole }: Props) {
               </div>
             </Link>
 
-            {/* Desktop search + domain nav — capability-filtered */}
             <div className="hidden lg:flex items-center gap-0.5">
               <GlobalSearch />
               <div className="w-px h-5 bg-slate-700 mx-1.5" />
@@ -590,9 +572,10 @@ export function TopNav({ userName, userRole }: Props) {
                   );
                 }
 
-                // Hub-link pattern: label navigates to hub page, chevron opens dropdown
                 if (domain.hubHref) {
-                  const activeCls = active ? 'bg-cyan-500/20 text-cyan-400' : 'text-slate-300 hover:text-white hover:bg-slate-800';
+                  const activeCls = active
+                    ? 'bg-cyan-500/20 text-cyan-400'
+                    : 'text-slate-300 hover:text-white hover:bg-slate-800';
                   return (
                     <div key={domain.id} className="relative flex items-center">
                       <Link
@@ -623,10 +606,7 @@ export function TopNav({ userName, userRole }: Props) {
                     <button onClick={() => toggle(domain.id)} className={baseCls}>
                       <span>{domain.label}</span>
                       <ChevronDown
-                        className={cn(
-                          'w-3 h-3 transition-transform',
-                          openMenu === domain.id && 'rotate-180'
-                        )}
+                        className={cn('w-3 h-3 transition-transform', openMenu === domain.id && 'rotate-180')}
                       />
                     </button>
                     {openMenu === domain.id && (
@@ -638,7 +618,6 @@ export function TopNav({ userName, userRole }: Props) {
                 );
               })}
 
-              {/* Admin inline with domain nav — capability-gated */}
               {showAdmin && (
                 <div className="relative">
                   <button
@@ -665,11 +644,9 @@ export function TopNav({ userName, userRole }: Props) {
             </div>
           </div>
 
-          {/* Right side: branch + bell + user */}
           <div className="flex items-center gap-1.5">
             <BranchSwitcher />
 
-            {/* Notifications bell */}
             <button
               className="relative hidden sm:flex items-center justify-center w-8 h-8 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition"
               title="Notifications"
@@ -678,7 +655,6 @@ export function TopNav({ userName, userRole }: Props) {
               <span className="absolute top-1.5 right-1.5 w-1.5 h-1.5 rounded-full bg-amber-400" />
             </button>
 
-            {/* User dropdown — desktop */}
             <div className="relative hidden sm:block pl-2 border-l border-slate-700">
               <button
                 onClick={() => toggle('user')}
@@ -728,7 +704,6 @@ export function TopNav({ userName, userRole }: Props) {
               )}
             </div>
 
-            {/* Mobile hamburger */}
             <button
               onClick={() => setMobileOpen(!mobileOpen)}
               className="lg:hidden p-2 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition"
@@ -740,7 +715,6 @@ export function TopNav({ userName, userRole }: Props) {
         </div>
       </nav>
 
-      {/* Mobile drawer */}
       {mobileOpen && (
         <div className="lg:hidden fixed inset-0 z-40 flex flex-col print:hidden">
           <div
@@ -750,13 +724,11 @@ export function TopNav({ userName, userRole }: Props) {
           <div className="relative mt-14 bg-slate-900 border-b border-white/10 shadow-xl overflow-y-auto max-h-[calc(100vh-3.5rem)]">
             <div className="px-4 py-3 space-y-0.5">
 
-              {/* Mobile search */}
               <div className="pb-2">
                 <GlobalSearch />
               </div>
               <div className="border-t border-slate-800 my-1" />
 
-              {/* Domain sections */}
               {visibleDomains.map((domain) => {
                 const sectionOpen = mobileOpenSections.has(domain.id);
 
@@ -777,7 +749,6 @@ export function TopNav({ userName, userRole }: Props) {
                   );
                 }
 
-                // Hub-link pattern for mobile: label is a link, chevron toggles sub-items
                 if (domain.hubHref) {
                   return (
                     <React.Fragment key={domain.id}>
@@ -883,7 +854,6 @@ export function TopNav({ userName, userRole }: Props) {
                 );
               })}
 
-              {/* Admin section (mobile) — capability-gated */}
               {showAdmin && (
                 <>
                   <button
@@ -932,7 +902,6 @@ export function TopNav({ userName, userRole }: Props) {
                 </>
               )}
 
-              {/* Account section (mobile) */}
               <div className="pt-2 border-t border-slate-800">
                 <div className="px-3 py-1.5 text-[10px] text-slate-500 uppercase tracking-widest font-semibold">
                   Account — {name}
