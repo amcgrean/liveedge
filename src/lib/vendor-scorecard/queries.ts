@@ -134,7 +134,6 @@ export async function fetchVendorScorecardSummary(
   const top3 = sorted.slice(0, 3).reduce((acc, r) => acc + toNum(r.spend_ytd), 0);
   const concentration = totalYTD > 0 ? (top3 / totalYTD) * 100 : 0;
 
-  // Rebate totals from attainment snapshots (graceful if tables don't exist yet)
   let totalEarned = 0;
   let totalAccrued = 0;
   let totalForecastFY = 0;
@@ -188,7 +187,7 @@ export async function fetchVendorScorecardSummary(
     atRisk  = parseInt(healthRows[0]?.at_risk   ?? '0', 10);
     missed  = parseInt(healthRows[0]?.missed     ?? '0', 10);
   } catch {
-    // Tables not yet created — scorecard works without rebate data
+    // Tables not yet created
   }
 
   const fo = fillOtdRows[0];
@@ -342,13 +341,12 @@ export async function fetchVendorList(
     LEFT JOIN primary_group pg ON pg.supplier_key = s.supplier_key
     LEFT JOIN open_pos op      ON op.supplier_key = s.supplier_key
     LEFT JOIN risk_counts rc   ON rc.supplier_key = s.supplier_key
-    WHERE s.spend_ytd > 0 OR s.spend_py > 0
+    WHERE (s.spend_ytd > 0 OR s.spend_py > 0)
       AND (${params.productGroup} = 'all' OR pg.product_group = ${params.productGroup})
     ORDER BY s.spend_ytd DESC NULLS LAST
     LIMIT 150
   `;
 
-  // rebate earned per supplier from latest attainment snapshot
   let rebateMap = new Map<string, { earned: number; accrued: number; progCount: number }>();
   try {
     const rebRows = await sql<{ supplier_key: string; earned: string; accrued: string; prog_count: string }[]>`
@@ -417,7 +415,6 @@ export async function fetchVendorDetail(
   const ps = fmt(pyStart);
   const pe = fmt(pyEnd);
 
-  // Core spend + fill/otd by branch
   type BranchRow = {
     system_id: string;
     spend_ytd: string | null;
@@ -460,10 +457,10 @@ export async function fetchVendorDetail(
         AND ph.supplier_key = ${supplierKey}
         AND rh.receive_date IS NOT NULL
         AND rh.receive_date::date BETWEEN ${ps}::date AND ${e}::date
+        AND (${params.branch} = 'all' OR rh.system_id = ${params.branch})
       GROUP BY rh.system_id
       ORDER BY spend_ytd DESC NULLS LAST
     `,
-    // Product group breakdown
     sql<{ product_group: string; spend_ytd: string }[]>`
       SELECT
         COALESCE(ai.link_product_group, 'Unassigned') AS product_group,
@@ -483,7 +480,6 @@ export async function fetchVendorDetail(
       ORDER BY spend_ytd DESC NULLS LAST
       LIMIT 20
     `,
-    // Open POs
     sql<{ open_po_count: string; open_po_value: string }[]>`
       SELECT
         COUNT(DISTINCT ph.po_id)::text AS open_po_count,
@@ -519,7 +515,6 @@ export async function fetchVendorDetail(
     pctOfTotal: pgTotal > 0 ? (toNum(r.spend_ytd) / pgTotal) * 100 : 0,
   }));
 
-  // Rebate programs + latest attainment
   let rebatePrograms: RebateProgram[] = [];
   let riskFlags: RiskFlag[] = [];
   let rebateEarned = 0;
@@ -576,7 +571,6 @@ export async function fetchVendorDetail(
       const rate     = toNumOrNull(r.rebate_rate_pct);
       const tiers: TierBreakpoint[] | null = r.tier_breakpoints ?? null;
 
-      // Find next tier
       let toNext: number | null = null;
       let nextRate: number | null = null;
       if (tiers && target !== null) {
