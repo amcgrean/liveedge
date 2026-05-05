@@ -250,7 +250,7 @@ export default function ForecastClient({ isAdmin, userBranch }: Props) {
                     Open Orders Concentration
                   </span>
                   <span className="ml-auto text-xs text-slate-500">
-                    bars = open orders, line = cumulative %
+                    open orders sorted by volume
                   </span>
                 </div>
                 <ParetoChart

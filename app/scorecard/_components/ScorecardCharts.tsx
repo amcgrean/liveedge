@@ -153,7 +153,7 @@ export function ProductScorecardPareto({ rows }: { rows: ProductScorecardMajorRo
   return (
     <ChartCard
       title="Product Concentration"
-      subtitle="Bars = sales by major group, line = cumulative %"
+      subtitle="Sales by major group, sorted by volume"
     >
       <ParetoChart rows={paretoRows} format={fmtCurrencyCompact} valueLabel="Sales" height={320} />
     </ChartCard>
@@ -169,7 +169,7 @@ export function TopCustomersPareto({ rows }: { rows: CustomerListRow[] }) {
   return (
     <ChartCard
       title="Top Customers"
-      subtitle="Bars are sales, line is cumulative % — exposes 80/20 concentration"
+      subtitle="Sales by customer, sorted by volume"
     >
       <ParetoChart rows={paretoRows} format={fmtCurrencyCompact} valueLabel="Sales" height={300} />
     </ChartCard>
