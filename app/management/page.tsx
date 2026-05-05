@@ -1,5 +1,5 @@
 import Link from 'next/link';
-import { BarChart3, Building2, Users, Package, List, FileBarChart2, ChevronRight, TrendingUp, TrendingDown, Minus, Calendar } from 'lucide-react';
+import { BarChart3, Building2, Users, Package, List, FileBarChart2, ChevronRight, TrendingUp, TrendingDown, Minus, Calendar, Store } from 'lucide-react';
 import {
   fetchAggregateKpis,
   fetchAggregateThreeYear,
@@ -9,7 +9,7 @@ import {
 import type { AggregateParams, KpiComparison } from '../../src/lib/scorecard/types';
 import ManagementCharts from './_components/ManagementCharts';
 import ManagementFilterBar from './_components/ManagementFilterBar';
-import { ThreeYearTable, BranchSummaryTable, SalesByTypeTable } from './_components/ManagementTables';
+import { ThreeYearTable } from './_components/ManagementTables';
 
 export const metadata = { title: 'Management — Beisser LiveEdge' };
 export const maxDuration = 60;
@@ -137,6 +137,14 @@ const REPORT_TILES = [
     color: 'text-sky-400',
     bg: 'bg-sky-900/20 border-sky-800/40 hover:border-sky-600/60',
   },
+  {
+    href: '/purchasing/scorecard',
+    icon: Store,
+    label: 'Vendor Scorecard',
+    desc: 'Supplier spend, performance, rebate attainment, and risk flags',
+    color: 'text-orange-400',
+    bg: 'bg-orange-900/20 border-orange-800/40 hover:border-orange-600/60',
+  },
 ];
 
 export default async function ManagementPage({
@@ -245,7 +253,7 @@ export default async function ManagementPage({
         <KpiCard label="Orders" base={kpis.base.soCount} compare={kpis.compare.soCount} format="number" />
       </div>
 
-      {/* Charts */}
+      {/* Charts — each card has a chart/table toggle */}
       <ManagementCharts
         threeYear={threeYear}
         branchSummaries={branchSummaries}
@@ -260,22 +268,12 @@ export default async function ManagementPage({
         <ThreeYearTable rows={threeYear} />
       </Section>
 
-      {/* Branch Summary */}
-      <Section title="By Branch">
-        <BranchSummaryTable rows={branchSummaries} baseYear={baseYear} compareYear={compareYear} qs={qs} />
-      </Section>
-
-      {/* Sales by Type */}
-      <Section title="Sales by Type">
-        <SalesByTypeTable rows={saleTypes} baseYear={baseYear} compareYear={compareYear} />
-      </Section>
-
       {/* Report tiles */}
       <div>
         <h2 className="text-[10px] font-bold tracking-widest uppercase text-slate-500 mb-3">
           Reports &amp; Scorecards
         </h2>
-        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
           {REPORT_TILES.map((tile) => {
             const Icon = tile.icon;
             const tileHref = tile.href.startsWith('/scorecard')
