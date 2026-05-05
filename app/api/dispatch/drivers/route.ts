@@ -93,7 +93,7 @@ export async function POST(req: NextRequest) {
         ${body.notes?.trim() || null},
         true
       )
-      ON CONFLICT (route_code, branch_code) DO UPDATE SET
+      ON CONFLICT (route_code, branch_code) WHERE route_code IS NOT NULL DO UPDATE SET
         name             = EXCLUDED.name,
         default_truck_id = EXCLUDED.default_truck_id,
         phone            = COALESCE(EXCLUDED.phone, dispatch_drivers.phone),
