@@ -9,7 +9,7 @@ import {
 import type { AggregateParams, KpiComparison } from '../../src/lib/scorecard/types';
 import ManagementCharts from './_components/ManagementCharts';
 import ManagementFilterBar from './_components/ManagementFilterBar';
-import { ThreeYearTable, BranchSummaryTable, SalesByTypeTable } from './_components/ManagementTables';
+import { ThreeYearTable } from './_components/ManagementTables';
 
 export const metadata = { title: 'Management — Beisser LiveEdge' };
 export const maxDuration = 60;
@@ -253,7 +253,7 @@ export default async function ManagementPage({
         <KpiCard label="Orders" base={kpis.base.soCount} compare={kpis.compare.soCount} format="number" />
       </div>
 
-      {/* Charts */}
+      {/* Charts — each card has a chart/table toggle */}
       <ManagementCharts
         threeYear={threeYear}
         branchSummaries={branchSummaries}
@@ -266,16 +266,6 @@ export default async function ManagementPage({
       {/* 3-Year Comparison */}
       <Section title="3-Year Comparison">
         <ThreeYearTable rows={threeYear} />
-      </Section>
-
-      {/* Branch Summary */}
-      <Section title="By Branch">
-        <BranchSummaryTable rows={branchSummaries} baseYear={baseYear} compareYear={compareYear} qs={qs} />
-      </Section>
-
-      {/* Sales by Type */}
-      <Section title="Sales by Type">
-        <SalesByTypeTable rows={saleTypes} baseYear={baseYear} compareYear={compareYear} />
       </Section>
 
       {/* Report tiles */}
