@@ -291,7 +291,7 @@ export async function fetchVendorList(
         ON pl.system_id = ph.system_id AND pl.po_id = ph.po_id
       WHERE ph.is_deleted = false AND pl.is_deleted = false
         AND ph.canceled = false
-        AND ph.po_status NOT IN ('complete', 'closed', 'received')
+        AND UPPER(ph.po_status) NOT IN ('CLOSED', 'CANCELED', 'COMPLETE', 'RECEIVED')
         AND (${params.branch} = 'all' OR ph.system_id = ${params.branch})
       GROUP BY ph.supplier_key
     )
@@ -497,7 +497,7 @@ export async function fetchVendorDetail(
       WHERE ph.is_deleted = false AND pl.is_deleted = false
         AND ph.supplier_key = ${supplierKey}
         AND ph.canceled = false
-        AND ph.po_status NOT IN ('complete', 'closed', 'received')
+        AND UPPER(ph.po_status) NOT IN ('CLOSED', 'CANCELED', 'COMPLETE', 'RECEIVED')
         AND (${params.branch} = 'all' OR ph.system_id = ${params.branch})
     `,
   ]);
