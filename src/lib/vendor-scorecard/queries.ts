@@ -87,10 +87,10 @@ export async function fetchVendorScorecardSummary(
       SELECT
         ph.supplier_key,
         SUM(rl.qty * rl.cost) FILTER (
-          WHERE rh.receive_date::date BETWEEN ${s}::date AND ${e}::date
+          WHERE rh.receive_date >= ${s}::date AND rh.receive_date < ${e}::date + 1
         )::numeric(18,2)::text AS spend_ytd,
         SUM(rl.qty * rl.cost) FILTER (
-          WHERE rh.receive_date::date BETWEEN ${ps}::date AND ${pe}::date
+          WHERE rh.receive_date >= ${ps}::date AND rh.receive_date < ${pe}::date + 1
         )::numeric(18,2)::text AS spend_py
       FROM agility_receiving_lines rl
       JOIN agility_receiving_header rh
@@ -99,7 +99,7 @@ export async function fetchVendorScorecardSummary(
         ON ph.system_id = rh.system_id AND ph.po_id = rh.po_id
       WHERE rl.is_deleted = false AND rh.is_deleted = false AND ph.is_deleted = false
         AND rh.receive_date IS NOT NULL
-        AND rh.receive_date::date BETWEEN ${ps}::date AND ${e}::date
+        AND rh.receive_date >= ${ps}::date AND rh.receive_date < ${e}::date + 1
         AND (${params.branch} = 'all' OR rh.system_id = ${params.branch})
       GROUP BY ph.supplier_key
     `,
@@ -121,7 +121,7 @@ export async function fetchVendorScorecardSummary(
         LEFT JOIN agility_po_lines pl
           ON pl.system_id = rl.system_id AND pl.po_id = rl.po_id AND pl.sequence = rl.sequence
         WHERE rl.is_deleted = false AND rh.is_deleted = false AND ph.is_deleted = false
-          AND rh.receive_date::date BETWEEN ${s}::date AND ${e}::date
+          AND rh.receive_date >= ${s}::date AND rh.receive_date < ${e}::date + 1
           AND (${params.branch} = 'all' OR rh.system_id = ${params.branch})
         GROUP BY ph.supplier_key
       ) sub
@@ -187,7 +187,7 @@ export async function fetchVendorScorecardSummary(
     atRisk  = parseInt(healthRows[0]?.at_risk   ?? '0', 10);
     missed  = parseInt(healthRows[0]?.missed     ?? '0', 10);
   } catch {
-    // Tables not yet seeded in ERP — rebate data unavailable
+    // Tables not yet seeded — rebate data unavailable
   }
 
   const fo = fillOtdRows[0];
@@ -240,6 +240,8 @@ export async function fetchVendorList(
 
   // Main query: spend, fill/OTD, open POs. Product group resolved separately
   // below to avoid a second full scan of agility_receiving_lines + agility_items.
+  // Outer WHERE uses raw timestamptz comparison (>= date, < date+1) so the planner
+  // can use the existing (system_id, receive_date) index without a ::date cast.
   const rows = await sql<SpendRow[]>`
     WITH spend AS (
       SELECT
@@ -247,23 +249,23 @@ export async function fetchVendorList(
         MAX(ph.supplier_code) AS supplier_code,
         MAX(ph.supplier_name) AS supplier_name,
         SUM(rl.qty * rl.cost) FILTER (
-          WHERE rh.receive_date::date BETWEEN ${s}::date AND ${e}::date
+          WHERE rh.receive_date >= ${s}::date AND rh.receive_date < ${e}::date + 1
         )::numeric(18,2) AS spend_ytd,
         SUM(rl.qty * rl.cost) FILTER (
-          WHERE rh.receive_date::date BETWEEN ${ps}::date AND ${pe}::date
+          WHERE rh.receive_date >= ${ps}::date AND rh.receive_date < ${pe}::date + 1
         )::numeric(18,2) AS spend_py,
         SUM(rl.qty) FILTER (
-          WHERE rh.receive_date::date BETWEEN ${s}::date AND ${e}::date
+          WHERE rh.receive_date >= ${s}::date AND rh.receive_date < ${e}::date + 1
         )::numeric
           / NULLIF(SUM(pl.qty_ordered) FILTER (
-            WHERE rh.receive_date::date BETWEEN ${s}::date AND ${e}::date
+            WHERE rh.receive_date >= ${s}::date AND rh.receive_date < ${e}::date + 1
           ), 0) AS fill_rate,
         COUNT(*) FILTER (
-          WHERE rh.receive_date::date BETWEEN ${s}::date AND ${e}::date
+          WHERE rh.receive_date >= ${s}::date AND rh.receive_date < ${e}::date + 1
             AND rh.receive_date::date <= ph.expect_date::date
         )::numeric
           / NULLIF(COUNT(*) FILTER (
-            WHERE rh.receive_date::date BETWEEN ${s}::date AND ${e}::date
+            WHERE rh.receive_date >= ${s}::date AND rh.receive_date < ${e}::date + 1
           ), 0) AS otd_rate,
         MAX(rh.receive_date)::date::text AS last_receive_date
       FROM agility_receiving_lines rl
@@ -275,7 +277,7 @@ export async function fetchVendorList(
         ON pl.system_id = rl.system_id AND pl.po_id = rl.po_id AND pl.sequence = rl.sequence
       WHERE rl.is_deleted = false AND rh.is_deleted = false AND ph.is_deleted = false
         AND rh.receive_date IS NOT NULL
-        AND rh.receive_date::date BETWEEN ${ps}::date AND ${e}::date
+        AND rh.receive_date >= ${ps}::date AND rh.receive_date < ${e}::date + 1
         AND (${params.branch} = 'all' OR rh.system_id = ${params.branch})
       GROUP BY ph.supplier_key
     ),
@@ -335,7 +337,7 @@ export async function fetchVendorList(
           WHERE rl.is_deleted = false AND rh.is_deleted = false
             AND ph.is_deleted = false AND ai.is_deleted = false
             AND ph.supplier_key = ANY(${keys})
-            AND rh.receive_date::date BETWEEN ${s}::date AND ${e}::date
+            AND rh.receive_date >= ${s}::date AND rh.receive_date < ${e}::date + 1
             AND ai.link_product_group IS NOT NULL AND ai.link_product_group <> ''
           GROUP BY ph.supplier_key, ai.link_product_group
         ) sub
@@ -371,7 +373,7 @@ export async function fetchVendorList(
       ]),
     );
   } catch {
-    // supplier_rebate_programs not seeded in ERP
+    // supplier_rebate_programs not seeded
   }
 
   // Apply product group filter in JS so LIMIT 200 doesn't hide matching vendors
@@ -434,23 +436,23 @@ export async function fetchVendorDetail(
       SELECT
         rh.system_id,
         SUM(rl.qty * rl.cost) FILTER (
-          WHERE rh.receive_date::date BETWEEN ${s}::date AND ${e}::date
+          WHERE rh.receive_date >= ${s}::date AND rh.receive_date < ${e}::date + 1
         )::numeric(18,2)::text AS spend_ytd,
         SUM(rl.qty * rl.cost) FILTER (
-          WHERE rh.receive_date::date BETWEEN ${ps}::date AND ${pe}::date
+          WHERE rh.receive_date >= ${ps}::date AND rh.receive_date < ${pe}::date + 1
         )::numeric(18,2)::text AS spend_py,
         SUM(rl.qty) FILTER (
-          WHERE rh.receive_date::date BETWEEN ${s}::date AND ${e}::date
+          WHERE rh.receive_date >= ${s}::date AND rh.receive_date < ${e}::date + 1
         )::numeric
           / NULLIF(SUM(pl.qty_ordered) FILTER (
-            WHERE rh.receive_date::date BETWEEN ${s}::date AND ${e}::date
+            WHERE rh.receive_date >= ${s}::date AND rh.receive_date < ${e}::date + 1
           ), 0) AS fill_rate,
         COUNT(*) FILTER (
-          WHERE rh.receive_date::date BETWEEN ${s}::date AND ${e}::date
+          WHERE rh.receive_date >= ${s}::date AND rh.receive_date < ${e}::date + 1
             AND rh.receive_date::date <= ph.expect_date::date
         )::numeric
           / NULLIF(COUNT(*) FILTER (
-            WHERE rh.receive_date::date BETWEEN ${s}::date AND ${e}::date
+            WHERE rh.receive_date >= ${s}::date AND rh.receive_date < ${e}::date + 1
           ), 0) AS otd_rate
       FROM agility_receiving_lines rl
       JOIN agility_receiving_header rh
@@ -462,7 +464,7 @@ export async function fetchVendorDetail(
       WHERE rl.is_deleted = false AND rh.is_deleted = false AND ph.is_deleted = false
         AND ph.supplier_key = ${supplierKey}
         AND rh.receive_date IS NOT NULL
-        AND rh.receive_date::date BETWEEN ${ps}::date AND ${e}::date
+        AND rh.receive_date >= ${ps}::date AND rh.receive_date < ${e}::date + 1
         AND (${params.branch} = 'all' OR rh.system_id = ${params.branch})
       GROUP BY rh.system_id
       ORDER BY spend_ytd DESC NULLS LAST
@@ -480,7 +482,7 @@ export async function fetchVendorDetail(
         ON ai.system_id = rl.system_id AND ai.item_ptr = rl.item_ptr AND ai.is_deleted = false
       WHERE rl.is_deleted = false AND rh.is_deleted = false AND ph.is_deleted = false
         AND ph.supplier_key = ${supplierKey}
-        AND rh.receive_date::date BETWEEN ${s}::date AND ${e}::date
+        AND rh.receive_date >= ${s}::date AND rh.receive_date < ${e}::date + 1
         AND (${params.branch} = 'all' OR rh.system_id = ${params.branch})
       GROUP BY product_group
       ORDER BY spend_ytd DESC NULLS LAST
@@ -628,7 +630,7 @@ export async function fetchVendorDetail(
       createdAt:   r.created_at,
     }));
   } catch {
-    // Tables not yet seeded in ERP
+    // Tables not yet seeded
   }
 
   return {
@@ -670,7 +672,7 @@ export async function fetchProductGroups(
     JOIN agility_items ai
       ON ai.system_id = rl.system_id AND ai.item_ptr = rl.item_ptr
     WHERE rl.is_deleted = false AND rh.is_deleted = false AND ai.is_deleted = false
-      AND rh.receive_date::date BETWEEN ${s}::date AND ${e}::date
+      AND rh.receive_date >= ${s}::date AND rh.receive_date < ${e}::date + 1
       AND (${params.branch} = 'all' OR rh.system_id = ${params.branch})
       AND ai.link_product_group IS NOT NULL AND ai.link_product_group <> ''
     ORDER BY product_group
