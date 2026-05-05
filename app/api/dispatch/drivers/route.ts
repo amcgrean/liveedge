@@ -42,7 +42,7 @@ export async function GET(req: NextRequest) {
         ON dd.route_code = dr.route_id_char
         AND dd.branch_code = dr.system_id
       WHERE (${effectiveBranch} = '' OR dr.system_id = ${effectiveBranch})
-        AND dr.active = 1
+        AND dr.active = true
         AND dr.system_id <> '30CD'
       ORDER BY dr.system_id, dr.route_id_char
     `;
