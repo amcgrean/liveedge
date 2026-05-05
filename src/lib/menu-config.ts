@@ -84,11 +84,12 @@ export const MENU: readonly MenuGroup[] = [
     key: 'purchasing',
     label: 'Purchasing',
     items: [
-      { label: 'Buyer Workspace', href: '/purchasing/workspace', requires: [CAPABILITIES.PURCHASING_VIEW] },
-      { label: 'Open POs',        href: '/purchasing/open-pos',  requires: [CAPABILITIES.PURCHASING_VIEW] },
-      { label: 'Command Center',  href: '/purchasing/manage',    requires: [CAPABILITIES.PURCHASING_VIEW] },
-      { label: 'PO Check-In',     href: '/purchasing',           requires: [CAPABILITIES.PURCHASING_RECEIVE] },
-      { label: 'Review Queue',    href: '/purchasing/review',    requires: [CAPABILITIES.PURCHASING_REVIEW] },
+      { label: 'Buyer Workspace',  href: '/purchasing/workspace',  requires: [CAPABILITIES.PURCHASING_VIEW] },
+      { label: 'Open POs',         href: '/purchasing/open-pos',   requires: [CAPABILITIES.PURCHASING_VIEW] },
+      { label: 'Command Center',   href: '/purchasing/manage',     requires: [CAPABILITIES.PURCHASING_VIEW] },
+      { label: 'Vendor Scorecard', href: '/purchasing/scorecard',  requires: [CAPABILITIES.PURCHASING_VIEW] },
+      { label: 'PO Check-In',      href: '/purchasing',            requires: [CAPABILITIES.PURCHASING_RECEIVE] },
+      { label: 'Review Queue',     href: '/purchasing/review',     requires: [CAPABILITIES.PURCHASING_REVIEW] },
     ],
   },
   {
