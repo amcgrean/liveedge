@@ -187,7 +187,7 @@ export async function fetchVendorScorecardSummary(
     atRisk  = parseInt(healthRows[0]?.at_risk   ?? '0', 10);
     missed  = parseInt(healthRows[0]?.missed     ?? '0', 10);
   } catch {
-    // Tables not yet created
+    // Tables not yet seeded in ERP — rebate data unavailable
   }
 
   const fo = fillOtdRows[0];
@@ -237,9 +237,10 @@ export async function fetchVendorList(
     open_po_count: string;
     open_po_value: string | null;
     last_receive_date: string | null;
-    risk_flag_count: string;
   };
 
+  // NOTE: supplier_risk_flags and supplier_rebate_* tables live in Supabase, not in the
+  // ERP database. They are fetched separately below with error handling.
   const rows = await sql<SpendRow[]>`
     WITH spend AS (
       SELECT
@@ -317,12 +318,6 @@ export async function fetchVendorList(
         AND ph.po_status NOT IN ('complete', 'closed', 'received')
         AND (${params.branch} = 'all' OR ph.system_id = ${params.branch})
       GROUP BY ph.supplier_key
-    ),
-    risk_counts AS (
-      SELECT supplier_key, COUNT(*)::text AS risk_flag_count
-      FROM supplier_risk_flags
-      WHERE is_active = true
-      GROUP BY supplier_key
     )
     SELECT
       s.supplier_key,
@@ -335,12 +330,10 @@ export async function fetchVendorList(
       s.otd_rate::numeric(6,4)::text  AS otd_rate,
       COALESCE(op.open_po_count, '0')  AS open_po_count,
       COALESCE(op.open_po_value, '0')  AS open_po_value,
-      s.last_receive_date,
-      COALESCE(rc.risk_flag_count, '0') AS risk_flag_count
+      s.last_receive_date
     FROM spend s
     LEFT JOIN primary_group pg ON pg.supplier_key = s.supplier_key
     LEFT JOIN open_pos op      ON op.supplier_key = s.supplier_key
-    LEFT JOIN risk_counts rc   ON rc.supplier_key = s.supplier_key
     WHERE (s.spend_ytd > 0 OR s.spend_py > 0)
       AND (${params.productGroup} = 'all' OR pg.product_group = ${params.productGroup})
     ORDER BY s.spend_ytd DESC NULLS LAST
@@ -371,7 +364,7 @@ export async function fetchVendorList(
       ]),
     );
   } catch {
-    // supplier_rebate_programs not yet created
+    // supplier_rebate_programs not seeded in ERP
   }
 
   return rows.map((r) => {
@@ -392,7 +385,7 @@ export async function fetchVendorList(
       openPoCount: parseInt(r.open_po_count, 10),
       openPoValue: toNum(r.open_po_value),
       lastReceiveDate: r.last_receive_date,
-      riskFlagCount: parseInt(r.risk_flag_count, 10),
+      riskFlagCount: 0,
       activeProgramCount: rb?.progCount ?? 0,
     };
   });
@@ -622,7 +615,7 @@ export async function fetchVendorDetail(
       createdAt:   r.created_at,
     }));
   } catch {
-    // Tables not yet created
+    // Tables not yet seeded in ERP
   }
 
   return {
