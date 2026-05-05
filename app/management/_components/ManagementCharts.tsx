@@ -132,7 +132,7 @@ export default function ManagementCharts({
       {showPareto && (
         <ChartCard
           title="Sales Mix by Type"
-          subtitle="Concentration — bars are sales, line is cumulative %"
+          subtitle="Concentration — sales sorted by volume"
           action={<ChartTableToggle view={saleTypeView} onChange={setSaleTypeView} />}
         >
           {saleTypeView === 'chart' ? (
