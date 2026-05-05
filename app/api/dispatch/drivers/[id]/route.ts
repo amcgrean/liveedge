@@ -3,6 +3,7 @@ import { requireCapability } from '../../../../../src/lib/access-control';
 import { getErpSql } from '../../../../../db/supabase';
 
 // PATCH /api/dispatch/drivers/[id]
+// Updates truck assignment fields. Name and branch come from ERP (delv_route) and are not editable here.
 export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const authResult = await requireCapability('dispatch.manage');
   if (authResult instanceof NextResponse) return authResult;
@@ -12,12 +13,10 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   if (isNaN(driverId)) return NextResponse.json({ error: 'Invalid id' }, { status: 400 });
 
   const body = await req.json() as {
-    name?: string;
+    truck_id?: string;
+    truck_name?: string;
     phone?: string;
-    default_truck_id?: string;
-    branch_code?: string;
     notes?: string;
-    is_active?: boolean;
   };
 
   try {
@@ -27,12 +26,10 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     const vals: unknown[] = [];
     let idx = 1;
 
-    if (body.name !== undefined) { updates.push(`name = $${idx++}`); vals.push(body.name.trim()); }
+    if (body.truck_id !== undefined) { updates.push(`default_truck_id = $${idx++}`); vals.push(body.truck_id.trim() || null); }
+    if (body.truck_name !== undefined) { updates.push(`name = $${idx++}`); vals.push(body.truck_name.trim() || null); }
     if (body.phone !== undefined) { updates.push(`phone = $${idx++}`); vals.push(body.phone.trim() || null); }
-    if (body.default_truck_id !== undefined) { updates.push(`default_truck_id = $${idx++}`); vals.push(body.default_truck_id.trim() || null); }
-    if (body.branch_code !== undefined) { updates.push(`branch_code = $${idx++}`); vals.push(body.branch_code.trim() || null); }
     if (body.notes !== undefined) { updates.push(`notes = $${idx++}`); vals.push(body.notes.trim() || null); }
-    if (body.is_active !== undefined) { updates.push(`is_active = $${idx++}`); vals.push(body.is_active); }
 
     if (updates.length === 0) return NextResponse.json({ error: 'No fields to update.' }, { status: 400 });
 
@@ -40,7 +37,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
 
     const rows = await sql.unsafe(
       `UPDATE dispatch_drivers SET ${updates.join(', ')} WHERE id = $${idx}
-       RETURNING id, name, phone, default_truck_id, branch_code, is_active, notes, updated_at::text`,
+       RETURNING id, route_code, branch_code, default_truck_id AS assigned_truck_id, name AS assigned_truck_name, phone, notes, updated_at::text`,
       [...vals, driverId] as never[]
     );
 
@@ -53,6 +50,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
 }
 
 // DELETE /api/dispatch/drivers/[id]
+// Removes the truck assignment for a route (clears dispatch_drivers row).
 export async function DELETE(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const authResult = await requireCapability('dispatch.manage');
   if (authResult instanceof NextResponse) return authResult;
@@ -64,7 +62,7 @@ export async function DELETE(_req: NextRequest, { params }: { params: Promise<{ 
   try {
     const sql = getErpSql();
     const rows = await sql`DELETE FROM dispatch_drivers WHERE id = ${driverId} RETURNING id`;
-    if (!rows[0]) return NextResponse.json({ error: 'Driver not found.' }, { status: 404 });
+    if (!rows[0]) return NextResponse.json({ error: 'Assignment not found.' }, { status: 404 });
     return NextResponse.json({ ok: true });
   } catch (err) {
     console.error('[dispatch/drivers DELETE]', err);

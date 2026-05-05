@@ -2,69 +2,107 @@ import { NextRequest, NextResponse } from 'next/server';
 import { requireCapability, hasCapability } from '../../../../src/lib/access-control';
 import { getErpSql } from '../../../../db/supabase';
 
-// GET /api/dispatch/drivers
-export async function GET() {
+export type DriverRoute = {
+  route_code: string;
+  driver_name: string;
+  branch_code: string;
+  id: number | null;
+  assigned_truck_id: string | null;
+  assigned_truck_name: string | null;
+  phone: string | null;
+  notes: string | null;
+};
+
+// GET /api/dispatch/drivers?branch=20GR
+// Returns ERP delivery routes from delv_route merged with dispatch_drivers truck assignments.
+// If delv_route is not yet synced to Supabase, returns { drivers: [], synced: false }.
+export async function GET(req: NextRequest) {
   const authResult = await requireCapability('dispatch.view', 'dispatch.manage');
   if (authResult instanceof NextResponse) return authResult;
   const session = authResult;
 
   const isAdmin = hasCapability(session, 'branch.all');
-  const effectiveBranch = isAdmin ? '' : (session.user.branch ?? '');
+  const branchParam = req.nextUrl.searchParams.get('branch') ?? '';
+  const effectiveBranch = isAdmin ? branchParam : (session.user.branch ?? '');
 
   try {
     const sql = getErpSql();
-    const rows = await sql`
-      SELECT id, name, phone, default_truck_id, branch_code, is_active, notes,
-             created_at::text, updated_at::text
-      FROM dispatch_drivers
-      ${effectiveBranch ? sql`WHERE branch_code = ${effectiveBranch} OR branch_code IS NULL` : sql``}
-      ORDER BY name
+    const rows = await sql<DriverRoute[]>`
+      SELECT
+        dr.route_id_char            AS route_code,
+        dr.description              AS driver_name,
+        dr.system_id                AS branch_code,
+        dd.id,
+        dd.default_truck_id         AS assigned_truck_id,
+        dd.name                     AS assigned_truck_name,
+        dd.phone,
+        dd.notes
+      FROM public.delv_route dr
+      LEFT JOIN public.dispatch_drivers dd
+        ON dd.route_code = dr.route_id_char
+        AND dd.branch_code = dr.system_id
+      WHERE (${effectiveBranch} = '' OR dr.system_id = ${effectiveBranch})
+        AND dr.active = 1
+        AND dr.system_id <> '30CD'
+      ORDER BY dr.system_id, dr.route_id_char
     `;
-    return NextResponse.json({ drivers: rows });
+    return NextResponse.json({ drivers: rows, synced: true });
   } catch (err) {
+    const msg = err instanceof Error ? err.message : '';
+    // delv_route not yet synced to Supabase
+    if (msg.includes('delv_route') || msg.includes('does not exist') || msg.includes('relation')) {
+      return NextResponse.json({ drivers: [], synced: false });
+    }
     console.error('[dispatch/drivers GET]', err);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }
 
 // POST /api/dispatch/drivers
+// Upserts a Samsara truck assignment for a route_code + branch_code.
+// The driver name is ERP-managed (from delv_route); only truck mapping is stored here.
 export async function POST(req: NextRequest) {
   const authResult = await requireCapability('dispatch.manage');
   if (authResult instanceof NextResponse) return authResult;
 
   const body = await req.json() as {
-    name?: string;
-    phone?: string;
-    default_truck_id?: string;
+    route_code?: string;
     branch_code?: string;
+    truck_id?: string;
+    truck_name?: string;
+    phone?: string;
     notes?: string;
-    is_active?: boolean;
   };
 
-  const name = (body.name ?? '').trim();
-  if (!name) return NextResponse.json({ error: 'Name is required.' }, { status: 400 });
+  const route_code = body.route_code?.trim() ?? '';
+  const branch_code = body.branch_code?.trim() ?? '';
+  if (!route_code || !branch_code) {
+    return NextResponse.json({ error: 'route_code and branch_code are required.' }, { status: 400 });
+  }
 
   try {
     const sql = getErpSql();
     const [row] = await sql`
-      INSERT INTO dispatch_drivers (name, phone, default_truck_id, branch_code, notes, is_active)
+      INSERT INTO dispatch_drivers (route_code, branch_code, name, default_truck_id, phone, notes, is_active)
       VALUES (
-        ${name},
+        ${route_code},
+        ${branch_code},
+        ${body.truck_name?.trim() || null},
+        ${body.truck_id?.trim() || null},
         ${body.phone?.trim() || null},
-        ${body.default_truck_id?.trim() || null},
-        ${body.branch_code?.trim() || null},
         ${body.notes?.trim() || null},
-        ${body.is_active !== false}
+        true
       )
-      RETURNING id, name, phone, default_truck_id, branch_code, is_active, notes,
-                created_at::text, updated_at::text
+      ON CONFLICT (route_code, branch_code) DO UPDATE SET
+        name             = EXCLUDED.name,
+        default_truck_id = EXCLUDED.default_truck_id,
+        phone            = COALESCE(EXCLUDED.phone, dispatch_drivers.phone),
+        notes            = COALESCE(EXCLUDED.notes, dispatch_drivers.notes),
+        updated_at       = NOW()
+      RETURNING id, route_code, branch_code, default_truck_id, name, phone, notes
     `;
     return NextResponse.json(row, { status: 201 });
   } catch (err) {
-    const msg = err instanceof Error ? err.message : '';
-    if (msg.includes('unique') || msg.includes('duplicate')) {
-      return NextResponse.json({ error: 'A driver with that name already exists.' }, { status: 409 });
-    }
     console.error('[dispatch/drivers POST]', err);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
