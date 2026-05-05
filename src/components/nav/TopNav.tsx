@@ -282,6 +282,8 @@ interface Domain {
   isActive: (p: string) => boolean;
   dropdown: boolean;
   href?: string;
+  /** When set, the group label itself links to this hub page; chevron still opens dropdown. */
+  hubHref?: string;
   /** Domain tab visible if user holds ANY of these capabilities. */
   requiresCap: readonly Capability[];
 }
@@ -330,13 +332,13 @@ function getDomains(tvBranch: string): Domain[] {
       id: 'sales',
       label: 'Sales',
       dropdown: true,
+      hubHref: '/sales',
       requiresCap: ['sales.view', 'credits.view', 'credits.manage', 'hubbell.review'],
       isActive: (p) =>
         (p.startsWith('/sales') && !p.startsWith('/sales/reports')) ||
         p.startsWith('/credits') ||
         p.startsWith('/admin/hubbell'),
       links: [
-        { href: '/sales',               label: 'Sales Hub',        requiresCap: ['sales.view'] },
         { href: '/sales/customers',     label: 'Customers',        requiresCap: ['sales.view'] },
         { href: '/sales/transactions',  label: 'Transactions',     requiresCap: ['sales.view'] },
         { href: '/sales/products',      label: 'Products & Stock', requiresCap: ['sales.view'] },
@@ -350,11 +352,11 @@ function getDomains(tvBranch: string): Domain[] {
       id: 'management',
       label: 'MGMT',
       dropdown: true,
+      hubHref: '/management',
       // branch.all is held by admin, management role, and ops — correct audience for these pages
       requiresCap: ['branch.all'],
       isActive: (p) => p.startsWith('/management') || p.startsWith('/sales/reports') || p.startsWith('/scorecard'),
       links: [
-        { href: '/management',            label: 'Management Hub' },
         { href: '/scorecard/overview',    label: 'Company Overview' },
         { href: '/scorecard/branch/20GR', label: 'By Branch' },
         { href: '/scorecard/rep',         label: 'By Sales Rep' },
@@ -362,6 +364,7 @@ function getDomains(tvBranch: string): Domain[] {
         { href: '/scorecard',             label: 'Customer Scorecard' },
         { href: '/sales/reports',         label: 'Sales Reports' },
         { href: '/management/forecast',   label: 'Open Orders & Forecast' },
+        { href: '/purchasing/scorecard',  label: 'Vendor Scorecard', sectionBefore: 'Purchasing', requiresCap: ['purchasing.view'] },
       ],
     },
     {
@@ -587,6 +590,34 @@ export function TopNav({ userName, userRole }: Props) {
                   );
                 }
 
+                // Hub-link pattern: label navigates to hub page, chevron opens dropdown
+                if (domain.hubHref) {
+                  const activeCls = active ? 'bg-cyan-500/20 text-cyan-400' : 'text-slate-300 hover:text-white hover:bg-slate-800';
+                  return (
+                    <div key={domain.id} className="relative flex items-center">
+                      <Link
+                        href={domain.hubHref}
+                        className={cn('flex items-center px-3 py-2 rounded-lg text-sm font-medium transition', activeCls)}
+                      >
+                        {domain.label}
+                      </Link>
+                      <button
+                        onClick={() => toggle(domain.id)}
+                        className={cn('flex items-center px-1.5 py-2 rounded-lg transition', activeCls)}
+                      >
+                        <ChevronDown
+                          className={cn('w-3 h-3 transition-transform', openMenu === domain.id && 'rotate-180')}
+                        />
+                      </button>
+                      {openMenu === domain.id && (
+                        <div className="absolute left-0 top-full mt-1 min-w-[200px] bg-slate-900 border border-white/10 rounded-lg shadow-2xl shadow-black/50 overflow-hidden z-50 py-1">
+                          {domain.links.map((l) => renderDropdownLink(l))}
+                        </div>
+                      )}
+                    </div>
+                  );
+                }
+
                 return (
                   <div key={domain.id} className="relative">
                     <button onClick={() => toggle(domain.id)} className={baseCls}>
@@ -743,6 +774,66 @@ export function TopNav({ userName, userRole }: Props) {
                     >
                       {domain.label}
                     </Link>
+                  );
+                }
+
+                // Hub-link pattern for mobile: label is a link, chevron toggles sub-items
+                if (domain.hubHref) {
+                  return (
+                    <React.Fragment key={domain.id}>
+                      <div className="flex items-center">
+                        <Link
+                          href={domain.hubHref}
+                          className={cn(
+                            'flex-1 flex items-center px-3 py-2.5 rounded-lg text-sm font-semibold transition',
+                            domain.isActive(pathname)
+                              ? 'text-cyan-400'
+                              : 'text-slate-400 hover:text-white hover:bg-slate-800'
+                          )}
+                        >
+                          {domain.label}
+                        </Link>
+                        <button
+                          onClick={() => toggleMobileSection(domain.id)}
+                          className={cn(
+                            'flex items-center px-3 py-2.5 rounded-lg transition',
+                            domain.isActive(pathname)
+                              ? 'text-cyan-400'
+                              : 'text-slate-400 hover:text-white hover:bg-slate-800'
+                          )}
+                        >
+                          <ChevronDown
+                            className={cn('w-4 h-4 transition-transform', sectionOpen && 'rotate-180')}
+                          />
+                        </button>
+                      </div>
+                      {sectionOpen && (
+                        <div className="ml-4 border-l border-slate-700 pl-3 pb-1 space-y-0.5">
+                          {domain.links.map((l) => (
+                            <React.Fragment key={l.href}>
+                              {l.sectionBefore && (
+                                <div className="pt-2 pb-0.5">
+                                  <span className="text-[10px] uppercase tracking-widest text-slate-500 font-semibold">
+                                    {l.sectionBefore}
+                                  </span>
+                                </div>
+                              )}
+                              <Link
+                                href={l.href}
+                                className={cn(
+                                  'flex items-center px-3 py-2 rounded-lg text-sm transition',
+                                  pathname === l.href
+                                    ? 'bg-cyan-500/20 text-cyan-400'
+                                    : 'text-slate-400 hover:text-white hover:bg-slate-800'
+                                )}
+                              >
+                                {l.label}
+                              </Link>
+                            </React.Fragment>
+                          ))}
+                        </div>
+                      )}
+                    </React.Fragment>
                   );
                 }
 

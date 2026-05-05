@@ -1,5 +1,5 @@
 import Link from 'next/link';
-import { BarChart3, Building2, Users, Package, List, FileBarChart2, ChevronRight, TrendingUp, TrendingDown, Minus, Calendar } from 'lucide-react';
+import { BarChart3, Building2, Users, Package, List, FileBarChart2, ChevronRight, TrendingUp, TrendingDown, Minus, Calendar, Store } from 'lucide-react';
 import {
   fetchAggregateKpis,
   fetchAggregateThreeYear,
@@ -136,6 +136,14 @@ const REPORT_TILES = [
     desc: 'Open orders by sale type and branch · delivery forecast by day, ship via, and branch',
     color: 'text-sky-400',
     bg: 'bg-sky-900/20 border-sky-800/40 hover:border-sky-600/60',
+  },
+  {
+    href: '/purchasing/scorecard',
+    icon: Store,
+    label: 'Vendor Scorecard',
+    desc: 'Supplier spend, performance, rebate attainment, and risk flags',
+    color: 'text-orange-400',
+    bg: 'bg-orange-900/20 border-orange-800/40 hover:border-orange-600/60',
   },
 ];
 
@@ -275,7 +283,7 @@ export default async function ManagementPage({
         <h2 className="text-[10px] font-bold tracking-widest uppercase text-slate-500 mb-3">
           Reports &amp; Scorecards
         </h2>
-        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
           {REPORT_TILES.map((tile) => {
             const Icon = tile.icon;
             const tileHref = tile.href.startsWith('/scorecard')
