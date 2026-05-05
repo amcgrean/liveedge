@@ -802,6 +802,23 @@ export default function DispatchClient({ isAdmin, userBranch, userName, userRole
     }
   }
 
+  // Bulk-generate routes from ERP delv_route for the selected date/branch
+  const [generating, setGenerating] = useState(false);
+  async function generateRoutes() {
+    if (!branch) return; // need a specific branch
+    setGenerating(true);
+    try {
+      const res = await fetch('/api/dispatch/routes/generate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ date, branch_code: branch }),
+      });
+      if (res.ok) await loadAll();
+    } finally {
+      setGenerating(false);
+    }
+  }
+
   // Delivery board grouping
   const grouped = React.useMemo(() => {
     return stops.reduce<Record<string, DeliveryStop[]>>((acc, d) => {
@@ -1098,8 +1115,21 @@ export default function DispatchClient({ isAdmin, userBranch, userName, userRole
                   </div>
                 )}
                 {!loading && routes.length === 0 && (
-                  <div className="flex items-center justify-center w-full h-32 text-sm" style={{ color: 'var(--text-3)' }}>
-                    No routes planned for {date}{branch ? ` · ${branch}` : ''}.
+                  <div className="flex flex-col items-center justify-center w-full h-40 gap-3">
+                    <div className="text-sm" style={{ color: 'var(--text-3)' }}>
+                      No routes planned for {date}{branch ? ` · ${branch}` : ''}.
+                    </div>
+                    {branch && (
+                      <button
+                        onClick={generateRoutes}
+                        disabled={generating}
+                        className="flex items-center gap-2 px-4 py-2 text-sm rounded-lg transition disabled:opacity-50"
+                        style={{ background: 'var(--green-bright)', color: '#000', fontWeight: 600 }}
+                      >
+                        <RefreshCw className={`w-3.5 h-3.5 ${generating ? 'animate-spin' : ''}`} />
+                        {generating ? 'Generating…' : 'Generate from ERP Routes'}
+                      </button>
+                    )}
                   </div>
                 )}
                 {!loading && routes.map((route, routeIdx) => {
