@@ -61,6 +61,7 @@ export async function POST(req: NextRequest) {
 
   const body = await req.json() as {
     route_date?: string;
+    route_code?: string;
     route_name?: string;
     branch_code?: string;
     driver_name?: string;
@@ -81,8 +82,8 @@ export async function POST(req: NextRequest) {
     const sql = getErpSql();
     type InsertRow = { id: number };
     const [row] = await sql<InsertRow[]>`
-      INSERT INTO dispatch_routes (route_date, route_name, branch_code, driver_name, truck_id, notes, status, created_at, updated_at)
-      VALUES (${date}::date, ${route_name.trim()}, ${branch_code.trim()},
+      INSERT INTO dispatch_routes (route_date, route_code, route_name, branch_code, driver_name, truck_id, notes, status, created_at, updated_at)
+      VALUES (${date}::date, ${body.route_code?.trim() || null}, ${route_name.trim()}, ${branch_code.trim()},
               ${body.driver_name?.trim() || null}, ${body.truck_id?.trim() || null},
               ${body.notes?.trim() || null}, 'planned', NOW(), NOW())
       RETURNING id

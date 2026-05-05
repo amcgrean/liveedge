@@ -659,8 +659,10 @@ export default function DispatchClient({ isAdmin, userBranch, userName, userRole
   const [error, setError] = useState('');
   const [groupBy, setGroupBy] = useState<'route' | 'status' | 'branch'>('route');
   const [showNewRoute, setShowNewRoute] = useState(false);
-  const [newRoute, setNewRoute] = useState({ route_name: '', branch_code: userBranch ?? '', driver_name: '', truck_id: '' });
+  const [newRoute, setNewRoute] = useState({ route_code: '', route_name: '', branch_code: userBranch ?? '', driver_name: '', truck_id: '' });
   const [savingRoute, setSavingRoute] = useState(false);
+  const [erpRoutes, setErpRoutes] = useState<Array<{ route_code: string; driver_name: string; assigned_truck_id: string | null; assigned_truck_name: string | null }>>([]);
+  const [erpRoutesLoaded, setErpRoutesLoaded] = useState(false);
   const [viewMode, setViewMode] = useState<'board' | 'map'>('board');
 
   // Build a fast lookup: so_id → DeliveryStop
@@ -749,6 +751,37 @@ export default function DispatchClient({ isAdmin, userBranch, userName, userRole
     setKpis((prev) => prev ? { ...prev, route_count: Math.max(0, prev.route_count - 1) } : prev);
   }
 
+  // Load ERP delivery routes for the route creation dropdown (called once when the panel opens)
+  async function loadErpRoutes() {
+    if (erpRoutesLoaded) return;
+    try {
+      const params = branch ? `?branch=${branch}` : '';
+      const res = await fetch(`/api/dispatch/drivers${params}`);
+      if (res.ok) {
+        const data = await res.json() as { drivers: typeof erpRoutes; synced: boolean };
+        if (data.synced) setErpRoutes(data.drivers);
+      }
+    } finally {
+      setErpRoutesLoaded(true);
+    }
+  }
+
+  function openNewRoute() {
+    setShowNewRoute(true);
+    loadErpRoutes();
+  }
+
+  function selectErpRoute(routeCode: string) {
+    const r = erpRoutes.find((x) => x.route_code === routeCode);
+    setNewRoute((prev) => ({
+      ...prev,
+      route_code: routeCode,
+      route_name: r?.driver_name ?? routeCode,
+      driver_name: r?.driver_name ?? '',
+      truck_id: r?.assigned_truck_id ?? '',
+    }));
+  }
+
   // Create route
   async function createRoute() {
     if (!newRoute.route_name.trim() || !newRoute.branch_code.trim()) return;
@@ -761,7 +794,7 @@ export default function DispatchClient({ isAdmin, userBranch, userName, userRole
       });
       if (res.ok) {
         setShowNewRoute(false);
-        setNewRoute({ route_name: '', branch_code: userBranch ?? '', driver_name: '', truck_id: '' });
+        setNewRoute({ route_code: '', route_name: '', branch_code: userBranch ?? '', driver_name: '', truck_id: '' });
         await loadAll();
       }
     } finally {
@@ -976,7 +1009,7 @@ export default function DispatchClient({ isAdmin, userBranch, userName, userRole
               )}
               {/* Create route button at bottom */}
               <button
-                onClick={() => setShowNewRoute(true)}
+                onClick={openNewRoute}
                 className="w-full mt-2 py-2 text-xs flex items-center justify-center gap-1 rounded-lg transition"
                 style={{ border: '1px dashed var(--line)', color: 'var(--text-3)' }}
               >
@@ -985,16 +1018,35 @@ export default function DispatchClient({ isAdmin, userBranch, userName, userRole
               {showNewRoute && (
                 <div className="rounded-lg p-3 mt-2 space-y-2" style={{ border: '1px solid var(--green-bright)', background: 'var(--panel)' }}>
                   <div className="text-xs font-semibold" style={{ color: 'var(--green-bright)' }}>New Route</div>
-                  <input
-                    type="text" placeholder="Route name *" value={newRoute.route_name}
-                    onChange={(e) => setNewRoute((r) => ({ ...r, route_name: e.target.value }))}
-                    className="w-full text-xs rounded px-2 py-1.5 placeholder-gray-500"
-                    style={{ background: 'var(--panel-2)', border: '1px solid var(--line)', color: 'var(--text)' }}
-                  />
+                  {/* ERP route dropdown (populated from delv_route when synced) */}
+                  {erpRoutes.length > 0 ? (
+                    <select
+                      value={newRoute.route_code}
+                      onChange={(e) => selectErpRoute(e.target.value)}
+                      className="w-full text-xs rounded px-2 py-1.5"
+                      style={{ background: 'var(--panel-2)', border: '1px solid var(--line)', color: 'var(--text)' }}
+                    >
+                      <option value="">Select route *</option>
+                      {erpRoutes
+                        .filter((r) => !newRoute.branch_code || r.route_code.startsWith('') /* show all; branch already filtered by API */)
+                        .map((r) => (
+                          <option key={r.route_code} value={r.route_code}>
+                            {r.route_code} — {r.driver_name}
+                          </option>
+                        ))}
+                    </select>
+                  ) : (
+                    <input
+                      type="text" placeholder="Route name *" value={newRoute.route_name}
+                      onChange={(e) => setNewRoute((r) => ({ ...r, route_name: e.target.value }))}
+                      className="w-full text-xs rounded px-2 py-1.5 placeholder-gray-500"
+                      style={{ background: 'var(--panel-2)', border: '1px solid var(--line)', color: 'var(--text)' }}
+                    />
+                  )}
                   {isAdmin && (
                     <select
                       value={newRoute.branch_code}
-                      onChange={(e) => setNewRoute((r) => ({ ...r, branch_code: e.target.value }))}
+                      onChange={(e) => { setNewRoute((r) => ({ ...r, branch_code: e.target.value })); setErpRoutesLoaded(false); setErpRoutes([]); }}
                       className="w-full text-xs rounded px-2 py-1.5"
                       style={{ background: 'var(--panel-2)', border: '1px solid var(--line)', color: 'var(--text)' }}
                     >
@@ -1002,18 +1054,11 @@ export default function DispatchClient({ isAdmin, userBranch, userName, userRole
                       {BRANCHES.map((b) => <option key={b} value={b}>{b}</option>)}
                     </select>
                   )}
-                  <input
-                    type="text" placeholder="Driver name" value={newRoute.driver_name}
-                    onChange={(e) => setNewRoute((r) => ({ ...r, driver_name: e.target.value }))}
-                    className="w-full text-xs rounded px-2 py-1.5 placeholder-gray-500"
-                    style={{ background: 'var(--panel-2)', border: '1px solid var(--line)', color: 'var(--text)' }}
-                  />
-                  <input
-                    type="text" placeholder="Truck ID" value={newRoute.truck_id}
-                    onChange={(e) => setNewRoute((r) => ({ ...r, truck_id: e.target.value }))}
-                    className="w-full text-xs rounded px-2 py-1.5 placeholder-gray-500"
-                    style={{ background: 'var(--panel-2)', border: '1px solid var(--line)', color: 'var(--text)' }}
-                  />
+                  {newRoute.route_code && (
+                    <div className="text-xs px-1 py-0.5 rounded" style={{ color: 'var(--text-3)' }}>
+                      Driver: {newRoute.driver_name || '—'} · Truck: {newRoute.truck_id || 'unassigned'}
+                    </div>
+                  )}
                   <div className="flex gap-1.5">
                     <button
                       onClick={createRoute}
