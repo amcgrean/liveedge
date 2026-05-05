@@ -158,6 +158,12 @@ export default async function BranchScorecardPage({
           }
         `}</style>
 
+        {failures.length > 0 && (
+          <div className="p-3 bg-amber-900/30 border border-amber-700/60 rounded-lg text-amber-200 text-sm print:hidden">
+            Some sections failed to load: {failures.join(', ')}. Showing available data.
+          </div>
+        )}
+
         {/* Page header */}
         <div id="overview">
           <h1 className="text-2xl font-bold" style={{ color: 'var(--text)' }}>

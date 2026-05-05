@@ -151,6 +151,12 @@ export default async function RepScorecardPage({
         </Link>
       </div>
 
+      {failures.length > 0 && (
+        <div className="p-3 bg-amber-900/30 border border-amber-700/60 rounded-lg text-amber-200 text-sm print:hidden">
+          Some sections failed to load: {failures.join(', ')}. Showing available data.
+        </div>
+      )}
+
       <div className="space-y-0.5">
         <h1 className="text-2xl font-bold text-white">Rep: {decodedRep}</h1>
         <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-slate-400">
