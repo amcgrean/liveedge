@@ -13,7 +13,7 @@ import type {
   VendorScorecardParams,
   RebateProgram,
 } from '@/lib/vendor-scorecard/types';
-import { fetchVendorDetail } from '@/lib/vendor-scorecard/queries';
+import { getVendorDetail } from './actions';
 import type { VendorDetail } from '@/lib/vendor-scorecard/types';
 
 // ---------------------------------------------------------------------------
@@ -168,7 +168,6 @@ function ProgCard({ prog }: { prog: RebateProgram }) {
         </span>
       </div>
 
-      {/* Progress bar */}
       <div>
         <div className="flex justify-between text-xs mb-1" style={{ color: 'var(--text-3)' }}>
           <span className="mono">{fmtFull$(prog.attainedAmount)} attained</span>
@@ -181,7 +180,6 @@ function ProgCard({ prog }: { prog: RebateProgram }) {
         </div>
       </div>
 
-      {/* Metrics row */}
       <div className="flex gap-4 text-xs flex-wrap">
         {prog.rebateRatePct !== null && (
           <span style={{ color: 'var(--text-2)' }}>
@@ -236,7 +234,7 @@ function VendorDetailPanel({
 
   React.useEffect(() => {
     setDetail('loading');
-    fetchVendorDetail(supplierKey, params)
+    getVendorDetail(supplierKey, params)
       .then(setDetail)
       .catch(() => setDetail('error'));
   }, [supplierKey, params]);
@@ -246,7 +244,6 @@ function VendorDetailPanel({
       className="fixed inset-y-0 right-0 z-50 flex flex-col"
       style={{ width: 480, background: 'var(--panel)', borderLeft: '1px solid var(--line)', boxShadow: '-8px 0 40px rgba(0,0,0,0.5)' }}
     >
-      {/* Header */}
       <div className="flex items-center justify-between p-4" style={{ borderBottom: '1px solid var(--line)' }}>
         <div>
           <p className="text-sm font-bold" style={{ color: 'var(--text)' }}>{supplierName}</p>
@@ -257,7 +254,6 @@ function VendorDetailPanel({
         </button>
       </div>
 
-      {/* Tabs */}
       <div className="flex" style={{ borderBottom: '1px solid var(--line)' }}>
         {(['overview', 'programs', 'mix'] as const).map((t) => (
           <button
@@ -275,7 +271,6 @@ function VendorDetailPanel({
         ))}
       </div>
 
-      {/* Body */}
       <div className="flex-1 overflow-y-auto p-4 space-y-4">
         {detail === 'loading' && (
           <div className="text-center py-16" style={{ color: 'var(--text-3)' }}>Loading…</div>
@@ -287,7 +282,6 @@ function VendorDetailPanel({
           <>
             {detailTab === 'overview' && (
               <>
-                {/* KPI mini-tiles */}
                 <div className="grid grid-cols-2 gap-3">
                   {[
                     { label: 'Spend YTD',    value: fmtFull$(detail.spendYTD) },
@@ -306,7 +300,6 @@ function VendorDetailPanel({
                   ))}
                 </div>
 
-                {/* Branch breakdown */}
                 <div>
                   <p className="text-xs font-semibold uppercase tracking-wider mb-2" style={{ color: 'var(--text-3)' }}>By Branch</p>
                   <table className="w-full text-xs">
@@ -330,7 +323,6 @@ function VendorDetailPanel({
                   </table>
                 </div>
 
-                {/* Risk flags */}
                 {detail.riskFlags.length > 0 && (
                   <div>
                     <p className="text-xs font-semibold uppercase tracking-wider mb-2" style={{ color: 'var(--text-3)' }}>Risk Flags</p>
@@ -454,16 +446,9 @@ export default function VendorScorecardClient({
   }, [vendors, sortKey, sortDir]);
 
   const spendDelta = yoy(summary.totalSpendYTD, summary.totalSpendPY);
-
   const totalRiskFlags = vendors.reduce((acc, v) => acc + v.riskFlagCount, 0);
   const vendorsWithRisks = vendors.filter((v) => v.riskFlagCount > 0);
   const maxSpend = sorted[0]?.spendYTD ?? 1;
-
-  const allPrograms = useMemo(() => {
-    // Flatten all rebate programs from all vendors for the rebates tab
-    // We can't do this client-side without full data — show a placeholder
-    return [];
-  }, []);
 
   const TAB_ITEMS: { id: typeof tab; label: string; count?: number }[] = [
     { id: 'leaderboard', label: 'Leaderboard', count: vendors.length },
@@ -474,12 +459,10 @@ export default function VendorScorecardClient({
 
   return (
     <div className="min-h-screen" style={{ background: 'var(--bg)' }}>
-      {/* Sticky filter bar */}
       <div
         className="sticky top-0 z-40 flex flex-wrap items-center gap-3 px-5 py-2.5"
         style={{ background: 'var(--panel)', borderBottom: '1px solid var(--line)' }}
       >
-        {/* Range */}
         <div className="flex rounded overflow-hidden" style={{ border: '1px solid var(--line)' }}>
           {RANGES.map((r) => (
             <button
@@ -496,7 +479,6 @@ export default function VendorScorecardClient({
           ))}
         </div>
 
-        {/* Branch */}
         <div className="flex gap-1.5 flex-wrap">
           {BRANCHES.map((b) => (
             <button
@@ -514,7 +496,6 @@ export default function VendorScorecardClient({
           ))}
         </div>
 
-        {/* Product group */}
         {productGroups.length > 0 && (
           <select
             value={params.productGroup}
@@ -529,7 +510,6 @@ export default function VendorScorecardClient({
       </div>
 
       <div className="p-5 space-y-5 max-w-screen-2xl mx-auto">
-        {/* Page header */}
         <div>
           <h1 className="text-2xl font-bold flex items-center gap-2" style={{ color: 'var(--text)' }}>
             <Truck className="w-6 h-6" style={{ color: 'var(--green-bright)' }} />
@@ -540,7 +520,6 @@ export default function VendorScorecardClient({
           </p>
         </div>
 
-        {/* KPI strip */}
         <div className="grid grid-cols-2 sm:grid-cols-4 xl:grid-cols-8 gap-3">
           <KpiTile
             label="Total Spend"
@@ -573,7 +552,6 @@ export default function VendorScorecardClient({
           />
         </div>
 
-        {/* Tabs */}
         <div style={{ borderBottom: '1px solid var(--line)' }}>
           <div className="flex gap-0">
             {TAB_ITEMS.map((t) => (
@@ -604,7 +582,6 @@ export default function VendorScorecardClient({
           </div>
         </div>
 
-        {/* ── LEADERBOARD TAB ── */}
         {tab === 'leaderboard' && (
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
@@ -716,10 +693,8 @@ export default function VendorScorecardClient({
           </div>
         )}
 
-        {/* ── REBATES TAB ── */}
         {tab === 'rebates' && (
           <div className="space-y-4">
-            {/* Program health summary */}
             {(summary.programsOnTrack + summary.programsAtRisk + summary.programsMissed) > 0 && (
               <div
                 className="flex items-center gap-6 px-4 py-3 rounded-lg"
@@ -748,13 +723,9 @@ export default function VendorScorecardClient({
             <p className="text-sm" style={{ color: 'var(--text-3)' }}>
               Select a vendor from the Leaderboard tab to view individual rebate programs.
             </p>
-            <p className="text-xs" style={{ color: 'var(--text-4)' }}>
-              Rebate programs are managed in Purchasing → Vendor Scorecard per-vendor detail panel.
-            </p>
           </div>
         )}
 
-        {/* ── BRANCH & MIX TAB ── */}
         {tab === 'mix' && (
           <div className="space-y-4">
             <p className="text-sm font-semibold" style={{ color: 'var(--text)' }}>Spend by Branch</p>
@@ -768,20 +739,16 @@ export default function VendorScorecardClient({
                   </tr>
                 </thead>
                 <tbody>
-                  {BRANCHES.filter((b) => b.id !== 'all').map((b) => {
-                    const branchVendors = vendors.filter((v) => true); // all vendors shown
-                    const branchSpend = summary.totalSpendYTD / 4; // placeholder (real branch split needs server data)
-                    return (
-                      <tr key={b.id} style={{ borderBottom: '1px solid var(--line-soft)' }}>
-                        <td className="py-2.5 px-3 font-medium" style={{ color: 'var(--text)' }}>{b.label}</td>
-                        <td className="py-2.5 px-3 mono" style={{ color: 'var(--text-3)' }}>—</td>
-                        <td className="py-2.5 px-3 mono" style={{ color: 'var(--text-2)' }}>—</td>
-                        <td className="py-2.5 px-3 mono" style={{ color: 'var(--text-3)' }}>—</td>
-                        <td className="py-2.5 px-3 mono" style={{ color: 'var(--text-3)' }}>—</td>
-                        <td className="py-2.5 px-3 mono" style={{ color: 'var(--text-3)' }}>—</td>
-                      </tr>
-                    );
-                  })}
+                  {BRANCHES.filter((b) => b.id !== 'all').map((b) => (
+                    <tr key={b.id} style={{ borderBottom: '1px solid var(--line-soft)' }}>
+                      <td className="py-2.5 px-3 font-medium" style={{ color: 'var(--text)' }}>{b.label}</td>
+                      <td className="py-2.5 px-3 mono" style={{ color: 'var(--text-3)' }}>—</td>
+                      <td className="py-2.5 px-3 mono" style={{ color: 'var(--text-2)' }}>—</td>
+                      <td className="py-2.5 px-3 mono" style={{ color: 'var(--text-3)' }}>—</td>
+                      <td className="py-2.5 px-3 mono" style={{ color: 'var(--text-3)' }}>—</td>
+                      <td className="py-2.5 px-3 mono" style={{ color: 'var(--text-3)' }}>—</td>
+                    </tr>
+                  ))}
                 </tbody>
               </table>
             </div>
@@ -791,7 +758,6 @@ export default function VendorScorecardClient({
           </div>
         )}
 
-        {/* ── RISKS TAB ── */}
         {tab === 'risks' && (
           <div className="space-y-3">
             {vendorsWithRisks.length === 0 ? (
@@ -825,7 +791,6 @@ export default function VendorScorecardClient({
         )}
       </div>
 
-      {/* Vendor detail slide-in */}
       {selectedVendor && (
         <>
           <div
