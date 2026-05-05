@@ -7,7 +7,7 @@ import { useSession } from 'next-auth/react';
 import {
   Truck, ShoppingCart, FileText, Ruler, Wrench,
   PackageCheck, ClipboardCheck, Settings,
-  ArrowRight, Zap, Receipt, Plus, BarChart3,
+  ArrowRight, Zap,
 } from 'lucide-react';
 import type { HomeData } from './api/home/route';
 import { hasCapability } from '../src/lib/access-control-shared';
@@ -243,17 +243,6 @@ export default function HomeClient({ userName, userRole, userBranch }: Props) {
                 </span>
               </div>
             )}
-          </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-            <Link href="/legacy-bids/add" className="btn">
-              <Plus style={{ width: 13, height: 13 }} /> New bid
-            </Link>
-            <Link href="/sales/transactions" className="btn">
-              <Receipt style={{ width: 13, height: 13 }} /> New SO
-            </Link>
-            <Link href="/takeoff" className="btn btn-primary">
-              <BarChart3 style={{ width: 13, height: 13 }} /> Open takeoff
-            </Link>
           </div>
         </div>
 
