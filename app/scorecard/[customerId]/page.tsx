@@ -8,7 +8,7 @@ import {
   fetchSaleTypes,
   fetchDaysToPay,
 } from '../../../src/lib/scorecard/queries';
-import type { KpiComparison, ScorecardParams } from '../../../src/lib/scorecard/types';
+import type { ScorecardParams } from '../../../src/lib/scorecard/types';
 import KpiTile from './components/KpiTile';
 import ComparisonTable from './components/ComparisonTable';
 import ProductMajorTable from './components/ProductMajorTable';
@@ -71,14 +71,6 @@ export default async function ScorecardPage({
     cutoffDate,
   };
 
-  const emptyKpis: KpiComparison = {
-    base: { sales: null, gp: null, vaSales: null, nsSales: null, nsGp: null,
-      grossSales: null, cmSales: null, soCount: null, cmCount: null, totalWeight: null },
-    compare: { sales: null, gp: null, vaSales: null, nsSales: null, nsGp: null,
-      grossSales: null, cmSales: null, soCount: null, cmCount: null, totalWeight: null },
-    branchIds: [], shipToCount: 0, customerName: '',
-  };
-
   const [kpisRes, avgRes, threeYearRes, productMajorsRes, saleTypesRes, daysToPayRes] = await Promise.allSettled([
     fetchKpis(scorecardParams),
     fetchAllCustomersAvg(scorecardParams),
@@ -102,7 +94,8 @@ export default async function ScorecardPage({
   logFail('sale types', saleTypesRes);
   logFail('days to pay', daysToPayRes);
 
-  const kpis = kpisRes.status === 'fulfilled' ? kpisRes.value : emptyKpis;
+  if (kpisRes.status === 'rejected') throw kpisRes.reason;
+  const kpis = kpisRes.value;
   if (!kpis.customerName && !kpis.base.sales) notFound();
   const avg = avgRes.status === 'fulfilled' ? avgRes.value : { gmPct: null, vaPct: null, nsPct: null };
   const threeYear = threeYearRes.status === 'fulfilled' ? threeYearRes.value : [];
