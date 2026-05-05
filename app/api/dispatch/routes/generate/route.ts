@@ -4,7 +4,7 @@ import { getErpSql } from '../../../../../db/supabase';
 
 // POST /api/dispatch/routes/generate
 // Bulk-creates dispatch_routes for every active ERP delv_route in the given branch/date.
-// Skips routes that already exist for that date (ON CONFLICT DO NOTHING).
+// Uses NOT EXISTS to skip routes already planned for that date — no unique constraint needed.
 export async function POST(req: NextRequest) {
   const authResult = await requireCapability('dispatch.manage');
   if (authResult instanceof NextResponse) return authResult;
@@ -28,48 +28,39 @@ export async function POST(req: NextRequest) {
   try {
     const sql = getErpSql();
 
-    // Fetch all active ERP routes for the branch, joined with any existing truck assignment
-    type ErpRoute = {
-      route_code: string;
-      driver_name: string;
-      truck_id: string | null;
-    };
+    type InsertRow = { id: number; route_code: string };
 
-    const erpRoutes = await sql<ErpRoute[]>`
+    // Single INSERT … SELECT — skips routes already planned for this date/branch
+    const inserted = await sql<InsertRow[]>`
+      INSERT INTO dispatch_routes
+        (route_date, route_code, route_name, branch_code, driver_name, truck_id, status, created_at, updated_at)
       SELECT
-        dr.route_id_char  AS route_code,
-        dr.description    AS driver_name,
-        dd.default_truck_id AS truck_id
+        ${date}::date,
+        dr.route_id_char,
+        dr.description,
+        ${branchCode},
+        dr.description,
+        dd.default_truck_id,
+        'planned',
+        NOW(),
+        NOW()
       FROM public.delv_route dr
       LEFT JOIN public.dispatch_drivers dd
         ON dd.route_code = dr.route_id_char
         AND dd.branch_code = dr.system_id
       WHERE dr.system_id = ${branchCode}
         AND dr.active = true
+        AND NOT EXISTS (
+          SELECT 1 FROM dispatch_routes ex
+          WHERE ex.route_date = ${date}::date
+            AND ex.route_code  = dr.route_id_char
+            AND ex.branch_code = ${branchCode}
+        )
       ORDER BY dr.route_id_char
+      RETURNING id, route_code
     `;
 
-    if (erpRoutes.length === 0) {
-      return NextResponse.json({ created: 0, message: 'No active ERP routes found for this branch.' });
-    }
-
-    // Bulk insert — skip any route_code already planned for this date/branch
-    type InsertRow = { id: number };
-    const inserted: InsertRow[] = [];
-    for (const r of erpRoutes) {
-      const rows = await sql<InsertRow[]>`
-        INSERT INTO dispatch_routes
-          (route_date, route_code, route_name, branch_code, driver_name, truck_id, status, created_at, updated_at)
-        VALUES
-          (${date}::date, ${r.route_code}, ${r.driver_name}, ${branchCode},
-           ${r.driver_name}, ${r.truck_id ?? null}, 'planned', NOW(), NOW())
-        ON CONFLICT (route_date, route_code, branch_code) DO NOTHING
-        RETURNING id
-      `;
-      if (rows[0]) inserted.push(rows[0]);
-    }
-
-    return NextResponse.json({ created: inserted.length, total: erpRoutes.length });
+    return NextResponse.json({ created: inserted.length });
   } catch (err) {
     console.error('[dispatch/routes/generate POST]', err);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
