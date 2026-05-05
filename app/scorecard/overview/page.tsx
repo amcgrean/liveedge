@@ -6,7 +6,7 @@ import {
   fetchAggregateSaleTypes,
   fetchBranchSummaries,
 } from '../../../src/lib/scorecard/queries';
-import type { AggregateParams, ScorecardParams } from '../../../src/lib/scorecard/types';
+import type { AggregateParams, KpiComparison, ScorecardParams } from '../../../src/lib/scorecard/types';
 import KpiTile from '../[customerId]/components/KpiTile';
 import ComparisonTable from '../[customerId]/components/ComparisonTable';
 import ProductMajorTable from '../[customerId]/components/ProductMajorTable';
@@ -42,6 +42,8 @@ function Section({ title, children }: { title: string; children: React.ReactNode
 // For aggregate views we skip it (pass nulls) since it would need an expensive unbounded join
 const NO_DTP = { base: null, compare: null };
 
+export const maxDuration = 60;
+
 export default async function OverviewPage({
   searchParams,
 }: {
@@ -71,13 +73,40 @@ export default async function OverviewPage({
     cutoffDate,
   };
 
-  const [kpis, threeYear, productMajors, saleTypes, branchSummaries] = await Promise.all([
+  const emptyKpis: KpiComparison = {
+    base: { sales: null, gp: null, vaSales: null, nsSales: null, nsGp: null,
+      grossSales: null, cmSales: null, soCount: null, cmCount: null, totalWeight: null },
+    compare: { sales: null, gp: null, vaSales: null, nsSales: null, nsGp: null,
+      grossSales: null, cmSales: null, soCount: null, cmCount: null, totalWeight: null },
+    branchIds: [], shipToCount: 0, customerName: 'All Branches',
+  };
+
+  const [kpisRes, threeYearRes, productMajorsRes, saleTypesRes, branchSummariesRes] = await Promise.allSettled([
     fetchAggregateKpis(params, 'All Branches'),
     fetchAggregateThreeYear(params),
     fetchAggregateProductMajors(params),
     fetchAggregateSaleTypes(params),
     fetchBranchSummaries(baseYear, compareYear, cutoffDate, period),
   ]);
+
+  const failures: string[] = [];
+  const logFail = (name: string, r: PromiseSettledResult<unknown>) => {
+    if (r.status === 'rejected') {
+      failures.push(name);
+      console.error(`[scorecard/overview] ${name} failed:`, r.reason);
+    }
+  };
+  logFail('aggregate kpis', kpisRes);
+  logFail('three-year comparison', threeYearRes);
+  logFail('product majors', productMajorsRes);
+  logFail('sale types', saleTypesRes);
+  logFail('branch summaries', branchSummariesRes);
+
+  const kpis = kpisRes.status === 'fulfilled' ? kpisRes.value : emptyKpis;
+  const threeYear = threeYearRes.status === 'fulfilled' ? threeYearRes.value : [];
+  const productMajors = productMajorsRes.status === 'fulfilled' ? productMajorsRes.value : [];
+  const saleTypes = saleTypesRes.status === 'fulfilled' ? saleTypesRes.value : [];
+  const branchSummaries = branchSummariesRes.status === 'fulfilled' ? branchSummariesRes.value : [];
 
   const periodLabel = period === 'YTD' ? `YTD thru ${cutoffDate}` : 'Full Year';
 

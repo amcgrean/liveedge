@@ -4,6 +4,8 @@ import AggregateFilterBar from '../_components/AggregateFilterBar';
 import { RepComparisonChart } from '../_components/ScorecardCharts';
 import RepListTable from './RepListTable';
 
+export const maxDuration = 60;
+
 export default async function RepListPage({
   searchParams,
 }: {
