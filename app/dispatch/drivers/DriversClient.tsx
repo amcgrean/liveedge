@@ -24,7 +24,7 @@ interface Props {
 export default function DriversClient({ isAdmin, userBranch, userName, userRole }: Props) {
   usePageTracking();
 
-  const [branch, setBranch] = useBranchFilter(isAdmin, userBranch);
+  const [branch] = useBranchFilter(isAdmin, userBranch);
   const [routes, setRoutes] = useState<DriverRoute[]>([]);
   const [samsaraDrivers, setSamsaraDrivers] = useState<SamsaraDriver[]>([]);
   const [samsaraVehicles, setSamsaraVehicles] = useState<SamsaraVehicle[]>([]);
@@ -188,25 +188,11 @@ export default function DriversClient({ isAdmin, userBranch, userName, userRole 
               <h1 className="text-2xl font-bold text-cyan-400">Delivery Routes</h1>
               <p className="text-sm text-gray-500 mt-0.5">ERP route codes and Samsara truck assignments</p>
             </div>
-            <div className="flex items-center gap-2">
-              {isAdmin && (
-                <select
-                  value={branch}
-                  onChange={(e) => { setBranch(e.target.value); setSamsaraVehicles([]); }}
-                  className="text-sm bg-gray-800 border border-gray-700 rounded px-2 py-1.5 text-white">
-                  <option value="">All Branches</option>
-                  <option value="10FD">10FD — Fort Dodge</option>
-                  <option value="20GR">20GR — Grimes</option>
-                  <option value="25BW">25BW — Birchwood</option>
-                  <option value="40CV">40CV — Coralville</option>
-                </select>
-              )}
-              <button onClick={() => { loadRoutes(); loadSamsaraDrivers(); setSamsaraVehicles([]); }}
-                disabled={loading}
-                className="p-2 bg-gray-800 hover:bg-gray-700 rounded transition disabled:opacity-50">
-                <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
-              </button>
-            </div>
+            <button onClick={() => { loadRoutes(); loadSamsaraDrivers(); setSamsaraVehicles([]); }}
+              disabled={loading}
+              className="p-2 bg-gray-800 hover:bg-gray-700 rounded transition disabled:opacity-50">
+              <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
+            </button>
           </div>
 
           {/* Stat cards */}
