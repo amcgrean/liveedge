@@ -1472,7 +1472,7 @@ export async function fetchAggregateProductMinors(
             AND invoice_date >= ${dateFrom}::timestamp
             AND invoice_date < ${dateTo}::timestamp
           GROUP BY product_minor_code, product_minor
-          ORDER BY COALESCE(SUM(sales_amount) FILTER (WHERE ${baseFilter}), 0) DESC
+          ORDER BY COALESCE(SUM(sales_amount) FILTER (WHERE invoice_date >= make_date(${params.baseYear}, 1, 1) AND invoice_date::date <= ${baseCutoff}::date), 0) DESC
         `;
   }
 

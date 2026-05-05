@@ -8,7 +8,7 @@ import {
   fetchSaleTypes,
   fetchDaysToPay,
 } from '../../../src/lib/scorecard/queries';
-import type { ScorecardParams } from '../../../src/lib/scorecard/types';
+import type { KpiComparison, ScorecardParams } from '../../../src/lib/scorecard/types';
 import KpiTile from './components/KpiTile';
 import ComparisonTable from './components/ComparisonTable';
 import ProductMajorTable from './components/ProductMajorTable';
@@ -38,6 +38,8 @@ function Section({ title, children }: { title: string; children: React.ReactNode
     </section>
   );
 }
+
+export const maxDuration = 60;
 
 export default async function ScorecardPage({
   params,
@@ -69,7 +71,15 @@ export default async function ScorecardPage({
     cutoffDate,
   };
 
-  const [kpis, avg, threeYear, productMajors, saleTypes, daysToPay] = await Promise.all([
+  const emptyKpis: KpiComparison = {
+    base: { sales: null, gp: null, vaSales: null, nsSales: null, nsGp: null,
+      grossSales: null, cmSales: null, soCount: null, cmCount: null, totalWeight: null },
+    compare: { sales: null, gp: null, vaSales: null, nsSales: null, nsGp: null,
+      grossSales: null, cmSales: null, soCount: null, cmCount: null, totalWeight: null },
+    branchIds: [], shipToCount: 0, customerName: '',
+  };
+
+  const [kpisRes, avgRes, threeYearRes, productMajorsRes, saleTypesRes, daysToPayRes] = await Promise.allSettled([
     fetchKpis(scorecardParams),
     fetchAllCustomersAvg(scorecardParams),
     fetchThreeYear(scorecardParams),
@@ -78,7 +88,27 @@ export default async function ScorecardPage({
     fetchDaysToPay(scorecardParams),
   ]);
 
+  const failures: string[] = [];
+  const logFail = (name: string, r: PromiseSettledResult<unknown>) => {
+    if (r.status === 'rejected') {
+      failures.push(name);
+      console.error(`[scorecard/${customerId}] ${name} failed:`, r.reason);
+    }
+  };
+  logFail('kpis', kpisRes);
+  logFail('customer avg', avgRes);
+  logFail('three-year', threeYearRes);
+  logFail('product majors', productMajorsRes);
+  logFail('sale types', saleTypesRes);
+  logFail('days to pay', daysToPayRes);
+
+  const kpis = kpisRes.status === 'fulfilled' ? kpisRes.value : emptyKpis;
   if (!kpis.customerName && !kpis.base.sales) notFound();
+  const avg = avgRes.status === 'fulfilled' ? avgRes.value : { gmPct: null, vaPct: null, nsPct: null };
+  const threeYear = threeYearRes.status === 'fulfilled' ? threeYearRes.value : [];
+  const productMajors = productMajorsRes.status === 'fulfilled' ? productMajorsRes.value : [];
+  const saleTypes = saleTypesRes.status === 'fulfilled' ? saleTypesRes.value : [];
+  const daysToPay = daysToPayRes.status === 'fulfilled' ? daysToPayRes.value : { base: null, compare: null };
 
   const periodLabel =
     period === 'YTD'

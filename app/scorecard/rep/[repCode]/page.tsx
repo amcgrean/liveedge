@@ -5,7 +5,7 @@ import {
   fetchAggregateProductMajors,
   fetchAggregateSaleTypes,
 } from '../../../../src/lib/scorecard/queries';
-import type { AggregateParams, ScorecardParams } from '../../../../src/lib/scorecard/types';
+import type { AggregateParams, KpiComparison, ScorecardParams } from '../../../../src/lib/scorecard/types';
 import KpiTile from '../../[customerId]/components/KpiTile';
 import ComparisonTable from '../../[customerId]/components/ComparisonTable';
 import ProductMajorTable from '../../[customerId]/components/ProductMajorTable';
@@ -35,6 +35,8 @@ function Section({ title, children }: { title: string; children: React.ReactNode
   );
 }
 
+export const maxDuration = 60;
+
 export default async function RepScorecardPage({
   params: routeParams,
   searchParams,
@@ -62,11 +64,19 @@ export default async function RepScorecardPage({
 
   const fakeParams: ScorecardParams = { customerId: '', branchIds, baseYear, compareYear, period, cutoffDate };
 
+  const emptyKpis: KpiComparison = {
+    base: { sales: null, gp: null, vaSales: null, nsSales: null, nsGp: null,
+      grossSales: null, cmSales: null, soCount: null, cmCount: null, totalWeight: null },
+    compare: { sales: null, gp: null, vaSales: null, nsSales: null, nsGp: null,
+      grossSales: null, cmSales: null, soCount: null, cmCount: null, totalWeight: null },
+    branchIds: [], shipToCount: 0, customerName: decodedRep,
+  };
+
   // Run all 8 queries in parallel
   const [
-    assignedKpis, assignedThreeYear, assignedMajors, assignedSaleTypes,
-    writtenKpis, writtenThreeYear, writtenMajors, writtenSaleTypes,
-  ] = await Promise.all([
+    assignedKpisRes, assignedThreeYearRes, assignedMajorsRes, assignedSaleTypesRes,
+    writtenKpisRes, writtenThreeYearRes, writtenMajorsRes, writtenSaleTypesRes,
+  ] = await Promise.allSettled([
     fetchAggregateKpis(assignedParams, decodedRep),
     fetchAggregateThreeYear(assignedParams),
     fetchAggregateProductMajors(assignedParams),
@@ -76,6 +86,31 @@ export default async function RepScorecardPage({
     fetchAggregateProductMajors(writtenParams),
     fetchAggregateSaleTypes(writtenParams),
   ]);
+
+  const failures: string[] = [];
+  const logFail = (name: string, r: PromiseSettledResult<unknown>) => {
+    if (r.status === 'rejected') {
+      failures.push(name);
+      console.error(`[scorecard/rep/${decodedRep}] ${name} failed:`, r.reason);
+    }
+  };
+  logFail('assigned kpis', assignedKpisRes);
+  logFail('assigned three-year', assignedThreeYearRes);
+  logFail('assigned majors', assignedMajorsRes);
+  logFail('assigned sale types', assignedSaleTypesRes);
+  logFail('written kpis', writtenKpisRes);
+  logFail('written three-year', writtenThreeYearRes);
+  logFail('written majors', writtenMajorsRes);
+  logFail('written sale types', writtenSaleTypesRes);
+
+  const assignedKpis = assignedKpisRes.status === 'fulfilled' ? assignedKpisRes.value : emptyKpis;
+  const assignedThreeYear = assignedThreeYearRes.status === 'fulfilled' ? assignedThreeYearRes.value : [];
+  const assignedMajors = assignedMajorsRes.status === 'fulfilled' ? assignedMajorsRes.value : [];
+  const assignedSaleTypes = assignedSaleTypesRes.status === 'fulfilled' ? assignedSaleTypesRes.value : [];
+  const writtenKpis = writtenKpisRes.status === 'fulfilled' ? writtenKpisRes.value : emptyKpis;
+  const writtenThreeYear = writtenThreeYearRes.status === 'fulfilled' ? writtenThreeYearRes.value : [];
+  const writtenMajors = writtenMajorsRes.status === 'fulfilled' ? writtenMajorsRes.value : [];
+  const writtenSaleTypes = writtenSaleTypesRes.status === 'fulfilled' ? writtenSaleTypesRes.value : [];
 
   const periodLabel = period === 'YTD' ? `YTD thru ${cutoffDate}` : 'Full Year';
   const repListUrl = `/scorecard/rep?baseYear=${baseYear}&compareYear=${compareYear}&period=${period}&cutoffDate=${cutoffDate}${branchIds.map((b) => `&branch=${b}`).join('')}`;

@@ -7,6 +7,7 @@ import ExportTableButton from '../../../src/components/shared/ExportTableButton'
 import { ProductScorecardTreemap, ProductScorecardPareto } from '../_components/ScorecardCharts';
 
 export const metadata = { title: 'Product Group Scorecard — Beisser LiveEdge' };
+export const maxDuration = 60;
 
 export default async function ProductScorecardPage({
   searchParams,

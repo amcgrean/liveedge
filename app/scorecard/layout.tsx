@@ -3,6 +3,7 @@ import { auth } from '../../auth';
 import { TopNav } from '../../src/components/nav/TopNav';
 
 export const metadata = { title: 'Customer Scorecard — Beisser LiveEdge' };
+export const maxDuration = 60;
 
 export default async function ScorecardLayout({ children }: { children: React.ReactNode }) {
   const session = await auth();

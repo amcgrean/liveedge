@@ -6,7 +6,7 @@ import {
   fetchAggregateSaleTypes,
   fetchCustomerList,
 } from '../../../../src/lib/scorecard/queries';
-import type { AggregateParams, ScorecardParams } from '../../../../src/lib/scorecard/types';
+import type { AggregateParams, KpiComparison, ScorecardParams } from '../../../../src/lib/scorecard/types';
 import KpiTile from '../../[customerId]/components/KpiTile';
 import ComparisonTable from '../../[customerId]/components/ComparisonTable';
 import ProductMajorTable from '../../[customerId]/components/ProductMajorTable';
@@ -49,6 +49,8 @@ function Section({ id, title, children }: { id?: string; title: string; children
     </section>
   );
 }
+
+export const maxDuration = 60;
 
 const NO_DTP = { base: null, compare: null };
 
@@ -95,13 +97,40 @@ export default async function BranchScorecardPage({
     cutoffDate,
   };
 
-  const [kpis, threeYear, productMajors, saleTypes, topCustomers] = await Promise.all([
+  const emptyKpis: KpiComparison = {
+    base: { sales: null, gp: null, vaSales: null, nsSales: null, nsGp: null,
+      grossSales: null, cmSales: null, soCount: null, cmCount: null, totalWeight: null },
+    compare: { sales: null, gp: null, vaSales: null, nsSales: null, nsGp: null,
+      grossSales: null, cmSales: null, soCount: null, cmCount: null, totalWeight: null },
+    branchIds: [branchId], shipToCount: 0, customerName: BRANCH_LABELS[branchId] ?? branchId,
+  };
+
+  const [kpisRes, threeYearRes, productMajorsRes, saleTypesRes, topCustomersRes] = await Promise.allSettled([
     fetchAggregateKpis(params, BRANCH_LABELS[branchId] ?? branchId),
     fetchAggregateThreeYear(params),
     fetchAggregateProductMajors(params),
     fetchAggregateSaleTypes(params),
     fetchCustomerList(baseYear, compareYear, [branchId], '', 15, period, cutoffDate),
   ]);
+
+  const failures: string[] = [];
+  const logFail = (name: string, r: PromiseSettledResult<unknown>) => {
+    if (r.status === 'rejected') {
+      failures.push(name);
+      console.error(`[scorecard/branch/${branchId}] ${name} failed:`, r.reason);
+    }
+  };
+  logFail('aggregate kpis', kpisRes);
+  logFail('three-year comparison', threeYearRes);
+  logFail('product majors', productMajorsRes);
+  logFail('sale types', saleTypesRes);
+  logFail('top customers', topCustomersRes);
+
+  const kpis = kpisRes.status === 'fulfilled' ? kpisRes.value : emptyKpis;
+  const threeYear = threeYearRes.status === 'fulfilled' ? threeYearRes.value : [];
+  const productMajors = productMajorsRes.status === 'fulfilled' ? productMajorsRes.value : [];
+  const saleTypes = saleTypesRes.status === 'fulfilled' ? saleTypesRes.value : [];
+  const topCustomers = topCustomersRes.status === 'fulfilled' ? topCustomersRes.value : [];
 
   const periodLabel = period === 'YTD' ? `YTD thru ${cutoffDate}` : 'Full Year';
 
