@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { TopNav } from '../../../src/components/nav/TopNav';
 import { RefreshCw, Pencil, Trash2, X, Check, AlertCircle, Truck, Zap, Info } from 'lucide-react';
 import { usePageTracking } from '@/hooks/usePageTracking';
+import { useBranchFilter } from '@/hooks/useBranchFilter';
 import type { DriverRoute } from '../../api/dispatch/drivers/route';
 import type { SamsaraDriver } from '../../api/dispatch/samsara-drivers/route';
 
@@ -23,6 +24,7 @@ interface Props {
 export default function DriversClient({ isAdmin, userBranch, userName, userRole }: Props) {
   usePageTracking();
 
+  const [branch, setBranch] = useBranchFilter(isAdmin, userBranch);
   const [routes, setRoutes] = useState<DriverRoute[]>([]);
   const [samsaraDrivers, setSamsaraDrivers] = useState<SamsaraDriver[]>([]);
   const [samsaraVehicles, setSamsaraVehicles] = useState<SamsaraVehicle[]>([]);
@@ -44,7 +46,6 @@ export default function DriversClient({ isAdmin, userBranch, userName, userRole 
   const loadRoutes = useCallback(async () => {
     setLoading(true);
     try {
-      const branch = isAdmin ? '' : (userBranch ?? '');
       const params = branch ? `?branch=${branch}` : '';
       const res = await fetch(`/api/dispatch/drivers${params}`);
       if (res.ok) {
@@ -55,7 +56,7 @@ export default function DriversClient({ isAdmin, userBranch, userName, userRole 
     } finally {
       setLoading(false);
     }
-  }, [isAdmin, userBranch]);
+  }, [branch]);
 
   const loadSamsaraDrivers = useCallback(async () => {
     const res = await fetch('/api/dispatch/samsara-drivers');
@@ -74,7 +75,6 @@ export default function DriversClient({ isAdmin, userBranch, userName, userRole 
     if (samsaraVehicles.length) return; // already loaded
     setVehiclesLoading(true);
     try {
-      const branch = isAdmin ? '' : (userBranch ?? '');
       const params = branch ? `?branch=${branch}` : '';
       const res = await fetch(`/api/dispatch/vehicles${params}`);
       if (res.ok) {
@@ -188,11 +188,25 @@ export default function DriversClient({ isAdmin, userBranch, userName, userRole 
               <h1 className="text-2xl font-bold text-cyan-400">Delivery Routes</h1>
               <p className="text-sm text-gray-500 mt-0.5">ERP route codes and Samsara truck assignments</p>
             </div>
-            <button onClick={() => { loadRoutes(); loadSamsaraDrivers(); setSamsaraVehicles([]); }}
-              disabled={loading}
-              className="p-2 bg-gray-800 hover:bg-gray-700 rounded transition disabled:opacity-50">
-              <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
-            </button>
+            <div className="flex items-center gap-2">
+              {isAdmin && (
+                <select
+                  value={branch}
+                  onChange={(e) => { setBranch(e.target.value); setSamsaraVehicles([]); }}
+                  className="text-sm bg-gray-800 border border-gray-700 rounded px-2 py-1.5 text-white">
+                  <option value="">All Branches</option>
+                  <option value="10FD">10FD — Fort Dodge</option>
+                  <option value="20GR">20GR — Grimes</option>
+                  <option value="25BW">25BW — Birchwood</option>
+                  <option value="40CV">40CV — Coralville</option>
+                </select>
+              )}
+              <button onClick={() => { loadRoutes(); loadSamsaraDrivers(); setSamsaraVehicles([]); }}
+                disabled={loading}
+                className="p-2 bg-gray-800 hover:bg-gray-700 rounded transition disabled:opacity-50">
+                <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
+              </button>
+            </div>
           </div>
 
           {/* Stat cards */}
