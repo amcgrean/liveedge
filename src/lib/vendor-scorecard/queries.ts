@@ -229,7 +229,6 @@ export async function fetchVendorList(
     supplier_key: string;
     supplier_code: string;
     supplier_name: string;
-    primary_product_group: string | null;
     spend_ytd: string | null;
     spend_py: string | null;
     fill_rate: string | null;
@@ -239,8 +238,8 @@ export async function fetchVendorList(
     last_receive_date: string | null;
   };
 
-  // NOTE: supplier_risk_flags and supplier_rebate_* tables live in Supabase, not in the
-  // ERP database. They are fetched separately below with error handling.
+  // Main query: spend, fill/OTD, open POs. Product group resolved separately
+  // below to avoid a second full scan of agility_receiving_lines + agility_items.
   const rows = await sql<SpendRow[]>`
     WITH spend AS (
       SELECT
@@ -280,31 +279,6 @@ export async function fetchVendorList(
         AND (${params.branch} = 'all' OR rh.system_id = ${params.branch})
       GROUP BY ph.supplier_key
     ),
-    top_group AS (
-      SELECT
-        ph.supplier_key,
-        ai.link_product_group AS product_group,
-        SUM(rl.qty * rl.cost) AS group_spend
-      FROM agility_receiving_lines rl
-      JOIN agility_receiving_header rh
-        ON rh.system_id = rl.system_id AND rh.po_id = rl.po_id AND rh.receive_num = rl.receive_num
-      JOIN agility_po_header ph
-        ON ph.system_id = rh.system_id AND ph.po_id = rh.po_id
-      JOIN agility_items ai
-        ON ai.system_id = rl.system_id AND ai.item_ptr = rl.item_ptr
-      WHERE rl.is_deleted = false AND rh.is_deleted = false AND ph.is_deleted = false
-        AND ai.is_deleted = false
-        AND rh.receive_date::date BETWEEN ${s}::date AND ${e}::date
-        AND (${params.branch} = 'all' OR rh.system_id = ${params.branch})
-        AND ai.link_product_group IS NOT NULL AND ai.link_product_group <> ''
-      GROUP BY ph.supplier_key, ai.link_product_group
-    ),
-    primary_group AS (
-      SELECT DISTINCT ON (supplier_key)
-        supplier_key, product_group
-      FROM top_group
-      ORDER BY supplier_key, group_spend DESC
-    ),
     open_pos AS (
       SELECT
         ph.supplier_key,
@@ -323,7 +297,6 @@ export async function fetchVendorList(
       s.supplier_key,
       s.supplier_code,
       s.supplier_name,
-      pg.product_group AS primary_product_group,
       s.spend_ytd::text,
       s.spend_py::text,
       s.fill_rate::numeric(6,4)::text AS fill_rate,
@@ -332,13 +305,47 @@ export async function fetchVendorList(
       COALESCE(op.open_po_value, '0')  AS open_po_value,
       s.last_receive_date
     FROM spend s
-    LEFT JOIN primary_group pg ON pg.supplier_key = s.supplier_key
-    LEFT JOIN open_pos op      ON op.supplier_key = s.supplier_key
+    LEFT JOIN open_pos op ON op.supplier_key = s.supplier_key
     WHERE (s.spend_ytd > 0 OR s.spend_py > 0)
-      AND (${params.productGroup} = 'all' OR pg.product_group = ${params.productGroup})
     ORDER BY s.spend_ytd DESC NULLS LAST
-    LIMIT 150
+    LIMIT 200
   `;
+
+  // Resolve primary product group scoped to the supplier_keys already fetched.
+  // Using supplier_key = ANY(...) lets Postgres use an index scan instead of
+  // a full table scan over all receiving lines.
+  let pgMap = new Map<string, string>();
+  if (rows.length > 0) {
+    try {
+      const keys = rows.map((r) => r.supplier_key);
+      const pgRows = await sql<{ supplier_key: string; product_group: string }[]>`
+        SELECT DISTINCT ON (supplier_key) supplier_key, product_group
+        FROM (
+          SELECT
+            ph.supplier_key,
+            ai.link_product_group AS product_group,
+            SUM(rl.qty * rl.cost) AS gs
+          FROM agility_receiving_lines rl
+          JOIN agility_receiving_header rh
+            ON rh.system_id = rl.system_id AND rh.po_id = rl.po_id AND rh.receive_num = rl.receive_num
+          JOIN agility_po_header ph
+            ON ph.system_id = rh.system_id AND ph.po_id = rh.po_id
+          JOIN agility_items ai
+            ON ai.system_id = rl.system_id AND ai.item_ptr = rl.item_ptr
+          WHERE rl.is_deleted = false AND rh.is_deleted = false
+            AND ph.is_deleted = false AND ai.is_deleted = false
+            AND ph.supplier_key = ANY(${keys})
+            AND rh.receive_date::date BETWEEN ${s}::date AND ${e}::date
+            AND ai.link_product_group IS NOT NULL AND ai.link_product_group <> ''
+          GROUP BY ph.supplier_key, ai.link_product_group
+        ) sub
+        ORDER BY supplier_key, gs DESC
+      `;
+      pgMap = new Map(pgRows.map((r) => [r.supplier_key, r.product_group]));
+    } catch {
+      // Items table unavailable — product group falls back to 'Various'
+    }
+  }
 
   let rebateMap = new Map<string, { earned: number; accrued: number; progCount: number }>();
   try {
@@ -367,7 +374,13 @@ export async function fetchVendorList(
     // supplier_rebate_programs not seeded in ERP
   }
 
-  return rows.map((r) => {
+  // Apply product group filter in JS so LIMIT 200 doesn't hide matching vendors
+  const filtered =
+    params.productGroup === 'all'
+      ? rows
+      : rows.filter((r) => pgMap.get(r.supplier_key) === params.productGroup);
+
+  return filtered.slice(0, 150).map((r) => {
     const rb = rebateMap.get(r.supplier_key);
     const fillN = toNumOrNull(r.fill_rate);
     const otdN  = toNumOrNull(r.otd_rate);
@@ -375,7 +388,7 @@ export async function fetchVendorList(
       supplierKey: r.supplier_key,
       supplierCode: r.supplier_code ?? '',
       supplierName: r.supplier_name ?? r.supplier_key,
-      primaryProductGroup: r.primary_product_group ?? 'Various',
+      primaryProductGroup: pgMap.get(r.supplier_key) ?? 'Various',
       spendYTD: toNum(r.spend_ytd),
       spendPY:  toNum(r.spend_py),
       rebateEarnedYTD: rb?.earned ?? 0,

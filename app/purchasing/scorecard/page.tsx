@@ -9,7 +9,7 @@ import type { VendorScorecardParams } from '@/lib/vendor-scorecard/types';
 import VendorScorecardClient from './VendorScorecardClient';
 
 export const metadata = { title: 'Vendor Scorecard — Beisser LiveEdge' };
-export const maxDuration = 60;
+export const maxDuration = 300;
 
 export default async function VendorScorecardPage({
   searchParams,
