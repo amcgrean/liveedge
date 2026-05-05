@@ -95,15 +95,19 @@ export async function GET(req: NextRequest) {
       AND soh.is_deleted = false
   `;
 
-  // Step 2b: Fetch open AR per SO
+  // Step 2b: Fetch open AR per SO via shipments (shipment_num = invoice = AR ref_num)
   type ArRow = { so_id: string; balance: string };
   const arRows = soIds.length
     ? await erpSql<ArRow[]>`
-        SELECT ref_num::text AS so_id, SUM(open_amt)::text AS balance
-        FROM agility_ar_open
-        WHERE ref_num::text = ANY(${soIds})
-          AND is_deleted = false
-        GROUP BY ref_num
+        SELECT sh.so_id::text AS so_id, SUM(ar.open_amt)::text AS balance
+        FROM agility_shipments sh
+        JOIN agility_ar_open ar
+          ON ar.ref_num    = sh.shipment_num::text
+         AND ar.is_deleted = false
+         AND ar.open_flag  = true
+        WHERE sh.so_id::text = ANY(${soIds})
+          AND sh.is_deleted  = false
+        GROUP BY sh.so_id
       `
     : [];
 

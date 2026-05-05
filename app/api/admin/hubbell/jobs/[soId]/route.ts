@@ -56,50 +56,75 @@ export async function GET(req: NextRequest, { params }: { params: Params }) {
       .where(eq(hubbellEmails.confirmedSoId, soId))
       .orderBy(desc(hubbellEmails.receivedAt)),
 
-    // Single CTE: anchor SO → all SOs at same address → AR open per SO.
-    // Eliminates the sequential header-then-related-SOs pattern.
+    // Single CTE: anchor SO → related SOs at same address → AR open per SO.
+    // UNION guarantees the requested SO is always in the result even when the
+    // address has >49 matching orders (the anchor is fetched separately then
+    // up to 49 others are appended, never exceeding 50 rows total).
     erpSql<SoRow[]>`
       WITH anchor AS (
         SELECT
-          TRIM(cust_code)        AS cust_code,
-          TRIM(shipto_address_1) AS addr
-        FROM agility_so_header
-        WHERE so_id::text = ${soId}
-          AND is_deleted = false
+          soh.so_id::text                AS so_id,
+          TRIM(soh.cust_code)            AS cust_code,
+          soh.cust_name,
+          soh.reference,
+          TRIM(soh.po_number)            AS po_number,
+          soh.sale_type,
+          soh.so_status,
+          soh.salesperson,
+          soh.expect_date::text          AS expect_date,
+          soh.shipto_address_1,
+          soh.shipto_city,
+          soh.shipto_state,
+          soh.shipto_zip
+        FROM agility_so_header soh
+        WHERE soh.so_id::text = ${soId}
+          AND soh.is_deleted = false
         LIMIT 1
+      ),
+      others AS (
+        SELECT
+          soh.so_id::text                AS so_id,
+          TRIM(soh.cust_code)            AS cust_code,
+          soh.cust_name,
+          soh.reference,
+          TRIM(soh.po_number)            AS po_number,
+          soh.sale_type,
+          soh.so_status,
+          soh.salesperson,
+          soh.expect_date::text          AS expect_date,
+          soh.shipto_address_1,
+          soh.shipto_city,
+          soh.shipto_state,
+          soh.shipto_zip
+        FROM agility_so_header soh
+        JOIN anchor a
+          ON  TRIM(soh.cust_code)        = a.cust_code
+          AND TRIM(soh.shipto_address_1) = a.shipto_address_1
+        WHERE soh.is_deleted   = false
+          AND soh.so_id::text != ${soId}
+        ORDER BY soh.so_id DESC
+        LIMIT 49
+      ),
+      combined AS (
+        SELECT * FROM anchor
+        UNION ALL
+        SELECT * FROM others
       )
       SELECT
-        soh.so_id::text                AS so_id,
-        TRIM(soh.cust_code)            AS cust_code,
-        soh.cust_name,
-        soh.reference,
-        TRIM(soh.po_number)            AS po_number,
-        soh.sale_type,
-        soh.so_status,
-        soh.salesperson,
-        soh.expect_date::text          AS expect_date,
-        soh.shipto_address_1,
-        soh.shipto_city,
-        soh.shipto_state,
-        soh.shipto_zip,
+        c.*,
         ar.ar_total
-      FROM agility_so_header soh
-      JOIN anchor a
-        ON  TRIM(soh.cust_code)        = a.cust_code
-        AND TRIM(soh.shipto_address_1) = a.addr
+      FROM combined c
       LEFT JOIN LATERAL (
         SELECT SUM(ar.open_amt)::text AS ar_total
         FROM agility_shipments sh
         JOIN agility_ar_open ar
-          ON ar.ref_num = sh.shipment_num::text
+          ON ar.ref_num    = sh.shipment_num::text
          AND ar.is_deleted = false
          AND ar.open_flag  = true
-        WHERE sh.so_id::text = soh.so_id::text
+        WHERE sh.so_id::text = c.so_id
           AND sh.is_deleted  = false
       ) ar ON true
-      WHERE soh.is_deleted = false
-      ORDER BY soh.so_id DESC
-      LIMIT 50
+      ORDER BY c.so_id DESC
     `.catch((err) => {
       console.error('[hubbell/jobs] ERP CTE failed', err);
       return [] as SoRow[];
