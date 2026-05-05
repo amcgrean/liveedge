@@ -532,6 +532,100 @@ Adds **Recharts** (`recharts@^2.15`) and a small set of opinionated dark-theme c
 - KPI sparklines on tiles — would need monthly history aggregation we don't expose yet
 - SVG download button on `<ChartCard>`
 
+#### Geocoding Pipeline (2026-04-30 → 2026-05-01) — IN PROGRESS
+
+Customer ship-to addresses (`public.agility_customers.address_1/city/state/zip`)
+get matched against `public.geocode_index` to populate `lat`/`lon` for
+dispatch/routing. Nightly cron at `/api/cron/geocode-nightly` walks unmatched
+rows in batches; fixes today brought total geocoded customers from **76,538 →
+~89,000+**.
+
+**How it fits together:**
+- `src/lib/geocode.ts` — shared `normalizeAddress()` + junk-address detection
+  used by BOTH the loader (writes `geocode_index`) and the runner (matches
+  customers). Loader/matcher MUST agree on normalization or matches miss.
+- `src/lib/geocode-runner.ts` — `runGeocodeBatch()` (3-tier match: city → zip →
+  state-unique) + `loadOpenAddresses()` (the OpenAddresses IA statewide
+  refresh).
+- `app/api/cron/geocode-nightly/route.ts` — orchestrates: refresh OA index if
+  empty / >28 days old, then loop `runGeocodeBatch` until no progress for 5
+  consecutive batches OR queue empty OR 60s budget exhausted.
+- `geocode_index` columns: `(number_norm, street_norm, city_norm, state_norm,
+  postcode, lat, lon, source, source_hash)`. Unique partial index on
+  `(source, source_hash) WHERE source IS NOT NULL AND source_hash IS NOT NULL`
+  for idempotent re-loads.
+
+**Source tag convention:** `<provider>_<state>_<dataset>` —
+`openaddresses_us_ia_statewide_<jobid>`, `polk_county_ia_atlas`,
+`dallas_county_ia_parcels` (tbd), etc. The runner reports tier names
+(`openaddresses_city/zip/state_unique`) on `agility_customers.geocode_source`,
+NOT the upstream data source — to find which loader provided a match,
+join on lat/lon (within ~0.0001°).
+
+**Recent fixes (PRs):**
+- **#204** — `runGeocodeBatch` was stuck on the first 500 IDs forever because
+  unmatched rows kept their `geocode_source = 'failed'` status and
+  re-appeared. Fix: order candidates by `geocoded_at ASC NULLS FIRST, id`
+  and bump `geocoded_at` on attempted rows. Also normalize `STREET_TYPE
+  DIRECTION` patterns at second-to-last position (`"DRIVE SE" → "DR SE"`).
+- **#205** — first fix only bumped `geocoded_at` on rows that passed
+  `normalizeAddress()`; non-parseable rows (e.g. `"Highway 80 Lot 5"`)
+  kept old timestamps and choked the queue. Now bumps every candidate.
+- **#211** — re-normalize the existing 74,580 OA index rows in-place to
+  match the new `STREET_TYPE DIRECTION` collapse rules. Per-street-type
+  UPDATEs (one combined CTE timed out at 60s on 74K rows). Migration:
+  `db/migrations/0015_geocode_index_renormalize.sql`. Already applied.
+- **#217** — Polk County IA atlas loader. Pulls
+  `https://atlas.polkcountyiowa.gov/server/Attribute_Query/FeatureServer`
+  layers 0/3/4 (Tax Parcel Points / Tax Parcels / ParcelTaxAttributes),
+  joins on `parcel_number`, normalizes via `normalizeAddress()`, inserts
+  ~172K rows. **Already loaded to prod.** Polk fields exposed via
+  `PrimarySitus` JSON: `StreetNumber, PreDirection, Name, Type,
+  PostDirection, CityName, StateName, PostalCode, Unit`.
+
+**Loader scripts (in `scripts/`):**
+- `snapshot-polk-county-atlas.ts` — pulls Polk REST → NDJSON locally.
+- `load-polk-county-into-index.ts` — NDJSON → DB via postgres-js (direct).
+- `build-polk-load-sql.ts` — NDJSON → batched INSERT SQL (no DB conn).
+- `inspect-dallas-shp.ts` — schema discovery for shapefiles (Dallas, future
+  county-shapefile-only sources). Uses `shapefile` npm package.
+- (Pending) `load-dallas-into-index.ts` — Dallas County shapefile loader.
+  Branch: `claude/dallas-county-loader`. Field mapping TBD pending
+  inspector output.
+
+**`CRON_SECRET` env var:** set on Vercel; cron route accepts EITHER
+`Authorization: Bearer $CRON_SECRET` OR Vercel's auto-injected
+`x-vercel-cron` header. If `CRON_SECRET` is set in env but a deploy
+hasn't picked it up, the scheduled cron will return 401 (mismatch).
+Manual curl with the bearer token works. Reset the value via Vercel
+Settings → Environment Variables, then redeploy.
+
+**Top still-unmatched IA cities** (after Polk load, ~12,700 remaining):
+Waukee 1,077, Ankeny 804, Grimes 740, Des Moines 411, West Des Moines
+353, Norwalk 325, Clive 311, Fort Dodge 276, Johnston 265, Adel 247.
+Waukee + Adel = Dallas County (next loader). Norwalk = Warren County
+(Beacon-only, no public REST). Fort Dodge = Webster (Beacon-only).
+Iowa City / Coralville / North Liberty / Tiffin = Johnson County
+(REST endpoint at `gis.johnsoncountyiowa.gov/arcgis/rest/services/`,
+LandRecords/Land_Records MapServer has `Parcels` + `House Numbers`
+layers — pending loader).
+
+**Useful MCP query for unmatched-customer triage** (3-bucket classification:
+real-OA-gap / fuzzy-candidate / bad-data):
+```sql
+-- See db/migrations/0015 + docs/geocode-unmatched-2026-05-01/README.md
+-- for the full classification recipe + Excel export.
+```
+
+**Out of scope this round:**
+- 4th-tier fuzzy matcher (drop trailing direction, Levenshtein on street
+  name) — would recover ~1,500-2,500 rows that have minor typos.
+- Automated nightly refresh of county loaders — currently manual. Once
+  Dallas + Johnson land, add to cron.
+- Out-of-state customer cleanup — small pile of NE/IL/MN/MO addresses
+  tagged `state='IA'` in customer records. Data-quality issue at the
+  ERP source, not a matcher problem.
+
 #### Still Missing / Deferred
 - **Suggested Buys** (`/purchasing/suggested-buys`): `app_purchasing_queue` view confirmed missing. Check `agility_suggested_po_header` + `agility_suggested_po_lines` before building
 - **RMA Credits thumbnails**: email pipeline, doc counts, address-based matching, and nested email support are all live. Next: add `GET /api/credits/[id]/images` presigned URL route + thumbnail previews in CreditsClient so users can view uploaded docs inline without leaving the page.
@@ -551,6 +645,9 @@ Adds **Recharts** (`recharts@^2.15`) and a small set of opinionated dark-theme c
 4. **Purchasing workflow gaps**: Before building, verify tables exist: `SELECT table_name FROM information_schema.tables WHERE table_schema='public' AND table_name IN ('purchasing_tasks','purchasing_approvals','purchasing_notes','purchasing_exceptions')` — if found, build PO notes API, exceptions view, approval workflow
 5. **Suggested Buys**: `app_purchasing_queue` confirmed missing. Check `agility_suggested_po_header` + `agility_suggested_po_lines` before building `/purchasing/suggested-buys`
 6. **Flask sunset**: DNS cutover + archive `C:\Users\amcgrean\python\wh-tracker-fly\WH-Tracker` after user testing confirms parity
+7. **Dallas County loader**: shapefile extracted to user's `./tmp/dallas`, inspector script committed to `claude/dallas-county-loader` branch. Need to (a) run inspector to discover dbf field names, (b) write `scripts/load-dallas-into-index.ts` based on Polk template + shapefile reading + `proj4` reprojection (Iowa State Plane → WGS84), (c) load to prod, (d) re-run cron. Expected uplift ~1,400 customers (Waukee + Adel). See section "Geocoding Pipeline" above for context.
+8. **Johnson County loader**: REST endpoint confirmed at `https://gis.johnsoncountyiowa.gov/arcgis/rest/services/LandRecords/Land_Records/MapServer` — layers 4 (House Numbers, Point) + 9 (Parcels, Polygon). Same template as Polk loader. Expected uplift ~360 customers (Iowa City / Coralville / North Liberty / Tiffin).
+9. **Generic county-data nightly refresh**: once Dallas + Johnson land, add `/api/cron/county-data-refresh` that re-runs all REST-based county loaders weekly (or monthly). `ON CONFLICT (source, source_hash) DO NOTHING` makes re-runs no-ops for unchanged parcels; new construction picked up automatically.
 
 ## Takeoff Debugging (in progress, 2026-04-14)
 
