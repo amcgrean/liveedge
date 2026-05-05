@@ -1,15 +1,15 @@
 'use client';
 
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import Link from 'next/link';
 import {
   ArrowLeft, MapPin, Building2, FileText, DollarSign,
   Mail, CheckCircle, Clock, Package, Wrench, AlertTriangle,
-  Download, ClipboardCopy, Check,
+  Download, ClipboardCopy, Check, ChevronDown,
 } from 'lucide-react';
 import { cn } from '../../../../../src/lib/utils';
 
-type SoHeader = {
+type SoRow = {
   so_id: string;
   cust_code: string | null;
   cust_name: string | null;
@@ -23,9 +23,8 @@ type SoHeader = {
   shipto_city: string | null;
   shipto_state: string | null;
   shipto_zip: string | null;
+  ar_total: string | null;
 };
-
-type RelatedSO = SoHeader;
 
 type EmailEntry = {
   id: string;
@@ -52,19 +51,24 @@ type Summary = {
   duplicateCount: number;
 };
 
-function formatAmount(v: string | number | null): string {
-  if (v == null) return '';
+function fmt$(v: string | number | null | undefined): string {
+  if (v == null) return '—';
   const n = typeof v === 'string' ? parseFloat(v) : v;
-  return isNaN(n) || n === 0 ? '' : '$' + n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  if (isNaN(n) || n === 0) return '—';
+  return '$' + n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 
-function formatAmountDisplay(v: string | number | null): string {
-  const s = formatAmount(v);
-  return s || '—';
-}
-
-function formatDate(iso: string): string {
+function fmtDate(iso: string): string {
   return new Date(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+}
+
+function normPo(s: string | null | undefined): string {
+  return (s ?? '').trim().toUpperCase().replace(/^0+/, '');
+}
+
+function truncate(s: string | null | undefined, n: number): string {
+  if (!s) return '';
+  return s.length > n ? s.slice(0, n) + '…' : s;
 }
 
 function TypeIcon({ type }: { type: string | null }) {
@@ -73,13 +77,9 @@ function TypeIcon({ type }: { type: string | null }) {
   return <Mail className="w-3.5 h-3.5 text-slate-400" />;
 }
 
-function normPo(s: string | null | undefined): string {
-  return (s ?? '').trim().toUpperCase().replace(/^0+/, '');
-}
-
 // Build rows for export/copy
-function buildExportRows(emails: EmailEntry[], relatedSOs: RelatedSO[], soHeader: SoHeader | null) {
-  const poToLinkedSo = new Map<string, RelatedSO>();
+function buildExportRows(emails: EmailEntry[], relatedSOs: SoRow[], soHeader: SoRow | null) {
+  const poToLinkedSo = new Map<string, SoRow>();
   for (const so of relatedSOs) {
     if (so.po_number) poToLinkedSo.set(normPo(so.po_number), so);
   }
@@ -91,11 +91,11 @@ function buildExportRows(emails: EmailEntry[], relatedSOs: RelatedSO[], soHeader
       Type:        (e.emailType ?? '').toUpperCase(),
       'WO / PO #': num,
       Description: description,
-      Amount:      formatAmount(e.extractedAmount),
+      Amount:      fmt$(e.extractedAmount) === '—' ? '' : fmt$(e.extractedAmount),
       Address:     [e.extractedAddress, e.extractedCity].filter(Boolean).join(', '),
       Customer:    soHeader?.cust_name ?? '',
       'SO #':      linkedSo?.so_id ?? '',
-      Received:    formatDate(e.receivedAt),
+      Received:    fmtDate(e.receivedAt),
     };
   });
 }
@@ -103,10 +103,10 @@ function buildExportRows(emails: EmailEntry[], relatedSOs: RelatedSO[], soHeader
 function exportCsv(rows: ReturnType<typeof buildExportRows>, filename: string) {
   if (rows.length === 0) return;
   const headers = Object.keys(rows[0]);
-  const escape  = (v: string) => `"${v.replace(/"/g, '""')}"`;
-  const lines   = [
-    headers.map(escape).join(','),
-    ...rows.map((r) => headers.map((h) => escape(String(r[h as keyof typeof r] ?? ''))).join(',')),
+  const esc = (v: string) => `"${v.replace(/"/g, '""')}"`;
+  const lines = [
+    headers.map(esc).join(','),
+    ...rows.map((r) => headers.map((h) => esc(String(r[h as keyof typeof r] ?? ''))).join(',')),
   ];
   const blob = new Blob([lines.join('\r\n')], { type: 'text/csv' });
   const url  = URL.createObjectURL(blob);
@@ -124,9 +124,8 @@ function buildTsv(rows: ReturnType<typeof buildExportRows>): string {
   ].join('\n');
 }
 
-// ── Export toolbar ─────────────────────────────────────────────────────────────
 function ExportBar({ emails, relatedSOs, soHeader }: {
-  emails: EmailEntry[]; relatedSOs: RelatedSO[]; soHeader: SoHeader | null;
+  emails: EmailEntry[]; relatedSOs: SoRow[]; soHeader: SoRow | null;
 }) {
   const [copied, setCopied] = useState(false);
 
@@ -157,7 +156,6 @@ function ExportBar({ emails, relatedSOs, soHeader }: {
       <button
         onClick={handleDownload}
         className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs transition"
-        title="Download as CSV"
       >
         <Download className="w-3.5 h-3.5" />
         Export CSV
@@ -166,13 +164,82 @@ function ExportBar({ emails, relatedSOs, soHeader }: {
   );
 }
 
+// ── PO assignment dropdown ─────────────────────────────────────────────────────
+function PoDropdown({ soId, emails, onCopy }: {
+  soId: string;
+  emails: EmailEntry[];
+  onCopy: (soId: string, val: string) => void;
+}) {
+  const [selectedId, setSelectedId] = useState('');
+  const selectedEmail = emails.find((e) => e.id === selectedId) ?? null;
+  const poNum = selectedEmail?.extractedWoNumber ?? selectedEmail?.extractedPoNumber ?? '';
+  const desc  = selectedEmail?.extractedDescription || selectedEmail?.subject || '';
+
+  return (
+    <div className="space-y-1 min-w-[180px]">
+      <div className="relative">
+        <select
+          value={selectedId}
+          onChange={(e) => setSelectedId(e.target.value)}
+          className={cn(
+            'w-full appearance-none text-xs rounded-md pl-2.5 pr-7 py-1.5 border',
+            'bg-slate-800 border-slate-700 text-slate-300',
+            'focus:outline-none focus:ring-1 focus:ring-cyan-500 focus:border-cyan-500',
+            selectedId && 'text-white border-cyan-700 bg-slate-700/60',
+          )}
+        >
+          <option value="">— assign PO/WO —</option>
+          {emails.map((e) => {
+            const num  = e.extractedWoNumber ?? e.extractedPoNumber ?? '?';
+            const type = (e.emailType ?? '').toUpperCase() || 'EMAIL';
+            const label = truncate(e.extractedDescription || e.subject, 42);
+            return (
+              <option key={e.id} value={e.id}>
+                [{type}] {num}{label ? ` — ${label}` : ''}
+              </option>
+            );
+          })}
+        </select>
+        <ChevronDown className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 w-3 h-3 text-slate-500" />
+      </div>
+
+      {selectedEmail && (
+        <div className="flex items-center gap-1.5">
+          <span className="font-mono text-xs text-white bg-slate-700 px-1.5 py-0.5 rounded">{poNum}</span>
+          <button
+            onClick={() => onCopy(soId, poNum)}
+            className="flex items-center gap-1 text-[10px] text-slate-400 hover:text-cyan-400 transition"
+            title="Copy PO/WO number to clipboard"
+          >
+            <ClipboardCopy className="w-3 h-3" />
+            copy
+          </button>
+          {desc && (
+            <span className="text-[10px] text-slate-500 truncate max-w-[140px]" title={desc}>{desc}</span>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function JobEmailsClient({ soId }: { soId: string }) {
-  const [soHeader, setSoHeader]     = useState<SoHeader | null>(null);
+  const [soHeader, setSoHeader]     = useState<SoRow | null>(null);
   const [emails, setEmails]         = useState<EmailEntry[]>([]);
-  const [relatedSOs, setRelatedSOs] = useState<RelatedSO[]>([]);
+  const [relatedSOs, setRelatedSOs] = useState<SoRow[]>([]);
   const [summary, setSummary]       = useState<Summary | null>(null);
   const [loading, setLoading]       = useState(true);
   const [error, setError]           = useState('');
+
+  // soId → 'copied' flash state for inline copy buttons
+  const [copiedSo, setCopiedSo] = useState<string | null>(null);
+
+  function handleCopySo(id: string, val: string) {
+    navigator.clipboard.writeText(val).then(() => {
+      setCopiedSo(id);
+      setTimeout(() => setCopiedSo((c) => (c === id ? null : c)), 2000);
+    });
+  }
 
   useEffect(() => {
     setLoading(true);
@@ -201,6 +268,7 @@ export default function JobEmailsClient({ soId }: { soId: string }) {
   }
   if (error) return <div className="rounded-xl border border-red-500/30 bg-red-500/10 p-6 text-red-300">{error}</div>;
 
+  // Build email lookup by normalised PO/WO key
   const poToEmail = new Map<string, EmailEntry>();
   for (const email of emails) {
     if (email.extractedPoNumber) poToEmail.set(normPo(email.extractedPoNumber), email);
@@ -218,7 +286,7 @@ export default function JobEmailsClient({ soId }: { soId: string }) {
   const unmatchedEmails = emails.filter((e) => !matchedEmailIds.has(e.id));
 
   return (
-    <div className="space-y-5 max-w-5xl">
+    <div className="space-y-5 max-w-6xl">
       {/* Back + title */}
       <div className="flex items-center gap-3">
         <Link href="/admin/hubbell/jobs" className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition">
@@ -285,10 +353,10 @@ export default function JobEmailsClient({ soId }: { soId: string }) {
         <div className="space-y-2">
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
             {[
-              { label: 'Unique PO/WOs', value: summary.emailCount,              icon: Mail,      color: 'text-slate-300' },
-              { label: 'PO Emails',     value: summary.poCount,                 icon: Package,   color: 'text-blue-300' },
-              { label: 'WO Emails',     value: summary.woCount,                 icon: Wrench,    color: 'text-purple-300' },
-              { label: 'Total Amount',  value: formatAmountDisplay(summary.totalAmount), icon: DollarSign, color: 'text-green-300' },
+              { label: 'Unique PO/WOs', value: summary.emailCount,                        icon: Mail,      color: 'text-slate-300' },
+              { label: 'PO Emails',     value: summary.poCount,                           icon: Package,   color: 'text-blue-300' },
+              { label: 'WO Emails',     value: summary.woCount,                           icon: Wrench,    color: 'text-purple-300' },
+              { label: 'Total Amount',  value: fmt$(summary.totalAmount),                 icon: DollarSign, color: 'text-green-300' },
             ].map(({ label, value, icon: Icon, color }) => (
               <div key={label} className="rounded-xl border border-white/10 bg-slate-900/60 p-4">
                 <div className="flex items-center gap-2 mb-1">
@@ -301,7 +369,7 @@ export default function JobEmailsClient({ soId }: { soId: string }) {
           </div>
           {summary.duplicateCount > 0 && (
             <p className="text-xs text-slate-500">
-              {summary.duplicateCount} duplicate {summary.duplicateCount === 1 ? 'email' : 'emails'} with the same PO/WO number hidden — amounts counted once per order.
+              {summary.duplicateCount} duplicate {summary.duplicateCount === 1 ? 'email' : 'emails'} with the same PO/WO number hidden.
             </p>
           )}
         </div>
@@ -314,7 +382,7 @@ export default function JobEmailsClient({ soId }: { soId: string }) {
             <div>
               <h2 className="text-sm font-semibold text-white">Sales Orders at This Address</h2>
               <p className="text-xs text-slate-500 mt-0.5">
-                Matched against received PO/WO emails. Enter the WO# below into the Customer PO field on each SO.
+                Use the dropdown to assign a received PO/WO to each order, then enter it in ERP.
               </p>
             </div>
             <span className="text-xs text-slate-500">{relatedSOs.length} SOs</span>
@@ -326,9 +394,10 @@ export default function JobEmailsClient({ soId }: { soId: string }) {
                 <tr className="border-b border-white/10 bg-slate-950/40">
                   <th className="px-4 py-2.5 text-left text-[11px] font-semibold text-slate-500 uppercase tracking-wider">Sales Order</th>
                   <th className="px-4 py-2.5 text-left text-[11px] font-semibold text-slate-500 uppercase tracking-wider">Reference</th>
-                  <th className="px-4 py-2.5 text-left text-[11px] font-semibold text-slate-500 uppercase tracking-wider">Customer PO # (WO)</th>
+                  <th className="px-4 py-2.5 text-left text-[11px] font-semibold text-slate-500 uppercase tracking-wider">Customer PO / WO</th>
                   <th className="px-4 py-2.5 text-left text-[11px] font-semibold text-slate-500 uppercase tracking-wider">Sale Type</th>
                   <th className="px-4 py-2.5 text-left text-[11px] font-semibold text-slate-500 uppercase tracking-wider">Status</th>
+                  <th className="px-4 py-2.5 text-right text-[11px] font-semibold text-slate-500 uppercase tracking-wider">AR Open</th>
                   <th className="px-4 py-2.5 text-left text-[11px] font-semibold text-slate-500 uppercase tracking-wider">Email Match</th>
                 </tr>
               </thead>
@@ -336,6 +405,10 @@ export default function JobEmailsClient({ soId }: { soId: string }) {
                 {relatedSOs.map((so) => {
                   const matchedEmail = so.po_number ? poToEmail.get(normPo(so.po_number)) : undefined;
                   const hasPo = !!so.po_number;
+                  const emailDesc = matchedEmail
+                    ? (matchedEmail.extractedDescription || matchedEmail.subject || '')
+                    : '';
+
                   return (
                     <tr
                       key={so.so_id}
@@ -346,6 +419,7 @@ export default function JobEmailsClient({ soId }: { soId: string }) {
                           : 'hover:bg-white/5'
                       )}
                     >
+                      {/* SO # */}
                       <td className="px-4 py-3 whitespace-nowrap">
                         <Link
                           href={`/admin/hubbell/jobs/${so.so_id}`}
@@ -355,20 +429,64 @@ export default function JobEmailsClient({ soId }: { soId: string }) {
                         </Link>
                         {so.so_id === soId && <span className="ml-1.5 text-[10px] text-cyan-600">current</span>}
                       </td>
-                      <td className="px-4 py-3 text-xs text-slate-400 max-w-[160px] truncate">
-                        {so.reference ?? <span className="text-slate-600">—</span>}
+
+                      {/* Reference — SO reference + email description sub-line when matched */}
+                      <td className="px-4 py-3 max-w-[180px]">
+                        <span className="text-xs text-slate-300 block truncate" title={so.reference ?? undefined}>
+                          {so.reference ?? <span className="text-slate-600">—</span>}
+                        </span>
+                        {emailDesc && (
+                          <span className="text-[10px] text-slate-500 block truncate mt-0.5" title={emailDesc}>
+                            {emailDesc}
+                          </span>
+                        )}
                       </td>
-                      <td className="px-4 py-3 whitespace-nowrap">
-                        {so.po_number
-                          ? <span className="font-mono text-xs text-white">{so.po_number}</span>
-                          : <span className="text-xs text-slate-600 italic">not set yet</span>}
+
+                      {/* PO / WO — existing value or assignment dropdown */}
+                      <td className="px-4 py-3">
+                        {hasPo ? (
+                          <div className="flex items-center gap-1.5">
+                            <span className="font-mono text-xs text-white">{so.po_number}</span>
+                            <button
+                              onClick={() => handleCopySo(so.so_id, so.po_number!)}
+                              className="text-slate-600 hover:text-cyan-400 transition"
+                              title="Copy PO/WO number"
+                            >
+                              {copiedSo === so.so_id
+                                ? <Check className="w-3 h-3 text-green-400" />
+                                : <ClipboardCopy className="w-3 h-3" />}
+                            </button>
+                          </div>
+                        ) : (
+                          <PoDropdown
+                            soId={so.so_id}
+                            emails={emails}
+                            onCopy={handleCopySo}
+                          />
+                        )}
                       </td>
+
+                      {/* Sale Type */}
                       <td className="px-4 py-3 whitespace-nowrap">
                         <span className="text-xs text-slate-400">{so.sale_type ?? '—'}</span>
                       </td>
+
+                      {/* Status */}
                       <td className="px-4 py-3 whitespace-nowrap">
                         <span className="text-xs text-slate-400">{so.so_status ?? '—'}</span>
                       </td>
+
+                      {/* AR Open */}
+                      <td className="px-4 py-3 whitespace-nowrap text-right">
+                        <span className={cn(
+                          'font-mono text-xs',
+                          so.ar_total && parseFloat(so.ar_total) > 0 ? 'text-amber-300' : 'text-slate-600'
+                        )}>
+                          {fmt$(so.ar_total)}
+                        </span>
+                      </td>
+
+                      {/* Email Match */}
                       <td className="px-4 py-3">
                         {matchedEmail ? (
                           <div className="flex items-center gap-1.5">
@@ -377,7 +495,7 @@ export default function JobEmailsClient({ soId }: { soId: string }) {
                               <Link href={`/admin/hubbell/${matchedEmail.id}`} className="text-xs text-green-300 hover:text-green-200 transition font-mono">
                                 {matchedEmail.extractedWoNumber ?? matchedEmail.extractedPoNumber}
                               </Link>
-                              <p className="text-[10px] text-slate-500">{formatDate(matchedEmail.receivedAt)}</p>
+                              <p className="text-[10px] text-slate-500">{fmtDate(matchedEmail.receivedAt)}</p>
                             </div>
                           </div>
                         ) : hasPo ? (
@@ -415,7 +533,7 @@ export default function JobEmailsClient({ soId }: { soId: string }) {
                     <Link href={`/admin/hubbell/${e.id}`} className="text-cyan-500 hover:text-cyan-300 transition">
                       {e.subject}
                     </Link>
-                    <span className="text-slate-600">{formatDate(e.receivedAt)}</span>
+                    <span className="text-slate-600">{fmtDate(e.receivedAt)}</span>
                   </div>
                 ))}
               </div>
@@ -460,13 +578,11 @@ export default function JobEmailsClient({ soId }: { soId: string }) {
                 {emails.map((email) => {
                   const emailKey = normPo(email.extractedWoNumber ?? email.extractedPoNumber);
                   const linkedSO = relatedSOs.find((so) => so.po_number && normPo(so.po_number) === emailKey);
-                  const num = email.extractedWoNumber ?? email.extractedPoNumber;
+                  const num  = email.extractedWoNumber ?? email.extractedPoNumber;
                   const isWo = email.emailType === 'wo' || !!email.extractedWoNumber;
-                  // Use linked SO's reference as description if available, then extracted, then subject
                   const description = linkedSO?.reference || email.extractedDescription || email.subject;
                   return (
                     <tr key={email.id} className="hover:bg-white/5 transition">
-                      {/* WO/PO badge — styled like ECI */}
                       <td className="px-4 py-3 whitespace-nowrap">
                         {num ? (
                           <span className={cn(
@@ -481,7 +597,6 @@ export default function JobEmailsClient({ soId }: { soId: string }) {
                           <span className="text-slate-600">—</span>
                         )}
                       </td>
-                      {/* Description — the focal column */}
                       <td className="px-4 py-3">
                         <Link
                           href={`/admin/hubbell/${email.id}`}
@@ -498,7 +613,7 @@ export default function JobEmailsClient({ soId }: { soId: string }) {
                         )}
                       </td>
                       <td className="px-4 py-3 text-right whitespace-nowrap font-mono text-sm font-medium text-slate-200">
-                        {formatAmountDisplay(email.extractedAmount)}
+                        {fmt$(email.extractedAmount)}
                       </td>
                       <td className="px-4 py-3 whitespace-nowrap">
                         {linkedSO ? (
@@ -514,7 +629,7 @@ export default function JobEmailsClient({ soId }: { soId: string }) {
                         )}
                       </td>
                       <td className="px-4 py-3 whitespace-nowrap text-xs text-slate-500">
-                        {formatDate(email.receivedAt)}
+                        {fmtDate(email.receivedAt)}
                       </td>
                     </tr>
                   );
