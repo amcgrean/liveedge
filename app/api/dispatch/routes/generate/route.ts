@@ -50,6 +50,7 @@ export async function POST(req: NextRequest) {
         AND dd.branch_code = dr.system_id
       WHERE dr.system_id = ${branchCode}
         AND dr.active = true
+        AND (dd.is_active IS NULL OR dd.is_active = true)
         AND NOT EXISTS (
           SELECT 1 FROM dispatch_routes ex
           WHERE ex.route_date = ${date}::date
