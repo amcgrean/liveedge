@@ -21,5 +21,5 @@ export function erpCache<T extends (...args: never[]) => Promise<unknown>>(
   return unstable_cache(fn as unknown as (...args: unknown[]) => Promise<unknown>, ['erp', ...keyParts], {
     revalidate: ERP_CACHE_TTL,
     tags: ['erp'],
-  }) as T;
+  }) as unknown as T;
 }
