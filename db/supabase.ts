@@ -41,11 +41,15 @@ function getErpConnectionString(): string {
 }
 
 function createErpDb() {
+  // max: 10 — allows Promise.all() calls to run their queries genuinely in
+  // parallel through pgBouncer rather than serialising behind one connection.
+  // max: 1 (the previous value) caused 8+ sequential queries per page load,
+  // stacking to 300 s under concurrent users sharing the warm-instance singleton.
   _erpSql = postgres(getErpConnectionString(), {
-    max: 1,
+    max: 10,
     idle_timeout: 20,
     connect_timeout: 10,
-    prepare: false,
+    prepare: false, // required for pgBouncer transaction mode
   });
   return drizzle(_erpSql);
 }
@@ -66,7 +70,7 @@ export function getErpDb() {
 export function getErpSql() {
   if (!_erpSql) {
     _erpSql = postgres(getErpConnectionString(), {
-      max: 1,
+      max: 10,
       idle_timeout: 20,
       connect_timeout: 10,
       prepare: false,

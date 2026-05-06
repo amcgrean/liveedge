@@ -1,4 +1,5 @@
 import { getErpSql } from '../../../db/supabase';
+import { erpCache } from '../erp-cache';
 import type {
   VendorListRow,
   VendorDetail,
@@ -56,7 +57,7 @@ function toNumOrNull(v: unknown): number | null {
 // Aggregate summary KPIs
 // ---------------------------------------------------------------------------
 
-export async function fetchVendorScorecardSummary(
+async function _fetchVendorScorecardSummary(
   params: VendorScorecardParams,
 ): Promise<VendorScorecardSummary> {
   const sql = getErpSql();
@@ -68,14 +69,9 @@ export async function fetchVendorScorecardSummary(
   const ps = fmt(pyStart);
   const pe = fmt(pyEnd);
 
-  // Two narrow-range parallel queries instead of one wide PS→E scan.
-  // MATERIALIZED header CTE forces the planner to use the receive_date index
-  // first, materialise the matching headers, then join lines against that
-  // small result set — preventing a full table scan of receiving_lines.
   type SpendRow = { supplier_key: string; spend: string | null };
 
   const [ytdRows, pyRows] = await Promise.all([
-    // YTD spend + fill/OTD  (s → e, narrow)
     sql<(SpendRow & { fill_rate: string | null; otd_rate: string | null })[]>`
       WITH h AS MATERIALIZED (
         SELECT system_id, po_id, receive_num, receive_date
@@ -87,13 +83,9 @@ export async function fetchVendorScorecardSummary(
       SELECT
         ph.supplier_key,
         SUM(rl.qty * rl.cost)::numeric(18,2)::text AS spend,
-        (
-          SUM(rl.qty)::numeric / NULLIF(SUM(pl.qty_ordered), 0)
-        )::numeric(6,4)::text AS fill_rate,
-        (
-          COUNT(*) FILTER (WHERE h.receive_date::date <= ph.expect_date::date)::numeric
-          / NULLIF(COUNT(*), 0)
-        )::numeric(6,4)::text AS otd_rate
+        (SUM(rl.qty)::numeric / NULLIF(SUM(pl.qty_ordered), 0))::numeric(6,4)::text AS fill_rate,
+        (COUNT(*) FILTER (WHERE h.receive_date::date <= ph.expect_date::date)::numeric
+          / NULLIF(COUNT(*), 0))::numeric(6,4)::text AS otd_rate
       FROM h
       JOIN agility_receiving_lines rl
         ON rl.system_id = h.system_id AND rl.po_id = h.po_id AND rl.receive_num = h.receive_num
@@ -104,7 +96,6 @@ export async function fetchVendorScorecardSummary(
       WHERE rl.is_deleted = false AND ph.is_deleted = false
       GROUP BY ph.supplier_key
     `,
-    // PY spend only  (ps → pe, narrow)
     sql<SpendRow[]>`
       WITH h AS MATERIALIZED (
         SELECT system_id, po_id, receive_num
@@ -182,10 +173,8 @@ export async function fetchVendorScorecardSummary(
         COUNT(*) FILTER (WHERE pct >= 0.5 AND pct < 0.9)::text AS at_risk,
         COUNT(*) FILTER (WHERE pct < 0.5)::text              AS missed
       FROM (
-        SELECT
-          CASE WHEN p.target_amount > 0
-            THEN a.attained_amount / p.target_amount ELSE 0
-          END AS pct
+        SELECT CASE WHEN p.target_amount > 0
+            THEN a.attained_amount / p.target_amount ELSE 0 END AS pct
         FROM supplier_rebate_attainment a
         JOIN supplier_rebate_programs p ON p.id = a.program_id
         WHERE p.is_active = true
@@ -221,9 +210,7 @@ export async function fetchVendorScorecardSummary(
 // Vendor leaderboard list
 // ---------------------------------------------------------------------------
 
-export async function fetchVendorList(
-  params: VendorScorecardParams,
-): Promise<VendorListRow[]> {
+async function _fetchVendorList(params: VendorScorecardParams): Promise<VendorListRow[]> {
   const sql = getErpSql();
   const { start, end } = getDateRange(params.range);
   const pyStart = shiftYear(start, -1);
@@ -246,7 +233,6 @@ export async function fetchVendorList(
   type OpenPoRow = { supplier_key: string; open_po_count: string; open_po_value: string | null };
 
   const [ytdRows, pyRows, openPoRows] = await Promise.all([
-    // YTD spend + fill/OTD  (s → e)
     sql<YtdRow[]>`
       WITH h AS MATERIALIZED (
         SELECT system_id, po_id, receive_num, receive_date
@@ -260,13 +246,9 @@ export async function fetchVendorList(
         MAX(ph.supplier_code) AS supplier_code,
         MAX(ph.supplier_name) AS supplier_name,
         SUM(rl.qty * rl.cost)::numeric(18,2)::text AS spend_ytd,
-        (
-          SUM(rl.qty)::numeric / NULLIF(SUM(pl.qty_ordered), 0)
-        )::numeric(6,4)::text AS fill_rate,
-        (
-          COUNT(*) FILTER (WHERE h.receive_date::date <= ph.expect_date::date)::numeric
-          / NULLIF(COUNT(*), 0)
-        )::numeric(6,4)::text AS otd_rate,
+        (SUM(rl.qty)::numeric / NULLIF(SUM(pl.qty_ordered), 0))::numeric(6,4)::text AS fill_rate,
+        (COUNT(*) FILTER (WHERE h.receive_date::date <= ph.expect_date::date)::numeric
+          / NULLIF(COUNT(*), 0))::numeric(6,4)::text AS otd_rate,
         MAX(h.receive_date)::date::text AS last_receive_date
       FROM h
       JOIN agility_receiving_lines rl
@@ -280,7 +262,6 @@ export async function fetchVendorList(
       ORDER BY spend_ytd DESC NULLS LAST
       LIMIT 200
     `,
-    // PY spend only  (ps → pe)
     sql<PyRow[]>`
       WITH h AS MATERIALIZED (
         SELECT system_id, po_id, receive_num
@@ -300,15 +281,13 @@ export async function fetchVendorList(
       WHERE rl.is_deleted = false AND ph.is_deleted = false
       GROUP BY ph.supplier_key
     `,
-    // Open POs (no date filter on receiving — hits po_header directly)
     sql<OpenPoRow[]>`
       SELECT
         ph.supplier_key,
         COUNT(DISTINCT ph.po_id)::text AS open_po_count,
         SUM(pl.qty_ordered * pl.cost)::numeric(18,2)::text AS open_po_value
       FROM agility_po_header ph
-      JOIN agility_po_lines pl
-        ON pl.system_id = ph.system_id AND pl.po_id = ph.po_id
+      JOIN agility_po_lines pl ON pl.system_id = ph.system_id AND pl.po_id = ph.po_id
       WHERE ph.is_deleted = false AND pl.is_deleted = false
         AND ph.canceled = false
         AND UPPER(ph.po_status) NOT IN ('CLOSED', 'CANCELED', 'COMPLETE', 'RECEIVED')
@@ -320,7 +299,6 @@ export async function fetchVendorList(
   const pyMap     = new Map(pyRows.map((r) => [r.supplier_key, r.spend_py]));
   const openPoMap = new Map(openPoRows.map((r) => [r.supplier_key, r]));
 
-  // Resolve primary product group scoped to the fetched vendor keys
   let pgMap = new Map<string, string>();
   if (ytdRows.length > 0) {
     try {
@@ -415,7 +393,7 @@ export async function fetchVendorList(
 // Single vendor detail
 // ---------------------------------------------------------------------------
 
-export async function fetchVendorDetail(
+async function _fetchVendorDetail(
   supplierKey: string,
   params: VendorScorecardParams,
 ): Promise<VendorDetail | null> {
@@ -428,13 +406,8 @@ export async function fetchVendorDetail(
   const ps = fmt(pyStart);
   const pe = fmt(pyEnd);
 
-  type BranchYtdRow = {
-    system_id: string;
-    spend_ytd: string | null;
-    fill_rate: string | null;
-    otd_rate:  string | null;
-  };
-  type BranchPyRow = { system_id: string; spend_py: string | null };
+  type BranchYtdRow = { system_id: string; spend_ytd: string | null; fill_rate: string | null; otd_rate: string | null };
+  type BranchPyRow  = { system_id: string; spend_py: string | null };
 
   const [branchYtdRows, branchPyRows, pgRows, openPoRows] = await Promise.all([
     sql<BranchYtdRow[]>`
@@ -448,13 +421,9 @@ export async function fetchVendorDetail(
       SELECT
         h.system_id,
         SUM(rl.qty * rl.cost)::numeric(18,2)::text AS spend_ytd,
-        (
-          SUM(rl.qty)::numeric / NULLIF(SUM(pl.qty_ordered), 0)
-        )::numeric(6,4)::text AS fill_rate,
-        (
-          COUNT(*) FILTER (WHERE h.receive_date::date <= ph.expect_date::date)::numeric
-          / NULLIF(COUNT(*), 0)
-        )::numeric(6,4)::text AS otd_rate
+        (SUM(rl.qty)::numeric / NULLIF(SUM(pl.qty_ordered), 0))::numeric(6,4)::text AS fill_rate,
+        (COUNT(*) FILTER (WHERE h.receive_date::date <= ph.expect_date::date)::numeric
+          / NULLIF(COUNT(*), 0))::numeric(6,4)::text AS otd_rate
       FROM h
       JOIN agility_receiving_lines rl
         ON rl.system_id = h.system_id AND rl.po_id = h.po_id AND rl.receive_num = h.receive_num
@@ -475,9 +444,7 @@ export async function fetchVendorDetail(
           AND receive_date >= ${ps}::date AND receive_date < ${pe}::date + 1
           AND (${params.branch} = 'all' OR system_id = ${params.branch})
       )
-      SELECT
-        h.system_id,
-        SUM(rl.qty * rl.cost)::numeric(18,2)::text AS spend_py
+      SELECT h.system_id, SUM(rl.qty * rl.cost)::numeric(18,2)::text AS spend_py
       FROM h
       JOIN agility_receiving_lines rl
         ON rl.system_id = h.system_id AND rl.po_id = h.po_id AND rl.receive_num = h.receive_num
@@ -555,20 +522,12 @@ export async function fetchVendorDetail(
 
   try {
     type ProgRow = {
-      id: number;
-      program_name: string;
-      program_type: string;
-      period_start: string;
-      period_end:   string;
-      target_amount:    string | null;
-      rebate_rate_pct:  string | null;
-      product_group:    string | null;
-      payout_timing:    string;
-      milestone_label:  string | null;
-      tier_breakpoints: TierBreakpoint[] | null;
-      attained_amount:  string | null;
-      earned_rebate:    string | null;
-      accrued_rebate:   string | null;
+      id: number; program_name: string; program_type: string;
+      period_start: string; period_end: string;
+      target_amount: string | null; rebate_rate_pct: string | null;
+      product_group: string | null; payout_timing: string;
+      milestone_label: string | null; tier_breakpoints: TierBreakpoint[] | null;
+      attained_amount: string | null; earned_rebate: string | null; accrued_rebate: string | null;
     };
 
     const progRows = await sql<ProgRow[]>`
@@ -593,29 +552,20 @@ export async function fetchVendorDetail(
       const target   = toNumOrNull(r.target_amount);
       const rate     = toNumOrNull(r.rebate_rate_pct);
       const tiers    = r.tier_breakpoints ?? null;
-      let toNext:   number | null = null;
-      let nextRate: number | null = null;
+      let toNext: number | null = null, nextRate: number | null = null;
       if (tiers && target !== null) {
         const nextTier = tiers.find((t) => t.threshold > attained);
         if (nextTier) { toNext = nextTier.threshold - attained; nextRate = nextTier.rate_pct; }
       }
       return {
-        id: r.id,
-        programName:  r.program_name,
+        id: r.id, programName: r.program_name,
         programType:  r.program_type as RebateProgram['programType'],
-        periodStart:  r.period_start,
-        periodEnd:    r.period_end,
-        targetAmount: target,
-        rebateRatePct:  rate,
-        productGroup:   r.product_group,
-        attainedAmount: attained,
-        earnedRebate:   toNum(r.earned_rebate),
-        accruedRebate:  toNum(r.accrued_rebate),
-        payoutTiming:   r.payout_timing,
-        milestoneLabel: r.milestone_label,
-        tierBreakpoints:  tiers,
-        toNextTierAmount: toNext,
-        nextTierRatePct:  nextRate,
+        periodStart:  r.period_start, periodEnd: r.period_end,
+        targetAmount: target, rebateRatePct: rate, productGroup: r.product_group,
+        attainedAmount: attained, earnedRebate: toNum(r.earned_rebate),
+        accruedRebate: toNum(r.accrued_rebate), payoutTiming: r.payout_timing,
+        milestoneLabel: r.milestone_label, tierBreakpoints: tiers,
+        toNextTierAmount: toNext, nextTierRatePct: nextRate,
       };
     });
 
@@ -623,8 +573,7 @@ export async function fetchVendorDetail(
     rebateAccrued = rebatePrograms.reduce((acc, p) => acc + p.accruedRebate, 0);
 
     const flagRows = await sql<{
-      id: number; flag_type: string; severity: string;
-      description: string; created_at: string;
+      id: number; flag_type: string; severity: string; description: string; created_at: string;
     }[]>`
       SELECT id, flag_type, severity, description, created_at::text
       FROM supplier_risk_flags
@@ -632,32 +581,22 @@ export async function fetchVendorDetail(
       ORDER BY severity DESC, created_at DESC
     `;
     riskFlags = flagRows.map((r) => ({
-      id: r.id,
-      flagType:    r.flag_type,
-      severity:    r.severity as RiskFlag['severity'],
-      description: r.description,
-      createdAt:   r.created_at,
+      id: r.id, flagType: r.flag_type, severity: r.severity as RiskFlag['severity'],
+      description: r.description, createdAt: r.created_at,
     }));
   } catch {
     // Tables not yet seeded
   }
 
   return {
-    supplierKey,
-    supplierCode: '',
-    supplierName: supplierKey,
-    spendYTD:        totalYTD,
-    spendPY:         totalPY,
-    rebateEarnedYTD: rebateEarned,
-    rebateAccrued:   rebateAccrued,
+    supplierKey, supplierCode: '', supplierName: supplierKey,
+    spendYTD: totalYTD, spendPY: totalPY,
+    rebateEarnedYTD: rebateEarned, rebateAccrued,
     fillRatePct: branchBreakdown[0]?.fillRatePct ?? null,
     otdPct:      branchBreakdown[0]?.otdPct      ?? null,
     openPoCount: parseInt(openPoRows[0]?.open_po_count ?? '0', 10),
     openPoValue: toNum(openPoRows[0]?.open_po_value),
-    branchBreakdown,
-    productGroupBreakdown,
-    rebatePrograms,
-    riskFlags,
+    branchBreakdown, productGroupBreakdown, rebatePrograms, riskFlags,
   };
 }
 
@@ -665,7 +604,7 @@ export async function fetchVendorDetail(
 // Distinct product groups (for filter chips)
 // ---------------------------------------------------------------------------
 
-export async function fetchProductGroups(
+async function _fetchProductGroups(
   params: Pick<VendorScorecardParams, 'range' | 'branch'>,
 ): Promise<string[]> {
   const sql = getErpSql();
@@ -695,3 +634,28 @@ export async function fetchProductGroups(
 
   return rows.map((r) => r.product_group);
 }
+
+// ---------------------------------------------------------------------------
+// Cached public exports — 5-minute TTL, shared across all concurrent users.
+// Tagged 'erp' so all ERP caches can be busted together with revalidateTag.
+// ---------------------------------------------------------------------------
+
+export const fetchVendorScorecardSummary = erpCache(
+  _fetchVendorScorecardSummary,
+  ['scorecard-summary'],
+);
+
+export const fetchVendorList = erpCache(
+  _fetchVendorList,
+  ['scorecard-vendors'],
+);
+
+export const fetchVendorDetail = erpCache(
+  _fetchVendorDetail,
+  ['scorecard-vendor-detail'],
+);
+
+export const fetchProductGroups = erpCache(
+  _fetchProductGroups,
+  ['scorecard-product-groups'],
+);

@@ -1,4 +1,5 @@
-﻿import { getErpSql } from '../../../db/supabase';
+import { getErpSql } from '../../../db/supabase';
+import { erpCache } from '../erp-cache';
 import type {
   ScorecardParams,
   AggregateParams,
@@ -80,7 +81,7 @@ function toInt(v: unknown): number | null {
 // Customer list (scorecard index page)
 // ---------------------------------------------------------------------------
 
-export async function fetchCustomerList(
+async function _fetchCustomerList(
   baseYear: number,
   compareYear: number,
   branchIds: string[],
@@ -185,7 +186,7 @@ export async function fetchCustomerList(
 // Customer typeahead
 // ---------------------------------------------------------------------------
 
-export async function searchCustomers(
+async function _searchCustomers(
   query: string,
   limit = 20,
 ): Promise<{ customerId: string; customerName: string }[]> {
@@ -209,7 +210,7 @@ export async function searchCustomers(
 // Main KPI aggregation
 // ---------------------------------------------------------------------------
 
-export async function fetchKpis(params: ScorecardParams): Promise<KpiComparison> {
+async function _fetchKpis(params: ScorecardParams): Promise<KpiComparison> {
   const sql = getErpSql();
   const { baseCutoff, compareCutoff } = getCutoffs(
     params.baseYear,
@@ -362,7 +363,7 @@ export async function fetchKpis(params: ScorecardParams): Promise<KpiComparison>
 // All-customer average benchmarks (weighted: total GP / total sales)
 // ---------------------------------------------------------------------------
 
-export async function fetchAllCustomersAvg(params: ScorecardParams): Promise<CustomerAvg> {
+async function _fetchAllCustomersAvg(params: ScorecardParams): Promise<CustomerAvg> {
   const sql = getErpSql();
   const { baseCutoff } = getCutoffs(
     params.baseYear,
@@ -448,7 +449,7 @@ export async function fetchAllCustomersAvg(params: ScorecardParams): Promise<Cus
 // 3-year rolling comparison table
 // ---------------------------------------------------------------------------
 
-export async function fetchThreeYear(params: ScorecardParams): Promise<ThreeYearEntry[]> {
+async function _fetchThreeYear(params: ScorecardParams): Promise<ThreeYearEntry[]> {
   const sql = getErpSql();
   const { baseCutoff } = getCutoffs(
     params.baseYear,
@@ -552,7 +553,7 @@ export async function fetchThreeYear(params: ScorecardParams): Promise<ThreeYear
 // Product major breakdown
 // ---------------------------------------------------------------------------
 
-export async function fetchProductMajors(params: ScorecardParams): Promise<ProductMajorRow[]> {
+async function _fetchProductMajors(params: ScorecardParams): Promise<ProductMajorRow[]> {
   const sql = getErpSql();
   const { baseCutoff, compareCutoff } = getCutoffs(
     params.baseYear,
@@ -650,7 +651,7 @@ export async function fetchProductMajors(params: ScorecardParams): Promise<Produ
 // Product minor drill-down (on demand)
 // ---------------------------------------------------------------------------
 
-export async function fetchProductMinors(
+async function _fetchProductMinors(
   params: ScorecardParams,
   majorCode: string,
 ): Promise<ProductMinorRow[]> {
@@ -753,7 +754,7 @@ export async function fetchProductMinors(
 // Sale type breakdown
 // ---------------------------------------------------------------------------
 
-export async function fetchSaleTypes(params: ScorecardParams): Promise<SaleTypeRow[]> {
+async function _fetchSaleTypes(params: ScorecardParams): Promise<SaleTypeRow[]> {
   const sql = getErpSql();
   const { baseCutoff, compareCutoff } = getCutoffs(
     params.baseYear,
@@ -851,7 +852,7 @@ export async function fetchSaleTypes(params: ScorecardParams): Promise<SaleTypeR
 // Average days to pay
 // ---------------------------------------------------------------------------
 
-export async function fetchDaysToPay(params: ScorecardParams): Promise<DaysToPayData> {
+async function _fetchDaysToPay(params: ScorecardParams): Promise<DaysToPayData> {
   const sql = getErpSql();
 
   type Row = { avg_base: string | null; avg_compare: string | null };
@@ -882,7 +883,7 @@ export async function fetchDaysToPay(params: ScorecardParams): Promise<DaysToPay
 // Aggregate KPIs (company / branch / rep â€” no customer_id filter)
 // ---------------------------------------------------------------------------
 
-export async function fetchAggregateKpis(
+async function _fetchAggregateKpis(
   params: AggregateParams,
   displayTitle: string,
 ): Promise<KpiComparison> {
@@ -1111,7 +1112,7 @@ export async function fetchAggregateKpis(
 // Aggregate 3-year comparison
 // ---------------------------------------------------------------------------
 
-export async function fetchAggregateThreeYear(
+async function _fetchAggregateThreeYear(
   params: AggregateParams,
 ): Promise<ThreeYearEntry[]> {
   const sql = getErpSql();
@@ -1286,7 +1287,7 @@ export async function fetchAggregateThreeYear(
 // Aggregate product major breakdown
 // ---------------------------------------------------------------------------
 
-export async function fetchAggregateProductMajors(
+async function _fetchAggregateProductMajors(
   params: AggregateParams,
 ): Promise<ProductMajorRow[]> {
   const sql = getErpSql();
@@ -1386,7 +1387,7 @@ export async function fetchAggregateProductMajors(
 // Aggregate product minor drill-down
 // ---------------------------------------------------------------------------
 
-export async function fetchAggregateProductMinors(
+async function _fetchAggregateProductMinors(
   params: AggregateParams,
   majorCode: string,
 ): Promise<ProductMinorRow[]> {
@@ -1490,7 +1491,7 @@ export async function fetchAggregateProductMinors(
 // Product item drill-down (on demand, within a major+minor)
 // ---------------------------------------------------------------------------
 
-export async function fetchProductItems(
+async function _fetchProductItems(
   params: ScorecardParams,
   majorCode: string,
   minorCode: string,
@@ -1613,7 +1614,7 @@ export async function fetchProductItems(
 // Aggregate product item drill-down
 // ---------------------------------------------------------------------------
 
-export async function fetchAggregateProductItems(
+async function _fetchAggregateProductItems(
   params: AggregateParams,
   majorCode: string,
   minorCode: string,
@@ -1732,7 +1733,7 @@ export async function fetchAggregateProductItems(
 // Product order drill-down (customer scorecard only, base year)
 // ---------------------------------------------------------------------------
 
-export async function fetchProductOrders(
+async function _fetchProductOrders(
   params: ScorecardParams,
   majorCode: string,
   minorCode: string,
@@ -1805,7 +1806,7 @@ export async function fetchProductOrders(
 // Aggregate sale type breakdown
 // ---------------------------------------------------------------------------
 
-export async function fetchAggregateSaleTypes(
+async function _fetchAggregateSaleTypes(
   params: AggregateParams,
 ): Promise<SaleTypeRow[]> {
   const sql = getErpSql();
@@ -1905,7 +1906,7 @@ export async function fetchAggregateSaleTypes(
 // Branch summary table (for overview page)
 // ---------------------------------------------------------------------------
 
-export async function fetchBranchSummaries(
+async function _fetchBranchSummaries(
   baseYear: number,
   compareYear: number,
   cutoffDate: string,
@@ -1972,7 +1973,7 @@ export async function fetchBranchSummaries(
 // Shows both assigned book (rep_1) and written-up (rep_3) per rep in one query.
 // ---------------------------------------------------------------------------
 
-export async function fetchRepList(
+async function _fetchRepList(
   baseYear: number,
   compareYear: number,
   cutoffDate: string,
@@ -2230,7 +2231,7 @@ function mapProdMinorRow(r: ProdRow): ProductScorecardMinorRow {
   };
 }
 
-export async function fetchProductScorecardMajors(
+async function _fetchProductScorecardMajors(
   params: AggregateParams,
 ): Promise<ProductScorecardMajorRow[]> {
   const sql = getErpSql();
@@ -2268,7 +2269,7 @@ export async function fetchProductScorecardMajors(
   return rows.map(mapProdMajorRow);
 }
 
-export async function fetchProductScorecardMinors(
+async function _fetchProductScorecardMinors(
   params: AggregateParams,
   majorCode: string,
 ): Promise<ProductScorecardMinorRow[]> {
@@ -2309,7 +2310,7 @@ export async function fetchProductScorecardMinors(
   return rows.map(mapProdMinorRow);
 }
 
-export async function fetchProductScorecardItems(
+async function _fetchProductScorecardItems(
   params: AggregateParams,
   majorCode: string,
   minorCode: string,
@@ -2432,3 +2433,29 @@ export async function fetchProductScorecardItems(
     qtyCompare: toNum(r.qty_compare) ?? 0,
   }));
 }
+
+// ---------------------------------------------------------------------------
+// Cached exports — 5-minute TTL via erpCache (unstable_cache + "erp" tag)
+// ---------------------------------------------------------------------------
+export const fetchCustomerList = erpCache(_fetchCustomerList, ['fetch-customer-list']);
+export const searchCustomers = erpCache(_searchCustomers, ['search-customers']);
+export const fetchKpis = erpCache(_fetchKpis, ['fetch-kpis']);
+export const fetchAllCustomersAvg = erpCache(_fetchAllCustomersAvg, ['fetch-all-customers-avg']);
+export const fetchThreeYear = erpCache(_fetchThreeYear, ['fetch-three-year']);
+export const fetchProductMajors = erpCache(_fetchProductMajors, ['fetch-product-majors']);
+export const fetchProductMinors = erpCache(_fetchProductMinors, ['fetch-product-minors']);
+export const fetchSaleTypes = erpCache(_fetchSaleTypes, ['fetch-sale-types']);
+export const fetchDaysToPay = erpCache(_fetchDaysToPay, ['fetch-days-to-pay']);
+export const fetchAggregateKpis = erpCache(_fetchAggregateKpis, ['fetch-aggregate-kpis']);
+export const fetchAggregateThreeYear = erpCache(_fetchAggregateThreeYear, ['fetch-aggregate-three-year']);
+export const fetchAggregateProductMajors = erpCache(_fetchAggregateProductMajors, ['fetch-aggregate-product-majors']);
+export const fetchAggregateProductMinors = erpCache(_fetchAggregateProductMinors, ['fetch-aggregate-product-minors']);
+export const fetchProductItems = erpCache(_fetchProductItems, ['fetch-product-items']);
+export const fetchAggregateProductItems = erpCache(_fetchAggregateProductItems, ['fetch-aggregate-product-items']);
+export const fetchProductOrders = erpCache(_fetchProductOrders, ['fetch-product-orders']);
+export const fetchAggregateSaleTypes = erpCache(_fetchAggregateSaleTypes, ['fetch-aggregate-sale-types']);
+export const fetchBranchSummaries = erpCache(_fetchBranchSummaries, ['fetch-branch-summaries']);
+export const fetchRepList = erpCache(_fetchRepList, ['fetch-rep-list']);
+export const fetchProductScorecardMajors = erpCache(_fetchProductScorecardMajors, ['fetch-product-scorecard-majors']);
+export const fetchProductScorecardMinors = erpCache(_fetchProductScorecardMinors, ['fetch-product-scorecard-minors']);
+export const fetchProductScorecardItems = erpCache(_fetchProductScorecardItems, ['fetch-product-scorecard-items']);
