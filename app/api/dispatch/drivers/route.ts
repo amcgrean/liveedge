@@ -11,6 +11,7 @@ export type DriverRoute = {
   assigned_truck_name: string | null;
   phone: string | null;
   notes: string | null;
+  is_active: boolean | null; // null = no dispatch_drivers row (treated as active)
 };
 
 // GET /api/dispatch/drivers?branch=20GR
@@ -36,7 +37,8 @@ export async function GET(req: NextRequest) {
         dd.default_truck_id         AS assigned_truck_id,
         dd.name                     AS assigned_truck_name,
         dd.phone,
-        dd.notes
+        dd.notes,
+        dd.is_active
       FROM public.delv_route dr
       LEFT JOIN public.dispatch_drivers dd
         ON dd.route_code = dr.route_id_char
@@ -72,6 +74,7 @@ export async function POST(req: NextRequest) {
     truck_name?: string;
     phone?: string;
     notes?: string;
+    is_active?: boolean;
   };
 
   const route_code = body.route_code?.trim() ?? '';
@@ -79,6 +82,8 @@ export async function POST(req: NextRequest) {
   if (!route_code || !branch_code) {
     return NextResponse.json({ error: 'route_code and branch_code are required.' }, { status: 400 });
   }
+
+  const isActive = body.is_active !== undefined ? body.is_active : true;
 
   try {
     const sql = getErpSql();
@@ -91,15 +96,16 @@ export async function POST(req: NextRequest) {
         ${body.truck_id?.trim() || null},
         ${body.phone?.trim() || null},
         ${body.notes?.trim() || null},
-        true
+        ${isActive}
       )
       ON CONFLICT (route_code, branch_code) WHERE route_code IS NOT NULL DO UPDATE SET
         name             = EXCLUDED.name,
         default_truck_id = EXCLUDED.default_truck_id,
         phone            = COALESCE(EXCLUDED.phone, dispatch_drivers.phone),
         notes            = COALESCE(EXCLUDED.notes, dispatch_drivers.notes),
+        is_active        = EXCLUDED.is_active,
         updated_at       = NOW()
-      RETURNING id, route_code, branch_code, default_truck_id, name, phone, notes
+      RETURNING id, route_code, branch_code, default_truck_id, name, phone, notes, is_active
     `;
     return NextResponse.json(row, { status: 201 });
   } catch (err) {
