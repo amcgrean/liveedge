@@ -1,5 +1,6 @@
 'use server';
 
+import { revalidateTag } from 'next/cache';
 import { getErpSql } from '@/db/supabase';
 import { erpCache } from '@/lib/erp-cache';
 
@@ -166,6 +167,7 @@ export async function createRebateProgram(input: ProgramInput): Promise<{ id: nu
     )
     RETURNING id
   `;
+  revalidateTag('erp');
   return { id: rows[0].id };
 }
 
@@ -189,6 +191,7 @@ export async function updateRebateProgram(id: number, input: ProgramInput): Prom
       updated_at         = now()
     WHERE id = ${id}
   `;
+  revalidateTag('erp');
 }
 
 export async function toggleRebateProgram(id: number, isActive: boolean): Promise<void> {
@@ -198,6 +201,7 @@ export async function toggleRebateProgram(id: number, isActive: boolean): Promis
     SET is_active = ${isActive}, updated_at = now()
     WHERE id = ${id}
   `;
+  revalidateTag('erp');
 }
 
 // Cached read-only exports — 5-minute TTL
