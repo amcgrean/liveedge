@@ -1,7 +1,7 @@
 'use server';
 
 import { getErpSql } from '@/db/supabase';
-import { erpCache } from '@/src/lib/erp-cache';
+import { erpCache } from '@/lib/erp-cache';
 
 export type RebateProgramRow = {
   id: number;
