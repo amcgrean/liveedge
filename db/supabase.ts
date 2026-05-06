@@ -40,23 +40,17 @@ function getErpConnectionString(): string {
   return url;
 }
 
-// 10 connections so that Promise.all() calls in the scorecard (and elsewhere)
-// can execute their queries genuinely in parallel through pgBouncer rather than
-// serialising behind a single connection. Each warm Vercel instance shares this
-// singleton, so keep the number reasonable relative to pgBouncer's pool size.
-const ERP_POOL_OPTIONS = {
-  max: 10,
-  idle_timeout: 20,
-  connect_timeout: 10,
-  prepare: false, // required for pgBouncer transaction mode
-  onconnect: async (sql: postgres.Sql) => {
-    // Kill any query that runs longer than 60 s so it can't block the pool.
-    await sql`SET statement_timeout = 60000`;
-  },
-} satisfies postgres.Options<Record<string, postgres.PostgresType>>;
-
 function createErpDb() {
-  _erpSql = postgres(getErpConnectionString(), ERP_POOL_OPTIONS);
+  // max: 10 — allows Promise.all() calls to run their queries genuinely in
+  // parallel through pgBouncer rather than serialising behind one connection.
+  // max: 1 (the previous value) caused 8+ sequential queries per page load,
+  // stacking to 300 s under concurrent users sharing the warm-instance singleton.
+  _erpSql = postgres(getErpConnectionString(), {
+    max: 10,
+    idle_timeout: 20,
+    connect_timeout: 10,
+    prepare: false, // required for pgBouncer transaction mode
+  });
   return drizzle(_erpSql);
 }
 
@@ -75,7 +69,12 @@ export function getErpDb() {
  */
 export function getErpSql() {
   if (!_erpSql) {
-    _erpSql = postgres(getErpConnectionString(), ERP_POOL_OPTIONS);
+    _erpSql = postgres(getErpConnectionString(), {
+      max: 10,
+      idle_timeout: 20,
+      connect_timeout: 10,
+      prepare: false,
+    });
   }
   return _erpSql;
 }
