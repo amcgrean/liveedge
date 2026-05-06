@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import dynamic from 'next/dynamic';
 import { TopNav } from '../../src/components/nav/TopNav';
 import { usePageTracking } from '@/hooks/usePageTracking';
@@ -643,6 +643,9 @@ export default function DispatchClient({ isAdmin, userBranch, userName, userRole
   const [date, setDate] = useState(today);
   const [branch, setBranch] = useBranchFilter(isAdmin, userBranch);
   const [search, setSearch] = useState('');
+  const [shipViaFilter, setShipViaFilter] = useState<Set<string>>(new Set());
+  const [shipViaOpen, setShipViaOpen] = useState(false);
+  const shipViaRef = useRef<HTMLDivElement>(null);
 
   // Data
   const [stops, setStops] = useState<DeliveryStop[]>([]);
@@ -664,6 +667,31 @@ export default function DispatchClient({ isAdmin, userBranch, userName, userRole
   const [erpRoutes, setErpRoutes] = useState<Array<{ route_code: string; driver_name: string; assigned_truck_id: string | null; assigned_truck_name: string | null }>>([]);
   const [erpRoutesLoaded, setErpRoutesLoaded] = useState(false);
   const [viewMode, setViewMode] = useState<'board' | 'map'>('board');
+
+  // Close ship-via dropdown on outside click
+  useEffect(() => {
+    if (!shipViaOpen) return;
+    function handler(e: MouseEvent) {
+      if (shipViaRef.current && !shipViaRef.current.contains(e.target as Node)) {
+        setShipViaOpen(false);
+      }
+    }
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, [shipViaOpen]);
+
+  // Unique ship_via values present in loaded stops (for building the dropdown)
+  const shipViaOptions = React.useMemo(() => {
+    const set = new Set<string>();
+    stops.forEach((s) => { if (s.ship_via?.trim()) set.add(s.ship_via.trim()); });
+    return Array.from(set).sort();
+  }, [stops]);
+
+  // Stops after ship-via filter applied (all other derived lists use this)
+  const shipViaFilteredStops = React.useMemo(() => {
+    if (shipViaFilter.size === 0) return stops;
+    return stops.filter((s) => shipViaFilter.has(s.ship_via?.trim() ?? ''));
+  }, [stops, shipViaFilter]);
 
   // Build a fast lookup: so_id → DeliveryStop
   const stopLookup = React.useMemo(() => {
@@ -821,7 +849,7 @@ export default function DispatchClient({ isAdmin, userBranch, userName, userRole
 
   // Delivery board grouping
   const grouped = React.useMemo(() => {
-    return stops.reduce<Record<string, DeliveryStop[]>>((acc, d) => {
+    return shipViaFilteredStops.reduce<Record<string, DeliveryStop[]>>((acc, d) => {
       let key: string;
       if (groupBy === 'route') key = d.route_id_char || '(Unrouted)';
       else if (groupBy === 'status') key = (STATUS_FLAG[d.status_flag?.toUpperCase()]?.label ?? d.status_flag) || '—';
@@ -829,7 +857,7 @@ export default function DispatchClient({ isAdmin, userBranch, userName, userRole
       (acc[key] ??= []).push(d);
       return acc;
     }, {});
-  }, [stops, groupBy]);
+  }, [shipViaFilteredStops, groupBy]);
 
   const groupKeys = Object.keys(grouped).sort((a, b) => {
     if (a === '(Unrouted)') return 1;
@@ -839,15 +867,15 @@ export default function DispatchClient({ isAdmin, userBranch, userName, userRole
 
   // Filtered lists
   const q = search.toLowerCase();
-  const unassignedStops = stops.filter((s) => !assignedSoIds.has(s.so_id) && s.so_status?.toUpperCase() !== 'I');
+  const unassignedStops = shipViaFilteredStops.filter((s) => !assignedSoIds.has(s.so_id) && s.so_status?.toUpperCase() !== 'I');
   const filteredUnassigned = q
     ? unassignedStops.filter((s) =>
         s.so_id.includes(q) || s.customer_name?.toLowerCase().includes(q) || s.city?.toLowerCase().includes(q))
     : unassignedStops;
   const filteredAll = q
-    ? stops.filter((s) =>
+    ? shipViaFilteredStops.filter((s) =>
         s.so_id.includes(q) || s.customer_name?.toLowerCase().includes(q) || s.city?.toLowerCase().includes(q))
-    : stops;
+    : shipViaFilteredStops;
 
   return (
     <div className="h-screen flex flex-col overflow-hidden relative" style={{ background: 'var(--bg)', color: 'var(--text)' }}>
@@ -892,6 +920,57 @@ export default function DispatchClient({ isAdmin, userBranch, userName, userRole
                   className="bg-gray-800 border border-gray-700 rounded pl-7 pr-3 py-1.5 text-sm text-white w-44 placeholder-gray-600"
                 />
               </div>
+
+              {/* Ship Via multi-select */}
+              <div className="relative" ref={shipViaRef}>
+                <button
+                  onClick={() => setShipViaOpen((o) => !o)}
+                  className={`flex items-center gap-1.5 px-2.5 py-1.5 text-sm border rounded transition whitespace-nowrap ${
+                    shipViaFilter.size > 0
+                      ? 'bg-cyan-900/40 border-cyan-700 text-cyan-300'
+                      : 'bg-gray-800 border-gray-700 text-gray-300 hover:text-white'
+                  }`}
+                >
+                  Ship Via{shipViaFilter.size > 0 ? ` (${shipViaFilter.size})` : ''}
+                  <ChevronDown className="w-3 h-3" />
+                </button>
+                {shipViaOpen && (
+                  <div className="absolute top-full left-0 mt-1 z-50 min-w-[160px] rounded-lg border border-gray-700 bg-gray-900 shadow-xl py-1">
+                    {shipViaOptions.length === 0 ? (
+                      <div className="px-3 py-2 text-xs text-gray-500">No options</div>
+                    ) : (
+                      <>
+                        {shipViaOptions.map((v) => (
+                          <label key={v} className="flex items-center gap-2.5 px-3 py-1.5 text-sm text-gray-300 hover:bg-gray-800 cursor-pointer">
+                            <input
+                              type="checkbox"
+                              checked={shipViaFilter.has(v)}
+                              onChange={() => {
+                                setShipViaFilter((prev) => {
+                                  const next = new Set(prev);
+                                  if (next.has(v)) next.delete(v); else next.add(v);
+                                  return next;
+                                });
+                              }}
+                              className="accent-cyan-500"
+                            />
+                            {v}
+                          </label>
+                        ))}
+                        {shipViaFilter.size > 0 && (
+                          <button
+                            onClick={() => setShipViaFilter(new Set())}
+                            className="w-full text-left px-3 py-1.5 text-xs text-gray-500 hover:text-white border-t border-gray-800 mt-1 pt-1.5"
+                          >
+                            Clear filter
+                          </button>
+                        )}
+                      </>
+                    )}
+                  </div>
+                )}
+              </div>
+
               <select
                 value={groupBy} onChange={(e) => setGroupBy(e.target.value as typeof groupBy)}
                 className="bg-gray-800 border border-gray-700 rounded px-2.5 py-1.5 text-sm text-white"

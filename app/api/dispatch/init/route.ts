@@ -127,7 +127,10 @@ export async function GET(req: NextRequest) {
       WHERE soh.is_deleted = false
         ${branchFilter}
         AND soh.so_status NOT IN ('C', 'X')
-        AND soh.expect_date::date = ${deliveryDate}::date
+        AND (
+          soh.expect_date::date <= ${deliveryDate}::date
+          OR (soh.sale_type = 'Credit' AND soh.expect_date IS NULL)
+        )
       ORDER BY soh.system_id, soh.so_id
     `;
 
