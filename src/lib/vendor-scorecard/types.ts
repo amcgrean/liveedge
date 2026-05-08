@@ -20,6 +20,7 @@ export type VendorListRow = {
   lastReceiveDate: string | null;
   riskFlagCount: number;
   activeProgramCount: number;
+  shipFromSeq: number | null;
 };
 
 export type BranchSpend = {
