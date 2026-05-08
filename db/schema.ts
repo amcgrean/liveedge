@@ -496,6 +496,29 @@ export const hubbellAddressCache = bidsSchema.table(
 );
 
 // ============================================================
+// MICROSOFT GRAPH SUBSCRIPTIONS
+// ============================================================
+// Tracks active /subscriptions resources on the Graph side (one per shared mailbox).
+// Renewed by /api/cron/graph-subscription-renew before they expire (~3-day window).
+export const graphSubscriptions = bidsSchema.table(
+  'graph_subscriptions',
+  {
+    id:                 uuid('id').primaryKey().defaultRandom(),
+    subscriptionId:     varchar('subscription_id', { length: 100 }).notNull().unique(),
+    mailbox:            varchar('mailbox', { length: 255 }).notNull(),    // e.g. credits@beisserlumber.com
+    resource:           text('resource').notNull(),                       // /users/.../messages
+    clientState:        varchar('client_state', { length: 128 }).notNull(),
+    expirationDateTime: timestamp('expiration_date_time', { withTimezone: true }).notNull(),
+    createdAt:          timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    lastRenewedAt:      timestamp('last_renewed_at', { withTimezone: true }),
+  },
+  (table) => [
+    index('graph_subscriptions_mailbox_idx').on(table.mailbox),
+    index('graph_subscriptions_expires_idx').on(table.expirationDateTime),
+  ]
+);
+
+// ============================================================
 // RELATIONS
 // ============================================================
 export const bidsRelations = relations(bids, ({ one, many }) => ({
@@ -624,3 +647,5 @@ export type TakeoffMeasurement = typeof takeoffMeasurements.$inferSelect;
 export type TakeoffPageState = typeof takeoffPageStates.$inferSelect;
 export type PoSubmission = typeof poSubmissions.$inferSelect;
 export type NewPoSubmission = typeof poSubmissions.$inferInsert;
+export type GraphSubscription = typeof graphSubscriptions.$inferSelect;
+export type NewGraphSubscription = typeof graphSubscriptions.$inferInsert;
