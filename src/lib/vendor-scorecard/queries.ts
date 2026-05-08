@@ -224,6 +224,7 @@ async function _fetchVendorList(params: VendorScorecardParams): Promise<VendorLi
     supplier_key: string;
     supplier_code: string;
     supplier_name: string;
+    shipfrom_seq: number | null;
     spend_ytd: string | null;
     fill_rate: string | null;
     otd_rate:  string | null;
@@ -242,9 +243,12 @@ async function _fetchVendorList(params: VendorScorecardParams): Promise<VendorLi
           AND (${params.branch} = 'all' OR system_id = ${params.branch})
       )
       SELECT
-        ph.supplier_key,
+        CASE WHEN ph.supplier_code = 'LMC1000'
+          THEN ph.supplier_key || '::' || COALESCE(ph.shipfrom_seq::text, '0')
+          ELSE ph.supplier_key END AS supplier_key,
         MAX(ph.supplier_code) AS supplier_code,
-        MAX(ph.supplier_name) AS supplier_name,
+        COALESCE(MAX(s.ship_from_name), MAX(ph.supplier_name)) AS supplier_name,
+        MAX(CASE WHEN ph.supplier_code = 'LMC1000' THEN ph.shipfrom_seq ELSE NULL END) AS shipfrom_seq,
         SUM(rl.cost)::numeric(18,2)::text AS spend_ytd,
         (SUM(rl.qty)::numeric / NULLIF(SUM(pl.qty_ordered), 0))::numeric(6,4)::text AS fill_rate,
         (COUNT(*) FILTER (WHERE h.receive_date::date <= ph.expect_date::date)::numeric
@@ -257,8 +261,16 @@ async function _fetchVendorList(params: VendorScorecardParams): Promise<VendorLi
         ON ph.system_id = h.system_id AND ph.po_id = h.po_id
       LEFT JOIN agility_po_lines pl
         ON pl.system_id = rl.system_id AND pl.po_id = rl.po_id AND pl.sequence = rl.sequence
+      LEFT JOIN agility_suppliers s
+        ON s.system_id = '00CO'
+        AND TRIM(s.supplier_key) = TRIM(ph.supplier_key)
+        AND s.ship_from_seq = ph.shipfrom_seq
+        AND s.is_deleted = false
       WHERE rl.is_deleted = false AND ph.is_deleted = false
-      GROUP BY ph.supplier_key
+      GROUP BY
+        CASE WHEN ph.supplier_code = 'LMC1000'
+          THEN ph.supplier_key || '::' || COALESCE(ph.shipfrom_seq::text, '0')
+          ELSE ph.supplier_key END
       ORDER BY spend_ytd DESC NULLS LAST
       LIMIT 200
     `,
@@ -271,7 +283,9 @@ async function _fetchVendorList(params: VendorScorecardParams): Promise<VendorLi
           AND (${params.branch} = 'all' OR system_id = ${params.branch})
       )
       SELECT
-        ph.supplier_key,
+        CASE WHEN ph.supplier_code = 'LMC1000'
+          THEN ph.supplier_key || '::' || COALESCE(ph.shipfrom_seq::text, '0')
+          ELSE ph.supplier_key END AS supplier_key,
         SUM(rl.cost)::numeric(18,2)::text AS spend_py
       FROM h
       JOIN agility_receiving_lines rl
@@ -279,11 +293,16 @@ async function _fetchVendorList(params: VendorScorecardParams): Promise<VendorLi
       JOIN agility_po_header ph
         ON ph.system_id = h.system_id AND ph.po_id = h.po_id
       WHERE rl.is_deleted = false AND ph.is_deleted = false
-      GROUP BY ph.supplier_key
+      GROUP BY
+        CASE WHEN ph.supplier_code = 'LMC1000'
+          THEN ph.supplier_key || '::' || COALESCE(ph.shipfrom_seq::text, '0')
+          ELSE ph.supplier_key END
     `,
     sql<OpenPoRow[]>`
       SELECT
-        ph.supplier_key,
+        CASE WHEN ph.supplier_code = 'LMC1000'
+          THEN ph.supplier_key || '::' || COALESCE(ph.shipfrom_seq::text, '0')
+          ELSE ph.supplier_key END AS supplier_key,
         COUNT(DISTINCT ph.po_id)::text AS open_po_count,
         SUM(pl.cost)::numeric(18,2)::text AS open_po_value
       FROM agility_po_header ph
@@ -292,7 +311,10 @@ async function _fetchVendorList(params: VendorScorecardParams): Promise<VendorLi
         AND ph.canceled = false
         AND UPPER(ph.po_status) NOT IN ('CLOSED', 'CANCELED', 'COMPLETE', 'RECEIVED')
         AND (${params.branch} = 'all' OR ph.system_id = ${params.branch})
-      GROUP BY ph.supplier_key
+      GROUP BY
+        CASE WHEN ph.supplier_code = 'LMC1000'
+          THEN ph.supplier_key || '::' || COALESCE(ph.shipfrom_seq::text, '0')
+          ELSE ph.supplier_key END
     `,
   ]);
 
@@ -302,12 +324,14 @@ async function _fetchVendorList(params: VendorScorecardParams): Promise<VendorLi
   let pgMap = new Map<string, string>();
   if (ytdRows.length > 0) {
     try {
-      const keys = ytdRows.map((r) => r.supplier_key);
-      const pgRows = await sql<{ supplier_key: string; product_group: string }[]>`
-        SELECT DISTINCT ON (supplier_key) supplier_key, product_group
+      const rawKeys = [...new Set(ytdRows.map((r) => r.supplier_key.split('::')[0]))];
+      const pgRows = await sql<{ vendor_key: string; product_group: string }[]>`
+        SELECT DISTINCT ON (vendor_key) vendor_key, product_group
         FROM (
           SELECT
-            ph.supplier_key,
+            CASE WHEN ph.supplier_code = 'LMC1000'
+              THEN ph.supplier_key || '::' || COALESCE(ph.shipfrom_seq::text, '0')
+              ELSE ph.supplier_key END AS vendor_key,
             ai.link_product_group AS product_group,
             SUM(rl.cost) AS gs
           FROM agility_receiving_lines rl
@@ -319,14 +343,14 @@ async function _fetchVendorList(params: VendorScorecardParams): Promise<VendorLi
             ON ai.item_ptr = rl.item_ptr
           WHERE rl.is_deleted = false AND rh.is_deleted = false
             AND ph.is_deleted = false AND ai.is_deleted = false
-            AND ph.supplier_key = ANY(${keys})
+            AND ph.supplier_key = ANY(${rawKeys})
             AND rh.receive_date >= ${s}::date AND rh.receive_date < ${e}::date + 1
             AND ai.link_product_group IS NOT NULL AND ai.link_product_group <> ''
-          GROUP BY ph.supplier_key, ai.link_product_group
+          GROUP BY vendor_key, ai.link_product_group
         ) sub
-        ORDER BY supplier_key, gs DESC
+        ORDER BY vendor_key, gs DESC
       `;
-      pgMap = new Map(pgRows.map((r) => [r.supplier_key, r.product_group]));
+      pgMap = new Map(pgRows.map((r) => [r.vendor_key, r.product_group]));
     } catch {
       // Items table unavailable
     }
@@ -365,7 +389,8 @@ async function _fetchVendorList(params: VendorScorecardParams): Promise<VendorLi
       : ytdRows.filter((r) => pgMap.get(r.supplier_key) === params.productGroup);
 
   return filtered.slice(0, 150).map((r) => {
-    const rb    = rebateMap.get(r.supplier_key);
+    const rawKey = r.supplier_key.split('::')[0];
+    const rb    = rebateMap.get(rawKey);
     const op    = openPoMap.get(r.supplier_key);
     const fillN = toNumOrNull(r.fill_rate);
     const otdN  = toNumOrNull(r.otd_rate);
@@ -385,6 +410,7 @@ async function _fetchVendorList(params: VendorScorecardParams): Promise<VendorLi
       lastReceiveDate:    r.last_receive_date,
       riskFlagCount:      0,
       activeProgramCount: rb?.progCount ?? 0,
+      shipFromSeq:        r.shipfrom_seq ?? null,
     };
   });
 }
@@ -406,10 +432,16 @@ async function _fetchVendorDetail(
   const ps = fmt(pyStart);
   const pe = fmt(pyEnd);
 
+  const colonIdx = supplierKey.indexOf('::');
+  const rawKey   = colonIdx >= 0 ? supplierKey.slice(0, colonIdx) : supplierKey;
+  const seqNum   = colonIdx >= 0 ? parseInt(supplierKey.slice(colonIdx + 2), 10) : null;
+  const seqFilter = (seqNum !== null && seqNum > 0) ? sql`AND ph.shipfrom_seq = ${seqNum}` : sql``;
+
   type BranchYtdRow = { system_id: string; spend_ytd: string | null; fill_rate: string | null; otd_rate: string | null };
   type BranchPyRow  = { system_id: string; spend_py: string | null };
+  type SupplierInfoRow = { supplier_code: string | null; supplier_name: string | null; ship_from_name: string | null };
 
-  const [branchYtdRows, branchPyRows, pgRows, openPoRows] = await Promise.all([
+  const [branchYtdRows, branchPyRows, pgRows, openPoRows, supplierInfoRows] = await Promise.all([
     sql<BranchYtdRow[]>`
       WITH h AS MATERIALIZED (
         SELECT system_id, po_id, receive_num, receive_date
@@ -432,7 +464,8 @@ async function _fetchVendorDetail(
       LEFT JOIN agility_po_lines pl
         ON pl.system_id = rl.system_id AND pl.po_id = rl.po_id AND pl.sequence = rl.sequence
       WHERE rl.is_deleted = false AND ph.is_deleted = false
-        AND ph.supplier_key = ${supplierKey}
+        AND ph.supplier_key = ${rawKey}
+        ${seqFilter}
       GROUP BY h.system_id
       ORDER BY spend_ytd DESC NULLS LAST
     `,
@@ -451,7 +484,8 @@ async function _fetchVendorDetail(
       JOIN agility_po_header ph
         ON ph.system_id = h.system_id AND ph.po_id = h.po_id
       WHERE rl.is_deleted = false AND ph.is_deleted = false
-        AND ph.supplier_key = ${supplierKey}
+        AND ph.supplier_key = ${rawKey}
+        ${seqFilter}
       GROUP BY h.system_id
     `,
     sql<{ product_group: string; spend_ytd: string }[]>`
@@ -473,7 +507,8 @@ async function _fetchVendorDetail(
       LEFT JOIN agility_items ai
         ON ai.item_ptr = rl.item_ptr AND ai.is_deleted = false
       WHERE rl.is_deleted = false AND ph.is_deleted = false
-        AND ph.supplier_key = ${supplierKey}
+        AND ph.supplier_key = ${rawKey}
+        ${seqFilter}
       GROUP BY product_group
       ORDER BY spend_ytd DESC NULLS LAST
       LIMIT 20
@@ -485,12 +520,27 @@ async function _fetchVendorDetail(
       FROM agility_po_header ph
       JOIN agility_po_lines pl ON pl.system_id = ph.system_id AND pl.po_id = ph.po_id
       WHERE ph.is_deleted = false AND pl.is_deleted = false
-        AND ph.supplier_key = ${supplierKey}
+        AND ph.supplier_key = ${rawKey}
+        ${seqFilter}
         AND ph.canceled = false
         AND UPPER(ph.po_status) NOT IN ('CLOSED', 'CANCELED', 'COMPLETE', 'RECEIVED')
         AND (${params.branch} = 'all' OR ph.system_id = ${params.branch})
     `,
+    sql<SupplierInfoRow[]>`
+      SELECT supplier_code, supplier_name, ship_from_name
+      FROM agility_suppliers
+      WHERE system_id = '00CO' AND TRIM(supplier_key) = TRIM(${rawKey}) AND is_deleted = false
+        ${(seqNum !== null && seqNum > 0) ? sql`AND ship_from_seq = ${seqNum}` : sql``}
+      ORDER BY ship_from_seq
+      LIMIT 1
+    `,
   ]);
+
+  const supplierDisplayName =
+    supplierInfoRows[0]?.ship_from_name ??
+    supplierInfoRows[0]?.supplier_name ??
+    rawKey.trim();
+  const supplierCode = supplierInfoRows[0]?.supplier_code ?? rawKey.trim();
 
   if (branchYtdRows.length === 0 && branchPyRows.length === 0) return null;
 
@@ -543,7 +593,7 @@ async function _fetchVendorDetail(
           SELECT MAX(a2.snapshot_date) FROM supplier_rebate_attainment a2
           WHERE a2.program_id = p.id
         )
-      WHERE p.supplier_key = ${supplierKey} AND p.is_active = true
+      WHERE p.supplier_key = ${rawKey} AND p.is_active = true
       ORDER BY p.program_type, p.period_start
     `;
 
@@ -577,7 +627,7 @@ async function _fetchVendorDetail(
     }[]>`
       SELECT id, flag_type, severity, description, created_at::text
       FROM supplier_risk_flags
-      WHERE supplier_key = ${supplierKey} AND is_active = true
+      WHERE supplier_key = ${rawKey} AND is_active = true
       ORDER BY severity DESC, created_at DESC
     `;
     riskFlags = flagRows.map((r) => ({
@@ -589,7 +639,7 @@ async function _fetchVendorDetail(
   }
 
   return {
-    supplierKey, supplierCode: '', supplierName: supplierKey,
+    supplierKey, supplierCode, supplierName: supplierDisplayName,
     spendYTD: totalYTD, spendPY: totalPY,
     rebateEarnedYTD: rebateEarned, rebateAccrued,
     fillRatePct: branchBreakdown[0]?.fillRatePct ?? null,
