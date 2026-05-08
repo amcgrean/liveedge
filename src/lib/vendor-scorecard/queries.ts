@@ -82,7 +82,7 @@ async function _fetchVendorScorecardSummary(
       )
       SELECT
         ph.supplier_key,
-        SUM(rl.qty * rl.cost / NULLIF(rl.display_cost_conv, 0))::numeric(18,2)::text AS spend,
+        SUM(rl.cost)::numeric(18,2)::text AS spend,
         (SUM(rl.qty)::numeric / NULLIF(SUM(pl.qty_ordered), 0))::numeric(6,4)::text AS fill_rate,
         (COUNT(*) FILTER (WHERE h.receive_date::date <= ph.expect_date::date)::numeric
           / NULLIF(COUNT(*), 0))::numeric(6,4)::text AS otd_rate
@@ -106,7 +106,7 @@ async function _fetchVendorScorecardSummary(
       )
       SELECT
         ph.supplier_key,
-        SUM(rl.qty * rl.cost / NULLIF(rl.display_cost_conv, 0))::numeric(18,2)::text AS spend
+        SUM(rl.cost)::numeric(18,2)::text AS spend
       FROM h
       JOIN agility_receiving_lines rl
         ON rl.system_id = h.system_id AND rl.po_id = h.po_id AND rl.receive_num = h.receive_num
@@ -245,7 +245,7 @@ async function _fetchVendorList(params: VendorScorecardParams): Promise<VendorLi
         ph.supplier_key,
         MAX(ph.supplier_code) AS supplier_code,
         MAX(ph.supplier_name) AS supplier_name,
-        SUM(rl.qty * rl.cost / NULLIF(rl.display_cost_conv, 0))::numeric(18,2)::text AS spend_ytd,
+        SUM(rl.cost)::numeric(18,2)::text AS spend_ytd,
         (SUM(rl.qty)::numeric / NULLIF(SUM(pl.qty_ordered), 0))::numeric(6,4)::text AS fill_rate,
         (COUNT(*) FILTER (WHERE h.receive_date::date <= ph.expect_date::date)::numeric
           / NULLIF(COUNT(*), 0))::numeric(6,4)::text AS otd_rate,
@@ -272,7 +272,7 @@ async function _fetchVendorList(params: VendorScorecardParams): Promise<VendorLi
       )
       SELECT
         ph.supplier_key,
-        SUM(rl.qty * rl.cost / NULLIF(rl.display_cost_conv, 0))::numeric(18,2)::text AS spend_py
+        SUM(rl.cost)::numeric(18,2)::text AS spend_py
       FROM h
       JOIN agility_receiving_lines rl
         ON rl.system_id = h.system_id AND rl.po_id = h.po_id AND rl.receive_num = h.receive_num
@@ -285,7 +285,7 @@ async function _fetchVendorList(params: VendorScorecardParams): Promise<VendorLi
       SELECT
         ph.supplier_key,
         COUNT(DISTINCT ph.po_id)::text AS open_po_count,
-        SUM(pl.qty_ordered * pl.cost / NULLIF(pl.disp_cost_conv, 0))::numeric(18,2)::text AS open_po_value
+        SUM(pl.cost)::numeric(18,2)::text AS open_po_value
       FROM agility_po_header ph
       JOIN agility_po_lines pl ON pl.system_id = ph.system_id AND pl.po_id = ph.po_id
       WHERE ph.is_deleted = false AND pl.is_deleted = false
@@ -309,7 +309,7 @@ async function _fetchVendorList(params: VendorScorecardParams): Promise<VendorLi
           SELECT
             ph.supplier_key,
             ai.link_product_group AS product_group,
-            SUM(rl.qty * rl.cost / NULLIF(rl.display_cost_conv, 0)) AS gs
+            SUM(rl.cost) AS gs
           FROM agility_receiving_lines rl
           JOIN agility_receiving_header rh
             ON rh.system_id = rl.system_id AND rh.po_id = rl.po_id AND rh.receive_num = rl.receive_num
@@ -420,7 +420,7 @@ async function _fetchVendorDetail(
       )
       SELECT
         h.system_id,
-        SUM(rl.qty * rl.cost / NULLIF(rl.display_cost_conv, 0))::numeric(18,2)::text AS spend_ytd,
+        SUM(rl.cost)::numeric(18,2)::text AS spend_ytd,
         (SUM(rl.qty)::numeric / NULLIF(SUM(pl.qty_ordered), 0))::numeric(6,4)::text AS fill_rate,
         (COUNT(*) FILTER (WHERE h.receive_date::date <= ph.expect_date::date)::numeric
           / NULLIF(COUNT(*), 0))::numeric(6,4)::text AS otd_rate
@@ -444,7 +444,7 @@ async function _fetchVendorDetail(
           AND receive_date >= ${ps}::date AND receive_date < ${pe}::date + 1
           AND (${params.branch} = 'all' OR system_id = ${params.branch})
       )
-      SELECT h.system_id, SUM(rl.qty * rl.cost / NULLIF(rl.display_cost_conv, 0))::numeric(18,2)::text AS spend_py
+      SELECT h.system_id, SUM(rl.cost)::numeric(18,2)::text AS spend_py
       FROM h
       JOIN agility_receiving_lines rl
         ON rl.system_id = h.system_id AND rl.po_id = h.po_id AND rl.receive_num = h.receive_num
@@ -464,7 +464,7 @@ async function _fetchVendorDetail(
       )
       SELECT
         COALESCE(ai.link_product_group, 'Unassigned') AS product_group,
-        SUM(rl.qty * rl.cost / NULLIF(rl.display_cost_conv, 0))::numeric(18,2)::text AS spend_ytd
+        SUM(rl.cost)::numeric(18,2)::text AS spend_ytd
       FROM h
       JOIN agility_receiving_lines rl
         ON rl.system_id = h.system_id AND rl.po_id = h.po_id AND rl.receive_num = h.receive_num
@@ -481,7 +481,7 @@ async function _fetchVendorDetail(
     sql<{ open_po_count: string; open_po_value: string }[]>`
       SELECT
         COUNT(DISTINCT ph.po_id)::text AS open_po_count,
-        COALESCE(SUM(pl.qty_ordered * pl.cost / NULLIF(pl.disp_cost_conv, 0)), 0)::numeric(18,2)::text AS open_po_value
+        COALESCE(SUM(pl.cost), 0)::numeric(18,2)::text AS open_po_value
       FROM agility_po_header ph
       JOIN agility_po_lines pl ON pl.system_id = ph.system_id AND pl.po_id = ph.po_id
       WHERE ph.is_deleted = false AND pl.is_deleted = false
