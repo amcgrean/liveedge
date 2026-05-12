@@ -60,9 +60,6 @@ interface Props {
   userRole?: string;
 }
 
-type LeftTab = 'unassigned' | 'routes' | 'all';
-type DetailTab = 'timeline' | 'lines';
-
 // ── Constants ─────────────────────────────────────────────────────────────────
 
 const BRANCHES = ['10FD', '20GR', '25BW', '40CV'];
@@ -97,6 +94,27 @@ function statusBadge(flag: string) {
 function fmtDate(d: string | null) {
   if (!d) return '—';
   return new Date(d).toLocaleDateString();
+}
+
+function fmtExpectDate(iso: string | null): string {
+  if (!iso) return '';
+  const d = new Date(iso + 'T00:00:00');
+  const today = new Date(); today.setHours(0,0,0,0);
+  const tomorrow = new Date(today); tomorrow.setDate(today.getDate() + 1);
+  if (d.getTime() === today.getTime()) return 'Today';
+  if (d.getTime() === tomorrow.getTime()) return 'Tomorrow';
+  return d.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
+}
+
+function expectDateColor(iso: string | null): string {
+  if (!iso) return 'var(--text-3)';
+  const d = new Date(iso + 'T00:00:00');
+  const today = new Date(); today.setHours(0,0,0,0);
+  const tomorrow = new Date(today); tomorrow.setDate(today.getDate() + 1);
+  if (d.getTime() === today.getTime()) return '#4ec48a';
+  if (d.getTime() === tomorrow.getTime()) return '#d4a23a';
+  if (d < today) return '#d05050';
+  return 'var(--text-3)';
 }
 
 function fmtMoney(n: number | null) {
@@ -194,6 +212,11 @@ function StopCard({
         </div>
         <div className="flex flex-col items-end gap-1 shrink-0">
           {statusBadge(stop.status_flag)}
+          {stop.expect_date && (
+            <span className="text-[9px] font-mono" style={{ color: expectDateColor(stop.expect_date) }}>
+              {fmtExpectDate(stop.expect_date)}
+            </span>
+          )}
           {stop.driver_stop_status === 'delivered' && (
             <span className="text-[9px] text-green-400 font-medium">✓ Driver confirmed</span>
           )}
@@ -202,6 +225,20 @@ function StopCard({
           )}
         </div>
       </div>
+      {(stop.ship_via || stop.reference) && (
+        <div className="flex items-center gap-1.5 mt-1.5 flex-wrap">
+          {stop.ship_via && (
+            <span className="text-[10px] px-1.5 py-0.5 rounded border border-gray-700 bg-gray-800 text-gray-400">
+              {stop.ship_via}
+            </span>
+          )}
+          {stop.reference && (
+            <span className="text-[10px] font-mono px-1.5 py-0.5 rounded border border-gray-700 bg-gray-800/60 text-gray-400 truncate max-w-[120px]" title={stop.reference}>
+              {stop.reference}
+            </span>
+          )}
+        </div>
+      )}
       {routes.length > 0 && (
         <div className="mt-1.5" onClick={(e) => e.stopPropagation()}>
           {showAssign ? (
@@ -334,10 +371,98 @@ function RouteCard({
 }
 
 
+// ── Order Lines Section ────────────────────────────────────────────────────────
+
+function OrderLinesSection({ lines, loading }: { lines: OrderLine[] | null; loading: boolean }) {
+  if (loading) {
+    return (
+      <div className="px-4 py-3 border-b border-gray-700 shrink-0">
+        <div className="text-[10px] uppercase tracking-wider text-gray-500 mb-2">Order Lines</div>
+        <div className="text-xs text-gray-600">Loading lines…</div>
+      </div>
+    );
+  }
+  if (!lines || lines.length === 0) return null;
+
+  const shortCount = lines.filter(
+    (l) => l.qty_ordered != null && l.qty_ordered > 0 && (l.qty_on_hand ?? Infinity) <= 0
+  ).length;
+
+  return (
+    <div className="border-b border-gray-700 shrink-0">
+      <div className="px-4 pt-3 pb-2 flex items-center gap-2">
+        <span className="text-[10px] uppercase tracking-wider text-gray-500">Order Lines</span>
+        <span className="text-[10px] font-mono text-gray-600">({lines.length})</span>
+        {shortCount > 0 && (
+          <span className="ml-auto text-[10px] font-semibold px-1.5 py-0.5 rounded"
+            style={{ color: '#d4a23a', background: 'rgba(212,162,58,0.12)', border: '1px solid rgba(212,162,58,0.4)' }}>
+            {shortCount} short / awaiting PO
+          </span>
+        )}
+      </div>
+      <div className="px-4 pb-3">
+        <div className="rounded border border-gray-700 overflow-hidden text-xs font-mono">
+          {/* header */}
+          <div className="grid text-[9.5px] uppercase tracking-wider text-gray-500 font-sans font-semibold"
+            style={{ gridTemplateColumns: '44px 40px 1fr', gap: '6px', padding: '5px 8px', background: 'var(--panel-2)', borderBottom: '1px solid var(--line)' }}>
+            <div className="text-right">Qty</div>
+            <div>UOM</div>
+            <div>Item · Description</div>
+          </div>
+          {lines.map((l, i) => {
+            const isShort = (l.qty_on_hand ?? Infinity) <= 0 && (l.qty_ordered ?? 0) > 0;
+            const isReturn = (l.qty_ordered ?? 0) < 0;
+            return (
+              <div key={i}
+                style={{
+                  display: 'grid', gridTemplateColumns: '44px 40px 1fr', gap: '6px',
+                  padding: '6px 8px',
+                  borderBottom: i === lines.length - 1 ? 'none' : '1px solid rgba(255,255,255,0.04)',
+                  background: isShort ? 'rgba(212,162,58,0.06)' : 'transparent',
+                  alignItems: 'baseline',
+                }}
+              >
+                <div className="text-right font-semibold" style={{ color: isReturn || isShort ? '#d4a23a' : 'var(--text)' }}>
+                  {l.qty_ordered}
+                </div>
+                <div className="text-gray-400">{l.uom ?? '—'}</div>
+                <div className="min-w-0">
+                  <div className="flex items-baseline gap-1.5 flex-wrap">
+                    <span className="text-cyan-400 font-semibold">{l.item_code ?? '—'}</span>
+                    {isShort && (
+                      <span className="font-sans text-[9px] font-semibold uppercase tracking-wider px-1 py-px rounded"
+                        style={{ color: '#d4a23a', background: 'rgba(212,162,58,0.16)', border: '1px solid rgba(212,162,58,0.45)' }}>
+                        0 avail · special order
+                      </span>
+                    )}
+                    {isReturn && (
+                      <span className="font-sans text-[9px] font-semibold uppercase tracking-wider px-1 py-px rounded"
+                        style={{ color: '#d4a23a', background: 'rgba(212,162,58,0.16)', border: '1px solid rgba(212,162,58,0.45)' }}>
+                        return
+                      </span>
+                    )}
+                  </div>
+                  <div className="text-gray-400 text-[10.5px] mt-0.5 font-sans">
+                    {l.description ?? ''}{l.size ? ` ${l.size}` : ''}
+                  </div>
+                  {isShort && (
+                    <div className="text-[10px] text-gray-600 mt-0.5 font-sans">
+                      On hand <span className="font-mono text-red-400">0</span> · awaiting PO receipt
+                    </div>
+                  )}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ── Detail Panel ───────────────────────────────────────────────────────────────
 
 function DetailPanel({ stop, onClose }: { stop: DeliveryStop; onClose: () => void }) {
-  const [detailTab, setDetailTab] = useState<DetailTab>('timeline');
   const [timeline, setTimeline] = useState<TimelineData | null>(null);
   const [lines, setLines] = useState<OrderLine[] | null>(null);
   const [loadingTimeline, setLoadingTimeline] = useState(false);
@@ -354,7 +479,7 @@ function DetailPanel({ stop, onClose }: { stop: DeliveryStop; onClose: () => voi
   const [noteSuccess, setNoteSuccess] = useState('');
 
   useEffect(() => {
-    setTimeline(null); setLines(null); setDetailTab('timeline');
+    setTimeline(null); setLines(null);
     setPickFileId(null); setPickError(''); setNoteText(''); setShowNoteForm(false); setNoteError(''); setNoteSuccess('');
   }, [stop.so_id]);
 
@@ -401,24 +526,25 @@ function DetailPanel({ stop, onClose }: { stop: DeliveryStop; onClose: () => voi
   };
 
   useEffect(() => {
-    if (detailTab !== 'timeline' || timeline) return;
+    if (timeline) return;
     setLoadingTimeline(true);
     fetch(`/api/dispatch/orders/${encodeURIComponent(stop.so_id)}/timeline`)
       .then((r) => r.ok ? r.json() : null)
       .then((d) => setTimeline(d))
       .catch(() => {})
       .finally(() => setLoadingTimeline(false));
-  }, [detailTab, stop.so_id, timeline]);
+  }, [stop.so_id, timeline]);
 
   useEffect(() => {
-    if (detailTab !== 'lines' || lines) return;
+    if (lines) return;
     setLoadingLines(true);
-    fetch(`/api/dispatch/orders/${encodeURIComponent(stop.so_id)}/lines`)
+    const branch = stop.system_id ? `?branch=${encodeURIComponent(stop.system_id)}` : '';
+    fetch(`/api/dispatch/orders/${encodeURIComponent(stop.so_id)}/lines${branch}`)
       .then((r) => r.ok ? r.json() : null)
       .then((d) => setLines(d?.lines ?? []))
       .catch(() => {})
       .finally(() => setLoadingLines(false));
-  }, [detailTab, stop.so_id, lines]);
+  }, [stop.so_id, stop.system_id, lines]);
 
   return (
     <div className="flex flex-col h-full bg-gray-900 border-l border-gray-700 overflow-hidden">
@@ -543,95 +669,251 @@ function DetailPanel({ stop, onClose }: { stop: DeliveryStop; onClose: () => voi
         )}
       </div>
 
-      {/* Tabs */}
-      <div className="flex border-b border-gray-700 shrink-0">
-        {(['timeline', 'lines'] as DetailTab[]).map((t) => (
-          <button
-            key={t}
-            onClick={() => setDetailTab(t)}
-            className={`px-4 py-2 text-xs font-medium capitalize transition border-b-2 ${
-              detailTab === t ? 'border-cyan-500 text-cyan-400' : 'border-transparent text-gray-500 hover:text-gray-300'
-            }`}
-          >
-            {t.charAt(0).toUpperCase() + t.slice(1)}
-          </button>
-        ))}
-      </div>
+      {/* Order lines — always visible below Actions */}
+      <OrderLinesSection lines={lines} loading={loadingLines} />
 
-      {/* Tab content */}
+      {/* Timeline */}
       <div className="flex-1 overflow-y-auto px-4 py-3">
-        {/* Timeline tab */}
-        {detailTab === 'timeline' && (
-          loadingTimeline ? (
-            <div className="text-xs text-gray-500 text-center py-6">Loading timeline…</div>
-          ) : !timeline ? (
-            <div className="text-xs text-red-400 text-center py-6">Could not load timeline.</div>
-          ) : timeline.events.length === 0 ? (
-            <div className="text-xs text-gray-600 text-center py-6">No timeline events yet.</div>
-          ) : (
-            <ol className="relative border-l border-gray-700 ml-2 space-y-4">
-              {timeline.events.map((ev, i) => (
-                <li key={i} className="pl-4">
-                  <span className="absolute -left-1 w-2 h-2 rounded-full bg-cyan-500 mt-0.5" />
-                  <div className="text-xs font-medium text-gray-200">{ev.label}</div>
-                  {ev.time && <div className="text-xs text-gray-500">{new Date(ev.time).toLocaleString()}</div>}
-                  {ev.detail && <div className="text-xs text-gray-500 italic">{ev.detail}</div>}
-                </li>
-              ))}
-            </ol>
-          )
+        <div className="text-[10px] uppercase tracking-wider text-gray-500 mb-3">Activity</div>
+        {loadingTimeline ? (
+          <div className="text-xs text-gray-500 text-center py-6">Loading timeline…</div>
+        ) : !timeline ? (
+          <div className="text-xs text-red-400 text-center py-6">Could not load timeline.</div>
+        ) : timeline.events.length === 0 ? (
+          <div className="text-xs text-gray-600 text-center py-6">No timeline events yet.</div>
+        ) : (
+          <ol className="relative border-l border-gray-700 ml-2 space-y-4">
+            {timeline.events.map((ev, i) => (
+              <li key={i} className="pl-4">
+                <span className="absolute -left-1 w-2 h-2 rounded-full bg-cyan-500 mt-0.5" />
+                <div className="text-xs font-medium text-gray-200">{ev.label}</div>
+                {ev.time && <div className="text-xs text-gray-500">{new Date(ev.time).toLocaleString()}</div>}
+                {ev.detail && <div className="text-xs text-gray-500 italic">{ev.detail}</div>}
+              </li>
+            ))}
+          </ol>
         )}
-
-        {/* Lines tab */}
-        {detailTab === 'lines' && (
-          loadingLines ? (
-            <div className="text-xs text-gray-500 text-center py-6">Loading line items…</div>
-          ) : !lines ? (
-            <div className="text-xs text-red-400 text-center py-6">Could not load line items.</div>
-          ) : lines.length === 0 ? (
-            <div className="text-xs text-gray-600 text-center py-6">No line items found.</div>
-          ) : (
-            <div className="overflow-x-auto -mx-1">
-              <table className="w-full text-xs">
-                <thead>
-                  <tr className="text-[10px] text-gray-500 uppercase border-b border-gray-700">
-                    <th className="text-left py-1.5 px-1">Item</th>
-                    <th className="text-left py-1.5 px-1">Description</th>
-                    <th className="text-right py-1.5 px-1">Ordered</th>
-                    <th className="text-right py-1.5 px-1">Shipped</th>
-                    <th className="text-right py-1.5 px-1">Price</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {lines.map((line, i) => (
-                    <tr key={i} className="border-b border-gray-800 hover:bg-gray-800/40">
-                      <td className="py-1.5 px-1 font-mono text-cyan-400 whitespace-nowrap">{line.item_code ?? '—'}</td>
-                      <td className="py-1.5 px-1 text-gray-300">
-                        {line.description ?? '—'}
-                        {line.size && <span className="text-gray-500 ml-1">{line.size}</span>}
-                      </td>
-                      <td className="py-1.5 px-1 text-right text-gray-300 whitespace-nowrap">
-                        {line.qty_ordered != null ? line.qty_ordered : '—'} {line.uom ?? ''}
-                      </td>
-                      <td className="py-1.5 px-1 text-right text-gray-300 whitespace-nowrap">
-                        {line.qty_shipped != null ? line.qty_shipped : '—'}
-                      </td>
-                      <td className="py-1.5 px-1 text-right text-gray-400 whitespace-nowrap">
-                        {line.price != null ? fmtMoney(line.price) : '—'}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )
-        )}
-
       </div>
     </div>
   );
 }
 
+
+// ── Routes Drawer ─────────────────────────────────────────────────────────────
+
+function RoutesDrawer({
+  routes, routeStops, stopLookup, selectedSoId, onSelectStop, onRemoveStop, onDeleteRoute, onClose,
+}: {
+  routes: DispatchRoute[];
+  routeStops: Map<number, RouteStop[]>;
+  stopLookup: Map<string, DeliveryStop>;
+  selectedSoId: string | null;
+  onSelectStop: (s: DeliveryStop) => void;
+  onRemoveStop: (routeId: number, stopRowId: number) => Promise<void>;
+  onDeleteRoute: (routeId: number) => Promise<void>;
+  onClose: () => void;
+}) {
+  return (
+    <>
+      {/* backdrop */}
+      <div
+        onClick={onClose}
+        className="absolute inset-0 z-30"
+        style={{ background: 'rgba(0,0,0,0.55)', backdropFilter: 'blur(2px)' }}
+      />
+      {/* panel */}
+      <aside
+        className="absolute top-0 bottom-0 left-0 z-40 flex flex-col overflow-hidden"
+        style={{
+          width: '65%', minWidth: 720, maxWidth: 1100,
+          background: 'var(--panel)', borderRight: '1px solid var(--line)',
+          boxShadow: '8px 0 32px rgba(0,0,0,0.45)',
+        }}
+      >
+        {/* header */}
+        <div className="flex items-center gap-3 px-4 py-3 shrink-0" style={{ borderBottom: '1px solid var(--line)', background: 'var(--bg)' }}>
+          <Truck className="w-4 h-4" style={{ color: 'var(--green-bright)' }} />
+          <h2 className="text-sm font-semibold m-0">Routes &amp; Stops</h2>
+          <span className="text-[11px] font-mono" style={{ color: 'var(--text-3)' }}>
+            {routes.length} routes · {routes.reduce((n, r) => n + r.stop_count, 0)} stops
+          </span>
+          <div className="flex-1" />
+          <button
+            onClick={onClose}
+            className="flex items-center gap-1.5 px-3 py-1.5 text-xs rounded transition"
+            style={{ background: 'var(--panel-2)', border: '1px solid var(--line)', color: 'var(--text-2)' }}
+          >
+            <X className="w-3.5 h-3.5" /> Close
+          </button>
+        </div>
+        {/* route columns */}
+        <div className="flex-1 overflow-x-auto overflow-y-hidden p-4">
+          <div className="flex gap-3 h-full" style={{ minWidth: 'min-content', alignItems: 'flex-start' }}>
+            {routes.length === 0 ? (
+              <div className="flex items-center justify-center w-full h-32 text-sm" style={{ color: 'var(--text-3)' }}>
+                No routes planned for this date.
+              </div>
+            ) : (
+              routes.map((route, idx) => {
+                const rStops = routeStops.get(route.id) ?? [];
+                const routeColor = PICKER_HUE[idx % PICKER_HUE.length];
+                return (
+                  <div
+                    key={route.id}
+                    className="flex-shrink-0 flex flex-col rounded-lg overflow-hidden"
+                    style={{
+                      width: 268,
+                      background: 'var(--panel-2)',
+                      border: '1px solid var(--line)',
+                      borderTop: `3px solid ${routeColor}`,
+                      maxHeight: 'calc(100vh - 160px)',
+                    }}
+                  >
+                    <div className="px-3 py-2.5 shrink-0" style={{ borderBottom: '1px solid var(--line)' }}>
+                      <div className="flex items-center justify-between gap-2">
+                        <div className="min-w-0">
+                          <div className="text-xs font-bold truncate" style={{ color: 'var(--text)', fontFamily: 'var(--mono)' }}>
+                            {route.route_name}
+                          </div>
+                          {route.driver_name && (
+                            <div className="text-[10px] mt-0.5 truncate flex items-center gap-1" style={{ color: 'var(--text-3)' }}>
+                              <User className="w-2.5 h-2.5" /> {route.driver_name}
+                              {route.truck_id ? ` · ${route.truck_id}` : ''}
+                            </div>
+                          )}
+                        </div>
+                        <div className="flex items-center gap-2 shrink-0">
+                          <span className="text-[10px]" style={{ color: 'var(--text-3)', fontFamily: 'var(--mono)' }}>{rStops.length} stops</span>
+                          <button
+                            onClick={async () => {
+                              if (!confirm(`Delete route "${route.route_name}"?`)) return;
+                              await onDeleteRoute(route.id);
+                            }}
+                            style={{ color: 'var(--text-4)' }}
+                          >
+                            <Trash2 className="w-3 h-3" />
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                    <div className="flex-1 overflow-y-auto p-2 space-y-1">
+                      {rStops.length === 0 ? (
+                        <div className="text-[10px] text-center py-4" style={{ color: 'var(--text-3)' }}>No stops assigned</div>
+                      ) : (
+                        rStops.map((rs, stopIdx) => {
+                          const del = stopLookup.get(rs.so_id);
+                          const isSelected = rs.so_id === selectedSoId;
+                          return (
+                            <div key={rs.id} className="flex items-start gap-1.5">
+                              <div className="text-[10px] font-mono pt-3 text-right w-5 shrink-0" style={{ color: 'var(--text-4)', fontWeight: 600 }}>
+                                {stopIdx + 1}.
+                              </div>
+                              <div className="flex-1 min-w-0">
+                                {del ? (
+                                  <div
+                                    onClick={() => onSelectStop(del)}
+                                    className="rounded p-2 cursor-pointer transition"
+                                    style={{
+                                      background: isSelected ? 'rgba(31,138,79,0.08)' : 'var(--panel)',
+                                      border: `1px solid ${isSelected ? 'var(--green-bright)' : 'var(--line)'}`,
+                                    }}
+                                  >
+                                    <div className="flex items-center justify-between gap-1 mb-1">
+                                      <span className="text-[10px] font-mono" style={{ color: '#4ec48a' }}>{rs.so_id}</span>
+                                      {statusBadge(del.status_flag)}
+                                    </div>
+                                    <div className="text-[10px] truncate" style={{ color: 'var(--text-2)' }}>{del.customer_name ?? '—'}</div>
+                                    {del.city && <div className="text-[10px]" style={{ color: 'var(--text-3)' }}>{del.city}</div>}
+                                  </div>
+                                ) : (
+                                  <div className="text-[10px] p-2 rounded" style={{ background: 'var(--panel)', color: 'var(--text-4)' }}>{rs.so_id}</div>
+                                )}
+                              </div>
+                              <button
+                                onClick={async () => { await onRemoveStop(route.id, rs.id); }}
+                                className="mt-2.5 transition shrink-0"
+                                style={{ color: 'var(--text-4)' }}
+                              >
+                                <X className="w-3 h-3" />
+                              </button>
+                            </div>
+                          );
+                        })
+                      )}
+                    </div>
+                  </div>
+                );
+              })
+            )}
+          </div>
+        </div>
+      </aside>
+    </>
+  );
+}
+
+// ── Board View (5-column card grid) ───────────────────────────────────────────
+
+function BoardCardGrid({
+  stops, selectedSoId, onSelectStop, sortKey, groupKey,
+}: {
+  stops: DeliveryStop[];
+  selectedSoId: string | null;
+  onSelectStop: (s: DeliveryStop) => void;
+  sortKey: string;
+  groupKey: string;
+}) {
+  const groups = React.useMemo(() => {
+    if (groupKey === 'none') return [{ key: null, label: null, items: stops }];
+    const map = new Map<string, DeliveryStop[]>();
+    stops.forEach((s) => {
+      const k = groupKey === 'city' ? (s.city ?? '—') : (s.expect_date ?? '—');
+      const arr = map.get(k) ?? [];
+      arr.push(s);
+      map.set(k, arr);
+    });
+    return [...map.entries()]
+      .sort((a, b) => (a[0] ?? '').localeCompare(b[0] ?? ''))
+      .map(([k, items]) => ({
+        key: k,
+        label: groupKey === 'city' ? k : (k === '—' ? 'No date' : fmtDate(k) + ' · ' + k),
+        items,
+      }));
+  }, [stops, groupKey]);
+
+  return (
+    <div className="h-full overflow-y-auto p-4" style={{ background: 'var(--bg)' }}>
+      {groups.map((g, gi) => (
+        <div key={g.key ?? gi} style={{ marginBottom: 20 }}>
+          {g.label && (
+            <div className="flex items-center gap-2 mb-3 pb-2" style={{ borderBottom: '1px solid var(--line)' }}>
+              {groupKey === 'city' ? <MapPin className="w-3 h-3" style={{ color: 'var(--text-3)' }} /> : <ChevronRight className="w-3 h-3" style={{ color: 'var(--text-3)' }} />}
+              <span className="text-[11px] font-semibold uppercase tracking-wider" style={{ color: 'var(--text-2)' }}>{g.label}</span>
+              <span className="text-[10px] font-mono" style={{ color: 'var(--text-3)' }}>{g.items.length}</span>
+            </div>
+          )}
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, minmax(0, 1fr))', gap: 8 }}>
+            {g.items.map((s) => (
+              <StopCard
+                key={`${s.so_id}-${s.shipment_num}`}
+                stop={s}
+                selected={s.so_id === selectedSoId}
+                onClick={() => onSelectStop(s)}
+                routes={[]}
+                onAssign={async () => {}}
+              />
+            ))}
+          </div>
+        </div>
+      ))}
+      {stops.length === 0 && (
+        <div className="flex items-center justify-center h-32 text-sm" style={{ color: 'var(--text-3)' }}>
+          No stops match your filters.
+        </div>
+      )}
+    </div>
+  );
+}
 
 // ── Main DispatchClient ────────────────────────────────────────────────────────
 
@@ -655,7 +937,6 @@ export default function DispatchClient({ isAdmin, userBranch, userName, userRole
   const [trucks, setTrucks] = useState<TruckAssignment[]>([]);
 
   // UI state
-  const [leftTab, setLeftTab] = useState<LeftTab>('unassigned');
   const [selectedStop, setSelectedStop] = useState<DeliveryStop | null>(null);
   const [showTrucks, setShowTrucks] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -666,7 +947,10 @@ export default function DispatchClient({ isAdmin, userBranch, userName, userRole
   const [savingRoute, setSavingRoute] = useState(false);
   const [erpRoutes, setErpRoutes] = useState<Array<{ route_code: string; driver_name: string; assigned_truck_id: string | null; assigned_truck_name: string | null }>>([]);
   const [erpRoutesLoaded, setErpRoutesLoaded] = useState(false);
-  const [viewMode, setViewMode] = useState<'board' | 'map'>('board');
+  const [viewMode, setViewMode] = useState<'board' | 'map'>('map');
+  const [sortKey, setSortKey] = useState<'so' | 'date' | 'city'>('so');
+  const [groupKey, setGroupKey] = useState<'none' | 'date' | 'city'>('none');
+  const [routesDrawerOpen, setRoutesDrawerOpen] = useState(false);
 
   // Close ship-via dropdown on outside click
   useEffect(() => {
@@ -865,17 +1149,29 @@ export default function DispatchClient({ isAdmin, userBranch, userName, userRole
     return a.localeCompare(b);
   });
 
-  // Filtered lists
+  // Filtered lists — invoiced orders always excluded
   const q = search.toLowerCase();
-  const unassignedStops = shipViaFilteredStops.filter((s) => !assignedSoIds.has(s.so_id) && s.so_status?.toUpperCase() !== 'I');
+  const nonInvoicedStops = shipViaFilteredStops.filter(
+    (s) => s.status_flag?.toUpperCase() !== 'I' && s.so_status?.toUpperCase() !== 'I'
+  );
+
+  function applySort(arr: DeliveryStop[]): DeliveryStop[] {
+    return [...arr].sort((a, b) => {
+      if (sortKey === 'date') return (a.expect_date ?? '').localeCompare(b.expect_date ?? '') || a.so_id.localeCompare(b.so_id);
+      if (sortKey === 'city') return (a.city ?? '').localeCompare(b.city ?? '') || a.so_id.localeCompare(b.so_id);
+      return a.so_id.localeCompare(b.so_id);
+    });
+  }
+
+  const unassignedStops = applySort(nonInvoicedStops.filter((s) => !assignedSoIds.has(s.so_id)));
   const filteredUnassigned = q
     ? unassignedStops.filter((s) =>
         s.so_id.includes(q) || s.customer_name?.toLowerCase().includes(q) || s.city?.toLowerCase().includes(q))
     : unassignedStops;
   const filteredAll = q
-    ? shipViaFilteredStops.filter((s) =>
-        s.so_id.includes(q) || s.customer_name?.toLowerCase().includes(q) || s.city?.toLowerCase().includes(q))
-    : shipViaFilteredStops;
+    ? applySort(nonInvoicedStops.filter((s) =>
+        s.so_id.includes(q) || s.customer_name?.toLowerCase().includes(q) || s.city?.toLowerCase().includes(q)))
+    : applySort(nonInvoicedStops);
 
   return (
     <div className="h-screen flex flex-col overflow-hidden relative" style={{ background: 'var(--bg)', color: 'var(--text)' }}>
@@ -885,9 +1181,20 @@ export default function DispatchClient({ isAdmin, userBranch, userName, userRole
         {/* ── Command Bar ── */}
         <div className="shrink-0 px-4 py-3 border-b border-gray-800 bg-gray-900/80 backdrop-blur">
           <div className="flex flex-wrap gap-3 items-center">
-            {/* KPI tiles */}
+            {/* KPI tiles — Total Stops clickable to open Routes drawer */}
             <div className="flex gap-2">
-              <KpiTile label="Total Stops"  value={kpis?.total_stops ?? null} accent />
+              <button
+                onClick={() => setRoutesDrawerOpen(true)}
+                title="Open Routes & Stops"
+                className={`rounded-lg px-4 py-2.5 text-center transition-colors ${
+                  routesDrawerOpen
+                    ? 'bg-cyan-800 border border-cyan-600'
+                    : 'bg-cyan-900/40 border border-cyan-700/50 hover:bg-cyan-900/60'
+                }`}
+              >
+                <div className="text-2xl font-bold tabular-nums text-cyan-300">{kpis?.total_stops ?? '—'}</div>
+                <div className="text-[10px] uppercase tracking-wider text-gray-400 mt-0.5">Stops ↗</div>
+              </button>
               <KpiTile label="Unassigned"   value={kpis?.unassigned_stops ?? null} />
               <KpiTile label="Routes"       value={kpis?.route_count ?? null} />
               <KpiTile label="Trucks Out"   value={kpis?.trucks_out ?? null} />
@@ -979,6 +1286,31 @@ export default function DispatchClient({ isAdmin, userBranch, userName, userRole
                 <option value="status">Group: Status</option>
                 {isAdmin && <option value="branch">Group: Branch</option>}
               </select>
+
+              {/* Sort + Group for cards */}
+              <div className="flex items-center h-9 rounded border border-gray-700 bg-gray-800 overflow-hidden text-sm">
+                <span className="px-2.5 text-[10px] uppercase tracking-wider text-gray-500 border-r border-gray-700">Sort</span>
+                <select
+                  value={sortKey} onChange={(e) => setSortKey(e.target.value as typeof sortKey)}
+                  className="h-full px-2 bg-transparent text-gray-300 border-none outline-none"
+                >
+                  <option value="so">SO #</option>
+                  <option value="date">Expected date</option>
+                  <option value="city">City</option>
+                </select>
+                <span className="w-px h-5 bg-gray-700" />
+                <span className="px-2.5 text-[10px] uppercase tracking-wider text-gray-500 border-l border-gray-700">Group</span>
+                <select
+                  value={groupKey} onChange={(e) => setGroupKey(e.target.value as typeof groupKey)}
+                  className="h-full px-2 bg-transparent border-none outline-none"
+                  style={{ color: groupKey !== 'none' ? 'var(--green-bright)' : 'var(--text-3)' }}
+                >
+                  <option value="none">None</option>
+                  <option value="date">Expected date</option>
+                  <option value="city">City</option>
+                </select>
+              </div>
+
               <button
                 onClick={loadAll} disabled={loading}
                 className="flex items-center gap-1.5 px-3 py-1.5 text-sm bg-gray-800 border border-gray-700 rounded text-gray-300 hover:text-white transition disabled:opacity-50"
@@ -1066,9 +1398,10 @@ export default function DispatchClient({ isAdmin, userBranch, userName, userRole
         )}
 
         {/* ── Three-Panel Layout ── */}
-        <div className="flex flex-1 overflow-hidden">
+        <div className="flex flex-1 overflow-hidden relative">
 
-          {/* Left Panel — Unassigned Pool (280px) */}
+          {/* Left Panel — Unassigned Pool (hidden in board mode) */}
+          {viewMode === 'map' && (
           <div
             className="shrink-0 border-r flex flex-col overflow-hidden"
             style={{ width: 280, background: 'var(--bg)', borderColor: 'var(--line)' }}
@@ -1172,10 +1505,11 @@ export default function DispatchClient({ isAdmin, userBranch, userName, userRole
               )}
             </div>
           </div>
+          )} {/* end map-mode left panel */}
 
-          {/* Center — Route Columns */}
-          {viewMode === 'map' ? (
-            <div className="flex-1 relative overflow-hidden">
+          {/* Center — Map view OR 5-column Board card grid */}
+          <main className="flex-1 min-w-0 relative overflow-hidden" style={{ background: 'var(--bg)' }}>
+            {viewMode === 'map' ? (
               <DispatchMap
                 stops={stops}
                 routes={routes}
@@ -1184,189 +1518,50 @@ export default function DispatchClient({ isAdmin, userBranch, userName, userRole
                 onSelectStop={setSelectedStop}
                 branch={branch}
               />
-            </div>
+            ) : (
+              <BoardCardGrid
+                stops={filteredAll}
+                selectedSoId={selectedStop?.so_id ?? null}
+                onSelectStop={(s) => setSelectedStop(selectedStop?.so_id === s.so_id ? null : s)}
+                sortKey={sortKey}
+                groupKey={groupKey}
+              />
+            )}
+
+            {/* Routes drawer — slides over center area */}
+            {routesDrawerOpen && (
+              <RoutesDrawer
+                routes={routes}
+                routeStops={routeStops}
+                stopLookup={stopLookup}
+                selectedSoId={selectedStop?.so_id ?? null}
+                onSelectStop={(s) => setSelectedStop(s)}
+                onRemoveStop={removeStopFromRoute}
+                onDeleteRoute={deleteRoute}
+                onClose={() => setRoutesDrawerOpen(false)}
+              />
+            )}
+          </main>
+
+          {/* Right Panel — Detail panel (board) or Mini Map + Vehicles (map) */}
+          {viewMode === 'board' ? (
+            /* Board mode: always-visible detail panel */
+            <aside
+              className="shrink-0 flex flex-col overflow-hidden"
+              style={{ width: 360, background: 'var(--bg)', borderLeft: '1px solid var(--line)' }}
+            >
+              {selectedStop ? (
+                <DetailPanel stop={selectedStop} onClose={() => setSelectedStop(null)} />
+              ) : (
+                <div className="flex flex-col items-center justify-center h-full gap-3 px-6 text-center">
+                  <MapPin className="w-8 h-8" style={{ color: 'var(--text-4)' }} />
+                  <div className="text-sm font-medium" style={{ color: 'var(--text-2)' }}>No stop selected</div>
+                  <div className="text-xs" style={{ color: 'var(--text-3)' }}>Click a stop card to view order details, line items, and actions.</div>
+                </div>
+              )}
+            </aside>
           ) : (
-            <div className="flex-1 overflow-x-auto overflow-y-hidden">
-              <div className="flex gap-3 p-4 h-full" style={{ minWidth: 'max-content', alignItems: 'flex-start' }}>
-                {loading && (
-                  <div className="flex items-center justify-center w-full h-32 text-sm" style={{ color: 'var(--text-3)' }}>
-                    <RefreshCw className="w-4 h-4 animate-spin mr-2" /> Loading…
-                  </div>
-                )}
-                {!loading && routes.length === 0 && (
-                  <div className="flex flex-col items-center justify-center w-full h-40 gap-3">
-                    <div className="text-sm" style={{ color: 'var(--text-3)' }}>
-                      No routes planned for {date}{branch ? ` · ${branch}` : ''}.
-                    </div>
-                    {branch && (
-                      <button
-                        onClick={generateRoutes}
-                        disabled={generating}
-                        className="flex items-center gap-2 px-4 py-2 text-sm rounded-lg transition disabled:opacity-50"
-                        style={{ background: 'var(--green-bright)', color: '#000', fontWeight: 600 }}
-                      >
-                        <RefreshCw className={`w-3.5 h-3.5 ${generating ? 'animate-spin' : ''}`} />
-                        {generating ? 'Generating…' : 'Generate from ERP Routes'}
-                      </button>
-                    )}
-                  </div>
-                )}
-                {!loading && routes.map((route, routeIdx) => {
-                  const rStops = routeStops.get(route.id) ?? [];
-                  const routeColor = PICKER_HUE ? PICKER_HUE[routeIdx % PICKER_HUE.length] : '#4a8fbf';
-                  const deliveredCount = rStops.filter((rs) => {
-                    const del = stopLookup.get(rs.so_id);
-                    return del?.status_flag?.toUpperCase() === 'I';
-                  }).length;
-                  const loadPct = rStops.length > 0 ? Math.min(100, Math.round((rStops.length / 8) * 100)) : 0;
-
-                  return (
-                    <div
-                      key={route.id}
-                      className="flex-shrink-0 flex flex-col rounded-lg overflow-hidden"
-                      style={{
-                        width: 268,
-                        background: 'var(--panel)',
-                        border: '1px solid var(--line)',
-                        borderTop: `3px solid ${routeColor}`,
-                        maxHeight: 'calc(100vh - 200px)',
-                      }}
-                    >
-                      {/* Column header */}
-                      <div className="px-3 py-2.5 shrink-0" style={{ borderBottom: '1px solid var(--line)' }}>
-                        <div className="flex items-center justify-between gap-2">
-                          <div className="min-w-0">
-                            <div className="text-xs font-bold mono truncate" style={{ color: 'var(--text)' }}>
-                              {route.route_name}
-                            </div>
-                            {route.driver_name && (
-                              <div className="text-[10px] mt-0.5 truncate" style={{ color: 'var(--text-3)' }}>
-                                {route.driver_name}{route.truck_id ? ` · ${route.truck_id}` : ''}
-                              </div>
-                            )}
-                          </div>
-                          <div className="flex items-center gap-1.5 shrink-0">
-                            <span className="text-[10px] mono" style={{ color: 'var(--text-3)' }}>
-                              {rStops.length} stops
-                            </span>
-                            <button
-                              onClick={async () => {
-                                if (!confirm(`Delete route "${route.route_name}"?`)) return;
-                                await deleteRoute(route.id);
-                              }}
-                              className="transition"
-                              style={{ color: 'var(--text-4)' }}
-                            >
-                              <Trash2 className="w-3 h-3" />
-                            </button>
-                          </div>
-                        </div>
-                        {/* Load bar */}
-                        <div className="mt-2 h-1 rounded overflow-hidden" style={{ background: 'var(--panel-3)' }}>
-                          <div className="h-full rounded transition-all" style={{ width: `${loadPct}%`, background: routeColor }} />
-                        </div>
-                        <div className="flex justify-between mt-1 text-[10px] mono" style={{ color: 'var(--text-4)' }}>
-                          <span>{deliveredCount} delivered</span>
-                          <span>{loadPct}% load</span>
-                        </div>
-                      </div>
-
-                      {/* Stop cards */}
-                      <div className="flex-1 overflow-y-auto p-2 space-y-1.5">
-                        {rStops.length === 0 ? (
-                          <div className="text-[10px] text-center py-4" style={{ color: 'var(--text-3)' }}>
-                            No stops — assign from unassigned pool
-                          </div>
-                        ) : (
-                          rStops.map((rs, stopIdx) => {
-                            const del = stopLookup.get(rs.so_id);
-                            const isSelected = rs.so_id === selectedStop?.so_id;
-                            const isDelivered = del?.status_flag?.toUpperCase() === 'I';
-                            return (
-                              <div
-                                key={rs.id}
-                                onClick={() => del && setSelectedStop(isSelected ? null : del)}
-                                className="rounded p-2.5 cursor-pointer transition"
-                                style={{
-                                  background: isSelected ? 'rgba(31,138,79,0.08)' : 'var(--panel-2)',
-                                  border: `1px solid ${isSelected ? 'var(--green-bright)' : 'var(--line)'}`,
-                                  opacity: isDelivered ? 0.55 : 1,
-                                }}
-                              >
-                                <div className="flex items-center gap-2 mb-1">
-                                  <span
-                                    className="w-5 h-5 rounded-full flex items-center justify-center text-[9px] font-bold flex-shrink-0"
-                                    style={{ background: isDelivered ? 'var(--ok)' : routeColor, color: '#fff' }}
-                                  >
-                                    {isDelivered ? '✓' : stopIdx + 1}
-                                  </span>
-                                  <span className="text-xs font-mono font-bold" style={{ color: '#4ec48a' }}>
-                                    {rs.so_id}
-                                  </span>
-                                  {del && (
-                                    <span className={`ml-auto ${del.status_flag?.toUpperCase() === 'I' ? 'chip chip-done' : del.status_flag?.toUpperCase() === 'S' ? 'chip chip-staged' : 'chip chip-open'}`} style={{ fontSize: 9 }}>
-                                      {STATUS_FLAG[del.status_flag?.toUpperCase()]?.label ?? del.status_flag ?? '—'}
-                                    </span>
-                                  )}
-                                </div>
-                                <div className="text-[11px] truncate" style={{ color: 'var(--text-2)' }}>
-                                  {del?.customer_name ?? '—'}
-                                </div>
-                                {del?.city && (
-                                  <div className="text-[10px] truncate mt-0.5" style={{ color: 'var(--text-3)' }}>
-                                    {del.city}
-                                  </div>
-                                )}
-                                <div className="flex items-center justify-between mt-1.5">
-                                  <span className="text-[10px] mono" style={{ color: 'var(--text-3)' }}>
-                                    {del?.expect_date ? new Date(del.expect_date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : '—'}
-                                  </span>
-                                  <button
-                                    onClick={async (e) => { e.stopPropagation(); await removeStopFromRoute(route.id, rs.id); }}
-                                    className="transition"
-                                    style={{ color: 'var(--text-4)' }}
-                                  >
-                                    <X className="w-3 h-3" />
-                                  </button>
-                                </div>
-                              </div>
-                            );
-                          })
-                        )}
-                        {/* Drop zone visual */}
-                        <div
-                          className="py-3 text-[10px] text-center rounded flex items-center justify-center gap-1"
-                          style={{ border: '1px dashed var(--line)', color: 'var(--text-4)' }}
-                        >
-                          Drop stop here
-                        </div>
-                      </div>
-                    </div>
-                  );
-                })}
-                {/* Add route column */}
-                {!loading && (
-                  <div
-                    className="flex-shrink-0 flex items-center justify-center rounded-lg cursor-pointer transition"
-                    style={{
-                      width: 268,
-                      minHeight: 120,
-                      border: '1px dashed var(--line)',
-                      color: 'var(--text-3)',
-                    }}
-                    onClick={() => setShowNewRoute(true)}
-                  >
-                    <div className="flex flex-col items-center gap-1">
-                      <Plus className="w-5 h-5" />
-                      <span className="text-xs">Add route</span>
-                    </div>
-                  </div>
-                )}
-              </div>
-            </div>
-          )}
-
-          {/* Right Panel — Mini Map + Vehicles (320px) */}
+          /* Map mode: mini map + vehicles */
           <div
             className="shrink-0 flex flex-col overflow-hidden"
             style={{ width: 320, background: 'var(--panel)', borderLeft: '1px solid var(--line)' }}
@@ -1459,9 +1654,10 @@ export default function DispatchClient({ isAdmin, userBranch, userName, userRole
               )}
             </div>
           </div>
+          )} {/* end map-mode right panel */}
 
-          {/* Stop Detail overlay */}
-          {selectedStop && (
+          {/* Map mode: stop detail overlay */}
+          {viewMode === 'map' && selectedStop && (
             <div className="absolute right-0 top-0 bottom-0 w-96 z-20 shadow-2xl overflow-hidden" style={{ boxShadow: '-4px 0 20px rgba(0,0,0,0.4)' }}>
               <DetailPanel stop={selectedStop} onClose={() => setSelectedStop(null)} />
             </div>
