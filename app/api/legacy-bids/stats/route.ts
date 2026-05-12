@@ -3,17 +3,23 @@ import { auth } from '../../../../auth';
 import { getDb } from '../../../../db/index';
 import { legacyBid, legacyEstimator } from '../../../../db/schema-legacy';
 import { eq, and, sql } from 'drizzle-orm';
+import type { SQL } from 'drizzle-orm';
+import { getSelectedBranchId } from '@/lib/branch-context';
 
 // GET /api/legacy-bids/stats
 // Returns aggregate stats for completed bids: by estimator, by plan type, avg turnaround.
+// Scoped to the user's selected branch (same as the completed-bids list).
 export async function GET() {
   const session = await auth();
   if (!session?.user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
   try {
     const db = getDb();
+    const branchId = await getSelectedBranchId();
 
-    const completedFilter = eq(legacyBid.status, 'Complete');
+    const baseConditions: SQL[] = [eq(legacyBid.status, 'Complete')];
+    if (branchId) baseConditions.push(eq(legacyBid.branchId, branchId));
+    const completedFilter = and(...baseConditions)!
 
     // Total count
     const [countRow] = await db
@@ -52,7 +58,7 @@ export async function GET() {
       .from(legacyBid)
       .where(
         and(
-          completedFilter,
+          ...baseConditions,
           sql`completion_date is not null`,
           sql`log_date is not null`,
         )
@@ -64,7 +70,7 @@ export async function GET() {
       .from(legacyBid)
       .where(
         and(
-          completedFilter,
+          ...baseConditions,
           sql`date_trunc('month', completion_date) = date_trunc('month', now())`,
         )
       );
@@ -74,7 +80,7 @@ export async function GET() {
       .from(legacyBid)
       .where(
         and(
-          completedFilter,
+          ...baseConditions,
           sql`date_trunc('year', completion_date) = date_trunc('year', now())`,
         )
       );

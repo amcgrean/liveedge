@@ -219,8 +219,15 @@ export async function PUT(req: NextRequest, context: RouteContext) {
       }
     }
 
-    // Auto-set completion date
+    // Check prior status so we only send completion notification on real transitions
+    let wasAlreadyComplete = false;
     if (body.status === 'Complete') {
+      const [current] = await db
+        .select({ status: legacyBid.status })
+        .from(legacyBid)
+        .where(eq(legacyBid.id, bidId))
+        .limit(1);
+      wasAlreadyComplete = current?.status === 'Complete';
       updates.completionDate = new Date();
     }
 
@@ -275,8 +282,8 @@ export async function PUT(req: NextRequest, context: RouteContext) {
       db.insert(legacyBidActivity).values({ userId, bidId, action: 'updated' }).catch(() => {});
     }
 
-    // Notify on completion — only when status is being set to Complete in this request
-    if (body.status === 'Complete') {
+    // Notify on completion — only on a genuine Incomplete → Complete transition
+    if (body.status === 'Complete' && !wasAlreadyComplete) {
       const customerRow = await db
         .select({ name: legacyCustomer.name })
         .from(legacyCustomer)

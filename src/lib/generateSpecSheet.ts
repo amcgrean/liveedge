@@ -76,9 +76,15 @@ export async function generateSpecSheet(bidId: number): Promise<void> {
   // ── Fetch bid data ──────────────────────────────────────────────────────
   const res = await fetch(`/api/legacy-bids/${bidId}`);
   if (!res.ok) throw new Error('Failed to load bid data');
-  const data = await res.json() as { bid: BidData; dynamicValues: DynamicValue[]; customerName?: string; estimatorName?: string };
+  // The GET /api/legacy-bids/[id] response is flat: bid fields at the top level
+  // plus dynamicValues, files, activity, etc. alongside them.
+  const data = await res.json() as BidData & {
+    dynamicValues: DynamicValue[];
+    customerName?: string | null;
+    estimatorName?: string | null;
+  };
 
-  const bid = data.bid;
+  const bid = data;
   const dynamicValues = data.dynamicValues ?? [];
 
   // Group dynamic values by category
