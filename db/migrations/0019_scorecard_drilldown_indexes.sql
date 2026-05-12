@@ -58,9 +58,32 @@ CREATE INDEX IF NOT EXISTS idx_agility_po_header_supplier_status
 
 -- ─── agility_items — item → primary supplier cross-link ─────────────────────
 -- Item scorecard "Primary Supplier" card resolves agility_items.primary_supplier
--- and reverse lookup (which items does this vendor primarily supply) iterates
--- by primary_supplier. Partial index keeps it tight on the populated subset.
+-- (or .primary_supplier_key on newer sync builds) and reverse lookup (which
+-- items does this vendor primarily supply) iterates by that column. Both
+-- columns are optional — sync builds differ. Wrapped in DO/EXECUTE so the
+-- whole migration succeeds on schemas that have neither column; the
+-- application code (fetchItemPrimarySupplier) defensively checks
+-- information_schema before referencing them at query time.
 
-CREATE INDEX IF NOT EXISTS idx_agility_items_primary_supplier
-  ON public.agility_items (primary_supplier)
-  WHERE primary_supplier IS NOT NULL;
+DO $$
+BEGIN
+  IF EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_schema = 'public' AND table_name = 'agility_items'
+      AND column_name = 'primary_supplier'
+  ) THEN
+    EXECUTE 'CREATE INDEX IF NOT EXISTS idx_agility_items_primary_supplier
+      ON public.agility_items (primary_supplier)
+      WHERE primary_supplier IS NOT NULL';
+  END IF;
+
+  IF EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_schema = 'public' AND table_name = 'agility_items'
+      AND column_name = 'primary_supplier_key'
+  ) THEN
+    EXECUTE 'CREATE INDEX IF NOT EXISTS idx_agility_items_primary_supplier_key
+      ON public.agility_items (primary_supplier_key)
+      WHERE primary_supplier_key IS NOT NULL';
+  END IF;
+END $$;
