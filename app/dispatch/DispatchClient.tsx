@@ -96,9 +96,16 @@ function fmtDate(d: string | null) {
   return new Date(d).toLocaleDateString();
 }
 
+function parseLocalDate(iso: string | null): Date | null {
+  if (!iso) return null;
+  const s = iso.split('T')[0]; // strip time component if present
+  const d = new Date(s + 'T00:00:00');
+  return isNaN(d.getTime()) ? null : d;
+}
+
 function fmtExpectDate(iso: string | null): string {
-  if (!iso) return '';
-  const d = new Date(iso + 'T00:00:00');
+  const d = parseLocalDate(iso);
+  if (!d) return '';
   const today = new Date(); today.setHours(0,0,0,0);
   const tomorrow = new Date(today); tomorrow.setDate(today.getDate() + 1);
   if (d.getTime() === today.getTime()) return 'Today';
@@ -107,8 +114,8 @@ function fmtExpectDate(iso: string | null): string {
 }
 
 function expectDateColor(iso: string | null): string {
-  if (!iso) return 'var(--text-3)';
-  const d = new Date(iso + 'T00:00:00');
+  const d = parseLocalDate(iso);
+  if (!d) return 'var(--text-3)';
   const today = new Date(); today.setHours(0,0,0,0);
   const tomorrow = new Date(today); tomorrow.setDate(today.getDate() + 1);
   if (d.getTime() === today.getTime()) return '#4ec48a';
@@ -192,12 +199,16 @@ function StopCard({
     setShowAssign(false);
   }
 
+  const isDelivered = stop.status_flag?.toUpperCase() === 'D' || stop.so_status?.toUpperCase() === 'D';
+
   return (
     <div
       onClick={onClick}
       className={`rounded-lg border p-2.5 cursor-pointer transition-all mb-1.5 ${
         selected
           ? 'border-cyan-500 bg-cyan-900/20'
+          : isDelivered
+          ? 'border-gray-700 bg-gray-900/50 opacity-60 hover:opacity-80'
           : 'border-gray-700 bg-gray-900 hover:border-gray-600'
       }`}
     >
@@ -928,6 +939,7 @@ export default function DispatchClient({ isAdmin, userBranch, userName, userRole
   const [shipViaFilter, setShipViaFilter] = useState<Set<string>>(new Set());
   const [shipViaOpen, setShipViaOpen] = useState(false);
   const shipViaRef = useRef<HTMLDivElement>(null);
+  const [hideWillCall, setHideWillCall] = useState(true);
 
   // Data
   const [stops, setStops] = useState<DeliveryStop[]>([]);
@@ -1149,10 +1161,17 @@ export default function DispatchClient({ isAdmin, userBranch, userName, userRole
     return a.localeCompare(b);
   });
 
-  // Filtered lists — invoiced orders always excluded
+  // Filtered lists — invoiced orders always excluded; will call excluded by default
   const q = search.toLowerCase();
+  function isWillCall(s: DeliveryStop) {
+    const v = s.ship_via?.trim().toUpperCase() ?? '';
+    return v === 'WC' || v === 'W/C' || v === 'WILL CALL' || v === 'WILLCALL';
+  }
   const nonInvoicedStops = shipViaFilteredStops.filter(
-    (s) => s.status_flag?.toUpperCase() !== 'I' && s.so_status?.toUpperCase() !== 'I'
+    (s) =>
+      s.status_flag?.toUpperCase() !== 'I' &&
+      s.so_status?.toUpperCase() !== 'I' &&
+      !(hideWillCall && isWillCall(s))
   );
 
   function applySort(arr: DeliveryStop[]): DeliveryStop[] {
@@ -1242,7 +1261,7 @@ export default function DispatchClient({ isAdmin, userBranch, userName, userRole
                   <ChevronDown className="w-3 h-3" />
                 </button>
                 {shipViaOpen && (
-                  <div className="absolute top-full left-0 mt-1 z-50 min-w-[160px] rounded-lg border border-gray-700 bg-gray-900 shadow-xl py-1">
+                  <div className="absolute top-full left-0 mt-1 z-[1001] min-w-[160px] rounded-lg border border-gray-700 bg-gray-900 shadow-xl py-1">
                     {shipViaOptions.length === 0 ? (
                       <div className="px-3 py-2 text-xs text-gray-500">No options</div>
                     ) : (
@@ -1277,6 +1296,19 @@ export default function DispatchClient({ isAdmin, userBranch, userName, userRole
                   </div>
                 )}
               </div>
+
+              {/* Will Call toggle */}
+              <button
+                onClick={() => setHideWillCall((v) => !v)}
+                className={`flex items-center gap-1.5 px-2.5 py-1.5 text-sm border rounded transition whitespace-nowrap ${
+                  hideWillCall
+                    ? 'bg-gray-800 border-gray-700 text-gray-400 hover:text-white'
+                    : 'bg-cyan-900/40 border-cyan-700 text-cyan-300'
+                }`}
+                title={hideWillCall ? 'Will Call orders hidden — click to show' : 'Will Call orders visible — click to hide'}
+              >
+                {hideWillCall ? 'WC hidden' : 'WC shown'}
+              </button>
 
               <select
                 value={groupBy} onChange={(e) => setGroupBy(e.target.value as typeof groupBy)}
