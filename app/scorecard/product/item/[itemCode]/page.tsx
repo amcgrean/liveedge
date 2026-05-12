@@ -234,7 +234,7 @@ function SupplierCard({
   childQs,
   fromHint,
 }: {
-  supplier: { supplierCode: string; supplierName: string | null } | null;
+  supplier: { supplierKey: string; supplierCode: string; supplierName: string | null } | null;
   itemCode: string;
   childQs: string;
   fromHint: string;
@@ -247,7 +247,7 @@ function SupplierCard({
       </h2>
       {supplier ? (
         <Link
-          href={`/scorecard/vendor/${encodeURIComponent(supplier.supplierCode)}${childQs}&from=${encodeURIComponent(fromHint)}`}
+          href={`/scorecard/vendor/${encodeURIComponent(supplier.supplierKey)}${childQs}&from=${encodeURIComponent(fromHint)}`}
           className="block group"
         >
           <div className="text-lg font-semibold text-white group-hover:text-cyan-400 transition flex items-center gap-1.5">

@@ -82,6 +82,7 @@ export type VendorDetail = {
   otdPct: number | null;
   openPoCount: number;
   openPoValue: number;
+  lastReceiveDate: string | null;
   branchBreakdown: BranchSpend[];
   productGroupBreakdown: ProductGroupSpend[];
   rebatePrograms: RebateProgram[];

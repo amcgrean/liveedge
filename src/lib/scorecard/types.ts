@@ -241,6 +241,8 @@ export interface ProductTopCustomerRow {
 }
 
 export interface ItemPrimarySupplier {
+  /** Vendor key used by /scorecard/vendor/[supplierKey]; resolved from agility_suppliers. */
+  supplierKey: string;
   supplierCode: string;
   supplierName: string | null;
 }

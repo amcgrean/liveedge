@@ -65,13 +65,17 @@ function toInt(v: unknown): number | null {
 async function _fetchProductHeader(filter: ProductFilter): Promise<ProductHeader | null> {
   const sql = getErpSql();
 
+  // A SELECT with aggregates and no GROUP BY always returns one row (with
+  // NULL aggregates) even when no records match. Use COUNT(*) so callers can
+  // distinguish "no matching rows" from "rows exist but names are NULL".
+
   if (filter.level === 'major') {
-    const rows = await sql<{ product_major: string | null }[]>`
-      SELECT MAX(product_major) AS product_major
+    const rows = await sql<{ product_major: string | null; row_count: string }[]>`
+      SELECT MAX(product_major) AS product_major, COUNT(*)::text AS row_count
       FROM customer_scorecard_fact
       WHERE is_deleted = false AND product_major_code = ${filter.majorCode}
     `;
-    if (!rows[0]) return null;
+    if (!rows[0] || parseInt(rows[0].row_count, 10) === 0) return null;
     return {
       level: 'major',
       majorCode: filter.majorCode,
@@ -84,14 +88,16 @@ async function _fetchProductHeader(filter: ProductFilter): Promise<ProductHeader
   }
 
   if (filter.level === 'minor') {
-    const rows = await sql<{ product_major: string | null; product_minor: string | null }[]>`
-      SELECT MAX(product_major) AS product_major, MAX(product_minor) AS product_minor
+    const rows = await sql<{ product_major: string | null; product_minor: string | null; row_count: string }[]>`
+      SELECT MAX(product_major) AS product_major,
+        MAX(product_minor) AS product_minor,
+        COUNT(*)::text AS row_count
       FROM customer_scorecard_fact
       WHERE is_deleted = false
         AND product_major_code = ${filter.majorCode}
         AND product_minor_code = ${filter.minorCode}
     `;
-    if (!rows[0]) return null;
+    if (!rows[0] || parseInt(rows[0].row_count, 10) === 0) return null;
     return {
       level: 'minor',
       majorCode: filter.majorCode,
@@ -110,17 +116,19 @@ async function _fetchProductHeader(filter: ProductFilter): Promise<ProductHeader
     product_minor_code: string | null;
     product_minor: string | null;
     item_description: string | null;
+    row_count: string;
   }[]>`
     SELECT
       MAX(product_major_code) AS product_major_code,
       MAX(product_major)      AS product_major,
       MAX(product_minor_code) AS product_minor_code,
       MAX(product_minor)      AS product_minor,
-      MAX(item_description)   AS item_description
+      MAX(item_description)   AS item_description,
+      COUNT(*)::text          AS row_count
     FROM customer_scorecard_fact
     WHERE is_deleted = false AND item_number = ${filter.itemCode}
   `;
-  if (!rows[0]) return null;
+  if (!rows[0] || parseInt(rows[0].row_count, 10) === 0) return null;
   return {
     level: 'item',
     majorCode: rows[0].product_major_code ?? '',
@@ -165,7 +173,7 @@ async function _fetchProductKpis(
 
   // For Postgres index selection, we pass the product-level filter as a normal
   // equality predicate. The 8 partial indexes from migration 0019 cover every
-  // combination of (item_code | product_major_code | product_minor_code) × (branch | no-branch).
+  // combination of (item_number | product_major_code | product_minor_code) × (branch | no-branch).
   let rows: KpiRow[];
 
   if (f.level === 'item') {
@@ -797,8 +805,14 @@ async function _fetchProductSaleTypes(params: ProductDrillParams): Promise<SaleT
 
 // ---------------------------------------------------------------------------
 // Primary supplier for an item (item-scorecard "Supplier" card cross-link).
-// agility_items.primary_supplier is a conditional column on some sync builds;
-// queried defensively via information_schema before referencing.
+//
+// Resolves to BOTH supplier_code (display) and supplier_key (URL routing).
+// The vendor scorecard at /scorecard/vendor/[supplierKey] queries
+// agility_po_header.supplier_key — passing supplier_code there would 404,
+// since the two columns hold different values for the same supplier.
+//
+// agility_items has either `primary_supplier_key` or `primary_supplier`
+// depending on sync build; queried defensively via information_schema.
 // ---------------------------------------------------------------------------
 
 async function _fetchItemPrimarySupplier(itemCode: string): Promise<ItemPrimarySupplier | null> {
@@ -813,29 +827,49 @@ async function _fetchItemPrimarySupplier(itemCode: string): Promise<ItemPrimaryS
   const hasSupplierKey = cols.some((c) => c.column_name === 'primary_supplier_key');
   if (!hasSupplier && !hasSupplierKey) return null;
 
+  type SupplierLookupRow = {
+    supplier_key: string | null;
+    supplier_code: string | null;
+    supplier_name: string | null;
+  };
+
+  let rows: SupplierLookupRow[];
   if (hasSupplierKey) {
-    const rows = await sql<{ supplier_code: string | null; supplier_name: string | null }[]>`
-      SELECT s.supplier_code AS supplier_code, s.supplier_name AS supplier_name
+    rows = await sql<SupplierLookupRow[]>`
+      SELECT
+        s.supplier_key AS supplier_key,
+        s.supplier_code AS supplier_code,
+        s.supplier_name AS supplier_name
       FROM agility_items i
-      LEFT JOIN agility_suppliers s ON s.supplier_key = i.primary_supplier_key
+      LEFT JOIN agility_suppliers s
+        ON s.supplier_key = i.primary_supplier_key
+        AND s.is_deleted = false
       WHERE i.item = ${itemCode}
+      ORDER BY s.ship_from_seq ASC NULLS FIRST
       LIMIT 1
     `;
-    if (!rows[0] || !rows[0].supplier_code) return null;
-    return { supplierCode: rows[0].supplier_code, supplierName: rows[0].supplier_name };
+  } else {
+    // primary_supplier holds the supplier code; resolve to supplier_key via agility_suppliers
+    rows = await sql<SupplierLookupRow[]>`
+      SELECT
+        s.supplier_key AS supplier_key,
+        s.supplier_code AS supplier_code,
+        s.supplier_name AS supplier_name
+      FROM agility_items i
+      LEFT JOIN agility_suppliers s
+        ON TRIM(s.supplier_code) = TRIM(i.primary_supplier)
+        AND s.is_deleted = false
+      WHERE i.item = ${itemCode}
+      ORDER BY s.ship_from_seq ASC NULLS FIRST
+      LIMIT 1
+    `;
   }
-
-  // hasSupplier: column stores supplier code directly
-  const rows = await sql<{ supplier_code: string | null; supplier_name: string | null }[]>`
-    SELECT i.primary_supplier AS supplier_code,
-      (SELECT supplier_name FROM agility_suppliers s
-        WHERE TRIM(s.supplier_code) = TRIM(i.primary_supplier) LIMIT 1) AS supplier_name
-    FROM agility_items i
-    WHERE i.item = ${itemCode}
-    LIMIT 1
-  `;
-  if (!rows[0] || !rows[0].supplier_code) return null;
-  return { supplierCode: rows[0].supplier_code, supplierName: rows[0].supplier_name };
+  if (!rows[0] || !rows[0].supplier_key) return null;
+  return {
+    supplierKey: rows[0].supplier_key,
+    supplierCode: rows[0].supplier_code ?? rows[0].supplier_key,
+    supplierName: rows[0].supplier_name,
+  };
 }
 
 // ---------------------------------------------------------------------------

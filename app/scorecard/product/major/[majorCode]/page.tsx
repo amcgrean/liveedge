@@ -103,15 +103,9 @@ export default async function ProductMajorScorecard({
   logFail('minors', minorsRes);
 
   const header = headerRes.status === 'fulfilled' ? headerRes.value : null;
-  if (!header && kpisRes.status === 'fulfilled' && !kpisRes.value.base.sales) {
-    // No data at all for this major code under current filters — but still let the page render.
-    // If even the header lookup fails AND there's no data, treat as 404.
-    if (kpisRes.status !== 'fulfilled' || (!kpisRes.value.base.sales && !kpisRes.value.compare.sales)) {
-      notFound();
-    }
-  }
-
   const kpis = kpisRes.status === 'fulfilled' ? kpisRes.value : { ...EMPTY_KPIS, customerName: majorCode };
+  if (!header && !kpis.base.sales && !kpis.compare.sales) notFound();
+
   const threeYear = threeYearRes.status === 'fulfilled' ? threeYearRes.value : [];
   const topCustomers = topCustomersRes.status === 'fulfilled' ? topCustomersRes.value : [];
   const branchMix = branchMixRes.status === 'fulfilled' ? branchMixRes.value : [];

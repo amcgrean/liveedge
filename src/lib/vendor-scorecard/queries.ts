@@ -455,7 +455,7 @@ async function _fetchVendorDetail(
   const seqNum   = colonIdx >= 0 ? parseInt(supplierKey.slice(colonIdx + 2), 10) : null;
   const seqFilter = (seqNum !== null && seqNum > 0) ? sql`AND ph.shipfrom_seq = ${seqNum}` : sql``;
 
-  type BranchYtdRow = { system_id: string; spend_ytd: string | null; fill_rate: string | null; otd_rate: string | null };
+  type BranchYtdRow = { system_id: string; spend_ytd: string | null; fill_rate: string | null; otd_rate: string | null; last_receive: string | null };
   type BranchPyRow  = { system_id: string; spend_py: string | null };
   type SupplierInfoRow = { supplier_code: string | null; supplier_name: string | null; ship_from_name: string | null };
 
@@ -473,7 +473,8 @@ async function _fetchVendorDetail(
         SUM(rl.cost)::numeric(18,2)::text AS spend_ytd,
         (SUM(rl.qty)::numeric / NULLIF(SUM(pl.qty_ordered), 0))::numeric(6,4)::text AS fill_rate,
         (COUNT(*) FILTER (WHERE h.receive_date::date <= ph.expect_date::date)::numeric
-          / NULLIF(COUNT(*), 0))::numeric(6,4)::text AS otd_rate
+          / NULLIF(COUNT(*), 0))::numeric(6,4)::text AS otd_rate,
+        MAX(h.receive_date)::date::text AS last_receive
       FROM h
       JOIN agility_receiving_lines rl
         ON rl.system_id = h.system_id AND rl.po_id = h.po_id AND rl.receive_num = h.receive_num
@@ -656,6 +657,13 @@ async function _fetchVendorDetail(
     // Tables not yet seeded
   }
 
+  // Latest receive across all branches (used by callers for the noRecentReceipts risk flag).
+  const lastReceiveDate = branchYtdRows
+    .map((r) => r.last_receive)
+    .filter((d): d is string => !!d)
+    .sort()
+    .pop() ?? null;
+
   return {
     supplierKey, supplierCode, supplierName: supplierDisplayName,
     spendYTD: totalYTD, spendPY: totalPY,
@@ -664,6 +672,7 @@ async function _fetchVendorDetail(
     otdPct:      branchBreakdown[0]?.otdPct      ?? null,
     openPoCount: parseInt(openPoRows[0]?.open_po_count ?? '0', 10),
     openPoValue: toNum(openPoRows[0]?.open_po_value),
+    lastReceiveDate,
     branchBreakdown, productGroupBreakdown, rebatePrograms, riskFlags,
   };
 }

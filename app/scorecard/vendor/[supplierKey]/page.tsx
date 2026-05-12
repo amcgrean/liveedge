@@ -117,7 +117,7 @@ export default async function VendorScorecardDetailPage({
     fillRatePct: detail.fillRatePct,
     otdPct: detail.otdPct,
     openPoCount: detail.openPoCount,
-    lastReceiveDate: null,
+    lastReceiveDate: detail.lastReceiveDate,
     rebatePrograms: detail.rebatePrograms,
     ytdPacing,
   });
