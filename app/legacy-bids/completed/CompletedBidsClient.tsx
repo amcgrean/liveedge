@@ -25,6 +25,15 @@ interface BidRow {
   estimatorName: string | null;
 }
 
+interface BidStats {
+  total: number;
+  thisMonth: number;
+  thisYear: number;
+  avgDays: number | null;
+  byPlanType: { planType: string; count: number }[];
+  byEstimator: { name: string; count: number }[];
+}
+
 interface Props {
   session: Session;
   embedded?: boolean;
@@ -37,6 +46,8 @@ export default function CompletedBidsClient({ session, embedded = false }: Props
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [page, setPage] = useState(0);
+  const [stats, setStats] = useState<BidStats | null>(null);
+  const [statsLoading, setStatsLoading] = useState(true);
   const limit = 50;
 
   const fetchBids = useCallback(async () => {
@@ -62,9 +73,25 @@ export default function CompletedBidsClient({ session, embedded = false }: Props
     }
   }, [search, page]);
 
+  const fetchStats = useCallback(async () => {
+    setStatsLoading(true);
+    try {
+      const res = await fetch('/api/legacy-bids/stats');
+      if (res.ok) setStats(await res.json());
+    } catch {
+      // non-fatal
+    } finally {
+      setStatsLoading(false);
+    }
+  }, []);
+
   useEffect(() => {
     fetchBids();
   }, [fetchBids]);
+
+  useEffect(() => {
+    fetchStats();
+  }, [fetchStats]);
 
   const formatDate = (d: string | null) =>
     d ? new Date(d).toLocaleDateString() : '—';
@@ -79,6 +106,76 @@ export default function CompletedBidsClient({ session, embedded = false }: Props
               <ArrowLeft className="w-5 h-5" />
             </Link>
             <h1 className="text-2xl font-bold">Completed Bids</h1>
+          </div>
+        )}
+
+        {/* Stats breakdown */}
+        {(stats || statsLoading) && (
+          <div className="mb-6 space-y-3">
+            {/* KPI tiles */}
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+              {[
+                { label: 'Total Completed', value: statsLoading ? '…' : String(stats?.total ?? 0) },
+                { label: 'This Year', value: statsLoading ? '…' : String(stats?.thisYear ?? 0) },
+                { label: 'This Month', value: statsLoading ? '…' : String(stats?.thisMonth ?? 0) },
+                { label: 'Avg Turnaround', value: statsLoading ? '…' : stats?.avgDays != null ? `${stats.avgDays}d` : '—' },
+              ].map(({ label, value }) => (
+                <div key={label} className="bg-gray-900 border border-gray-800 rounded-lg p-3 text-center">
+                  <div className="text-xl font-bold text-white">{value}</div>
+                  <div className="text-xs text-gray-500 mt-0.5">{label}</div>
+                </div>
+              ))}
+            </div>
+
+            {/* By type + by estimator */}
+            {!statsLoading && stats && (
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                {/* By plan type */}
+                <div className="bg-gray-900 border border-gray-800 rounded-lg p-3">
+                  <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-2">By Type</h3>
+                  <div className="space-y-1.5">
+                    {stats.byPlanType.map(({ planType, count }) => {
+                      const pct = stats.total > 0 ? Math.round((count / stats.total) * 100) : 0;
+                      return (
+                        <div key={planType}>
+                          <div className="flex items-center justify-between text-xs mb-0.5">
+                            <span className={planType === 'Commercial' ? 'text-blue-300' : 'text-green-300'}>{planType}</span>
+                            <span className="text-gray-400">{count} <span className="text-gray-600">({pct}%)</span></span>
+                          </div>
+                          <div className="h-1.5 bg-gray-800 rounded-full overflow-hidden">
+                            <div
+                              className={`h-full rounded-full ${planType === 'Commercial' ? 'bg-blue-600' : 'bg-green-600'}`}
+                              style={{ width: `${pct}%` }}
+                            />
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                {/* By estimator */}
+                <div className="bg-gray-900 border border-gray-800 rounded-lg p-3">
+                  <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-2">By Estimator</h3>
+                  <div className="space-y-1.5">
+                    {stats.byEstimator.slice(0, 8).map(({ name, count }) => {
+                      const pct = stats.total > 0 ? Math.round((count / stats.total) * 100) : 0;
+                      return (
+                        <div key={name}>
+                          <div className="flex items-center justify-between text-xs mb-0.5">
+                            <span className="text-gray-300 truncate max-w-[60%]">{name}</span>
+                            <span className="text-gray-400">{count} <span className="text-gray-600">({pct}%)</span></span>
+                          </div>
+                          <div className="h-1.5 bg-gray-800 rounded-full overflow-hidden">
+                            <div className="h-full bg-cyan-700 rounded-full" style={{ width: `${pct}%` }} />
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
         )}
 

@@ -24,6 +24,8 @@ import {
   ChevronUp,
   AlertCircle,
   Package,
+  Archive,
+  FileDown,
 } from 'lucide-react';
 import Link from 'next/link';
 
@@ -358,6 +360,16 @@ export default function ManageBidClient({ session }: Props) {
     }
   };
 
+  const handleSpecSheet = async () => {
+    try {
+      const { generateSpecSheet } = await import('@/lib/generateSpecSheet');
+      await generateSpecSheet(parseInt(bidId as string, 10));
+    } catch (err) {
+      console.error('Spec sheet error:', err);
+      setError('Failed to generate spec sheet. Please try again.');
+    }
+  };
+
   const handleDeleteFile = async (fileId: number) => {
     if (!confirm('Remove this file?')) return;
     await fetch(`/api/legacy-bids/${bidId}/files?fileId=${fileId}`, { method: 'DELETE' });
@@ -424,6 +436,14 @@ export default function ManageBidClient({ session }: Props) {
                 Complete
               </button>
             )}
+            <button
+              onClick={handleSpecSheet}
+              title="Download Spec Sheet PDF"
+              className="flex items-center gap-1 px-3 py-1.5 bg-gray-800 hover:bg-gray-700 text-gray-300 rounded-lg text-sm"
+            >
+              <FileDown className="w-4 h-4" />
+              Spec Sheet
+            </button>
             <button
               onClick={handleDelete}
               className="flex items-center gap-1 px-3 py-1.5 bg-red-900/50 hover:bg-red-800 text-red-300 rounded-lg text-sm"
@@ -857,14 +877,26 @@ export default function ManageBidClient({ session }: Props) {
             <div className="bg-gray-900 border border-gray-800 rounded-lg p-4">
               <div className="flex items-center justify-between mb-3">
                 <h3 className="font-semibold text-sm">Attachments</h3>
-                <button
-                  onClick={() => fileInputRef.current?.click()}
-                  disabled={uploadingFile}
-                  className="flex items-center gap-1 px-2 py-1 text-xs bg-gray-800 hover:bg-gray-700 disabled:opacity-50 rounded text-gray-300"
-                >
-                  <Upload className="w-3 h-3" />
-                  {uploadingFile ? 'Uploading...' : 'Add File'}
-                </button>
+                <div className="flex items-center gap-2">
+                  {bid.files.length > 0 && (
+                    <a
+                      href={`/api/legacy-bids/${bidId}/download-all`}
+                      download
+                      className="flex items-center gap-1 px-2 py-1 text-xs bg-gray-800 hover:bg-gray-700 rounded text-gray-300"
+                    >
+                      <Archive className="w-3 h-3" />
+                      Download All
+                    </a>
+                  )}
+                  <button
+                    onClick={() => fileInputRef.current?.click()}
+                    disabled={uploadingFile}
+                    className="flex items-center gap-1 px-2 py-1 text-xs bg-gray-800 hover:bg-gray-700 disabled:opacity-50 rounded text-gray-300"
+                  >
+                    <Upload className="w-3 h-3" />
+                    {uploadingFile ? 'Uploading...' : 'Add File'}
+                  </button>
+                </div>
                 <input
                   ref={fileInputRef}
                   type="file"

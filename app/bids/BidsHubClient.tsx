@@ -10,18 +10,20 @@ import LegacyBidsClient from '../legacy-bids/LegacyBidsClient';
 import CompletedBidsClient from '../legacy-bids/completed/CompletedBidsClient';
 import AllBidsClient from '../all-bids/AllBidsClient';
 import BidsListClient from './BidsListClient';
+import BidCalendarClient from './BidCalendarClient';
 
-type Tab = 'open' | 'completed' | 'all' | 'projects';
+type Tab = 'open' | 'completed' | 'all' | 'projects' | 'calendar';
 
 const TABS: { id: Tab; label: string; description: string }[] = [
   { id: 'open',       label: 'Open',       description: 'Active bid tracker entries' },
   { id: 'completed',  label: 'Completed',  description: 'Finished bids with turnaround' },
   { id: 'all',        label: 'All',        description: 'Tracker + Estimator unified' },
   { id: 'projects',   label: 'Projects',   description: 'Estimator bids with workflow' },
+  { id: 'calendar',   label: 'Calendar',   description: 'Open bids by due date' },
 ];
 
 function isTab(v: string | null): v is Tab {
-  return v === 'open' || v === 'completed' || v === 'all' || v === 'projects';
+  return v === 'open' || v === 'completed' || v === 'all' || v === 'projects' || v === 'calendar';
 }
 
 interface Props {
@@ -91,6 +93,7 @@ export default function BidsHubClient({ session, initialTab = 'open' }: Props) {
         {tab === 'completed' && <CompletedBidsClient session={session} embedded />}
         {tab === 'all' && <AllBidsClient session={session} embedded />}
         {tab === 'projects' && <BidsListClient session={session} embedded />}
+        {tab === 'calendar' && <BidCalendarClient session={session} embedded />}
       </main>
     </div>
   );
