@@ -38,6 +38,7 @@ interface Props {
   selectedStop: DeliveryStop | null;
   onSelectStop: (stop: DeliveryStop | null) => void;
   branch: string;
+  onVehicleCount?: (count: number) => void;
 }
 
 // ── Constants ─────────────────────────────────────────────────────────────────
@@ -89,6 +90,7 @@ export function DispatchMap({
   selectedStop,
   onSelectStop,
   branch,
+  onVehicleCount,
 }: Props) {
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<import('leaflet').Map | null>(null);
@@ -281,6 +283,9 @@ export function DispatchMap({
   }, [stops, routes, routeStops, selectedStop]);
 
   // ── Vehicle overlay ──────────────────────────────────────────────────────────
+  const onVehicleCountRef = useRef(onVehicleCount);
+  onVehicleCountRef.current = onVehicleCount;
+
   const fetchVehicles = useCallback(() => {
     import('leaflet').then((L) => {
       const map = mapRef.current;
@@ -295,10 +300,12 @@ export function DispatchMap({
           if (!map2) return;
 
           const seenIds = new Set<string>();
+          let visibleCount = 0;
 
           data.vehicles.forEach((v) => {
             if (v.latitude == null || v.longitude == null) return;
             seenIds.add(v.id);
+            visibleCount++;
 
             const branchColor = v.branch_code ? (BRANCH_VEHICLE_COLORS[v.branch_code] ?? '#6b7280') : '#6b7280';
             const heading = v.heading ?? 0;
@@ -332,6 +339,8 @@ export function DispatchMap({
               vehicleMarkersRef.current.delete(id);
             }
           });
+
+          onVehicleCountRef.current?.(visibleCount);
         })
         .catch(() => {});
     });

@@ -124,6 +124,18 @@ function expectDateColor(iso: string | null): string {
   return 'var(--text-3)';
 }
 
+const MAX_STOPS_PER_ROUTE = 12;
+
+function isOverdue(stop: DeliveryStop): boolean {
+  const sf = stop.status_flag?.toUpperCase();
+  const ss = stop.so_status?.toUpperCase();
+  if (sf === 'D' || ss === 'D' || sf === 'I' || ss === 'I') return false;
+  const d = parseLocalDate(stop.expect_date);
+  if (!d) return false;
+  const today = new Date(); today.setHours(0,0,0,0);
+  return d < today;
+}
+
 function fmtMoney(n: number | null) {
   if (n == null) return '—';
   return '$' + n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -200,6 +212,7 @@ function StopCard({
   }
 
   const isDelivered = stop.status_flag?.toUpperCase() === 'D' || stop.so_status?.toUpperCase() === 'D';
+  const overdue = isOverdue(stop);
 
   return (
     <div
@@ -209,8 +222,11 @@ function StopCard({
           ? 'border-cyan-500 bg-cyan-900/20'
           : isDelivered
           ? 'border-gray-700 bg-gray-900/50 opacity-60 hover:opacity-80'
+          : overdue
+          ? 'border-red-700 bg-red-950/20 hover:border-red-600'
           : 'border-gray-700 bg-gray-900 hover:border-gray-600'
       }`}
+      style={overdue && !selected ? { borderLeftWidth: 3, borderLeftColor: '#d05050' } : undefined}
     >
       <div className="flex items-start justify-between gap-1">
         <div className="min-w-0">
@@ -222,7 +238,10 @@ function StopCard({
           </div>
         </div>
         <div className="flex flex-col items-end gap-1 shrink-0">
-          {statusBadge(stop.status_flag)}
+          {overdue
+            ? <span className="text-[9px] font-bold px-1.5 py-0.5 rounded" style={{ background: '#5c1a1a', color: '#f87171', letterSpacing: '0.05em' }}>OVERDUE</span>
+            : statusBadge(stop.status_flag)
+          }
           {stop.expect_date && (
             <span className="text-[9px] font-mono" style={{ color: expectDateColor(stop.expect_date) }}>
               {fmtExpectDate(stop.expect_date)}
@@ -768,6 +787,12 @@ function RoutesDrawer({
               routes.map((route, idx) => {
                 const rStops = routeStops.get(route.id) ?? [];
                 const routeColor = PICKER_HUE[idx % PICKER_HUE.length];
+                const loadPct = Math.min(100, Math.round((rStops.length / MAX_STOPS_PER_ROUTE) * 100));
+                const barColor = loadPct >= 90 ? '#d05050' : loadPct >= 70 ? '#d4a23a' : '#4ec48a';
+                const overdueCount = rStops.filter(rs => {
+                  const del = stopLookup.get(rs.so_id);
+                  return del ? isOverdue(del) : false;
+                }).length;
                 return (
                   <div
                     key={route.id}
@@ -794,7 +819,11 @@ function RoutesDrawer({
                           )}
                         </div>
                         <div className="flex items-center gap-2 shrink-0">
-                          <span className="text-[10px]" style={{ color: 'var(--text-3)', fontFamily: 'var(--mono)' }}>{rStops.length} stops</span>
+                          {overdueCount > 0 && (
+                            <span className="text-[9px] font-bold px-1.5 py-0.5 rounded" style={{ background: '#5c1a1a', color: '#f87171' }}>
+                              {overdueCount} late
+                            </span>
+                          )}
                           <button
                             onClick={async () => {
                               if (!confirm(`Delete route "${route.route_name}"?`)) return;
@@ -804,6 +833,16 @@ function RoutesDrawer({
                           >
                             <Trash2 className="w-3 h-3" />
                           </button>
+                        </div>
+                      </div>
+                      {/* load bar */}
+                      <div className="mt-2">
+                        <div className="flex items-center justify-between mb-1">
+                          <span className="text-[9px]" style={{ color: 'var(--text-4)' }}>{rStops.length} / {MAX_STOPS_PER_ROUTE} stops</span>
+                          <span className="text-[9px] font-mono" style={{ color: barColor }}>{loadPct}%</span>
+                        </div>
+                        <div className="h-1 rounded-full overflow-hidden" style={{ background: 'var(--line)' }}>
+                          <div className="h-full rounded-full transition-all" style={{ width: `${loadPct}%`, background: barColor }} />
                         </div>
                       </div>
                     </div>
@@ -963,6 +1002,7 @@ export default function DispatchClient({ isAdmin, userBranch, userName, userRole
   const [sortKey, setSortKey] = useState<'so' | 'date' | 'city'>('so');
   const [groupKey, setGroupKey] = useState<'none' | 'date' | 'city'>('none');
   const [routesDrawerOpen, setRoutesDrawerOpen] = useState(false);
+  const [vehicleCount, setVehicleCount] = useState<number | null>(null);
 
   // Close ship-via dropdown on outside click
   useEffect(() => {
@@ -1216,7 +1256,16 @@ export default function DispatchClient({ isAdmin, userBranch, userName, userRole
               </button>
               <KpiTile label="Unassigned"   value={kpis?.unassigned_stops ?? null} />
               <KpiTile label="Routes"       value={kpis?.route_count ?? null} />
-              <KpiTile label="Trucks Out"   value={kpis?.trucks_out ?? null} />
+              {/* Live truck count from Samsara */}
+              <div className="flex flex-col items-center justify-center px-3 py-1 rounded" style={{ background: 'var(--panel)', border: '1px solid var(--line)' }}>
+                <div className="flex items-center gap-1.5">
+                  <Truck className="w-3.5 h-3.5" style={{ color: vehicleCount != null && vehicleCount > 0 ? '#4ec48a' : 'var(--text-4)' }} />
+                  <span className="text-lg font-bold tabular-nums" style={{ color: vehicleCount != null && vehicleCount > 0 ? '#4ec48a' : 'var(--text-3)' }}>
+                    {vehicleCount ?? '—'}
+                  </span>
+                </div>
+                <div className="text-[9px] uppercase tracking-wider mt-0.5" style={{ color: 'var(--text-4)' }}>Live GPS</div>
+              </div>
             </div>
 
             {/* Divider */}
@@ -1549,6 +1598,7 @@ export default function DispatchClient({ isAdmin, userBranch, userName, userRole
                 selectedStop={selectedStop}
                 onSelectStop={setSelectedStop}
                 branch={branch}
+                onVehicleCount={setVehicleCount}
               />
             ) : (
               <BoardCardGrid
