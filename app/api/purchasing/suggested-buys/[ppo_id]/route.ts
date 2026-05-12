@@ -15,13 +15,11 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ ppo_
 
     const headers = await sql`
       SELECT sph.ppo_id, sph.system_id, sph.supplier_code,
-             COALESCE(sup.supp_name, sph.supplier_code) AS supplier_name,
-             sph.order_date::text, sph.expect_date::text, sph.ppo_status
+             COALESCE(sph.supplier_name, sph.supplier_code)          AS supplier_name,
+             sph.created_date::text                                   AS order_date,
+             NULL::text                                               AS expect_date,
+             CASE WHEN sph.is_available THEN 'OPEN' ELSE 'PENDING' END AS ppo_status
       FROM agility_suggested_po_header sph
-      LEFT JOIN (
-        SELECT DISTINCT ON (supplier_code) supplier_code, supp_name
-        FROM agility_suppliers WHERE is_deleted = false ORDER BY supplier_code, id
-      ) sup ON sup.supplier_code = sph.supplier_code
       WHERE sph.is_deleted = false AND sph.ppo_id = ${ppo_id}
         ${branch ? sql`AND sph.system_id = ${branch}` : sql``}
       LIMIT 1
@@ -30,12 +28,17 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ ppo_
     if (!headers[0]) return NextResponse.json({ error: 'Not found.' }, { status: 404 });
 
     const lines = await sql`
-      SELECT spl.id, spl.sequence, spl.item_code, spl.description,
-             spl.qty_to_order, spl.unit_cost, spl.stocking_uom,
-             ai.qty_on_hand, ai.default_location
+      SELECT spl.id, spl.sequence,
+             aib.item_code,
+             COALESCE(spl.ppo_desc, aib.description)  AS description,
+             spl.qty_ordered                           AS qty_to_order,
+             spl.cost                                  AS unit_cost,
+             spl.uom                                   AS stocking_uom,
+             aib.qty_on_hand,
+             aib.default_location
       FROM agility_suggested_po_lines spl
-      LEFT JOIN agility_items ai
-        ON ai.item = spl.item_code AND ai.system_id = spl.system_id AND ai.is_deleted = false
+      LEFT JOIN agility_item_branch aib
+        ON aib.item_ptr = spl.item_ptr AND aib.system_id = spl.system_id
       WHERE spl.is_deleted = false
         AND spl.ppo_id = ${ppo_id}
         AND spl.system_id = ${(headers[0] as { system_id: string }).system_id}

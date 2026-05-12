@@ -18,33 +18,26 @@ export async function GET(req: NextRequest) {
   try {
     const sql = getErpSql();
 
-    // Use app_suggested_po_summary view if available, else fall back to raw tables
     const rows = await sql`
       SELECT
         sph.ppo_id,
         sph.system_id,
         sph.supplier_code,
-        COALESCE(sup.supp_name, sph.supplier_code) AS supplier_name,
-        sph.order_date::text,
-        sph.expect_date::text,
-        sph.ppo_status,
-        COUNT(spl.id)::int             AS line_count,
-        SUM(spl.qty_to_order)::numeric AS total_qty
+        COALESCE(sph.supplier_name, sph.supplier_code)                     AS supplier_name,
+        sph.created_date::text                                              AS order_date,
+        MIN(spl.exp_rcpt_date)::text                                        AS expect_date,
+        CASE WHEN sph.is_available THEN 'OPEN' ELSE 'PENDING' END          AS ppo_status,
+        COUNT(spl.id)::int                                                  AS line_count,
+        SUM(spl.qty_ordered)::numeric                                       AS total_qty
       FROM agility_suggested_po_header sph
       LEFT JOIN agility_suggested_po_lines spl
         ON spl.system_id = sph.system_id AND spl.ppo_id = sph.ppo_id AND spl.is_deleted = false
-      LEFT JOIN (
-        SELECT DISTINCT ON (supplier_code) supplier_code, supp_name
-        FROM agility_suppliers
-        WHERE is_deleted = false
-        ORDER BY supplier_code, id
-      ) sup ON sup.supplier_code = sph.supplier_code
       WHERE sph.is_deleted = false
         ${branch ? sql`AND sph.system_id = ${branch}` : sql``}
-        ${q ? sql`AND (sph.ppo_id::text ILIKE ${'%' + q + '%'} OR sph.supplier_code ILIKE ${'%' + q + '%'} OR sup.supp_name ILIKE ${'%' + q + '%'})` : sql``}
-      GROUP BY sph.ppo_id, sph.system_id, sph.supplier_code, sup.supp_name,
-               sph.order_date, sph.expect_date, sph.ppo_status
-      ORDER BY sph.expect_date ASC NULLS LAST, sph.ppo_id
+        ${q ? sql`AND (sph.ppo_id::text ILIKE ${'%' + q + '%'} OR sph.supplier_code ILIKE ${'%' + q + '%'} OR sph.supplier_name ILIKE ${'%' + q + '%'})` : sql``}
+      GROUP BY sph.ppo_id, sph.system_id, sph.supplier_code, sph.supplier_name,
+               sph.created_date, sph.is_available
+      ORDER BY MIN(spl.exp_rcpt_date) ASC NULLS LAST, sph.ppo_id
       LIMIT ${limit}
     `;
 

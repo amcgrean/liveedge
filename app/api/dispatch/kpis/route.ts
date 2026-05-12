@@ -39,7 +39,7 @@ export async function GET(req: NextRequest) {
         FROM agility_so_header soh
         WHERE soh.is_deleted = false
           ${branchFilter}
-          AND soh.so_status NOT IN ('C', 'X')
+          AND soh.so_status NOT IN ('C', 'I', 'X')
           AND soh.expect_date::date = ${deliveryDate}::date
       `,
       sql<RouteCountRow[]>`
@@ -63,7 +63,7 @@ export async function GET(req: NextRequest) {
       FROM agility_so_header soh
       WHERE soh.is_deleted = false
         ${branchFilter}
-        AND soh.so_status NOT IN ('C', 'X')
+        AND soh.so_status NOT IN ('C', 'I', 'X')
         AND soh.expect_date::date = ${deliveryDate}::date
         AND NOT EXISTS (
           SELECT 1
