@@ -14,7 +14,9 @@ export async function GET(req: NextRequest, { params }: { params: Params }) {
   try {
     const sql = getErpSql();
     const rows = await sql`
-      SELECT s.id, s.route_id, s.so_id, s.shipment_num, s.sequence, s.status, s.notes, s.created_at
+      SELECT s.id, s.route_id, s.so_id, s.shipment_num, s.sequence, s.status, s.notes,
+             s.time_window_start, s.time_window_end, s.eta_minutes,
+             s.bay_number, s.wc_notified_at::text, s.created_at
       FROM dispatch_route_stops s
       WHERE s.route_id = ${parseInt(id, 10)}
       ORDER BY s.sequence, s.id

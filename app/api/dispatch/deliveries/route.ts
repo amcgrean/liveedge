@@ -18,6 +18,7 @@ export interface DeliveryStop {
   sale_type: string | null;
   customer_name: string | null;
   cust_code: string | null;
+  cust_phone: string | null;
   address_1: string | null;
   city: string | null;
   expect_date: string | null;
@@ -63,6 +64,7 @@ export async function GET(req: NextRequest) {
       sale_type: string | null;
       cust_name: string | null;
       cust_code: string | null;
+      cust_phone: string | null;
       address_1: string | null;
       city: string | null;
       expect_date: string | null;
@@ -91,6 +93,7 @@ export async function GET(req: NextRequest) {
         sh.loaded_date::text, sh.loaded_time,
         soh.reference, soh.sale_type,
         soh.cust_name, soh.cust_code,
+        ac.cust_phone,
         soh.shipto_address_1 AS address_1, soh.shipto_city AS city,
         soh.expect_date::text,
         ac.lat::text, ac.lon::text,
@@ -146,6 +149,7 @@ export async function GET(req: NextRequest) {
       sale_type: r.sale_type?.trim() || null,
       customer_name: r.cust_name?.trim() || null,
       cust_code: r.cust_code?.trim() || null,
+      cust_phone: r.cust_phone?.trim() || null,
       address_1: r.address_1?.trim() || null,
       city: r.city?.trim() || null,
       expect_date: r.expect_date,

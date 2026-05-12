@@ -12,7 +12,8 @@ import type { OrderLine } from '../api/dispatch/orders/[so_number]/lines/route';
 import Link from 'next/link';
 import {
   X, ChevronDown, ChevronRight, ChevronUp, Truck, AlertCircle,
-  MapPin, Map as MapIcon, LayoutList, User, Plus, Trash2, RefreshCw, Search, Package, MessageSquare, Send, Camera,
+  MapPin, Map as MapIcon, LayoutList, User, Plus, Trash2, RefreshCw, Search, Package, MessageSquare, Send, Camera, Phone, GripVertical,
+  Pencil, Clock, Bell,
 } from 'lucide-react';
 
 // Leaflet requires browser APIs — load without SSR
@@ -32,6 +33,8 @@ interface DispatchRoute {
 interface RouteStop {
   id: number; route_id: number; so_id: string;
   shipment_num: number; sequence: number; status: string | null; notes: string | null;
+  time_window_start: string | null; time_window_end: string | null;
+  eta_minutes: number | null; bay_number: string | null; wc_notified_at: string | null;
 }
 
 interface TruckAssignment {
@@ -492,7 +495,7 @@ function OrderLinesSection({ lines, loading }: { lines: OrderLine[] | null; load
 
 // ── Detail Panel ───────────────────────────────────────────────────────────────
 
-function DetailPanel({ stop, onClose }: { stop: DeliveryStop; onClose: () => void }) {
+function DetailPanel({ stop, routeStop, onClose }: { stop: DeliveryStop; routeStop: RouteStop | null; onClose: () => void }) {
   const [timeline, setTimeline] = useState<TimelineData | null>(null);
   const [lines, setLines] = useState<OrderLine[] | null>(null);
   const [loadingTimeline, setLoadingTimeline] = useState(false);
@@ -586,9 +589,16 @@ function DetailPanel({ stop, onClose }: { stop: DeliveryStop; onClose: () => voi
             {statusBadge(stop.status_flag)}
           </div>
           <div className="text-sm font-medium text-gray-200 mt-0.5 truncate">{stop.customer_name ?? '—'}</div>
-          <div className="text-xs text-gray-500 flex items-center gap-1 mt-0.5">
-            <MapPin className="w-3 h-3" />
-            {[stop.address_1, stop.city].filter(Boolean).join(', ') || '—'}
+          <div className="flex items-center gap-3 mt-0.5 flex-wrap">
+            <div className="text-xs text-gray-500 flex items-center gap-1">
+              <MapPin className="w-3 h-3" />
+              {[stop.address_1, stop.city].filter(Boolean).join(', ') || '—'}
+            </div>
+            {stop.cust_phone && (
+              <a href={`tel:${stop.cust_phone}`} className="text-xs text-cyan-400 hover:text-cyan-300 flex items-center gap-1 transition">
+                <Phone className="w-3 h-3" />{stop.cust_phone}
+              </a>
+            )}
           </div>
         </div>
         <button onClick={onClose} className="text-gray-500 hover:text-white transition shrink-0 mt-0.5">
@@ -612,6 +622,45 @@ function DetailPanel({ stop, onClose }: { stop: DeliveryStop; onClose: () => voi
           <div><dt className="text-gray-500">Route</dt><dd className="text-gray-200">{stop.route_id_char ?? '—'}</dd></div>
         </dl>
       </div>
+
+      {/* Route stop details */}
+      {routeStop && (routeStop.time_window_start || routeStop.time_window_end || routeStop.bay_number || routeStop.notes || routeStop.wc_notified_at) && (
+        <div className="px-4 py-3 border-b border-gray-700 shrink-0">
+          <div className="text-[10px] uppercase tracking-wider text-gray-500 mb-2">Stop Details</div>
+          <dl className="space-y-1 text-xs">
+            {(routeStop.time_window_start || routeStop.time_window_end) && (
+              <div className="flex items-center gap-1.5">
+                <Clock className="w-3 h-3 text-gray-500 shrink-0" />
+                <span className="text-gray-400">Window</span>
+                <span className="text-gray-200 ml-auto">
+                  {[routeStop.time_window_start, routeStop.time_window_end].filter(Boolean).join(' – ')}
+                </span>
+              </div>
+            )}
+            {routeStop.bay_number && (
+              <div className="flex items-center gap-1.5">
+                <span className="text-gray-400 w-16">Bay</span>
+                <span className="text-gray-200 ml-auto font-mono">{routeStop.bay_number}</span>
+              </div>
+            )}
+            {routeStop.wc_notified_at && (
+              <div className="flex items-center gap-1.5">
+                <Bell className="w-3 h-3 text-yellow-400 shrink-0" />
+                <span className="text-gray-400">Will-call</span>
+                <span className="text-yellow-300 ml-auto text-[10px]">
+                  Called {new Date(routeStop.wc_notified_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                </span>
+              </div>
+            )}
+            {routeStop.notes && (
+              <div className="pt-0.5">
+                <div className="text-gray-500 mb-0.5">Notes</div>
+                <div className="text-gray-300 text-[11px] leading-snug bg-gray-800 rounded px-2 py-1.5">{routeStop.notes}</div>
+              </div>
+            )}
+          </dl>
+        </div>
+      )}
 
       {/* ERP Actions */}
       <div className="px-4 py-3 border-b border-gray-700 shrink-0 space-y-2">
@@ -731,18 +780,182 @@ function DetailPanel({ stop, onClose }: { stop: DeliveryStop; onClose: () => voi
 
 // ── Routes Drawer ─────────────────────────────────────────────────────────────
 
+function StopInlineEditor({
+  rs, routeId, onSaved,
+}: {
+  rs: RouteStop;
+  routeId: number;
+  onSaved: (updated: Partial<RouteStop>) => void;
+}) {
+  const [twStart, setTwStart] = useState(rs.time_window_start ?? '');
+  const [twEnd, setTwEnd] = useState(rs.time_window_end ?? '');
+  const [notes, setNotes] = useState(rs.notes ?? '');
+  const [bay, setBay] = useState(rs.bay_number ?? '');
+  const [saving, setSaving] = useState(false);
+  const [markingWc, setMarkingWc] = useState(false);
+
+  async function save() {
+    setSaving(true);
+    try {
+      const body = {
+        time_window_start: twStart.trim() || null,
+        time_window_end: twEnd.trim() || null,
+        notes: notes.trim() || null,
+        bay_number: bay.trim() || null,
+      };
+      await fetch(`/api/dispatch/routes/${routeId}/stops/${rs.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+      onSaved(body);
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function markCalled() {
+    setMarkingWc(true);
+    try {
+      const wc = new Date().toISOString();
+      await fetch(`/api/dispatch/routes/${routeId}/stops/${rs.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ wc_notified_at: wc }),
+      });
+      onSaved({ wc_notified_at: wc });
+    } finally {
+      setMarkingWc(false);
+    }
+  }
+
+  return (
+    <div
+      className="mt-1 rounded p-2 space-y-1.5 text-[10px]"
+      style={{ background: 'var(--bg)', border: '1px solid var(--line)' }}
+    >
+      {/* Time window */}
+      <div className="flex items-center gap-1">
+        <Clock className="w-2.5 h-2.5 shrink-0" style={{ color: 'var(--text-4)' }} />
+        <input
+          value={twStart}
+          onChange={(e) => setTwStart(e.target.value)}
+          placeholder="Start (e.g. 8:00 AM)"
+          className="flex-1 bg-transparent border-b px-0.5 py-0.5 text-[10px] outline-none focus:border-cyan-500"
+          style={{ borderColor: 'var(--line)', color: 'var(--text-2)' }}
+        />
+        <span style={{ color: 'var(--text-4)' }}>–</span>
+        <input
+          value={twEnd}
+          onChange={(e) => setTwEnd(e.target.value)}
+          placeholder="End"
+          className="flex-1 bg-transparent border-b px-0.5 py-0.5 text-[10px] outline-none focus:border-cyan-500"
+          style={{ borderColor: 'var(--line)', color: 'var(--text-2)' }}
+        />
+      </div>
+      {/* Bay + notes row */}
+      <div className="flex items-center gap-1">
+        <span style={{ color: 'var(--text-4)' }}>Bay</span>
+        <input
+          value={bay}
+          onChange={(e) => setBay(e.target.value)}
+          placeholder="—"
+          className="w-12 bg-transparent border-b px-0.5 py-0.5 text-[10px] outline-none focus:border-cyan-500 text-center"
+          style={{ borderColor: 'var(--line)', color: 'var(--text-2)' }}
+        />
+      </div>
+      <textarea
+        value={notes}
+        onChange={(e) => setNotes(e.target.value)}
+        placeholder="Stop notes…"
+        rows={2}
+        className="w-full bg-transparent border rounded px-1.5 py-1 text-[10px] outline-none resize-none focus:border-cyan-500"
+        style={{ borderColor: 'var(--line)', color: 'var(--text-2)' }}
+      />
+      <div className="flex items-center gap-1.5 flex-wrap">
+        <button
+          onClick={save}
+          disabled={saving}
+          className="px-2 py-0.5 rounded text-[10px] font-medium transition disabled:opacity-50"
+          style={{ background: 'var(--green-bright)', color: '#000' }}
+        >
+          {saving ? 'Saving…' : 'Save'}
+        </button>
+        {rs.wc_notified_at ? (
+          <span className="flex items-center gap-0.5" style={{ color: '#4ec48a' }}>
+            <Bell className="w-2.5 h-2.5" /> Called {new Date(rs.wc_notified_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+          </span>
+        ) : (
+          <button
+            onClick={markCalled}
+            disabled={markingWc}
+            className="flex items-center gap-0.5 px-2 py-0.5 rounded text-[10px] transition disabled:opacity-50"
+            style={{ background: 'rgba(251,191,36,0.12)', border: '1px solid #92400e', color: '#fbbf24' }}
+          >
+            <Bell className="w-2.5 h-2.5" /> {markingWc ? '…' : 'Mark Called'}
+          </button>
+        )}
+      </div>
+    </div>
+  );
+}
+
 function RoutesDrawer({
-  routes, routeStops, stopLookup, selectedSoId, onSelectStop, onRemoveStop, onDeleteRoute, onClose,
+  routes, routeStops, stopLookup, unassignedStops, selectedSoId,
+  onSelectStop, onAssignStop, onRemoveStop, onDeleteRoute, onUpdateStop, onClose,
 }: {
   routes: DispatchRoute[];
   routeStops: Map<number, RouteStop[]>;
   stopLookup: Map<string, DeliveryStop>;
+  unassignedStops: DeliveryStop[];
   selectedSoId: string | null;
   onSelectStop: (s: DeliveryStop) => void;
+  onAssignStop: (soId: string, routeId: number) => Promise<void>;
   onRemoveStop: (routeId: number, stopRowId: number) => Promise<void>;
   onDeleteRoute: (routeId: number) => Promise<void>;
+  onUpdateStop: (routeId: number, stopId: number, patch: Partial<RouteStop>) => void;
   onClose: () => void;
 }) {
+  const [dragSoId, setDragSoId] = useState<string | null>(null);
+  const [dragOverRouteId, setDragOverRouteId] = useState<number | null>(null);
+  const [dragOverUnassigned, setDragOverUnassigned] = useState(false);
+  const [assigning, setAssigning] = useState(false);
+  const [expandedStopId, setExpandedStopId] = useState<number | null>(null);
+
+  function onDragStart(e: React.DragEvent, soId: string) {
+    setDragSoId(soId);
+    e.dataTransfer.effectAllowed = 'move';
+    e.dataTransfer.setData('text/plain', soId);
+  }
+
+  async function onDropRoute(e: React.DragEvent, routeId: number) {
+    e.preventDefault();
+    setDragOverRouteId(null);
+    const soId = dragSoId ?? e.dataTransfer.getData('text/plain');
+    if (!soId || assigning) return;
+    // Already on this route?
+    const existing = routeStops.get(routeId) ?? [];
+    if (existing.some((rs) => rs.so_id === soId)) return;
+    setAssigning(true);
+    await onAssignStop(soId, routeId);
+    setAssigning(false);
+    setDragSoId(null);
+  }
+
+  async function onDropUnassigned(e: React.DragEvent, routeId: number, stopRowId: number) {
+    e.preventDefault();
+    setDragOverUnassigned(false);
+    if (assigning) return;
+    setAssigning(true);
+    await onRemoveStop(routeId, stopRowId);
+    setAssigning(false);
+    setDragSoId(null);
+  }
+
+  const assignedSoIds = new Set(
+    Array.from(routeStops.values()).flat().map((rs) => rs.so_id)
+  );
+
   return (
     <>
       {/* backdrop */}
@@ -751,11 +964,11 @@ function RoutesDrawer({
         className="absolute inset-0 z-30"
         style={{ background: 'rgba(0,0,0,0.55)', backdropFilter: 'blur(2px)' }}
       />
-      {/* panel */}
+      {/* panel — wider to fit unassigned column + routes */}
       <aside
         className="absolute top-0 bottom-0 left-0 z-40 flex flex-col overflow-hidden"
         style={{
-          width: '65%', minWidth: 720, maxWidth: 1100,
+          width: '82%', minWidth: 860, maxWidth: 1400,
           background: 'var(--panel)', borderRight: '1px solid var(--line)',
           boxShadow: '8px 0 32px rgba(0,0,0,0.45)',
         }}
@@ -765,7 +978,10 @@ function RoutesDrawer({
           <Truck className="w-4 h-4" style={{ color: 'var(--green-bright)' }} />
           <h2 className="text-sm font-semibold m-0">Routes &amp; Stops</h2>
           <span className="text-[11px] font-mono" style={{ color: 'var(--text-3)' }}>
-            {routes.length} routes · {routes.reduce((n, r) => n + r.stop_count, 0)} stops
+            {routes.length} routes · {routes.reduce((n, r) => n + r.stop_count, 0)} assigned · {unassignedStops.length} unassigned
+          </span>
+          <span className="text-[10px] px-2 py-0.5 rounded" style={{ background: 'var(--panel-2)', color: 'var(--text-4)', border: '1px solid var(--line)' }}>
+            Drag stops into routes
           </span>
           <div className="flex-1" />
           <button
@@ -776,125 +992,246 @@ function RoutesDrawer({
             <X className="w-3.5 h-3.5" /> Close
           </button>
         </div>
-        {/* route columns */}
-        <div className="flex-1 overflow-x-auto overflow-y-hidden p-4">
-          <div className="flex gap-3 h-full" style={{ minWidth: 'min-content', alignItems: 'flex-start' }}>
-            {routes.length === 0 ? (
-              <div className="flex items-center justify-center w-full h-32 text-sm" style={{ color: 'var(--text-3)' }}>
-                No routes planned for this date.
-              </div>
-            ) : (
-              routes.map((route, idx) => {
-                const rStops = routeStops.get(route.id) ?? [];
-                const routeColor = PICKER_HUE[idx % PICKER_HUE.length];
-                const loadPct = Math.min(100, Math.round((rStops.length / MAX_STOPS_PER_ROUTE) * 100));
-                const barColor = loadPct >= 90 ? '#d05050' : loadPct >= 70 ? '#d4a23a' : '#4ec48a';
-                const overdueCount = rStops.filter(rs => {
-                  const del = stopLookup.get(rs.so_id);
-                  return del ? isOverdue(del) : false;
-                }).length;
-                return (
-                  <div
-                    key={route.id}
-                    className="flex-shrink-0 flex flex-col rounded-lg overflow-hidden"
-                    style={{
-                      width: 268,
-                      background: 'var(--panel-2)',
-                      border: '1px solid var(--line)',
-                      borderTop: `3px solid ${routeColor}`,
-                      maxHeight: 'calc(100vh - 160px)',
-                    }}
-                  >
-                    <div className="px-3 py-2.5 shrink-0" style={{ borderBottom: '1px solid var(--line)' }}>
-                      <div className="flex items-center justify-between gap-2">
-                        <div className="min-w-0">
-                          <div className="text-xs font-bold truncate" style={{ color: 'var(--text)', fontFamily: 'var(--mono)' }}>
-                            {route.route_name}
+
+        {/* two-panel body: unassigned pool | route columns */}
+        <div className="flex flex-1 overflow-hidden">
+
+          {/* ── Unassigned pool ── */}
+          <div
+            className="flex flex-col overflow-hidden shrink-0"
+            style={{ width: 240, borderRight: '1px solid var(--line)', background: 'var(--bg)' }}
+            onDragOver={(e) => { e.preventDefault(); setDragOverUnassigned(true); }}
+            onDragLeave={() => setDragOverUnassigned(false)}
+          >
+            <div className="px-3 py-2 shrink-0 flex items-center justify-between" style={{ borderBottom: '1px solid var(--line)' }}>
+              <span className="text-[11px] font-semibold uppercase tracking-wider" style={{ color: 'var(--text-3)' }}>Unassigned</span>
+              <span className="text-[10px] font-mono tabular-nums px-1.5 py-0.5 rounded" style={{ background: 'var(--panel-2)', color: 'var(--text-3)' }}>
+                {unassignedStops.length}
+              </span>
+            </div>
+            <div
+              className="flex-1 overflow-y-auto p-2 space-y-1 transition-colors"
+              style={{ background: dragOverUnassigned ? 'rgba(255,255,255,0.03)' : undefined }}
+            >
+              {unassignedStops.length === 0 ? (
+                <div className="text-[10px] text-center py-8" style={{ color: 'var(--text-4)' }}>All stops assigned</div>
+              ) : (
+                unassignedStops.map((stop) => {
+                  const overdue = isOverdue(stop);
+                  const isDragging = dragSoId === stop.so_id;
+                  return (
+                    <div
+                      key={stop.so_id}
+                      draggable
+                      onDragStart={(e) => onDragStart(e, stop.so_id)}
+                      onDragEnd={() => setDragSoId(null)}
+                      onClick={() => onSelectStop(stop)}
+                      className="rounded p-2 cursor-grab active:cursor-grabbing transition select-none"
+                      style={{
+                        opacity: isDragging ? 0.4 : 1,
+                        background: stop.so_id === selectedSoId ? 'rgba(31,138,79,0.08)' : 'var(--panel)',
+                        border: `1px solid ${stop.so_id === selectedSoId ? 'var(--green-bright)' : overdue ? '#7f1d1d' : 'var(--line)'}`,
+                        borderLeft: overdue ? '3px solid #d05050' : undefined,
+                      }}
+                    >
+                      <div className="flex items-center gap-1.5 mb-0.5">
+                        <GripVertical className="w-3 h-3 shrink-0" style={{ color: 'var(--text-4)' }} />
+                        <span className="text-[10px] font-mono" style={{ color: '#4ec48a' }}>{stop.so_id}</span>
+                        {overdue
+                          ? <span className="text-[8px] font-bold px-1 rounded ml-auto" style={{ background: '#5c1a1a', color: '#f87171' }}>LATE</span>
+                          : statusBadge(stop.status_flag)
+                        }
+                      </div>
+                      <div className="text-[10px] truncate" style={{ color: 'var(--text-2)' }}>{stop.customer_name ?? '—'}</div>
+                      {stop.city && <div className="text-[9px]" style={{ color: 'var(--text-4)' }}>{stop.city}</div>}
+                    </div>
+                  );
+                })
+              )}
+            </div>
+          </div>
+
+          {/* ── Route columns ── */}
+          <div className="flex-1 overflow-x-auto overflow-y-hidden p-4">
+            <div className="flex gap-3 h-full" style={{ minWidth: 'min-content', alignItems: 'flex-start' }}>
+              {routes.length === 0 ? (
+                <div className="flex items-center justify-center w-full h-32 text-sm" style={{ color: 'var(--text-3)' }}>
+                  No routes planned — create one from the toolbar.
+                </div>
+              ) : (
+                routes.map((route, idx) => {
+                  const rStops = routeStops.get(route.id) ?? [];
+                  const routeColor = PICKER_HUE[idx % PICKER_HUE.length];
+                  const loadPct = Math.min(100, Math.round((rStops.length / MAX_STOPS_PER_ROUTE) * 100));
+                  const barColor = loadPct >= 90 ? '#d05050' : loadPct >= 70 ? '#d4a23a' : '#4ec48a';
+                  const overdueCount = rStops.filter(rs => {
+                    const del = stopLookup.get(rs.so_id);
+                    return del ? isOverdue(del) : false;
+                  }).length;
+                  const isDropTarget = dragOverRouteId === route.id;
+                  return (
+                    <div
+                      key={route.id}
+                      className="flex-shrink-0 flex flex-col rounded-lg overflow-hidden transition-shadow"
+                      style={{
+                        width: 260,
+                        background: 'var(--panel-2)',
+                        border: `1px solid ${isDropTarget ? routeColor : 'var(--line)'}`,
+                        borderTop: `3px solid ${routeColor}`,
+                        maxHeight: 'calc(100vh - 160px)',
+                        boxShadow: isDropTarget ? `0 0 0 2px ${routeColor}44` : undefined,
+                      }}
+                      onDragOver={(e) => { e.preventDefault(); setDragOverRouteId(route.id); }}
+                      onDragLeave={() => setDragOverRouteId(null)}
+                      onDrop={(e) => onDropRoute(e, route.id)}
+                    >
+                      <div className="px-3 py-2.5 shrink-0" style={{ borderBottom: '1px solid var(--line)' }}>
+                        <div className="flex items-center justify-between gap-2">
+                          <div className="min-w-0">
+                            <div className="text-xs font-bold truncate" style={{ color: 'var(--text)', fontFamily: 'var(--mono)' }}>
+                              {route.route_name}
+                            </div>
+                            {route.driver_name && (
+                              <div className="text-[10px] mt-0.5 truncate flex items-center gap-1" style={{ color: 'var(--text-3)' }}>
+                                <User className="w-2.5 h-2.5" /> {route.driver_name}
+                                {route.truck_id ? ` · ${route.truck_id}` : ''}
+                              </div>
+                            )}
                           </div>
-                          {route.driver_name && (
-                            <div className="text-[10px] mt-0.5 truncate flex items-center gap-1" style={{ color: 'var(--text-3)' }}>
-                              <User className="w-2.5 h-2.5" /> {route.driver_name}
-                              {route.truck_id ? ` · ${route.truck_id}` : ''}
-                            </div>
-                          )}
+                          <div className="flex items-center gap-2 shrink-0">
+                            {overdueCount > 0 && (
+                              <span className="text-[9px] font-bold px-1.5 py-0.5 rounded" style={{ background: '#5c1a1a', color: '#f87171' }}>
+                                {overdueCount} late
+                              </span>
+                            )}
+                            <button
+                              onClick={async () => {
+                                if (!confirm(`Delete route "${route.route_name}"?`)) return;
+                                await onDeleteRoute(route.id);
+                              }}
+                              style={{ color: 'var(--text-4)' }}
+                            >
+                              <Trash2 className="w-3 h-3" />
+                            </button>
+                          </div>
                         </div>
-                        <div className="flex items-center gap-2 shrink-0">
-                          {overdueCount > 0 && (
-                            <span className="text-[9px] font-bold px-1.5 py-0.5 rounded" style={{ background: '#5c1a1a', color: '#f87171' }}>
-                              {overdueCount} late
-                            </span>
-                          )}
-                          <button
-                            onClick={async () => {
-                              if (!confirm(`Delete route "${route.route_name}"?`)) return;
-                              await onDeleteRoute(route.id);
-                            }}
-                            style={{ color: 'var(--text-4)' }}
-                          >
-                            <Trash2 className="w-3 h-3" />
-                          </button>
-                        </div>
-                      </div>
-                      {/* load bar */}
-                      <div className="mt-2">
-                        <div className="flex items-center justify-between mb-1">
-                          <span className="text-[9px]" style={{ color: 'var(--text-4)' }}>{rStops.length} / {MAX_STOPS_PER_ROUTE} stops</span>
-                          <span className="text-[9px] font-mono" style={{ color: barColor }}>{loadPct}%</span>
-                        </div>
-                        <div className="h-1 rounded-full overflow-hidden" style={{ background: 'var(--line)' }}>
-                          <div className="h-full rounded-full transition-all" style={{ width: `${loadPct}%`, background: barColor }} />
+                        {/* load bar */}
+                        <div className="mt-2">
+                          <div className="flex items-center justify-between mb-1">
+                            <span className="text-[9px]" style={{ color: 'var(--text-4)' }}>{rStops.length} / {MAX_STOPS_PER_ROUTE} stops</span>
+                            <span className="text-[9px] font-mono" style={{ color: barColor }}>{loadPct}%</span>
+                          </div>
+                          <div className="h-1 rounded-full overflow-hidden" style={{ background: 'var(--line)' }}>
+                            <div className="h-full rounded-full transition-all" style={{ width: `${loadPct}%`, background: barColor }} />
+                          </div>
                         </div>
                       </div>
-                    </div>
-                    <div className="flex-1 overflow-y-auto p-2 space-y-1">
-                      {rStops.length === 0 ? (
-                        <div className="text-[10px] text-center py-4" style={{ color: 'var(--text-3)' }}>No stops assigned</div>
-                      ) : (
-                        rStops.map((rs, stopIdx) => {
-                          const del = stopLookup.get(rs.so_id);
-                          const isSelected = rs.so_id === selectedSoId;
-                          return (
-                            <div key={rs.id} className="flex items-start gap-1.5">
-                              <div className="text-[10px] font-mono pt-3 text-right w-5 shrink-0" style={{ color: 'var(--text-4)', fontWeight: 600 }}>
-                                {stopIdx + 1}.
-                              </div>
-                              <div className="flex-1 min-w-0">
-                                {del ? (
-                                  <div
-                                    onClick={() => onSelectStop(del)}
-                                    className="rounded p-2 cursor-pointer transition"
-                                    style={{
-                                      background: isSelected ? 'rgba(31,138,79,0.08)' : 'var(--panel)',
-                                      border: `1px solid ${isSelected ? 'var(--green-bright)' : 'var(--line)'}`,
-                                    }}
-                                  >
-                                    <div className="flex items-center justify-between gap-1 mb-1">
-                                      <span className="text-[10px] font-mono" style={{ color: '#4ec48a' }}>{rs.so_id}</span>
-                                      {statusBadge(del.status_flag)}
-                                    </div>
-                                    <div className="text-[10px] truncate" style={{ color: 'var(--text-2)' }}>{del.customer_name ?? '—'}</div>
-                                    {del.city && <div className="text-[10px]" style={{ color: 'var(--text-3)' }}>{del.city}</div>}
-                                  </div>
-                                ) : (
-                                  <div className="text-[10px] p-2 rounded" style={{ background: 'var(--panel)', color: 'var(--text-4)' }}>{rs.so_id}</div>
-                                )}
-                              </div>
-                              <button
-                                onClick={async () => { await onRemoveStop(route.id, rs.id); }}
-                                className="mt-2.5 transition shrink-0"
-                                style={{ color: 'var(--text-4)' }}
-                              >
-                                <X className="w-3 h-3" />
-                              </button>
-                            </div>
-                          );
-                        })
+
+                      {/* drop zone hint when dragging */}
+                      {isDropTarget && dragSoId && !rStops.some(rs => rs.so_id === dragSoId) && (
+                        <div className="mx-2 mt-2 rounded text-center text-[10px] py-2 pointer-events-none" style={{ border: `1px dashed ${routeColor}`, color: routeColor }}>
+                          Drop to add
+                        </div>
                       )}
+
+                      <div className="flex-1 overflow-y-auto p-2 space-y-1">
+                        {rStops.length === 0 ? (
+                          <div className="text-[10px] text-center py-6" style={{ color: 'var(--text-4)' }}>
+                            {dragSoId ? '↑ Drop here' : 'No stops assigned'}
+                          </div>
+                        ) : (
+                          rStops.map((rs, stopIdx) => {
+                            const del = stopLookup.get(rs.so_id);
+                            const isSelected = rs.so_id === selectedSoId;
+                            const isExpanded = expandedStopId === rs.id;
+                            const hasWindow = rs.time_window_start || rs.time_window_end;
+                            return (
+                              <div
+                                key={rs.id}
+                                className="flex items-start gap-1.5"
+                                draggable={!isExpanded}
+                                onDragStart={(e) => { if (!isExpanded) onDragStart(e, rs.so_id); }}
+                                onDragEnd={() => setDragSoId(null)}
+                                onDrop={(e) => { e.stopPropagation(); onDropUnassigned(e, route.id, rs.id); }}
+                              >
+                                <div className="flex flex-col items-center gap-0.5 pt-2 shrink-0">
+                                  <span className="text-[9px] font-mono" style={{ color: 'var(--text-4)', fontWeight: 600 }}>{stopIdx + 1}</span>
+                                  <GripVertical className="w-3 h-3 cursor-grab" style={{ color: 'var(--text-4)' }} />
+                                </div>
+                                <div className="flex-1 min-w-0">
+                                  {del ? (
+                                    <>
+                                      <div
+                                        onClick={() => onSelectStop(del)}
+                                        className="rounded p-2 cursor-pointer transition"
+                                        style={{
+                                          background: isSelected ? 'rgba(31,138,79,0.08)' : 'var(--panel)',
+                                          border: `1px solid ${isSelected ? 'var(--green-bright)' : 'var(--line)'}`,
+                                        }}
+                                      >
+                                        <div className="flex items-center justify-between gap-1 mb-1">
+                                          <span className="text-[10px] font-mono" style={{ color: '#4ec48a' }}>{rs.so_id}</span>
+                                          <div className="flex items-center gap-1">
+                                            {rs.wc_notified_at && <Bell className="w-2.5 h-2.5" style={{ color: '#fbbf24' }} />}
+                                            {statusBadge(del.status_flag)}
+                                          </div>
+                                        </div>
+                                        <div className="text-[10px] truncate" style={{ color: 'var(--text-2)' }}>{del.customer_name ?? '—'}</div>
+                                        {del.city && <div className="text-[10px]" style={{ color: 'var(--text-3)' }}>{del.city}</div>}
+                                        {(hasWindow || rs.bay_number) && (
+                                          <div className="flex items-center gap-2 mt-0.5 text-[9px]" style={{ color: 'var(--text-4)' }}>
+                                            {hasWindow && (
+                                              <span className="flex items-center gap-0.5">
+                                                <Clock className="w-2 h-2" />
+                                                {[rs.time_window_start, rs.time_window_end].filter(Boolean).join('–')}
+                                              </span>
+                                            )}
+                                            {rs.bay_number && <span>Bay {rs.bay_number}</span>}
+                                          </div>
+                                        )}
+                                      </div>
+                                      {isExpanded && (
+                                        <StopInlineEditor
+                                          rs={rs}
+                                          routeId={route.id}
+                                          onSaved={(patch) => {
+                                            onUpdateStop(route.id, rs.id, patch);
+                                            setExpandedStopId(null);
+                                          }}
+                                        />
+                                      )}
+                                    </>
+                                  ) : (
+                                    <div className="text-[10px] p-2 rounded" style={{ background: 'var(--panel)', color: 'var(--text-4)' }}>{rs.so_id}</div>
+                                  )}
+                                </div>
+                                <div className="flex flex-col gap-1 mt-2 shrink-0">
+                                  {del && (
+                                    <button
+                                      onClick={() => setExpandedStopId(isExpanded ? null : rs.id)}
+                                      title="Edit stop details"
+                                      style={{ color: isExpanded ? 'var(--green-bright)' : 'var(--text-4)' }}
+                                    >
+                                      <Pencil className="w-3 h-3" />
+                                    </button>
+                                  )}
+                                  <button
+                                    onClick={async () => { await onRemoveStop(route.id, rs.id); }}
+                                    style={{ color: 'var(--text-4)' }}
+                                  >
+                                    <X className="w-3 h-3" />
+                                  </button>
+                                </div>
+                              </div>
+                            );
+                          })
+                        )}
+                      </div>
                     </div>
-                  </div>
-                );
-              })
-            )}
+                  );
+                })
+              )}
+            </div>
           </div>
         </div>
       </aside>
@@ -1043,6 +1380,13 @@ export default function DispatchClient({ isAdmin, userBranch, userName, userRole
     return s;
   }, [routeStops]);
 
+  // Fast lookup: so_id → most recent RouteStop (for DetailPanel)
+  const routeStopLookup = React.useMemo(() => {
+    const m = new Map<string, RouteStop>();
+    routeStops.forEach((rsList) => rsList.forEach((rs) => m.set(rs.so_id, rs)));
+    return m;
+  }, [routeStops]);
+
   const loadAll = useCallback(async () => {
     setLoading(true);
     setError('');
@@ -1113,6 +1457,16 @@ export default function DispatchClient({ isAdmin, userBranch, userName, userRole
     setRoutes((prev) => prev.filter((r) => r.id !== routeId));
     setRouteStops((prev) => { const n = new Map(prev); n.delete(routeId); return n; });
     setKpis((prev) => prev ? { ...prev, route_count: Math.max(0, prev.route_count - 1) } : prev);
+  }
+
+  // Optimistic local update after PATCH /routes/[id]/stops/[stopId]
+  function updateRouteStop(routeId: number, stopId: number, patch: Partial<RouteStop>) {
+    setRouteStops((prev) => {
+      const next = new Map(prev);
+      const list = next.get(routeId) ?? [];
+      next.set(routeId, list.map((rs) => rs.id === stopId ? { ...rs, ...patch } : rs));
+      return next;
+    });
   }
 
   // Load ERP delivery routes for the route creation dropdown (called once when the panel opens)
@@ -1616,10 +1970,13 @@ export default function DispatchClient({ isAdmin, userBranch, userName, userRole
                 routes={routes}
                 routeStops={routeStops}
                 stopLookup={stopLookup}
+                unassignedStops={unassignedStops}
                 selectedSoId={selectedStop?.so_id ?? null}
                 onSelectStop={(s) => setSelectedStop(s)}
+                onAssignStop={assignStopToRoute}
                 onRemoveStop={removeStopFromRoute}
                 onDeleteRoute={deleteRoute}
+                onUpdateStop={updateRouteStop}
                 onClose={() => setRoutesDrawerOpen(false)}
               />
             )}
@@ -1633,7 +1990,7 @@ export default function DispatchClient({ isAdmin, userBranch, userName, userRole
               style={{ width: 360, background: 'var(--bg)', borderLeft: '1px solid var(--line)' }}
             >
               {selectedStop ? (
-                <DetailPanel stop={selectedStop} onClose={() => setSelectedStop(null)} />
+                <DetailPanel stop={selectedStop} routeStop={routeStopLookup.get(selectedStop.so_id) ?? null} onClose={() => setSelectedStop(null)} />
               ) : (
                 <div className="flex flex-col items-center justify-center h-full gap-3 px-6 text-center">
                   <MapPin className="w-8 h-8" style={{ color: 'var(--text-4)' }} />
@@ -1741,7 +2098,7 @@ export default function DispatchClient({ isAdmin, userBranch, userName, userRole
           {/* Map mode: stop detail overlay */}
           {viewMode === 'map' && selectedStop && (
             <div className="absolute right-0 top-0 bottom-0 w-96 z-20 shadow-2xl overflow-hidden" style={{ boxShadow: '-4px 0 20px rgba(0,0,0,0.4)' }}>
-              <DetailPanel stop={selectedStop} onClose={() => setSelectedStop(null)} />
+              <DetailPanel stop={selectedStop} routeStop={routeStopLookup.get(selectedStop.so_id) ?? null} onClose={() => setSelectedStop(null)} />
             </div>
           )}
         </div>
