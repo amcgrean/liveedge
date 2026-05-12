@@ -82,6 +82,7 @@ export type VendorDetail = {
   otdPct: number | null;
   openPoCount: number;
   openPoValue: number;
+  lastReceiveDate: string | null;
   branchBreakdown: BranchSpend[];
   productGroupBreakdown: ProductGroupSpend[];
   rebatePrograms: RebateProgram[];
@@ -100,4 +101,47 @@ export type VendorScorecardSummary = {
   programsMissed: number;
   avgFillRatePct: number | null;
   avgOtdPct: number | null;
+};
+
+/** Annual receipts $ + line count for the vendor 3-year chart. */
+export type VendorYearEntry = {
+  year: number;
+  label: string;
+  spend: number;       // receiving_lines.cost sum
+  receiptCount: number;
+  lineCount: number;
+};
+
+/** Top-item row on the vendor scorecard. */
+export type VendorItemRow = {
+  itemCode: string;
+  description: string | null;
+  productMajorCode: string | null;
+  productMajor: string | null;
+  productMinorCode: string | null;
+  productMinor: string | null;
+  spendYTD: number;
+  qtyYTD: number;
+  lineCount: number;
+};
+
+/** Aggregate Branch & Mix tab — one row per branch. */
+export type VendorBranchSummaryRow = {
+  systemId: string;
+  branchName: string;
+  vendorCount: number;
+  spendYTD: number;
+  spendPY: number;
+  pctOfTotal: number;
+  fillRatePct: number | null;
+  otdPct: number | null;
+};
+
+/** Risk flags derived from operational metrics (separate from stored supplier_risk_flags). */
+export type VendorDerivedRiskFlags = {
+  lowFillRate: boolean;     // fillRatePct < 90
+  lateDelivery: boolean;    // otdPct < 85
+  missedRebate: boolean;    // any active rebate program with <50% attainment past YTD pacing
+  noRecentReceipts: boolean; // open POs exist but no receipts in last 60 days
+  count: number;            // total true booleans above
 };

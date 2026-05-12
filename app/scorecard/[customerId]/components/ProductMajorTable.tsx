@@ -71,9 +71,11 @@ interface Props {
   orderFrom?: string;
   orderFromLabel?: string;
   exportFilename?: string;
+  /** ScorecardOrigin string (e.g. "customer:1234", "branch:20GR") used as `?from=` on item drill links. */
+  productFromHint?: string;
 }
 
-export default function ProductMajorTable({ rows, params, baseYear, compareYear, minorsApiPath, extraParams, orderFrom, orderFromLabel, exportFilename }: Props) {
+export default function ProductMajorTable({ rows, params, baseYear, compareYear, minorsApiPath, extraParams, orderFrom, orderFromLabel, exportFilename, productFromHint }: Props) {
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
   const [minors, setMinors] = useState<Record<string, ProductMinorRow[]>>({});
   const [loading, setLoading] = useState<Record<string, boolean>>({});
@@ -337,6 +339,16 @@ export default function ProductMajorTable({ rows, params, baseYear, compareYear,
                               )}
                               {item.qtyBase > 0 && (
                                 <span className="text-slate-600 ml-2 tabular-nums">{fmtQty(item.qtyBase)} units</span>
+                              )}
+                              {productFromHint && item.itemNumber && (
+                                <a
+                                  href={`/scorecard/product/item/${encodeURIComponent(item.itemNumber)}?baseYear=${params.baseYear}&compareYear=${params.compareYear}&period=${params.period}&cutoffDate=${params.cutoffDate}${params.branchIds.map((b) => `&branch=${encodeURIComponent(b)}`).join('')}&from=${encodeURIComponent(productFromHint)}`}
+                                  className="ml-2 text-slate-600 hover:text-cyan-400 transition inline-flex items-center"
+                                  title="Open item scorecard"
+                                  onClick={(e) => e.stopPropagation()}
+                                >
+                                  <ExternalLink className="w-2.5 h-2.5" />
+                                </a>
                               )}
                             </td>
                             <td className="py-1 text-right font-mono tabular-nums text-slate-400 text-xs pr-3">{fmt$(item.salesBase)}</td>

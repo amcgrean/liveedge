@@ -262,6 +262,7 @@ export default async function BranchScorecardPage({
             minorsApiPath="/api/scorecard/aggregate"
             orderFrom={`/scorecard/branch/${branchId}`}
             orderFromLabel={`${BRANCH_LABELS[branchId] ?? branchId} Branch`}
+            productFromHint={`branch:${branchId}`}
           />
         </Section>
 

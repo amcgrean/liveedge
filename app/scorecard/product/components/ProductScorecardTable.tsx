@@ -1,7 +1,8 @@
 'use client';
 
 import React, { useMemo, useState } from 'react';
-import { ChevronRight } from 'lucide-react';
+import Link from 'next/link';
+import { ChevronRight, ExternalLink } from 'lucide-react';
 import HouseLoader from '@/components/scorecard/HouseLoader';
 import {
   SortableHeader,
@@ -234,6 +235,14 @@ export default function ProductScorecardTable({ rows, params, baseYear, compareY
                   }
                   <span className="truncate">{r.productMajor}</span>
                   <span className="text-slate-500 italic text-xs ml-0.5 shrink-0">({r.productMajorCode})</span>
+                  <Link
+                    href={`/scorecard/product/major/${encodeURIComponent(r.productMajorCode)}?baseYear=${params.baseYear}&compareYear=${params.compareYear}&period=${params.period}&cutoffDate=${params.cutoffDate}${params.branchIds.map((b) => `&branch=${encodeURIComponent(b)}`).join('')}&from=product-overview`}
+                    className="ml-1 text-slate-500 hover:text-cyan-400 transition inline-flex items-center"
+                    title="Open product group scorecard"
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    <ExternalLink className="w-3 h-3" />
+                  </Link>
                 </td>
                 <td className="py-2 text-right font-mono tabular-nums text-white pr-3">
                   {fmt$(r.salesBase)}{delta(r.salesBase, r.salesCompare)}
@@ -269,6 +278,14 @@ export default function ProductScorecardTable({ rows, params, baseYear, compareY
                         }
                         <span className="truncate">{m.productMinor}</span>
                         <span className="text-slate-500 italic ml-0.5 shrink-0">({m.productMinorCode})</span>
+                        <Link
+                          href={`/scorecard/product/minor/${encodeURIComponent(r.productMajorCode)}/${encodeURIComponent(m.productMinorCode)}?baseYear=${params.baseYear}&compareYear=${params.compareYear}&period=${params.period}&cutoffDate=${params.cutoffDate}${params.branchIds.map((b) => `&branch=${encodeURIComponent(b)}`).join('')}&from=product-major:${encodeURIComponent(r.productMajorCode)}`}
+                          className="ml-1 text-slate-600 hover:text-cyan-400 transition inline-flex items-center"
+                          title="Open product minor scorecard"
+                          onClick={(e) => e.stopPropagation()}
+                        >
+                          <ExternalLink className="w-2.5 h-2.5" />
+                        </Link>
                       </td>
                       <td className="py-1.5 text-right font-mono tabular-nums text-slate-300 text-xs pr-3">
                         {fmt$(m.salesBase)}{delta(m.salesBase, m.salesCompare)}
@@ -296,6 +313,16 @@ export default function ProductScorecardTable({ rows, params, baseYear, compareY
                           <span className="text-slate-400 truncate">{item.itemDescription || item.itemNumber}</span>
                           {item.itemDescription && item.itemNumber && (
                             <span className="text-slate-600 shrink-0">({item.itemNumber})</span>
+                          )}
+                          {item.itemNumber && (
+                            <Link
+                              href={`/scorecard/product/item/${encodeURIComponent(item.itemNumber)}?baseYear=${params.baseYear}&compareYear=${params.compareYear}&period=${params.period}&cutoffDate=${params.cutoffDate}${params.branchIds.map((b) => `&branch=${encodeURIComponent(b)}`).join('')}&from=product-minor:${encodeURIComponent(r.productMajorCode)}|${encodeURIComponent(m.productMinorCode)}`}
+                              className="ml-1 text-slate-600 hover:text-cyan-400 transition inline-flex items-center"
+                              title="Open item scorecard"
+                              onClick={(e) => e.stopPropagation()}
+                            >
+                              <ExternalLink className="w-2.5 h-2.5" />
+                            </Link>
                           )}
                         </td>
                         <td className="py-1 text-right font-mono tabular-nums text-slate-400 text-xs pr-3">
