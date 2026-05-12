@@ -256,6 +256,7 @@ export default async function ScorecardPage({
           compareYear={compareYear}
           orderFrom={`/scorecard/${encodeURIComponent(customerId)}`}
           orderFromLabel={kpis.customerName ?? customerId}
+          productFromHint={`customer:${customerId}`}
         />
       </Section>
 

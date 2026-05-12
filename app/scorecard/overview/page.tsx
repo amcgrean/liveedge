@@ -199,6 +199,7 @@ export default async function OverviewPage({
           minorsApiPath="/api/scorecard/aggregate"
           orderFrom="/scorecard/overview"
           orderFromLabel="Company Overview"
+          productFromHint="product-overview"
         />
       </Section>
 

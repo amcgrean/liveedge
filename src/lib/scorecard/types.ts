@@ -191,3 +191,56 @@ export interface RepListRow {
   writtenSalesCompare: number;
   writtenGpBase: number;
 }
+
+// ---------------------------------------------------------------------------
+// Product drill-down (major / minor / item) — aggregates filtered by a single
+// product. Reused for the three new /scorecard/product/{major|minor|item}/*
+// pages so they can share the existing aggregate chart components.
+// ---------------------------------------------------------------------------
+
+export type ProductFilter =
+  | { level: 'major'; majorCode: string }
+  | { level: 'minor'; majorCode: string; minorCode: string }
+  | { level: 'item'; itemCode: string };
+
+export interface ProductDrillParams {
+  productFilter: ProductFilter;
+  branchIds: string[];
+  baseYear: number;
+  compareYear: number;
+  period: ScorecardPeriod;
+  cutoffDate: string;
+}
+
+export interface ProductHeader {
+  level: 'major' | 'minor' | 'item';
+  majorCode: string;
+  majorName: string;
+  minorCode: string | null;
+  minorName: string | null;
+  itemCode: string | null;
+  itemDescription: string | null;
+}
+
+export interface ProductBranchMixRow {
+  branchId: string;
+  salesBase: number;
+  salesCompare: number;
+  gpBase: number;
+  gpCompare: number;
+  customerCount: number;
+}
+
+export interface ProductTopCustomerRow {
+  customerId: string;
+  customerName: string;
+  salesBase: number;
+  salesCompare: number;
+  gpBase: number;
+  branchIds: string[];
+}
+
+export interface ItemPrimarySupplier {
+  supplierCode: string;
+  supplierName: string | null;
+}

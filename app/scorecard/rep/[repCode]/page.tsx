@@ -204,7 +204,8 @@ export default async function RepScorecardPage({
           <ProductMajorTable rows={assignedMajors} params={fakeParams} baseYear={baseYear} compareYear={compareYear}
             minorsApiPath={minorsBase} extraParams={assignedExtra}
             orderFrom={`/scorecard/rep/${encodeURIComponent(decodedRep)}`}
-            orderFromLabel={`${decodedRep} (Assigned)`} />
+            orderFromLabel={`${decodedRep} (Assigned)`}
+            productFromHint={`rep:${decodedRep}`} />
         </Section>
         <Section title="Sales by Type">
           <SaleTypeTable rows={assignedSaleTypes} baseYear={baseYear} compareYear={compareYear} />
@@ -242,7 +243,8 @@ export default async function RepScorecardPage({
           <ProductMajorTable rows={writtenMajors} params={fakeParams} baseYear={baseYear} compareYear={compareYear}
             minorsApiPath={minorsBase} extraParams={writtenExtra}
             orderFrom={`/scorecard/rep/${encodeURIComponent(decodedRep)}`}
-            orderFromLabel={`${decodedRep} (Written)`} />
+            orderFromLabel={`${decodedRep} (Written)`}
+            productFromHint={`rep:${decodedRep}`} />
         </Section>
         <Section title="Sales by Type">
           <SaleTypeTable rows={writtenSaleTypes} baseYear={baseYear} compareYear={compareYear} />
