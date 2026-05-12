@@ -28,12 +28,16 @@ CREATE INDEX IF NOT EXISTS idx_csf_branch_item_date
   WHERE is_deleted = false AND item_number IS NOT NULL;
 
 -- ─── agility_receiving_header / agility_receiving_lines — vendor scorecard ──
--- Vendor 3-year chart and YTD/PY KPIs filter by (supplier_key, receive_date).
--- Branch & Mix tab groups receipts by system_id. Vendor item drilldown joins
--- receiving_lines to receiving_header via (system_id, po_id, receive_num).
+-- Vendor 3-year chart and YTD/PY KPIs filter by (receive_date) and optionally
+-- (system_id) on agility_receiving_header. The supplier filter happens on the
+-- joined agility_po_header (supplier_key lives there, not on the receiving
+-- header), so the per-supplier path uses idx_agility_po_header_supplier_status
+-- below; the receiving-side indexes only need to cover the date range CTE.
+-- Vendor item drilldown joins receiving_lines to receiving_header via
+-- (system_id, po_id, receive_num).
 
-CREATE INDEX IF NOT EXISTS idx_agility_recv_header_supplier_date
-  ON public.agility_receiving_header (supplier_key, receive_date DESC NULLS LAST)
+CREATE INDEX IF NOT EXISTS idx_agility_recv_header_date
+  ON public.agility_receiving_header (receive_date DESC NULLS LAST)
   WHERE is_deleted = false;
 
 CREATE INDEX IF NOT EXISTS idx_agility_recv_header_branch_date
