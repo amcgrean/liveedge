@@ -24,6 +24,11 @@ export interface RouteStop {
   sequence: number;
   status: string | null;
   notes: string | null;
+  time_window_start: string | null;
+  time_window_end: string | null;
+  eta_minutes: number | null;
+  bay_number: string | null;
+  wc_notified_at: string | null;
 }
 
 export interface TruckAssignment {
@@ -170,12 +175,19 @@ export async function GET(req: NextRequest) {
       sequence: number;
       status: string | null;
       notes: string | null;
+      time_window_start: string | null;
+      time_window_end: string | null;
+      eta_minutes: number | null;
+      bay_number: string | null;
+      wc_notified_at: string | null;
     };
 
     const routeIds = routeRows.map((r) => r.id);
     const allRouteStops = routeIds.length > 0
       ? await sql<StopRow[]>`
-          SELECT s.id, s.route_id, s.so_id, s.shipment_num, s.sequence, s.status, s.notes
+          SELECT s.id, s.route_id, s.so_id, s.shipment_num, s.sequence, s.status, s.notes,
+                 s.time_window_start, s.time_window_end, s.eta_minutes,
+                 s.bay_number, s.wc_notified_at::text
           FROM dispatch_route_stops s
           WHERE s.route_id = ANY(${routeIds})
           ORDER BY s.route_id, s.sequence, s.id

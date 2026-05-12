@@ -13,6 +13,7 @@ import Link from 'next/link';
 import {
   X, ChevronDown, ChevronRight, ChevronUp, Truck, AlertCircle,
   MapPin, Map as MapIcon, LayoutList, User, Plus, Trash2, RefreshCw, Search, Package, MessageSquare, Send, Camera, Phone, GripVertical,
+  Pencil, Clock, Bell,
 } from 'lucide-react';
 
 // Leaflet requires browser APIs — load without SSR
@@ -32,6 +33,8 @@ interface DispatchRoute {
 interface RouteStop {
   id: number; route_id: number; so_id: string;
   shipment_num: number; sequence: number; status: string | null; notes: string | null;
+  time_window_start: string | null; time_window_end: string | null;
+  eta_minutes: number | null; bay_number: string | null; wc_notified_at: string | null;
 }
 
 interface TruckAssignment {
@@ -492,7 +495,7 @@ function OrderLinesSection({ lines, loading }: { lines: OrderLine[] | null; load
 
 // ── Detail Panel ───────────────────────────────────────────────────────────────
 
-function DetailPanel({ stop, onClose }: { stop: DeliveryStop; onClose: () => void }) {
+function DetailPanel({ stop, routeStop, onClose }: { stop: DeliveryStop; routeStop: RouteStop | null; onClose: () => void }) {
   const [timeline, setTimeline] = useState<TimelineData | null>(null);
   const [lines, setLines] = useState<OrderLine[] | null>(null);
   const [loadingTimeline, setLoadingTimeline] = useState(false);
@@ -620,6 +623,45 @@ function DetailPanel({ stop, onClose }: { stop: DeliveryStop; onClose: () => voi
         </dl>
       </div>
 
+      {/* Route stop details */}
+      {routeStop && (routeStop.time_window_start || routeStop.time_window_end || routeStop.bay_number || routeStop.notes || routeStop.wc_notified_at) && (
+        <div className="px-4 py-3 border-b border-gray-700 shrink-0">
+          <div className="text-[10px] uppercase tracking-wider text-gray-500 mb-2">Stop Details</div>
+          <dl className="space-y-1 text-xs">
+            {(routeStop.time_window_start || routeStop.time_window_end) && (
+              <div className="flex items-center gap-1.5">
+                <Clock className="w-3 h-3 text-gray-500 shrink-0" />
+                <span className="text-gray-400">Window</span>
+                <span className="text-gray-200 ml-auto">
+                  {[routeStop.time_window_start, routeStop.time_window_end].filter(Boolean).join(' – ')}
+                </span>
+              </div>
+            )}
+            {routeStop.bay_number && (
+              <div className="flex items-center gap-1.5">
+                <span className="text-gray-400 w-16">Bay</span>
+                <span className="text-gray-200 ml-auto font-mono">{routeStop.bay_number}</span>
+              </div>
+            )}
+            {routeStop.wc_notified_at && (
+              <div className="flex items-center gap-1.5">
+                <Bell className="w-3 h-3 text-yellow-400 shrink-0" />
+                <span className="text-gray-400">Will-call</span>
+                <span className="text-yellow-300 ml-auto text-[10px]">
+                  Called {new Date(routeStop.wc_notified_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                </span>
+              </div>
+            )}
+            {routeStop.notes && (
+              <div className="pt-0.5">
+                <div className="text-gray-500 mb-0.5">Notes</div>
+                <div className="text-gray-300 text-[11px] leading-snug bg-gray-800 rounded px-2 py-1.5">{routeStop.notes}</div>
+              </div>
+            )}
+          </dl>
+        </div>
+      )}
+
       {/* ERP Actions */}
       <div className="px-4 py-3 border-b border-gray-700 shrink-0 space-y-2">
         <div className="flex flex-wrap gap-2">
@@ -738,9 +780,129 @@ function DetailPanel({ stop, onClose }: { stop: DeliveryStop; onClose: () => voi
 
 // ── Routes Drawer ─────────────────────────────────────────────────────────────
 
+function StopInlineEditor({
+  rs, routeId, onSaved,
+}: {
+  rs: RouteStop;
+  routeId: number;
+  onSaved: (updated: Partial<RouteStop>) => void;
+}) {
+  const [twStart, setTwStart] = useState(rs.time_window_start ?? '');
+  const [twEnd, setTwEnd] = useState(rs.time_window_end ?? '');
+  const [notes, setNotes] = useState(rs.notes ?? '');
+  const [bay, setBay] = useState(rs.bay_number ?? '');
+  const [saving, setSaving] = useState(false);
+  const [markingWc, setMarkingWc] = useState(false);
+
+  async function save() {
+    setSaving(true);
+    try {
+      const body = {
+        time_window_start: twStart.trim() || null,
+        time_window_end: twEnd.trim() || null,
+        notes: notes.trim() || null,
+        bay_number: bay.trim() || null,
+      };
+      await fetch(`/api/dispatch/routes/${routeId}/stops/${rs.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+      onSaved(body);
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function markCalled() {
+    setMarkingWc(true);
+    try {
+      const wc = new Date().toISOString();
+      await fetch(`/api/dispatch/routes/${routeId}/stops/${rs.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ wc_notified_at: wc }),
+      });
+      onSaved({ wc_notified_at: wc });
+    } finally {
+      setMarkingWc(false);
+    }
+  }
+
+  return (
+    <div
+      className="mt-1 rounded p-2 space-y-1.5 text-[10px]"
+      style={{ background: 'var(--bg)', border: '1px solid var(--line)' }}
+    >
+      {/* Time window */}
+      <div className="flex items-center gap-1">
+        <Clock className="w-2.5 h-2.5 shrink-0" style={{ color: 'var(--text-4)' }} />
+        <input
+          value={twStart}
+          onChange={(e) => setTwStart(e.target.value)}
+          placeholder="Start (e.g. 8:00 AM)"
+          className="flex-1 bg-transparent border-b px-0.5 py-0.5 text-[10px] outline-none focus:border-cyan-500"
+          style={{ borderColor: 'var(--line)', color: 'var(--text-2)' }}
+        />
+        <span style={{ color: 'var(--text-4)' }}>–</span>
+        <input
+          value={twEnd}
+          onChange={(e) => setTwEnd(e.target.value)}
+          placeholder="End"
+          className="flex-1 bg-transparent border-b px-0.5 py-0.5 text-[10px] outline-none focus:border-cyan-500"
+          style={{ borderColor: 'var(--line)', color: 'var(--text-2)' }}
+        />
+      </div>
+      {/* Bay + notes row */}
+      <div className="flex items-center gap-1">
+        <span style={{ color: 'var(--text-4)' }}>Bay</span>
+        <input
+          value={bay}
+          onChange={(e) => setBay(e.target.value)}
+          placeholder="—"
+          className="w-12 bg-transparent border-b px-0.5 py-0.5 text-[10px] outline-none focus:border-cyan-500 text-center"
+          style={{ borderColor: 'var(--line)', color: 'var(--text-2)' }}
+        />
+      </div>
+      <textarea
+        value={notes}
+        onChange={(e) => setNotes(e.target.value)}
+        placeholder="Stop notes…"
+        rows={2}
+        className="w-full bg-transparent border rounded px-1.5 py-1 text-[10px] outline-none resize-none focus:border-cyan-500"
+        style={{ borderColor: 'var(--line)', color: 'var(--text-2)' }}
+      />
+      <div className="flex items-center gap-1.5 flex-wrap">
+        <button
+          onClick={save}
+          disabled={saving}
+          className="px-2 py-0.5 rounded text-[10px] font-medium transition disabled:opacity-50"
+          style={{ background: 'var(--green-bright)', color: '#000' }}
+        >
+          {saving ? 'Saving…' : 'Save'}
+        </button>
+        {rs.wc_notified_at ? (
+          <span className="flex items-center gap-0.5" style={{ color: '#4ec48a' }}>
+            <Bell className="w-2.5 h-2.5" /> Called {new Date(rs.wc_notified_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+          </span>
+        ) : (
+          <button
+            onClick={markCalled}
+            disabled={markingWc}
+            className="flex items-center gap-0.5 px-2 py-0.5 rounded text-[10px] transition disabled:opacity-50"
+            style={{ background: 'rgba(251,191,36,0.12)', border: '1px solid #92400e', color: '#fbbf24' }}
+          >
+            <Bell className="w-2.5 h-2.5" /> {markingWc ? '…' : 'Mark Called'}
+          </button>
+        )}
+      </div>
+    </div>
+  );
+}
+
 function RoutesDrawer({
   routes, routeStops, stopLookup, unassignedStops, selectedSoId,
-  onSelectStop, onAssignStop, onRemoveStop, onDeleteRoute, onClose,
+  onSelectStop, onAssignStop, onRemoveStop, onDeleteRoute, onUpdateStop, onClose,
 }: {
   routes: DispatchRoute[];
   routeStops: Map<number, RouteStop[]>;
@@ -751,12 +913,14 @@ function RoutesDrawer({
   onAssignStop: (soId: string, routeId: number) => Promise<void>;
   onRemoveStop: (routeId: number, stopRowId: number) => Promise<void>;
   onDeleteRoute: (routeId: number) => Promise<void>;
+  onUpdateStop: (routeId: number, stopId: number, patch: Partial<RouteStop>) => void;
   onClose: () => void;
 }) {
   const [dragSoId, setDragSoId] = useState<string | null>(null);
   const [dragOverRouteId, setDragOverRouteId] = useState<number | null>(null);
   const [dragOverUnassigned, setDragOverUnassigned] = useState(false);
   const [assigning, setAssigning] = useState(false);
+  const [expandedStopId, setExpandedStopId] = useState<number | null>(null);
 
   function onDragStart(e: React.DragEvent, soId: string) {
     setDragSoId(soId);
@@ -979,12 +1143,14 @@ function RoutesDrawer({
                           rStops.map((rs, stopIdx) => {
                             const del = stopLookup.get(rs.so_id);
                             const isSelected = rs.so_id === selectedSoId;
+                            const isExpanded = expandedStopId === rs.id;
+                            const hasWindow = rs.time_window_start || rs.time_window_end;
                             return (
                               <div
                                 key={rs.id}
                                 className="flex items-start gap-1.5"
-                                draggable
-                                onDragStart={(e) => onDragStart(e, rs.so_id)}
+                                draggable={!isExpanded}
+                                onDragStart={(e) => { if (!isExpanded) onDragStart(e, rs.so_id); }}
                                 onDragEnd={() => setDragSoId(null)}
                                 onDrop={(e) => { e.stopPropagation(); onDropUnassigned(e, route.id, rs.id); }}
                               >
@@ -994,32 +1160,68 @@ function RoutesDrawer({
                                 </div>
                                 <div className="flex-1 min-w-0">
                                   {del ? (
-                                    <div
-                                      onClick={() => onSelectStop(del)}
-                                      className="rounded p-2 cursor-pointer transition"
-                                      style={{
-                                        background: isSelected ? 'rgba(31,138,79,0.08)' : 'var(--panel)',
-                                        border: `1px solid ${isSelected ? 'var(--green-bright)' : 'var(--line)'}`,
-                                      }}
-                                    >
-                                      <div className="flex items-center justify-between gap-1 mb-1">
-                                        <span className="text-[10px] font-mono" style={{ color: '#4ec48a' }}>{rs.so_id}</span>
-                                        {statusBadge(del.status_flag)}
+                                    <>
+                                      <div
+                                        onClick={() => onSelectStop(del)}
+                                        className="rounded p-2 cursor-pointer transition"
+                                        style={{
+                                          background: isSelected ? 'rgba(31,138,79,0.08)' : 'var(--panel)',
+                                          border: `1px solid ${isSelected ? 'var(--green-bright)' : 'var(--line)'}`,
+                                        }}
+                                      >
+                                        <div className="flex items-center justify-between gap-1 mb-1">
+                                          <span className="text-[10px] font-mono" style={{ color: '#4ec48a' }}>{rs.so_id}</span>
+                                          <div className="flex items-center gap-1">
+                                            {rs.wc_notified_at && <Bell className="w-2.5 h-2.5" style={{ color: '#fbbf24' }} />}
+                                            {statusBadge(del.status_flag)}
+                                          </div>
+                                        </div>
+                                        <div className="text-[10px] truncate" style={{ color: 'var(--text-2)' }}>{del.customer_name ?? '—'}</div>
+                                        {del.city && <div className="text-[10px]" style={{ color: 'var(--text-3)' }}>{del.city}</div>}
+                                        {(hasWindow || rs.bay_number) && (
+                                          <div className="flex items-center gap-2 mt-0.5 text-[9px]" style={{ color: 'var(--text-4)' }}>
+                                            {hasWindow && (
+                                              <span className="flex items-center gap-0.5">
+                                                <Clock className="w-2 h-2" />
+                                                {[rs.time_window_start, rs.time_window_end].filter(Boolean).join('–')}
+                                              </span>
+                                            )}
+                                            {rs.bay_number && <span>Bay {rs.bay_number}</span>}
+                                          </div>
+                                        )}
                                       </div>
-                                      <div className="text-[10px] truncate" style={{ color: 'var(--text-2)' }}>{del.customer_name ?? '—'}</div>
-                                      {del.city && <div className="text-[10px]" style={{ color: 'var(--text-3)' }}>{del.city}</div>}
-                                    </div>
+                                      {isExpanded && (
+                                        <StopInlineEditor
+                                          rs={rs}
+                                          routeId={route.id}
+                                          onSaved={(patch) => {
+                                            onUpdateStop(route.id, rs.id, patch);
+                                            setExpandedStopId(null);
+                                          }}
+                                        />
+                                      )}
+                                    </>
                                   ) : (
                                     <div className="text-[10px] p-2 rounded" style={{ background: 'var(--panel)', color: 'var(--text-4)' }}>{rs.so_id}</div>
                                   )}
                                 </div>
-                                <button
-                                  onClick={async () => { await onRemoveStop(route.id, rs.id); }}
-                                  className="mt-2.5 transition shrink-0"
-                                  style={{ color: 'var(--text-4)' }}
-                                >
-                                  <X className="w-3 h-3" />
-                                </button>
+                                <div className="flex flex-col gap-1 mt-2 shrink-0">
+                                  {del && (
+                                    <button
+                                      onClick={() => setExpandedStopId(isExpanded ? null : rs.id)}
+                                      title="Edit stop details"
+                                      style={{ color: isExpanded ? 'var(--green-bright)' : 'var(--text-4)' }}
+                                    >
+                                      <Pencil className="w-3 h-3" />
+                                    </button>
+                                  )}
+                                  <button
+                                    onClick={async () => { await onRemoveStop(route.id, rs.id); }}
+                                    style={{ color: 'var(--text-4)' }}
+                                  >
+                                    <X className="w-3 h-3" />
+                                  </button>
+                                </div>
                               </div>
                             );
                           })
@@ -1178,6 +1380,13 @@ export default function DispatchClient({ isAdmin, userBranch, userName, userRole
     return s;
   }, [routeStops]);
 
+  // Fast lookup: so_id → most recent RouteStop (for DetailPanel)
+  const routeStopLookup = React.useMemo(() => {
+    const m = new Map<string, RouteStop>();
+    routeStops.forEach((rsList) => rsList.forEach((rs) => m.set(rs.so_id, rs)));
+    return m;
+  }, [routeStops]);
+
   const loadAll = useCallback(async () => {
     setLoading(true);
     setError('');
@@ -1248,6 +1457,16 @@ export default function DispatchClient({ isAdmin, userBranch, userName, userRole
     setRoutes((prev) => prev.filter((r) => r.id !== routeId));
     setRouteStops((prev) => { const n = new Map(prev); n.delete(routeId); return n; });
     setKpis((prev) => prev ? { ...prev, route_count: Math.max(0, prev.route_count - 1) } : prev);
+  }
+
+  // Optimistic local update after PATCH /routes/[id]/stops/[stopId]
+  function updateRouteStop(routeId: number, stopId: number, patch: Partial<RouteStop>) {
+    setRouteStops((prev) => {
+      const next = new Map(prev);
+      const list = next.get(routeId) ?? [];
+      next.set(routeId, list.map((rs) => rs.id === stopId ? { ...rs, ...patch } : rs));
+      return next;
+    });
   }
 
   // Load ERP delivery routes for the route creation dropdown (called once when the panel opens)
@@ -1757,6 +1976,7 @@ export default function DispatchClient({ isAdmin, userBranch, userName, userRole
                 onAssignStop={assignStopToRoute}
                 onRemoveStop={removeStopFromRoute}
                 onDeleteRoute={deleteRoute}
+                onUpdateStop={updateRouteStop}
                 onClose={() => setRoutesDrawerOpen(false)}
               />
             )}
@@ -1770,7 +1990,7 @@ export default function DispatchClient({ isAdmin, userBranch, userName, userRole
               style={{ width: 360, background: 'var(--bg)', borderLeft: '1px solid var(--line)' }}
             >
               {selectedStop ? (
-                <DetailPanel stop={selectedStop} onClose={() => setSelectedStop(null)} />
+                <DetailPanel stop={selectedStop} routeStop={routeStopLookup.get(selectedStop.so_id) ?? null} onClose={() => setSelectedStop(null)} />
               ) : (
                 <div className="flex flex-col items-center justify-center h-full gap-3 px-6 text-center">
                   <MapPin className="w-8 h-8" style={{ color: 'var(--text-4)' }} />
@@ -1878,7 +2098,7 @@ export default function DispatchClient({ isAdmin, userBranch, userName, userRole
           {/* Map mode: stop detail overlay */}
           {viewMode === 'map' && selectedStop && (
             <div className="absolute right-0 top-0 bottom-0 w-96 z-20 shadow-2xl overflow-hidden" style={{ boxShadow: '-4px 0 20px rgba(0,0,0,0.4)' }}>
-              <DetailPanel stop={selectedStop} onClose={() => setSelectedStop(null)} />
+              <DetailPanel stop={selectedStop} routeStop={routeStopLookup.get(selectedStop.so_id) ?? null} onClose={() => setSelectedStop(null)} />
             </div>
           )}
         </div>
