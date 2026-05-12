@@ -11,6 +11,7 @@ import {
   legacyBidValue,
 } from '../../../../db/schema-legacy';
 import { eq, and, asc } from 'drizzle-orm';
+import { processNotification } from '@/lib/notifications';
 
 /** Compute a compact measurement summary from the bids.inputs JSONB for display on the bid manage page. */
 function computeMeasurementSummary(inputs: unknown): Record<string, number> | null {
@@ -268,10 +269,41 @@ export async function PUT(req: NextRequest, context: RouteContext) {
       }
     }
 
-    // Log activity — fire-and-forget; don't block response on FK mismatch
+    // Log activity — fire-and-forget
     const userId = parseInt(session.user.id, 10);
     if (!isNaN(userId)) {
       db.insert(legacyBidActivity).values({ userId, bidId, action: 'updated' }).catch(() => {});
+    }
+
+    // Notify on completion — only when status is being set to Complete in this request
+    if (body.status === 'Complete') {
+      const customerRow = await db
+        .select({ name: legacyCustomer.name })
+        .from(legacyCustomer)
+        .where(eq(legacyCustomer.id, updated.customerId!))
+        .limit(1)
+        .catch(() => []);
+      const estimatorRow = await db
+        .select({ name: legacyEstimator.estimatorName })
+        .from(legacyEstimator)
+        .where(eq(legacyEstimator.estimatorID, updated.estimatorId!))
+        .limit(1)
+        .catch(() => []);
+
+      processNotification({
+        eventType: 'bid_completed',
+        bidId,
+        bidType: updated.planType ?? undefined,
+        branchId: updated.branchId ?? undefined,
+        details: {
+          projectName: updated.projectName ?? '',
+          planType: updated.planType ?? '',
+          customerName: customerRow[0]?.name ?? '',
+          estimatorName: estimatorRow[0]?.name ?? '',
+          completionDate: new Date().toLocaleDateString(),
+          completedBy: session.user.name ?? '',
+        },
+      }).catch(() => {});
     }
 
     return NextResponse.json({ bid: updated });
