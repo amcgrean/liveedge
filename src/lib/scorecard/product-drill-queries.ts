@@ -7,6 +7,7 @@ import type {
   ProductBranchMixRow,
   ProductTopCustomerRow,
   ItemPrimarySupplier,
+  ItemSupplierRow,
   KpiComparison,
   KpiSet,
   ThreeYearEntry,
@@ -806,70 +807,144 @@ async function _fetchProductSaleTypes(params: ProductDrillParams): Promise<SaleT
 // ---------------------------------------------------------------------------
 // Primary supplier for an item (item-scorecard "Supplier" card cross-link).
 //
-// Resolves to BOTH supplier_code (display) and supplier_key (URL routing).
-// The vendor scorecard at /scorecard/vendor/[supplierKey] queries
-// agility_po_header.supplier_key — passing supplier_code there would 404,
-// since the two columns hold different values for the same supplier.
+// Reads agility_item_supplier (synced from DMSi Agility's item_supplier table)
+// for the row marked is_primary, then resolves to supplier_key + supplier_code
+// + supplier_name via agility_suppliers. The vendor scorecard at
+// /scorecard/vendor/[supplierKey] queries agility_po_header.supplier_key —
+// returning supplier_key (not supplier_code) here is what makes the link work.
 //
-// agility_items has either `primary_supplier_key` or `primary_supplier`
-// depending on sync build; queried defensively via information_schema.
+// agility_item_supplier has a partial index on (item_ptr) WHERE is_primary,
+// so this is an index-only path. agility_suppliers has multiple rows per
+// supplier_key (one per ship-from); we match on ship_from_seq to pick the
+// correct ship-from address.
 // ---------------------------------------------------------------------------
 
 async function _fetchItemPrimarySupplier(itemCode: string): Promise<ItemPrimarySupplier | null> {
   const sql = getErpSql();
 
-  const cols = await sql<{ column_name: string }[]>`
-    SELECT column_name FROM information_schema.columns
-    WHERE table_schema = 'public' AND table_name = 'agility_items'
-      AND column_name IN ('primary_supplier','primary_supplier_key')
-  `;
-  const hasSupplier = cols.some((c) => c.column_name === 'primary_supplier');
-  const hasSupplierKey = cols.some((c) => c.column_name === 'primary_supplier_key');
-  if (!hasSupplier && !hasSupplierKey) return null;
-
-  type SupplierLookupRow = {
+  type Row = {
     supplier_key: string | null;
     supplier_code: string | null;
     supplier_name: string | null;
   };
 
-  let rows: SupplierLookupRow[];
-  if (hasSupplierKey) {
-    rows = await sql<SupplierLookupRow[]>`
-      SELECT
-        s.supplier_key AS supplier_key,
-        s.supplier_code AS supplier_code,
-        s.supplier_name AS supplier_name
-      FROM agility_items i
-      LEFT JOIN agility_suppliers s
-        ON s.supplier_key = i.primary_supplier_key
-        AND s.is_deleted = false
-      WHERE i.item = ${itemCode}
-      ORDER BY s.ship_from_seq ASC NULLS FIRST
-      LIMIT 1
-    `;
-  } else {
-    // primary_supplier holds the supplier code; resolve to supplier_key via agility_suppliers
-    rows = await sql<SupplierLookupRow[]>`
-      SELECT
-        s.supplier_key AS supplier_key,
-        s.supplier_code AS supplier_code,
-        s.supplier_name AS supplier_name
-      FROM agility_items i
-      LEFT JOIN agility_suppliers s
-        ON TRIM(s.supplier_code) = TRIM(i.primary_supplier)
-        AND s.is_deleted = false
-      WHERE i.item = ${itemCode}
-      ORDER BY s.ship_from_seq ASC NULLS FIRST
-      LIMIT 1
-    `;
-  }
+  const rows = await sql<Row[]>`
+    SELECT
+      ims.supplier_key,
+      s.supplier_code,
+      COALESCE(s.ship_from_name, s.supplier_name) AS supplier_name
+    FROM agility_items i
+    JOIN agility_item_supplier ims
+      ON ims.item_ptr = i.item_ptr
+      AND ims.is_deleted = false
+      AND ims.is_primary = true
+    LEFT JOIN agility_suppliers s
+      ON TRIM(s.supplier_key) = TRIM(ims.supplier_key)
+      AND s.ship_from_seq = ims.ship_from_seq_num
+      AND s.is_deleted = false
+    WHERE i.item = ${itemCode} AND i.is_deleted = false
+    ORDER BY ims.update_date DESC NULLS LAST
+    LIMIT 1
+  `;
   if (!rows[0] || !rows[0].supplier_key) return null;
   return {
-    supplierKey: rows[0].supplier_key,
-    supplierCode: rows[0].supplier_code ?? rows[0].supplier_key,
+    supplierKey: rows[0].supplier_key.trim(),
+    supplierCode: rows[0].supplier_code ?? rows[0].supplier_key.trim(),
     supplierName: rows[0].supplier_name,
   };
+}
+
+// ---------------------------------------------------------------------------
+// Full supplier list for an item (Suppliers section on the item scorecard).
+// Returns primary first, then by lead-time tier 1 ascending. Includes
+// purchasing-relevant detail: lead times, min order/pak rules + violations,
+// supplier UOM, and a flag for each UOM step (PO entry/printed/check-in/recv).
+// ---------------------------------------------------------------------------
+
+async function _fetchItemSuppliers(itemCode: string): Promise<ItemSupplierRow[]> {
+  const sql = getErpSql();
+
+  type Row = {
+    supplier_key: string;
+    supplier_code: string | null;
+    supplier_name: string | null;
+    ship_from_seq_num: number | null;
+    is_primary: boolean | null;
+    lead_time_1: number | null;
+    lead_time_2: number | null;
+    lead_time_3: number | null;
+    lead_time_4: number | null;
+    lead_time_5: number | null;
+    lead_time_flag: boolean | null;
+    min_ord_qty: string | null;
+    min_pak: string | null;
+    min_ord_qty_disp_uom: string | null;
+    min_pak_disp_uom: string | null;
+    min_ord_violation: string | null;
+    min_pak_violation: string | null;
+    supp_uom: string | null;
+    use_uom_for_po_entry: boolean | null;
+    use_uom_for_printed_po: boolean | null;
+    use_uom_for_po_check_in: boolean | null;
+    use_uom_for_receiving: boolean | null;
+    update_date: string | null;
+  };
+
+  const rows = await sql<Row[]>`
+    SELECT
+      ims.supplier_key,
+      s.supplier_code,
+      COALESCE(s.ship_from_name, s.supplier_name) AS supplier_name,
+      ims.ship_from_seq_num,
+      ims.is_primary,
+      ims.lead_time_1, ims.lead_time_2, ims.lead_time_3, ims.lead_time_4, ims.lead_time_5,
+      ims.lead_time_flag,
+      ims.min_ord_qty::text,
+      ims.min_pak::text,
+      ims.min_ord_qty_disp_uom,
+      ims.min_pak_disp_uom,
+      ims.min_ord_violation,
+      ims.min_pak_violation,
+      ims.supp_uom,
+      ims.use_uom_for_po_entry,
+      ims.use_uom_for_printed_po,
+      ims.use_uom_for_po_check_in,
+      ims.use_uom_for_receiving,
+      ims.update_date::text
+    FROM agility_items i
+    JOIN agility_item_supplier ims
+      ON ims.item_ptr = i.item_ptr
+      AND ims.is_deleted = false
+    LEFT JOIN agility_suppliers s
+      ON TRIM(s.supplier_key) = TRIM(ims.supplier_key)
+      AND s.ship_from_seq = ims.ship_from_seq_num
+      AND s.is_deleted = false
+    WHERE i.item = ${itemCode} AND i.is_deleted = false
+    ORDER BY ims.is_primary DESC NULLS LAST, ims.lead_time_1 ASC NULLS LAST
+  `;
+
+  return rows.map((r) => ({
+    supplierKey: r.supplier_key.trim(),
+    supplierCode: r.supplier_code ?? r.supplier_key.trim(),
+    supplierName: r.supplier_name,
+    shipFromSeqNum: r.ship_from_seq_num,
+    isPrimary: r.is_primary ?? false,
+    leadTimes: [r.lead_time_1, r.lead_time_2, r.lead_time_3, r.lead_time_4, r.lead_time_5]
+      .map((v) => (v === null ? null : v)),
+    leadTimeFlag: r.lead_time_flag ?? false,
+    minOrderQty: r.min_ord_qty ? Number(r.min_ord_qty) : 0,
+    minPak: r.min_pak ? Number(r.min_pak) : 0,
+    minOrderQtyDispUom: r.min_ord_qty_disp_uom,
+    minPakDispUom: r.min_pak_disp_uom,
+    minOrderViolation: r.min_ord_violation,
+    minPakViolation: r.min_pak_violation,
+    supplierUom: r.supp_uom,
+    useUomForPoEntry: r.use_uom_for_po_entry ?? false,
+    useUomForPrintedPo: r.use_uom_for_printed_po ?? false,
+    useUomForPoCheckIn: r.use_uom_for_po_check_in ?? false,
+    useUomForReceiving: r.use_uom_for_receiving ?? false,
+    updateDate: r.update_date,
+  }));
 }
 
 // ---------------------------------------------------------------------------
@@ -883,3 +958,4 @@ export const fetchProductTopCustomers = erpCache(_fetchProductTopCustomers, ['fe
 export const fetchProductBranchMix = erpCache(_fetchProductBranchMix, ['fetch-product-branch-mix']);
 export const fetchProductSaleTypes = erpCache(_fetchProductSaleTypes, ['fetch-product-sale-types']);
 export const fetchItemPrimarySupplier = erpCache(_fetchItemPrimarySupplier, ['fetch-item-primary-supplier']);
+export const fetchItemSuppliers = erpCache(_fetchItemSuppliers, ['fetch-item-suppliers']);

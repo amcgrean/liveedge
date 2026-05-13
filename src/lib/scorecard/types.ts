@@ -246,3 +246,31 @@ export interface ItemPrimarySupplier {
   supplierCode: string;
   supplierName: string | null;
 }
+
+/**
+ * Single (item × supplier × ship-from) row from agility_item_supplier. Used by
+ * the item scorecard's Suppliers section to surface purchasing rules.
+ */
+export interface ItemSupplierRow {
+  supplierKey: string;
+  supplierCode: string;
+  supplierName: string | null;
+  shipFromSeqNum: number | null;
+  isPrimary: boolean;
+  /** Lead-time tiers 1..5 (days). Tier 1 is the default/lowest-volume bracket. */
+  leadTimes: Array<number | null>;
+  leadTimeFlag: boolean;
+  minOrderQty: number;
+  minPak: number;
+  minOrderQtyDispUom: string | null;
+  minPakDispUom: string | null;
+  /** e.g. "Allow", "Allow - Question", "Block" */
+  minOrderViolation: string | null;
+  minPakViolation: string | null;
+  supplierUom: string | null;
+  useUomForPoEntry: boolean;
+  useUomForPrintedPo: boolean;
+  useUomForPoCheckIn: boolean;
+  useUomForReceiving: boolean;
+  updateDate: string | null;
+}
