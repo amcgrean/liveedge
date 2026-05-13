@@ -20,7 +20,7 @@ export default function Breadcrumb({
   return (
     <nav
       aria-label="Breadcrumb"
-      className="max-w-screen-xl mx-auto px-4 pt-3 print:hidden"
+      className="max-w-screen-2xl mx-auto px-6 pt-4 pb-2 print:hidden"
     >
       <ol className="flex flex-wrap items-center gap-1 text-xs text-slate-400">
         {trail.map((item, idx) => {

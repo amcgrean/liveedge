@@ -30,12 +30,12 @@ const BRANCHES = [
   { id: '40CV', label: 'Coralville' },
 ];
 
-const RANGES: { id: VendorScorecardParams['range']; label: string }[] = [
-  { id: 'MTD', label: 'MTD' },
-  { id: 'QTD', label: 'QTD' },
-  { id: 'YTD', label: 'YTD' },
-  { id: 'TTM', label: 'TTM' },
-  { id: 'FY',  label: 'Full Year' },
+const RANGES: { id: VendorScorecardParams['range']; label: string; tooltip: string }[] = [
+  { id: 'MTD', label: 'MTD',      tooltip: 'Month-to-Date — from the 1st of this month through today' },
+  { id: 'QTD', label: 'QTD',      tooltip: 'Quarter-to-Date — from the start of this fiscal quarter through today' },
+  { id: 'YTD', label: 'YTD',      tooltip: 'Year-to-Date — from Jan 1 of this year through today' },
+  { id: 'TTM', label: 'T12M',     tooltip: 'Trailing 12 Months — a rolling window covering the last 365 days' },
+  { id: 'FY',  label: 'Full Year', tooltip: 'Full Year — the entire current fiscal year (Jan 1 – Dec 31)' },
 ];
 
 const PROG_TYPE_LABELS: Record<string, string> = {
@@ -464,7 +464,7 @@ export default function VendorScorecardClient({
   return (
     <div className="min-h-screen" style={{ background: 'var(--bg)' }}>
       <div
-        className="sticky top-0 z-40 flex flex-wrap items-center gap-3 px-5 py-2.5"
+        className="sticky top-0 z-40 flex flex-wrap items-center gap-x-5 gap-y-3 px-6 py-3.5"
         style={{ background: 'var(--panel)', borderBottom: '1px solid var(--line)' }}
       >
         <div className="flex rounded overflow-hidden" style={{ border: '1px solid var(--line)' }}>
@@ -472,7 +472,9 @@ export default function VendorScorecardClient({
             <button
               key={r.id}
               onClick={() => pushParams({ ...params, range: r.id })}
-              className="px-3 py-1 text-xs font-medium mono transition"
+              title={r.tooltip}
+              aria-label={r.tooltip}
+              className="px-3.5 py-1.5 text-xs font-medium mono transition cursor-help"
               style={{
                 background: params.range === r.id ? 'var(--green)' : 'var(--panel-2)',
                 color: params.range === r.id ? 'white' : 'var(--text-2)',
@@ -483,12 +485,12 @@ export default function VendorScorecardClient({
           ))}
         </div>
 
-        <div className="flex gap-1.5 flex-wrap">
+        <div className="flex gap-2 flex-wrap">
           {BRANCHES.map((b) => (
             <button
               key={b.id}
               onClick={() => pushParams({ ...params, branch: b.id })}
-              className="px-2.5 py-1 rounded text-xs font-medium transition"
+              className="px-3 py-1.5 rounded text-xs font-medium transition"
               style={{
                 background: params.branch === b.id ? 'rgba(31,138,79,0.15)' : 'var(--panel-2)',
                 color: params.branch === b.id ? 'var(--green-bright)' : 'var(--text-3)',
@@ -504,7 +506,7 @@ export default function VendorScorecardClient({
           <select
             value={params.productGroup}
             onChange={(e) => pushParams({ ...params, productGroup: e.target.value })}
-            className="text-xs px-2 py-1 rounded"
+            className="text-xs px-3 py-1.5 rounded"
             style={{ background: 'var(--panel-2)', border: '1px solid var(--line)', color: 'var(--text-2)' }}
           >
             <option value="all">All Product Groups</option>
@@ -513,7 +515,7 @@ export default function VendorScorecardClient({
         )}
       </div>
 
-      <div className="p-5 space-y-5 max-w-screen-2xl mx-auto">
+      <div className="px-6 py-6 space-y-6 max-w-screen-2xl mx-auto">
         <div>
           <h1 className="text-2xl font-bold flex items-center gap-2" style={{ color: 'var(--text)' }}>
             <Truck className="w-6 h-6" style={{ color: 'var(--green-bright)' }} />
@@ -524,7 +526,7 @@ export default function VendorScorecardClient({
           </p>
         </div>
 
-        <div className="grid grid-cols-2 sm:grid-cols-4 xl:grid-cols-8 gap-3">
+        <div className="grid grid-cols-2 sm:grid-cols-4 xl:grid-cols-8 gap-4">
           <KpiTile
             label="Total Spend"
             value={fmt$(summary.totalSpendYTD)}
