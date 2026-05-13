@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { randomBytes } from 'crypto';
-import { eq } from 'drizzle-orm';
+import { eq, notInArray } from 'drizzle-orm';
 import { requireCapability } from '../../../../../src/lib/access-control';
 import { getDb } from '../../../../../db/index';
 import { graphSubscriptions } from '../../../../../db/schema';
@@ -13,11 +13,15 @@ import {
 // POST /api/admin/graph/setup
 // Bootstrap (or re-bootstrap) Graph mail-change subscriptions for shared mailboxes.
 //
-// For each mailbox in MAILBOXES:
-//   - Delete any prior subscription row + the upstream Graph subscription
-//   - Generate a fresh clientState (random hex)
-//   - POST /subscriptions with our /api/inbound/graph webhook URL
-//   - Store the result in bids.graph_subscriptions for the renewal cron
+// 1. Reap: any subscription row whose mailbox is no longer in MAILBOXES is
+//    deleted upstream + locally — otherwise the renew cron will keep extending
+//    orphan subscriptions for retired mailboxes (e.g. hubbell@ after the
+//    email-ingest pipeline was removed 2026-05-13).
+// 2. For each mailbox in MAILBOXES:
+//    - Delete any prior subscription row + the upstream Graph subscription
+//    - Generate a fresh clientState (random hex)
+//    - POST /subscriptions with our /api/inbound/graph webhook URL
+//    - Store the result in bids.graph_subscriptions for the renewal cron
 
 const MAILBOXES = [
   { env: 'MS_GRAPH_CREDITS_MAILBOX', fallback: 'credits@beisserlumber.com' },
@@ -40,6 +44,11 @@ export async function POST(req: NextRequest) {
   const notificationUrl = getNotificationUrl(req);
   const expiration = maxSubscriptionExpiration();
 
+  const configuredMailboxes = MAILBOXES.map(cfg =>
+    (process.env[cfg.env] ?? cfg.fallback).toLowerCase()
+  );
+
+  const reaped: { mailbox: string; subscriptionId: string; error?: string }[] = [];
   const results: {
     mailbox: string;
     subscriptionId?: string;
@@ -47,8 +56,26 @@ export async function POST(req: NextRequest) {
     error?: string;
   }[] = [];
 
-  for (const cfg of MAILBOXES) {
-    const mailbox = (process.env[cfg.env] ?? cfg.fallback).toLowerCase();
+  // ─── 1. Reap orphan rows for unconfigured mailboxes ─────────────────────
+  const orphans = await db
+    .select()
+    .from(graphSubscriptions)
+    .where(notInArray(graphSubscriptions.mailbox, configuredMailboxes));
+
+  for (const row of orphans) {
+    let upstreamErr: string | undefined;
+    try {
+      await deleteSubscription(row.subscriptionId);
+    } catch (err) {
+      upstreamErr = err instanceof Error ? err.message : String(err);
+      console.warn(`[graph/setup] reap upstream delete failed ${row.subscriptionId}`, err);
+    }
+    await db.delete(graphSubscriptions).where(eq(graphSubscriptions.id, row.id));
+    reaped.push({ mailbox: row.mailbox, subscriptionId: row.subscriptionId, error: upstreamErr });
+  }
+
+  // ─── 2. (Re)bootstrap subscriptions for each configured mailbox ────────
+  for (const mailbox of configuredMailboxes) {
     try {
       // Delete any existing subscription for this mailbox (cascade upstream + locally).
       const existing = await db
@@ -93,7 +120,7 @@ export async function POST(req: NextRequest) {
     }
   }
 
-  return NextResponse.json({ ok: true, notificationUrl, results });
+  return NextResponse.json({ ok: true, notificationUrl, reaped, results });
 }
 
 // GET /api/admin/graph/setup — list current subscription rows
