@@ -26,6 +26,7 @@ import {
   BranchContributionPareto,
 } from '../../../_components/ScorecardCharts';
 import ScorecardBreadcrumb from '@/components/scorecard/ScorecardBreadcrumb';
+import Breadcrumb from '@/components/Breadcrumb';
 import ProductDrillBreakdownTable from '../../_components/ProductDrillBreakdownTable';
 
 export const maxDuration = 60;
@@ -135,9 +136,17 @@ export default async function ProductMajorScorecard({
   const title = header?.majorName ?? majorCode;
 
   return (
-    <div className="max-w-screen-xl mx-auto px-4 py-6 space-y-5">
-      <ScorecardTabs />
-      <ScorecardBreadcrumb from={from} fallback="product" />
+    <>
+      <Breadcrumb
+        items={[
+          { href: `/scorecard/overview${childQs}`, label: 'Scorecards' },
+          { href: `/scorecard/product${childQs}`, label: 'Product Groups' },
+          { label: title },
+        ]}
+      />
+      <div className="max-w-screen-xl mx-auto px-4 py-6 space-y-5">
+        <ScorecardTabs />
+        <ScorecardBreadcrumb from={from} fallback="product" />
 
       {failures.length > 0 && (
         <div className="p-3 bg-amber-900/30 border border-amber-700/60 rounded-lg text-amber-200 text-sm print:hidden">
@@ -217,7 +226,8 @@ export default async function ProductMajorScorecard({
       <Section title="Detail Metrics">
         <BottomMetrics kpis={kpis} daysToPay={NO_DTP} baseYear={baseYear} compareYear={compareYear} />
       </Section>
-    </div>
+      </div>
+    </>
   );
 }
 

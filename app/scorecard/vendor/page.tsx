@@ -3,6 +3,7 @@ import { ChevronRight, AlertTriangle } from 'lucide-react';
 import { fetchVendorList, fetchVendorScorecardSummary } from '../../../src/lib/vendor-scorecard/queries';
 import type { VendorScorecardParams } from '../../../src/lib/vendor-scorecard/types';
 import ScorecardTabs from '../_components/ScorecardTabs';
+import Breadcrumb from '@/components/Breadcrumb';
 
 export const maxDuration = 60;
 export const metadata = { title: 'Vendor Scorecards — Beisser LiveEdge' };
@@ -58,8 +59,15 @@ export default async function VendorScorecardListPage({
     : vendors;
 
   return (
-    <div className="max-w-screen-xl mx-auto px-4 py-6 space-y-5">
-      <ScorecardTabs />
+    <>
+      <Breadcrumb
+        items={[
+          { href: '/scorecard/overview', label: 'Scorecards' },
+          { label: 'Vendors' },
+        ]}
+      />
+      <div className="max-w-screen-xl mx-auto px-4 py-6 space-y-5">
+        <ScorecardTabs />
 
       <div>
         <h1 className="text-2xl font-bold text-white">Vendor Scorecards</h1>
@@ -220,6 +228,7 @@ export default async function VendorScorecardListPage({
           </table>
         </div>
       </section>
-    </div>
+      </div>
+    </>
   );
 }

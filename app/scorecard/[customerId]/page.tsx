@@ -21,6 +21,7 @@ import {
   SaleTypeParetoChart,
   DaysToPayCard,
 } from '../_components/ScorecardCharts';
+import Breadcrumb from '@/components/Breadcrumb';
 
 const BRANCH_LABELS: Record<string, string> = {
   '10FD': 'Fort Dodge',
@@ -144,25 +145,43 @@ export default async function ScorecardPage({
       ? kpis.compare.gp / kpis.compare.sales
       : null;
 
+  const filterQs = (() => {
+    const qsp = new URLSearchParams();
+    qsp.set('baseYear', String(baseYear));
+    qsp.set('compareYear', String(compareYear));
+    qsp.set('period', period);
+    qsp.set('cutoffDate', cutoffDate);
+    branchIds.forEach((b) => qsp.append('branch', b));
+    return qsp.toString();
+  })();
+
   return (
-    <div className="p-4 md:p-6 space-y-5 max-w-7xl mx-auto">
+    <>
+      <Breadcrumb
+        items={[
+          { href: `/scorecard/overview?${filterQs}`, label: 'Scorecards' },
+          { href: `/scorecard?${filterQs}`, label: 'Customers' },
+          { label: kpis.customerName || scorecardParams.customerId },
+        ]}
+      />
+      <div className="p-4 md:p-6 space-y-5 max-w-7xl mx-auto">
 
-      {/* Print styles */}
-      <style>{`
-        @media print {
-          body { background: white !important; color: black !important; }
-          .print\\:hidden { display: none !important; }
-          .print\\:text-xs { font-size: 0.7rem !important; }
-          nav, header { display: none !important; }
-        }
-      `}</style>
+        {/* Print styles */}
+        <style>{`
+          @media print {
+            body { background: white !important; color: black !important; }
+            .print\\:hidden { display: none !important; }
+            .print\\:text-xs { font-size: 0.7rem !important; }
+            nav, header { display: none !important; }
+          }
+        `}</style>
 
-      {/* Breadcrumb */}
-      <div className="print:hidden">
-        <Link href="/scorecard" className="text-sm text-cyan-400 hover:underline">
-          ← Customer Scorecard
-        </Link>
-      </div>
+        {/* Back link */}
+        <div className="print:hidden">
+          <Link href="/scorecard" className="text-sm text-cyan-400 hover:underline">
+            ← Customer Scorecard
+          </Link>
+        </div>
 
       {/* Header */}
       <div className="space-y-0.5">
@@ -281,6 +300,7 @@ export default async function ScorecardPage({
         />
       </Section>
 
-    </div>
+      </div>
+    </>
   );
 }

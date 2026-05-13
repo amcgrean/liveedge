@@ -1,5 +1,7 @@
 import { requirePageAccess } from '@/lib/access-control';
 import { CAPABILITIES } from '@/lib/access-control-shared';
+import { TopNav } from '@/components/nav/TopNav';
+import Breadcrumb from '@/components/Breadcrumb';
 import {
   fetchVendorScorecardSummary,
   fetchVendorList,
@@ -17,7 +19,7 @@ export default async function VendorScorecardPage({
 }: {
   searchParams: Promise<Record<string, string | string[]>>;
 }) {
-  await requirePageAccess(CAPABILITIES.PURCHASING_VIEW);
+  const session = await requirePageAccess(CAPABILITIES.PURCHASING_VIEW);
 
   const sp = await searchParams;
 
@@ -60,12 +62,21 @@ export default async function VendorScorecardPage({
   }
 
   return (
-    <VendorScorecardClient
-      summary={summary}
-      vendors={vendors}
-      productGroups={productGroups}
-      branchSummary={branchSummary}
-      initialParams={params}
-    />
+    <div className="min-h-screen bg-gray-950">
+      <TopNav userName={session.user.name} userRole={session.user.role} />
+      <Breadcrumb
+        items={[
+          { href: '/purchasing', label: 'Purchasing' },
+          { label: 'Vendor Scorecard' },
+        ]}
+      />
+      <VendorScorecardClient
+        summary={summary}
+        vendors={vendors}
+        productGroups={productGroups}
+        branchSummary={branchSummary}
+        initialParams={params}
+      />
+    </div>
   );
 }

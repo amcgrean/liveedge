@@ -29,6 +29,7 @@ import {
   BranchContributionPareto,
 } from '../../../_components/ScorecardCharts';
 import ScorecardBreadcrumb from '@/components/scorecard/ScorecardBreadcrumb';
+import Breadcrumb from '@/components/Breadcrumb';
 
 export const maxDuration = 60;
 
@@ -134,10 +135,30 @@ export default async function ProductItemScorecard({
   const title = header?.itemDescription ?? itemCode;
   const fromHint = `product-item:${itemCode}`;
 
+  const breadcrumbItems = [
+    { href: `/scorecard/overview${childQs}`, label: 'Scorecards' },
+    { href: `/scorecard/product${childQs}`, label: 'Product Groups' },
+    ...(header?.majorCode
+      ? [{
+          href: `/scorecard/product/major/${encodeURIComponent(header.majorCode)}${childQs}`,
+          label: header.majorName ?? header.majorCode,
+        }]
+      : []),
+    ...(header?.majorCode && header?.minorCode
+      ? [{
+          href: `/scorecard/product/minor/${encodeURIComponent(header.majorCode)}/${encodeURIComponent(header.minorCode)}${childQs}`,
+          label: header.minorName ?? header.minorCode,
+        }]
+      : []),
+    { label: title },
+  ];
+
   return (
-    <div className="max-w-screen-xl mx-auto px-4 py-6 space-y-5">
-      <ScorecardTabs />
-      <ScorecardBreadcrumb from={from} fallback="product" />
+    <>
+      <Breadcrumb items={breadcrumbItems} />
+      <div className="max-w-screen-xl mx-auto px-4 py-6 space-y-5">
+        <ScorecardTabs />
+        <ScorecardBreadcrumb from={from} fallback="product" />
 
       {failures.length > 0 && (
         <div className="p-3 bg-amber-900/30 border border-amber-700/60 rounded-lg text-amber-200 text-sm print:hidden">
@@ -232,7 +253,8 @@ export default async function ProductItemScorecard({
       <Section title="Detail Metrics">
         <BottomMetrics kpis={kpis} daysToPay={NO_DTP} baseYear={baseYear} compareYear={compareYear} />
       </Section>
-    </div>
+      </div>
+    </>
   );
 }
 
