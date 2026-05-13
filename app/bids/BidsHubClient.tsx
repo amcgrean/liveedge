@@ -18,7 +18,7 @@ const TABS: { id: Tab; label: string; description: string }[] = [
   { id: 'open',       label: 'Open',       description: 'Active bid tracker entries' },
   { id: 'completed',  label: 'Completed',  description: 'Finished bids with turnaround' },
   { id: 'all',        label: 'All',        description: 'Tracker + Estimator unified' },
-  { id: 'projects',   label: 'Projects',   description: 'Estimator bids with workflow' },
+  { id: 'projects',   label: 'Estimating', description: 'Saved estimating sessions' },
   { id: 'calendar',   label: 'Calendar',   description: 'Open bids by due date' },
 ];
 

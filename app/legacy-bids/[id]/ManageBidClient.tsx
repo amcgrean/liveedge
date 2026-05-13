@@ -315,7 +315,7 @@ export default function ManageBidClient({ session }: Props) {
       const data = await res.json();
       if (!res.ok) { setError(data.error ?? 'Failed to start takeoff'); return; }
       // data.pdfPreloaded tells us if the bid's PDF was auto-loaded into the session
-      router.push(`/takeoff/${data.sessionId}`);
+      router.push(`/estimating?bid=${data.bidId}`);
     } catch {
       setError('Network error');
     } finally {
@@ -583,8 +583,8 @@ export default function ManageBidClient({ session }: Props) {
             {/* Takeoff Panel */}
             <div className="bg-gray-900 border border-cyan-900/40 rounded-lg p-4 space-y-3">
               <h3 className="font-semibold text-sm flex items-center gap-1.5">
-                <Ruler className="w-3.5 h-3.5 text-cyan-400" />
-                PDF Takeoff
+                <Calculator className="w-3.5 h-3.5 text-cyan-400" />
+                Estimating
               </h3>
 
               {/* Plan PDF status */}
@@ -603,24 +603,30 @@ export default function ManageBidClient({ session }: Props) {
               {/* CTA buttons */}
               {takeoffSessionId ? (
                 <div className="space-y-2">
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                  {bid.takeoffSession?.bidId ? (
                     <Link
-                      href={`/takeoff/${takeoffSessionId}`}
+                      href={`/estimating?bid=${bid.takeoffSession.bidId}`}
                       className="flex items-center justify-center gap-2 w-full px-3 py-2 bg-cyan-700 hover:bg-cyan-600 text-white rounded-lg text-sm font-medium transition-colors"
                     >
-                      <ExternalLink className="w-4 h-4" />
-                      Open Takeoff
+                      <Calculator className="w-4 h-4" />
+                      Open Estimating App
                     </Link>
-                    {bid.takeoffSession?.bidId ? (
-                      <Link
-                        href={`/estimating?bid=${bid.takeoffSession.bidId}`}
-                        className="flex items-center justify-center gap-2 w-full px-3 py-2 bg-cyan-700 hover:bg-cyan-600 text-white rounded-lg text-sm font-medium transition-colors"
-                      >
-                        <Calculator className="w-4 h-4" />
-                        Open in Estimator
-                      </Link>
-                    ) : null}
-                  </div>
+                  ) : (
+                    <Link
+                      href="/estimating"
+                      className="flex items-center justify-center gap-2 w-full px-3 py-2 bg-cyan-700 hover:bg-cyan-600 text-white rounded-lg text-sm font-medium transition-colors"
+                    >
+                      <Calculator className="w-4 h-4" />
+                      Open Estimating App
+                    </Link>
+                  )}
+                  <Link
+                    href={`/takeoff/${takeoffSessionId}`}
+                    className="flex items-center justify-center gap-1 w-full px-2 py-1.5 text-xs text-gray-500 hover:text-gray-300 transition-colors"
+                  >
+                    <ExternalLink className="w-3 h-3" />
+                    PDF Takeoff (advanced)
+                  </Link>
                   <button
                     onClick={async () => {
                       if (!window.confirm('Push all measurement totals to the estimate?')) return;

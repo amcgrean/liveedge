@@ -115,6 +115,7 @@ export async function POST(req: NextRequest, context: RouteContext) {
           },
           specsIncluded,
           planType: bid.planType,
+          legacyBidId: legacyBidId,
         },
       })
       .returning();
@@ -196,6 +197,7 @@ export async function POST(req: NextRequest, context: RouteContext) {
 
     return NextResponse.json({
       sessionId: takeoffSession.id,
+      bidId: uuidBid.id,
       pdfPreloaded: !!planFile,
     }, { status: 201 });
   } catch (err) {

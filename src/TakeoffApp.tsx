@@ -58,6 +58,16 @@ interface Props {
   initialBidId?: string;
 }
 
+interface SpecsIncluded {
+  framing?: boolean;
+  siding?: boolean;
+  shingle?: boolean;
+  deck?: boolean;
+  trim?: boolean;
+  windows?: boolean;
+  doors?: boolean;
+}
+
 export default function TakeoffApp({ session, initialBidId }: Props) {
   const [loading, setLoading] = useState(true);
   const [inputs, setInputs] = useState<JobInputs>(initialInputs);
@@ -75,6 +85,11 @@ export default function TakeoffApp({ session, initialBidId }: Props) {
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
   const [pendingProfile, setPendingProfile] = useState<any>(null);
   const [dismissedForCustomer, setDismissedForCustomer] = useState('');
+
+  // Spec filtering — set when a bid is loaded from a legacy bid link
+  // null = standalone (show all sections), object = filter by flags
+  const [specsIncluded, setSpecsIncluded] = useState<SpecsIncluded | null>(null);
+  const [legacyBidId, setLegacyBidId] = useState<number | null>(null);
 
   const userRole = (session.user as { role?: string }).role ?? 'estimator';
 
@@ -94,9 +109,16 @@ export default function TakeoffApp({ session, initialBidId }: Props) {
           const res = await fetch(`/api/bids/${initialBidId}`);
           if (res.ok) {
             const data = await res.json();
-            setInputs(data.bid.inputs as JobInputs);
+            const bidInputs = data.bid.inputs as JobInputs & {
+              specsIncluded?: SpecsIncluded;
+              legacyBidId?: number;
+            };
+            setInputs(bidInputs);
             setCurrentBidId(data.bid.id);
             setCurrentBidNumber(data.bid.bidNumber);
+            // Extract spec filtering and back-link info stored by start-takeoff
+            if (bidInputs.specsIncluded) setSpecsIncluded(bidInputs.specsIncluded);
+            if (bidInputs.legacyBidId) setLegacyBidId(bidInputs.legacyBidId);
           }
         } catch { /* silently ignore */ }
       }
@@ -185,6 +207,13 @@ export default function TakeoffApp({ session, initialBidId }: Props) {
 
   const warnCount = lineItems.filter((i) => i.warning).length;
 
+  // Helper: return true if a section should be shown.
+  // When specsIncluded is null (standalone bid), always show everything.
+  const show = (flag: keyof SpecsIncluded | 'always') => {
+    if (flag === 'always' || specsIncluded === null) return true;
+    return !!specsIncluded[flag];
+  };
+
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center">
@@ -205,6 +234,14 @@ export default function TakeoffApp({ session, initialBidId }: Props) {
         {/* Header */}
         <header className="mb-6 flex flex-col md:flex-row md:items-start justify-between gap-4">
           <div>
+            {legacyBidId && (
+              <a
+                href={`/legacy-bids/${legacyBidId}`}
+                className="inline-flex items-center gap-1 text-xs text-slate-400 hover:text-cyan-400 mb-1 transition-colors"
+              >
+                ← Back to Bid #{legacyBidId}
+              </a>
+            )}
             <h1 className={`text-2xl font-extrabold tracking-tight ${darkMode ? 'text-white' : 'text-slate-900'}`}>
               House Estimator <span className="text-cyan-400">Takeoff</span>
             </h1>
@@ -213,6 +250,11 @@ export default function TakeoffApp({ session, initialBidId }: Props) {
                 <span className={`font-mono text-xs ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>
                   {currentBidNumber}
                 </span>
+                {specsIncluded && (
+                  <span className="text-xs text-cyan-700 bg-cyan-950 px-1.5 py-0.5 rounded">
+                    {Object.entries(specsIncluded).filter(([, v]) => v).map(([k]) => k.charAt(0).toUpperCase() + k.slice(1)).join(' · ')}
+                  </span>
+                )}
                 {hasUnsavedChanges && (
                   <span className="text-amber-400 text-xs flex items-center gap-1">
                     <AlertCircle className="w-3 h-3" /> Unsaved changes
@@ -326,28 +368,32 @@ export default function TakeoffApp({ session, initialBidId }: Props) {
             <div className="lg:col-span-2 space-y-4">
               <JobSetupSection data={inputs.setup} onChange={(val) => handleInputChange((p) => ({ ...p, setup: val }))} />
               <MaterialSelectionSection data={inputs.materials} onChange={(val) => handleInputChange((p) => ({ ...p, materials: val }))} />
-              <BasementSectionComp data={inputs.basement} onChange={(val) => handleInputChange((p) => ({ ...p, basement: val }))} />
-              <FloorSectionComp
-                sectionNumber={4}
-                title="First Floor Deck & Walls"
-                data={inputs.firstFloor}
-                onChange={(val) => handleInputChange((p) => ({ ...p, firstFloor: val }))}
-              />
-              <FloorSectionComp
-                sectionNumber={5}
-                title="Second Floor Deck & Walls"
-                data={inputs.secondFloor}
-                onChange={(val) => handleInputChange((p) => ({ ...p, secondFloor: val }))}
-              />
-              <RoofSectionComp data={inputs.roof} onChange={(val) => handleInputChange((p) => ({ ...p, roof: val }))} />
-              <ShinglesSectionComp data={inputs.shingles} onChange={(val) => handleInputChange((p) => ({ ...p, shingles: val }))} />
-              <SidingSectionComp data={inputs.siding} onChange={(val) => handleInputChange((p) => ({ ...p, siding: val }))} />
-              <TrimSectionComp data={inputs.trim} onChange={(val) => handleInputChange((p) => ({ ...p, trim: val }))} />
-              <HardwareSectionComp data={inputs.hardware} lookups={dataCache.hardwareLookup || []} onChange={(val) => handleInputChange((p) => ({ ...p, hardware: val }))} />
-              <ExteriorDeckSectionComp data={inputs.exteriorDeck} onChange={(val) => handleInputChange((p) => ({ ...p, exteriorDeck: val }))} />
-              <BearingWallSectionComp data={inputs.bearingWall} onChange={(val) => handleInputChange((p) => ({ ...p, bearingWall: val }))} />
-              <PartyWallSectionComp data={inputs.partyWall} onChange={(val) => handleInputChange((p) => ({ ...p, partyWall: val }))} />
-              <WindowsDoorsSectionComp data={inputs.windowsDoors} onChange={(val) => handleInputChange((p) => ({ ...p, windowsDoors: val }))} />
+              {show('framing') && <BasementSectionComp data={inputs.basement} onChange={(val) => handleInputChange((p) => ({ ...p, basement: val }))} />}
+              {show('framing') && (
+                <FloorSectionComp
+                  sectionNumber={4}
+                  title="First Floor Deck & Walls"
+                  data={inputs.firstFloor}
+                  onChange={(val) => handleInputChange((p) => ({ ...p, firstFloor: val }))}
+                />
+              )}
+              {show('framing') && (
+                <FloorSectionComp
+                  sectionNumber={5}
+                  title="Second Floor Deck & Walls"
+                  data={inputs.secondFloor}
+                  onChange={(val) => handleInputChange((p) => ({ ...p, secondFloor: val }))}
+                />
+              )}
+              {show('framing') && <RoofSectionComp data={inputs.roof} onChange={(val) => handleInputChange((p) => ({ ...p, roof: val }))} />}
+              {show('shingle') && <ShinglesSectionComp data={inputs.shingles} onChange={(val) => handleInputChange((p) => ({ ...p, shingles: val }))} />}
+              {show('siding') && <SidingSectionComp data={inputs.siding} onChange={(val) => handleInputChange((p) => ({ ...p, siding: val }))} />}
+              {show('trim') && <TrimSectionComp data={inputs.trim} onChange={(val) => handleInputChange((p) => ({ ...p, trim: val }))} />}
+              {show('trim') && <HardwareSectionComp data={inputs.hardware} lookups={dataCache.hardwareLookup || []} onChange={(val) => handleInputChange((p) => ({ ...p, hardware: val }))} />}
+              {show('deck') && <ExteriorDeckSectionComp data={inputs.exteriorDeck} onChange={(val) => handleInputChange((p) => ({ ...p, exteriorDeck: val }))} />}
+              {show('framing') && <BearingWallSectionComp data={inputs.bearingWall} onChange={(val) => handleInputChange((p) => ({ ...p, bearingWall: val }))} />}
+              {show('framing') && <PartyWallSectionComp data={inputs.partyWall} onChange={(val) => handleInputChange((p) => ({ ...p, partyWall: val }))} />}
+              {(show('windows') || show('doors')) && <WindowsDoorsSectionComp data={inputs.windowsDoors} onChange={(val) => handleInputChange((p) => ({ ...p, windowsDoors: val }))} />}
               <OptionsSectionComp data={inputs.options} onChange={(val) => handleInputChange((p) => ({ ...p, options: val }))} />
             </div>
 

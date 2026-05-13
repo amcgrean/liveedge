@@ -377,7 +377,7 @@ function getDomains(tvBranch: string): Domain[] {
         p.startsWith('/designs'),
       links: [
         { href: '/estimating', label: 'Estimating App', requiresCap: ['bids.manage'] },
-        { href: '/takeoff',    label: 'PDF Takeoff',    requiresCap: ['bids.manage'] },
+        { href: '/takeoff',    label: 'PDF Takeoff',    requiresCap: ['branch.all'] },
         { href: '/bids',       label: 'Bids',           requiresCap: ['bids.manage'] },
         { href: '/ewp',        label: 'EWP',            requiresCap: ['ewp.manage'] },
         { href: '/projects',   label: 'Projects',       requiresCap: ['projects.manage'] },
