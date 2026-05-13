@@ -65,6 +65,7 @@ All LiveEdge API routes now query the optimized `agility_*` tables instead of th
 | `agility_receiving_header` | `erp_mirror_receiving_header` | Same structure |
 | `agility_receiving_lines` | `erp_mirror_receiving_detail` | Same structure |
 | `agility_ar_open` | (new) | AR open items — `cust_key`, `ref_num`, `open_amt`, `open_flag`. **`cust_key` ≠ `cust_code`** — must resolve via `agility_customers` LATERAL join first (see AR query pattern below) |
+| `agility_item_supplier` | (new, 2026-05-13) | Item × supplier × ship-from purchasing rules. One row per `(system_id, supplier_key, item_ptr, ship_from_seq_num)`. **`is_primary` flags the primary supplier per item.** Carries `lead_time_1..5`, `lead_time_flag`, `min_ord_qty`/`min_pak` + their `*_disp_uom` + `min_*_violation` rules (`Allow` / `Allow - Question` / `Block`), `supp_uom`, `use_uom_for_{po_entry,printed_po,po_check_in,receiving}`. Join to items via `item_ptr` (NOT `item`), to suppliers via `(supplier_key, ship_from_seq → ship_from_seq_num)`. Trim `supplier_key` — source pads with leading spaces. |
 
 App views backed by agility_ tables (via the old erp_mirror_ as of 2026-04-04 — will be updated to point at agility_ tables):
 - `app_po_search` → `app_po_header` (matview) — enriched PO list for purchasing routes
@@ -626,8 +627,41 @@ real-OA-gap / fuzzy-candidate / bad-data):
   tagged `state='IA'` in customer records. Data-quality issue at the
   ERP source, not a matcher problem.
 
+#### Scorecard Drill-Downs (2026-05-13) — COMPLETE
+
+Expansion of the scorecard suite to add product (major/minor/item) and vendor drill-down pages with reciprocal cross-links and a back-stack hint so navigating between scorecards always returns to the originating page. PRs #263, #265, #266, #271.
+
+**New pages:**
+- `/scorecard/product/major/[majorCode]` · `/scorecard/product/minor/[majorCode]/[minorCode]` · `/scorecard/product/item/[itemCode]` — 3-Year chart, KPIs, top customers, branch mix, drill-down breakdown table, sale-type pareto, detail metrics. Item page also has a Primary Supplier card + full Suppliers section (lead times, min order/pak, violations, supplier UOM, UOM-step flags).
+- `/scorecard/vendor` + `/scorecard/vendor/[supplierKey]` — vendor list + standalone scorecard mirroring branch-scorecard layout (3-year receipts, KPIs, branch chart, product treemap, top items, rebate programs, risk flags).
+
+**Query layer:**
+- `src/lib/scorecard/product-drill-queries.ts` — `fetchProductHeader`, `fetchProductKpis`, `fetchProductThreeYear`, `fetchProductTopCustomers`, `fetchProductBranchMix`, `fetchProductSaleTypes`, `fetchItemPrimarySupplier`, `fetchItemSuppliers`. All cached via `erpCache()`. All read `customer_scorecard_fact` except the supplier ones which read `agility_item_supplier`.
+- `src/lib/vendor-scorecard/queries.ts` — extended with `fetchVendorThreeYear`, `fetchVendorTopItems`, `fetchVendorBranchSummary`, `computeDerivedRiskFlags` (pure helper). `fetchVendorList` now populates real `riskFlagCount` from derived signals.
+- `src/lib/scorecard/types.ts` — new `ProductFilter`, `ProductDrillParams`, `ProductHeader`, `ProductBranchMixRow`, `ProductTopCustomerRow`, `ItemPrimarySupplier`, `ItemSupplierRow` types.
+
+**Back-stack convention:** every cross-link passes `?from=<origin>` (e.g. `customer:1234`, `vendor:LMC1000`, `product-major:LBR`, `product-minor:LBR|2X6`, `product-item:ABC123`). `ScorecardBreadcrumb` (`src/components/scorecard/ScorecardBreadcrumb.tsx`) parses it and renders "← Back to {origin}" with a sane fallback when missing. Used in all new drill-down page headers.
+
+**Critical gotchas — read before touching scorecard code:**
+- `customer_scorecard_fact` SKU column is **`item_number`**, NOT `item_code`. Only `agility_items` has `item_code` (alias for `item`). Indexes / queries on the fact table use `item_number`.
+- `agility_receiving_header` has **no `supplier_key` column** — the supplier lives on the joined `agility_po_header`. Vendor scorecard queries always join through PO header for the supplier predicate.
+- **LMC1000 multi-ship-from routing**: the vendor scorecard namespaces those suppliers as `<supplier_key>::<ship_from_seq>`. `fetchVendorList` constructs the composite key, `fetchVendorDetail` parses it back via `indexOf('::')`. **Always use `buildVendorRouteKey()` in `product-drill-queries.ts`** when constructing a `/scorecard/vendor/[supplierKey]` link from `agility_item_supplier` data — passing the raw `supplier_key` drops the ship-from and routes to the wrong page.
+- `agility_item_supplier.supplier_key` is left-padded with spaces (e.g. `"     515"`). Always `TRIM()` it in joins and before exposing it on URLs.
+- `agility_items` may or may not have `primary_supplier` / `primary_supplier_key` columns depending on sync build. **Don't query them** — the source of truth is `agility_item_supplier.is_primary`. Migration 0020 dropped the obsolete indexes on those columns.
+
+**Indexes (apply manually in Supabase SQL editor):**
+- `db/migrations/0019_scorecard_drilldown_indexes.sql` — 8 indexes: `idx_csf_{item,major,major_minor,branch_item}_date` (note: **`item_number`** not `item_code`), `idx_agility_recv_header_{date,branch_date}`, `idx_agility_recv_lines_po`, `idx_agility_po_header_supplier_status`. The trailing `idx_agility_items_primary_supplier{,_key}` indexes are wrapped in a `DO/EXECUTE` block that no-ops when those columns don't exist on the target schema — they're also dropped by migration 0020, so they're effectively cruft. New work should rely on `agility_item_supplier` indexes (already created by the sync worker) instead.
+- `db/migrations/0020_drop_obsolete_primary_supplier_indexes.sql` — drops the now-unused `idx_agility_items_primary_supplier{,_key}` (DROP IF EXISTS, safe re-run). Both 0020 files (`_dispatch_driver_availability.sql` and `_drop_obsolete_primary_supplier_indexes.sql`) coexist on disk; the numbering is just a sort key, not a sequence.
+
+**Bug fixes from /purchasing/scorecard:**
+- Branch & Mix tab was rendering em-dashes — now hydrated from new `fetchVendorBranchSummary` (vendor count + spend YTD/PY + fill/OTD per branch).
+- Risk flag count was hard-coded to 0 — now computed from low-fill-rate (<90), low-OTD (<85), no-recent-receipts (>60d w/ open POs), missed-rebate-pacing.
+- Each leaderboard row gets an `ExternalLink` icon → standalone `/scorecard/vendor/[supplierKey]`.
+
+**Vendors tab in `ScorecardTabs`** added between Sales Reps and Product Groups (`app/scorecard/_components/ScorecardTabs.tsx`).
+
 #### Still Missing / Deferred
-- **Suggested Buys** (`/purchasing/suggested-buys`): `app_purchasing_queue` view confirmed missing. Check `agility_suggested_po_header` + `agility_suggested_po_lines` before building
+- **Suggested Buys** (`/purchasing/suggested-buys`): `app_purchasing_queue` view confirmed missing. Check `agility_suggested_po_header` + `agility_suggested_po_lines` before building. Once built, default-select the primary supplier per item from `agility_item_supplier WHERE is_primary` and let the user override.
 - **RMA Credits thumbnails**: email pipeline, doc counts, address-based matching, and nested email support are all live. Next: add `GET /api/credits/[id]/images` presigned URL route + thumbnail previews in CreditsClient so users can view uploaded docs inline without leaving the page.
 - **WH-Tracker kiosk/TV/smart scan**: not appropriate for LiveEdge web app pattern — intentionally deferred
 - **Purchasing workflow** (tasks, approvals, exceptions, PO notes): verify `purchasing_tasks`, `purchasing_approvals`, etc. exist in `public` schema first
@@ -637,6 +671,10 @@ real-OA-gap / fuzzy-candidate / bad-data):
 - **Page tracking rollout**: `POST /api/track-visit` exists but not yet wired into module client components — Quick Access strip on homepage stays empty until called
 - **Open order value metrics** (2026-05-05): Sync worker PR #16 added `v_open_order_value` to Supabase — a view exposing `ordered_value` and `unshipped_value` per open order (`so_status = 'K'`), grouped by `(system_id, branch_code, so_id, ...)`. No LiveEdge UI consumes it yet. Best candidates: (1) Management/Forecast page — already groups by branch and sale type, adding value columns is natural; (2) Home KPI strip — could surface a company-wide open order dollar total; (3) Sales Hub KPI cards. Query with `SELECT branch_code, SUM(ordered_value), SUM(unshipped_value) FROM v_open_order_value WHERE system_id = 'AUS' GROUP BY branch_code`.
 - **`qty_shipped` now populated** (2026-05-05): Sync worker PR #16 also updated `dbo.vw_agility_so_lines` to aggregate `qty_shipped` from `dbo.shipments_detail`. The `agility_so_lines.qty_shipped` column already exists in Supabase and is already selected by `app/api/warehouse/orders/[so_number]/route.ts` and `app/api/dispatch/orders/[so_number]/lines/route.ts` — those screens will now show real shipped quantities automatically after a sync cycle. No LiveEdge code changes needed; noting here in case future features (e.g. backorder highlighting, unshipped value per line) want to build on it.
+- **Open POs / PO detail supplier rules** (2026-05-13): surface `lead_time_1`, `min_ord_qty`, `min_ord_violation`, and `supp_uom` from `agility_item_supplier` on `/purchasing/open-pos` and `/purchasing/pos/[po]`. Join `agility_item_supplier ON (item_ptr, supplier_key, ship_from_seq_num) = (pl.item_ptr, ph.supplier_key, ph.shipfrom_seq)`. No new indexes needed; `idx_agility_item_supplier_supplier` covers it.
+- **Vendor scorecard "Items I primarily supply"** (2026-05-13): add a section on `/scorecard/vendor/[supplierKey]` listing items where `is_primary = true` for this supplier. Parse `<key>::<seq>` first to preserve LMC1000 ship-from. Each row links to `/scorecard/product/item/[itemCode]?from=vendor:<supplierKey>`.
+- **Item scorecard "Inbound POs" section** (2026-05-13): on `/scorecard/product/item/[itemCode]`, query open POs containing this item via `agility_po_lines.item_ptr → agility_po_header WHERE po_status NOT IN ('CLOSED','CANCELED','COMPLETE','RECEIVED') AND canceled = false`. Helpful for slow-mover review.
+- **Vendor scorecard fact table** (2026-05-13, deferred): only build if `/scorecard/vendor/[supplierKey]` 3-year query is slow (>2s) at scale. Would need a sync-worker matview keyed `(supplier_key, ship_from_seq, system_id, year, month)` with pre-aggregated spend/lines/receipts/on-time-count. Don't start LiveEdge work without the matview landing first.
 
 ## Pending Actions
 1. **Apply page_visits migration**: Run `db/migrations/0004_page_visits.sql` in Supabase SQL editor to enable Quick Access tracking on homepage
