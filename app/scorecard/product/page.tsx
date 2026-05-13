@@ -5,6 +5,7 @@ import ScorecardTabs from '../_components/ScorecardTabs';
 import ProductScorecardTable from './components/ProductScorecardTable';
 import ExportTableButton from '../../../src/components/shared/ExportTableButton';
 import { ProductScorecardTreemap, ProductScorecardPareto } from '../_components/ScorecardCharts';
+import Breadcrumb from '@/components/Breadcrumb';
 
 export const metadata = { title: 'Product Group Scorecard — Beisser LiveEdge' };
 export const maxDuration = 60;
@@ -44,8 +45,15 @@ export default async function ProductScorecardPage({
   }));
 
   return (
-    <div className="max-w-screen-xl mx-auto px-4 py-6 space-y-5">
-      <ScorecardTabs />
+    <>
+      <Breadcrumb
+        items={[
+          { href: '/scorecard/overview', label: 'Scorecards' },
+          { label: 'Product Groups' },
+        ]}
+      />
+      <div className="max-w-screen-xl mx-auto px-4 py-6 space-y-5">
+        <ScorecardTabs />
 
       <div className="flex items-center justify-between">
         <div>
@@ -88,6 +96,7 @@ export default async function ProductScorecardPage({
           />
         )}
       </section>
-    </div>
+      </div>
+    </>
   );
 }

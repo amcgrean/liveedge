@@ -26,6 +26,7 @@ import {
   BranchContributionPareto,
 } from '../../../../_components/ScorecardCharts';
 import ScorecardBreadcrumb from '@/components/scorecard/ScorecardBreadcrumb';
+import Breadcrumb from '@/components/Breadcrumb';
 import ProductDrillBreakdownTable from '../../../_components/ProductDrillBreakdownTable';
 
 export const maxDuration = 60;
@@ -135,9 +136,18 @@ export default async function ProductMinorScorecard({
   const fromHint = `product-minor:${majorCode}|${minorCode}`;
 
   return (
-    <div className="max-w-screen-xl mx-auto px-4 py-6 space-y-5">
-      <ScorecardTabs />
-      <ScorecardBreadcrumb from={from} fallback="product" />
+    <>
+      <Breadcrumb
+        items={[
+          { href: '/scorecard/overview', label: 'Scorecards' },
+          { href: '/scorecard/product', label: 'Product Groups' },
+          { href: `/scorecard/product/major/${encodeURIComponent(majorCode)}`, label: subtitle },
+          { label: title },
+        ]}
+      />
+      <div className="max-w-screen-xl mx-auto px-4 py-6 space-y-5">
+        <ScorecardTabs />
+        <ScorecardBreadcrumb from={from} fallback="product" />
 
       {failures.length > 0 && (
         <div className="p-3 bg-amber-900/30 border border-amber-700/60 rounded-lg text-amber-200 text-sm print:hidden">
@@ -225,7 +235,8 @@ export default async function ProductMinorScorecard({
       <Section title="Detail Metrics">
         <BottomMetrics kpis={kpis} daysToPay={NO_DTP} baseYear={baseYear} compareYear={compareYear} />
       </Section>
-    </div>
+      </div>
+    </>
   );
 }
 

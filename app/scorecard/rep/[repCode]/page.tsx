@@ -14,6 +14,7 @@ import BottomMetrics from '../../[customerId]/components/BottomMetrics';
 import AggregateFilterBar from '../../_components/AggregateFilterBar';
 import ScorecardTabs from '../../_components/ScorecardTabs';
 import { ThreeYearChart, ProductMixTreemap } from '../../_components/ScorecardCharts';
+import Breadcrumb from '@/components/Breadcrumb';
 
 const NO_DTP = { base: null, compare: null };
 
@@ -134,22 +135,30 @@ export default async function RepScorecardPage({
   const writtenExtra = { rep: decodedRep, repField: 'rep_3' };
 
   return (
-    <div className="p-4 md:p-6 space-y-6 max-w-7xl mx-auto">
-      <style>{`
-        @media print {
-          body { background: white !important; color: black !important; }
-          .print\\:hidden { display: none !important; }
-          nav, header { display: none !important; }
-        }
-      `}</style>
+    <>
+      <Breadcrumb
+        items={[
+          { href: '/scorecard/overview', label: 'Scorecards' },
+          { href: '/scorecard/rep', label: 'By Sales Rep' },
+          { label: decodedRep },
+        ]}
+      />
+      <div className="p-4 md:p-6 space-y-6 max-w-7xl mx-auto">
+        <style>{`
+          @media print {
+            body { background: white !important; color: black !important; }
+            .print\\:hidden { display: none !important; }
+            nav, header { display: none !important; }
+          }
+        `}</style>
 
-      <ScorecardTabs />
+        <ScorecardTabs />
 
-      <div className="print:hidden">
-        <Link href={repListUrl} className="text-sm text-cyan-400 hover:underline">
-          ← All Reps
-        </Link>
-      </div>
+        <div className="print:hidden">
+          <Link href={repListUrl} className="text-sm text-cyan-400 hover:underline">
+            ← All Reps
+          </Link>
+        </div>
 
       {failures.length > 0 && (
         <div className="p-3 bg-amber-900/30 border border-amber-700/60 rounded-lg text-amber-200 text-sm print:hidden">
@@ -253,6 +262,7 @@ export default async function RepScorecardPage({
           <BottomMetrics kpis={writtenKpis} daysToPay={NO_DTP} baseYear={baseYear} compareYear={compareYear} />
         </Section>
       </div>
-    </div>
+      </div>
+    </>
   );
 }

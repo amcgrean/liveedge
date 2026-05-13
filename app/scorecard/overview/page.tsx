@@ -15,6 +15,7 @@ import BottomMetrics from '../[customerId]/components/BottomMetrics';
 import AggregateFilterBar from '../_components/AggregateFilterBar';
 import ScorecardTabs from '../_components/ScorecardTabs';
 import { BranchBreakdownTable } from '../_components/AggregateTables';
+import Breadcrumb from '@/components/Breadcrumb';
 import {
   ThreeYearChart,
   BranchContributionPareto,
@@ -118,16 +119,23 @@ export default async function OverviewPage({
   const gmPctCompare = kpis.compare.sales && kpis.compare.gp !== null ? kpis.compare.gp / kpis.compare.sales : null;
 
   return (
-    <div className="p-4 md:p-6 space-y-5 max-w-7xl mx-auto">
-      <style>{`
-        @media print {
-          body { background: white !important; color: black !important; }
-          .print\\:hidden { display: none !important; }
-          nav, header { display: none !important; }
-        }
-      `}</style>
+    <>
+      <Breadcrumb
+        items={[
+          { href: '/management', label: 'Management' },
+          { label: 'Scorecard Overview' },
+        ]}
+      />
+      <div className="p-4 md:p-6 space-y-5 max-w-7xl mx-auto">
+        <style>{`
+          @media print {
+            body { background: white !important; color: black !important; }
+            .print\\:hidden { display: none !important; }
+            nav, header { display: none !important; }
+          }
+        `}</style>
 
-      <ScorecardTabs />
+        <ScorecardTabs />
 
       <div className="print:hidden">
         <Link href="/management" className="text-sm text-cyan-400 hover:underline">
@@ -212,6 +220,7 @@ export default async function OverviewPage({
       <Section title="Detail Metrics">
         <BottomMetrics kpis={kpis} daysToPay={NO_DTP} baseYear={baseYear} compareYear={compareYear} />
       </Section>
-    </div>
+      </div>
+    </>
   );
 }

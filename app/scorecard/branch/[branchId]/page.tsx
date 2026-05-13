@@ -22,6 +22,7 @@ import {
 } from '../../_components/ScorecardCharts';
 import ScorecardSidebarNav from '../../_components/ScorecardSidebarNav';
 import BulletChart from '@/components/charts/BulletChart';
+import Breadcrumb from '@/components/Breadcrumb';
 
 const BRANCH_LABELS: Record<string, string> = {
   '10FD': 'Fort Dodge',
@@ -144,9 +145,17 @@ export default async function BranchScorecardPage({
   const qs = `baseYear=${baseYear}&compareYear=${compareYear}&period=${period}&cutoffDate=${cutoffDate}`;
 
   return (
-    <div className="flex" style={{ minHeight: 'calc(100vh - 54px)' }}>
-      {/* Sidebar nav */}
-      <ScorecardSidebarNav branchId={branchId} qs={qs} />
+    <>
+      <Breadcrumb
+        items={[
+          { href: '/scorecard/overview', label: 'Scorecards' },
+          { href: '/scorecard/branch', label: 'By Branch' },
+          { label: BRANCH_LABELS[branchId] ?? branchId },
+        ]}
+      />
+      <div className="flex" style={{ minHeight: 'calc(100vh - 54px)' }}>
+        {/* Sidebar nav */}
+        <ScorecardSidebarNav branchId={branchId} qs={qs} />
 
       {/* Main content */}
       <div className="flex-1 min-w-0 p-4 md:p-6 space-y-5">
@@ -278,6 +287,7 @@ export default async function BranchScorecardPage({
           <BottomMetrics kpis={kpis} daysToPay={NO_DTP} baseYear={baseYear} compareYear={compareYear} />
         </Section>
       </div>
-    </div>
+      </div>
+    </>
   );
 }

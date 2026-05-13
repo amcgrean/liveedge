@@ -3,6 +3,7 @@ import ScorecardTabs from '../_components/ScorecardTabs';
 import AggregateFilterBar from '../_components/AggregateFilterBar';
 import { RepComparisonChart } from '../_components/ScorecardCharts';
 import RepListTable from './RepListTable';
+import Breadcrumb from '@/components/Breadcrumb';
 
 export const maxDuration = 60;
 
@@ -28,8 +29,15 @@ export default async function RepListPage({
   const periodLabel = period === 'YTD' ? `YTD thru ${cutoffDate}` : 'Full Year';
 
   return (
-    <div className="p-4 md:p-6 space-y-5 max-w-7xl mx-auto">
-      <ScorecardTabs />
+    <>
+      <Breadcrumb
+        items={[
+          { href: '/scorecard/overview', label: 'Scorecards' },
+          { label: 'By Sales Rep' },
+        ]}
+      />
+      <div className="p-4 md:p-6 space-y-5 max-w-7xl mx-auto">
+        <ScorecardTabs />
 
       <div className="space-y-0.5">
         <h1 className="text-2xl font-bold text-white">By Sales Rep</h1>
@@ -69,6 +77,7 @@ export default async function RepListPage({
       {reps.length > 0 && (
         <p className="text-xs text-slate-500 text-right">{reps.length} sales reps shown</p>
       )}
-    </div>
+      </div>
+    </>
   );
 }

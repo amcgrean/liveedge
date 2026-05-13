@@ -13,6 +13,7 @@ import type {
 } from '../../../../src/lib/vendor-scorecard/types';
 import ScorecardTabs from '../../_components/ScorecardTabs';
 import ScorecardBreadcrumb from '@/components/scorecard/ScorecardBreadcrumb';
+import Breadcrumb from '@/components/Breadcrumb';
 import {
   ChartCard,
   ComboBarLineChart,
@@ -126,9 +127,17 @@ export default async function VendorScorecardDetailPage({
   const totalFlagCount = flags.count + detail.riskFlags.length;
 
   return (
-    <div className="max-w-screen-xl mx-auto px-4 py-6 space-y-5">
-      <ScorecardTabs />
-      <ScorecardBreadcrumb from={from} fallback="vendor" />
+    <>
+      <Breadcrumb
+        items={[
+          { href: '/scorecard/overview', label: 'Scorecards' },
+          { href: `/scorecard/vendor?range=${range}&branch=${branch}`, label: 'Vendors' },
+          { label: detail.supplierName },
+        ]}
+      />
+      <div className="max-w-screen-xl mx-auto px-4 py-6 space-y-5">
+        <ScorecardTabs />
+        <ScorecardBreadcrumb from={from} fallback="vendor" />
 
       {failures.length > 0 && (
         <div className="p-3 bg-amber-900/30 border border-amber-700/60 rounded-lg text-amber-200 text-sm print:hidden">
@@ -426,7 +435,8 @@ export default async function VendorScorecardDetailPage({
           </div>
         </div>
       </Section>
-    </div>
+      </div>
+    </>
   );
 }
 
