@@ -26,6 +26,13 @@ interface PoLine {
   qty_received: number | null;
   unit_cost: number | null;
   unit_of_measure: string | null;
+  /** Tier-1 lead time in days from agility_item_supplier (null when no rule). */
+  lead_time_days: number | null;
+  min_order_qty: number | null;
+  min_order_qty_uom: string | null;
+  /** 'Allow' | 'Allow - Question' | 'Block' | null */
+  min_order_violation: string | null;
+  supplier_uom: string | null;
 }
 
 interface ReceiptLine {
@@ -371,6 +378,24 @@ export default function PosDetailClient({ po, isAdmin }: Props) {
                   <th className="px-4 py-3 text-xs font-semibold text-slate-400 uppercase tracking-wider">Ordered</th>
                   <th className="px-4 py-3 text-xs font-semibold text-slate-400 uppercase tracking-wider">Received</th>
                   <th className="px-4 py-3 text-xs font-semibold text-slate-400 uppercase tracking-wider">UOM</th>
+                  <th
+                    className="px-4 py-3 text-xs font-semibold text-slate-400 uppercase tracking-wider"
+                    title="Tier-1 lead time (days) from supplier purchasing rules"
+                  >
+                    Lead
+                  </th>
+                  <th
+                    className="px-4 py-3 text-xs font-semibold text-slate-400 uppercase tracking-wider"
+                    title="Min order qty rule for this item × supplier. Amber when Block."
+                  >
+                    Min Ord
+                  </th>
+                  <th
+                    className="px-4 py-3 text-xs font-semibold text-slate-400 uppercase tracking-wider"
+                    title="Supplier-side unit of measure"
+                  >
+                    Supp UOM
+                  </th>
                 </tr>
               </thead>
               <tbody>
@@ -396,6 +421,31 @@ export default function PosDetailClient({ po, isAdmin }: Props) {
                         </div>
                       </td>
                       <td className="px-4 py-3 text-slate-500 text-xs">{l.unit_of_measure ?? '—'}</td>
+                      <td className="px-4 py-3 text-slate-300 text-xs">
+                        {l.lead_time_days != null
+                          ? <>{l.lead_time_days}<span className="text-slate-500">d</span></>
+                          : <span className="text-slate-600">—</span>}
+                      </td>
+                      <td className="px-4 py-3 text-xs">
+                        {l.min_order_qty && l.min_order_qty > 0 ? (
+                          <span
+                            className={
+                              l.min_order_violation === 'Block'
+                                ? 'inline-flex items-baseline gap-1 px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-300 font-medium'
+                                : 'inline-flex items-baseline gap-1 text-slate-300'
+                            }
+                            title={l.min_order_violation ? `Violation rule: ${l.min_order_violation}` : undefined}
+                          >
+                            {l.min_order_qty}
+                            {l.min_order_qty_uom && (
+                              <span className="text-slate-500">{l.min_order_qty_uom}</span>
+                            )}
+                          </span>
+                        ) : (
+                          <span className="text-slate-600">—</span>
+                        )}
+                      </td>
+                      <td className="px-4 py-3 text-slate-400 text-xs">{l.supplier_uom ?? '—'}</td>
                     </tr>
                   );
                 })}
