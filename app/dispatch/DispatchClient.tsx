@@ -13,7 +13,7 @@ import Link from 'next/link';
 import {
   X, ChevronDown, ChevronRight, ChevronUp, Truck, AlertCircle,
   MapPin, Map as MapIcon, LayoutList, User, Plus, Trash2, RefreshCw, Search, Package, MessageSquare, Send, Camera, Phone, GripVertical,
-  Pencil, Clock, Bell,
+  Pencil, Clock, Bell, FileText,
 } from 'lucide-react';
 
 // Leaflet requires browser APIs — load without SSR
@@ -194,13 +194,14 @@ function StatusStepper({ flag }: { flag: string }) {
 // ── Stop Card (left panel) ────────────────────────────────────────────────────
 
 function StopCard({
-  stop, selected, onClick, routes, onAssign,
+  stop, selected, onClick, routes, onAssign, routeStop,
 }: {
   stop: DeliveryStop;
   selected: boolean;
   onClick: () => void;
   routes: DispatchRoute[];
   onAssign: (routeId: number) => Promise<void>;
+  routeStop?: RouteStop | null;
 }) {
   const [showAssign, setShowAssign] = useState(false);
   const [assignRoute, setAssignRoute] = useState('');
@@ -233,7 +234,14 @@ function StopCard({
     >
       <div className="flex items-start justify-between gap-1">
         <div className="min-w-0">
-          <div className="text-xs font-mono text-cyan-400 truncate">{stop.so_id}</div>
+          <div className="flex items-center gap-1.5">
+            <div className="text-xs font-mono text-cyan-400 truncate">{stop.so_id}</div>
+            {routeStop && (
+              <span className="text-[9px] font-bold px-1 rounded shrink-0" style={{ background: 'rgba(255,255,255,0.07)', color: 'var(--text-3)' }}>
+                #{routeStop.sequence}
+              </span>
+            )}
+          </div>
           <div className="text-xs font-medium text-gray-200 truncate">{stop.customer_name ?? '—'}</div>
           <div className="flex items-center gap-1 text-[10px] text-gray-500 mt-0.5">
             <MapPin className="w-2.5 h-2.5" />
@@ -495,11 +503,22 @@ function OrderLinesSection({ lines, loading }: { lines: OrderLine[] | null; load
 
 // ── Detail Panel ───────────────────────────────────────────────────────────────
 
+interface PodPhoto {
+  id: number; r2_key: string; filename: string; content_type: string;
+  category: string; driver_name: string | null; notes: string | null;
+  taken_at: string; url: string;
+}
+
 function DetailPanel({ stop, routeStop, onClose }: { stop: DeliveryStop; routeStop: RouteStop | null; onClose: () => void }) {
   const [timeline, setTimeline] = useState<TimelineData | null>(null);
   const [lines, setLines] = useState<OrderLine[] | null>(null);
   const [loadingTimeline, setLoadingTimeline] = useState(false);
   const [loadingLines, setLoadingLines] = useState(false);
+
+  // POD photos
+  const [podPhotos, setPodPhotos] = useState<PodPhoto[] | null>(null);
+  const [loadingPhotos, setLoadingPhotos] = useState(false);
+  const [lightboxUrl, setLightboxUrl] = useState<string | null>(null);
 
   // ERP action state
   const [pickFileId, setPickFileId] = useState<string | null>(null);
@@ -512,7 +531,7 @@ function DetailPanel({ stop, routeStop, onClose }: { stop: DeliveryStop; routeSt
   const [noteSuccess, setNoteSuccess] = useState('');
 
   useEffect(() => {
-    setTimeline(null); setLines(null);
+    setTimeline(null); setLines(null); setPodPhotos(null); setLightboxUrl(null);
     setPickFileId(null); setPickError(''); setNoteText(''); setShowNoteForm(false); setNoteError(''); setNoteSuccess('');
   }, [stop.so_id]);
 
@@ -578,6 +597,16 @@ function DetailPanel({ stop, routeStop, onClose }: { stop: DeliveryStop; routeSt
       .catch(() => {})
       .finally(() => setLoadingLines(false));
   }, [stop.so_id, stop.system_id, lines]);
+
+  useEffect(() => {
+    if (podPhotos !== null || !stop.system_id) return;
+    setLoadingPhotos(true);
+    fetch(`/api/pod/${encodeURIComponent(stop.so_id)}/photos?branch=${encodeURIComponent(stop.system_id)}`)
+      .then((r) => r.ok ? r.json() : null)
+      .then((d) => setPodPhotos(d?.photos ?? []))
+      .catch(() => setPodPhotos([]))
+      .finally(() => setLoadingPhotos(false));
+  }, [stop.so_id, stop.system_id, podPhotos]);
 
   return (
     <div className="flex flex-col h-full bg-gray-900 border-l border-gray-700 overflow-hidden">
@@ -672,7 +701,7 @@ function DetailPanel({ stop, routeStop, onClose }: { stop: DeliveryStop; routeSt
             className="flex items-center gap-1.5 px-3 py-1.5 bg-cyan-900/40 hover:bg-cyan-900/60 text-cyan-300 border border-cyan-700/50 rounded text-xs font-medium transition-colors"
           >
             <Camera className="w-3.5 h-3.5" />
-            Open POD
+            {podPhotos && podPhotos.length > 0 ? `POD · ${podPhotos.length} photo${podPhotos.length > 1 ? 's' : ''}` : 'Open POD'}
           </Link>
         </div>
         <div className="flex gap-2">
@@ -747,6 +776,54 @@ function DetailPanel({ stop, routeStop, onClose }: { stop: DeliveryStop; routeSt
           </div>
         )}
       </div>
+
+      {/* POD Photos */}
+      {(loadingPhotos || (podPhotos && podPhotos.length > 0)) && (
+        <div className="border-b border-gray-700 shrink-0 px-4 py-3">
+          <div className="text-[10px] uppercase tracking-wider text-gray-500 mb-2">
+            Proof of Delivery{podPhotos && podPhotos.length > 0 ? ` · ${podPhotos.length}` : ''}
+          </div>
+          {loadingPhotos ? (
+            <div className="text-xs text-gray-600">Loading photos…</div>
+          ) : (
+            <div className="flex flex-wrap gap-2">
+              {podPhotos!.map((photo) => (
+                <button
+                  key={photo.id}
+                  onClick={() => setLightboxUrl(photo.url)}
+                  className="relative w-16 h-16 rounded overflow-hidden border border-gray-700 hover:border-cyan-500 transition-colors shrink-0 bg-gray-800"
+                  title={photo.filename}
+                >
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img src={photo.url} alt={photo.filename} className="w-full h-full object-cover" />
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Lightbox */}
+      {lightboxUrl && (
+        <div
+          className="fixed inset-0 z-[2000] flex items-center justify-center bg-black/85"
+          onClick={() => setLightboxUrl(null)}
+        >
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src={lightboxUrl}
+            alt="POD photo"
+            className="max-w-[90vw] max-h-[90vh] rounded shadow-2xl object-contain"
+            onClick={(e) => e.stopPropagation()}
+          />
+          <button
+            className="absolute top-4 right-4 text-white/70 hover:text-white"
+            onClick={() => setLightboxUrl(null)}
+          >
+            <X className="w-6 h-6" />
+          </button>
+        </div>
+      )}
 
       {/* Order lines — always visible below Actions */}
       <OrderLinesSection lines={lines} loading={loadingLines} />
@@ -1104,6 +1181,15 @@ function RoutesDrawer({
                                 {overdueCount} late
                               </span>
                             )}
+                            <a
+                              href={`/dispatch/run-sheet/${route.id}`}
+                              target="_blank"
+                              title="Open run sheet"
+                              style={{ color: 'var(--text-4)' }}
+                              className="transition hover:text-gray-200"
+                            >
+                              <FileText className="w-3 h-3" />
+                            </a>
                             <button
                               onClick={async () => {
                                 if (!confirm(`Delete route "${route.route_name}"?`)) return;
@@ -1242,13 +1328,14 @@ function RoutesDrawer({
 // ── Board View (5-column card grid) ───────────────────────────────────────────
 
 function BoardCardGrid({
-  stops, selectedSoId, onSelectStop, sortKey, groupKey,
+  stops, selectedSoId, onSelectStop, sortKey, groupKey, routeStopLookup,
 }: {
   stops: DeliveryStop[];
   selectedSoId: string | null;
   onSelectStop: (s: DeliveryStop) => void;
   sortKey: string;
   groupKey: string;
+  routeStopLookup?: Map<string, RouteStop>;
 }) {
   const groups = React.useMemo(() => {
     if (groupKey === 'none') return [{ key: null, label: null, items: stops }];
@@ -1288,6 +1375,7 @@ function BoardCardGrid({
                 onClick={() => onSelectStop(s)}
                 routes={[]}
                 onAssign={async () => {}}
+                routeStop={routeStopLookup?.get(s.so_id)}
               />
             ))}
           </div>
@@ -1316,6 +1404,7 @@ export default function DispatchClient({ isAdmin, userBranch, userName, userRole
   const [shipViaOpen, setShipViaOpen] = useState(false);
   const shipViaRef = useRef<HTMLDivElement>(null);
   const [hideWillCall, setHideWillCall] = useState(true);
+  const [hideDelivered, setHideDelivered] = useState(false);
 
   // Data
   const [stops, setStops] = useState<DeliveryStop[]>([]);
@@ -1333,7 +1422,7 @@ export default function DispatchClient({ isAdmin, userBranch, userName, userRole
   const [showNewRoute, setShowNewRoute] = useState(false);
   const [newRoute, setNewRoute] = useState({ route_code: '', route_name: '', branch_code: userBranch ?? '', driver_name: '', truck_id: '' });
   const [savingRoute, setSavingRoute] = useState(false);
-  const [erpRoutes, setErpRoutes] = useState<Array<{ route_code: string; driver_name: string; assigned_truck_id: string | null; assigned_truck_name: string | null }>>([]);
+  const [erpRoutes, setErpRoutes] = useState<Array<{ route_code: string; driver_name: string; assigned_truck_id: string | null; assigned_truck_name: string | null; phone: string | null }>>([]);
   const [erpRoutesLoaded, setErpRoutesLoaded] = useState(false);
   const [viewMode, setViewMode] = useState<'board' | 'map'>('map');
   const [sortKey, setSortKey] = useState<'so' | 'date' | 'city'>('so');
@@ -1418,6 +1507,24 @@ export default function DispatchClient({ isAdmin, userBranch, userName, userRole
   }, [date, branch]);
 
   useEffect(() => { loadAll(); }, [loadAll]);
+
+  // Keyboard shortcuts
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      // Don't fire when typing in an input/textarea/select
+      const tag = (e.target as HTMLElement).tagName;
+      if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
+
+      if (e.key === 'r' || e.key === 'R') { loadAll(); }
+      if (e.key === 'Escape') { setSelectedStop(null); setRoutesDrawerOpen(false); }
+      if (e.key === 'b' || e.key === 'B') { setViewMode('board'); }
+      if (e.key === 'm' || e.key === 'M') { setViewMode('map'); }
+      if (e.key === 'w' || e.key === 'W') { setHideWillCall((v) => !v); }
+      if (e.key === 'd' || e.key === 'D') { setHideDelivered((v) => !v); }
+    }
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [loadAll]);
 
   // Assign stop to route
   async function assignStopToRoute(soId: string, routeId: number) {
@@ -1565,7 +1672,8 @@ export default function DispatchClient({ isAdmin, userBranch, userName, userRole
     (s) =>
       s.status_flag?.toUpperCase() !== 'I' &&
       s.so_status?.toUpperCase() !== 'I' &&
-      !(hideWillCall && isWillCall(s))
+      !(hideWillCall && isWillCall(s)) &&
+      !(hideDelivered && (s.status_flag?.toUpperCase() === 'D' || s.driver_stop_status === 'delivered'))
   );
 
   function applySort(arr: DeliveryStop[]): DeliveryStop[] {
@@ -1711,6 +1819,19 @@ export default function DispatchClient({ isAdmin, userBranch, userName, userRole
                 title={hideWillCall ? 'Will Call orders hidden — click to show' : 'Will Call orders visible — click to hide'}
               >
                 {hideWillCall ? 'WC hidden' : 'WC shown'}
+              </button>
+
+              {/* Hide delivered toggle */}
+              <button
+                onClick={() => setHideDelivered((v) => !v)}
+                className={`flex items-center gap-1.5 px-2.5 py-1.5 text-sm border rounded transition whitespace-nowrap ${
+                  hideDelivered
+                    ? 'bg-gray-800 border-gray-700 text-gray-400 hover:text-white'
+                    : 'bg-gray-800 border-gray-700 text-gray-400 hover:text-white'
+                }`}
+                title={hideDelivered ? 'Delivered orders hidden — click to show' : 'Click to hide delivered orders'}
+              >
+                {hideDelivered ? 'Del. hidden' : 'Del. shown'}
               </button>
 
               <select
@@ -1891,18 +2012,46 @@ export default function DispatchClient({ isAdmin, userBranch, userName, userRole
                       style={{ background: 'var(--panel-2)', border: '1px solid var(--line)', color: 'var(--text)' }}
                     >
                       <option value="">Select route *</option>
-                      {erpRoutes
-                        .filter((r) => !newRoute.branch_code || r.route_code.startsWith('') /* show all; branch already filtered by API */)
-                        .map((r) => (
-                          <option key={r.route_code} value={r.route_code}>
-                            {r.route_code} — {r.driver_name}
-                          </option>
-                        ))}
+                      {erpRoutes.map((r) => (
+                        <option key={r.route_code} value={r.route_code}>
+                          {r.route_code} — {r.driver_name}
+                        </option>
+                      ))}
                     </select>
                   ) : (
                     <input
                       type="text" placeholder="Route name *" value={newRoute.route_name}
                       onChange={(e) => setNewRoute((r) => ({ ...r, route_name: e.target.value }))}
+                      className="w-full text-xs rounded px-2 py-1.5 placeholder-gray-500"
+                      style={{ background: 'var(--panel-2)', border: '1px solid var(--line)', color: 'var(--text)' }}
+                    />
+                  )}
+                  {/* Driver field — dropdown when drivers loaded, text otherwise */}
+                  {erpRoutes.length > 0 ? (
+                    <select
+                      value={newRoute.driver_name}
+                      onChange={(e) => {
+                        const r = erpRoutes.find((x) => x.driver_name === e.target.value);
+                        setNewRoute((prev) => ({
+                          ...prev,
+                          driver_name: e.target.value,
+                          truck_id: r?.assigned_truck_id ?? prev.truck_id,
+                        }));
+                      }}
+                      className="w-full text-xs rounded px-2 py-1.5"
+                      style={{ background: 'var(--panel-2)', border: '1px solid var(--line)', color: 'var(--text)' }}
+                    >
+                      <option value="">Driver (optional)</option>
+                      {[...new Map(erpRoutes.map((r) => [r.driver_name, r])).values()].map((r) => (
+                        <option key={r.route_code} value={r.driver_name}>
+                          {r.driver_name}{r.phone ? ` · ${r.phone}` : ''}
+                        </option>
+                      ))}
+                    </select>
+                  ) : (
+                    <input
+                      type="text" placeholder="Driver name (optional)" value={newRoute.driver_name}
+                      onChange={(e) => setNewRoute((r) => ({ ...r, driver_name: e.target.value }))}
                       className="w-full text-xs rounded px-2 py-1.5 placeholder-gray-500"
                       style={{ background: 'var(--panel-2)', border: '1px solid var(--line)', color: 'var(--text)' }}
                     />
@@ -1918,9 +2067,9 @@ export default function DispatchClient({ isAdmin, userBranch, userName, userRole
                       {BRANCHES.map((b) => <option key={b} value={b}>{b}</option>)}
                     </select>
                   )}
-                  {newRoute.route_code && (
-                    <div className="text-xs px-1 py-0.5 rounded" style={{ color: 'var(--text-3)' }}>
-                      Driver: {newRoute.driver_name || '—'} · Truck: {newRoute.truck_id || 'unassigned'}
+                  {(newRoute.truck_id || newRoute.driver_name) && (
+                    <div className="text-[10px] px-1" style={{ color: 'var(--text-4)' }}>
+                      {newRoute.truck_id ? `Truck: ${newRoute.truck_id}` : ''}
                     </div>
                   )}
                   <div className="flex gap-1.5">
@@ -1961,6 +2110,7 @@ export default function DispatchClient({ isAdmin, userBranch, userName, userRole
                 onSelectStop={(s) => setSelectedStop(selectedStop?.so_id === s.so_id ? null : s)}
                 sortKey={sortKey}
                 groupKey={groupKey}
+                routeStopLookup={routeStopLookup}
               />
             )}
 
