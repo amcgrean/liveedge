@@ -826,13 +826,15 @@ async function _fetchItemPrimarySupplier(itemCode: string): Promise<ItemPrimaryS
     supplier_key: string | null;
     supplier_code: string | null;
     supplier_name: string | null;
+    ship_from_seq_num: number | null;
   };
 
   const rows = await sql<Row[]>`
     SELECT
       ims.supplier_key,
       s.supplier_code,
-      COALESCE(s.ship_from_name, s.supplier_name) AS supplier_name
+      COALESCE(s.ship_from_name, s.supplier_name) AS supplier_name,
+      ims.ship_from_seq_num
     FROM agility_items i
     JOIN agility_item_supplier ims
       ON ims.item_ptr = i.item_ptr
@@ -848,10 +850,29 @@ async function _fetchItemPrimarySupplier(itemCode: string): Promise<ItemPrimaryS
   `;
   if (!rows[0] || !rows[0].supplier_key) return null;
   return {
-    supplierKey: rows[0].supplier_key.trim(),
+    supplierKey: buildVendorRouteKey(rows[0].supplier_key, rows[0].supplier_code, rows[0].ship_from_seq_num),
     supplierCode: rows[0].supplier_code ?? rows[0].supplier_key.trim(),
     supplierName: rows[0].supplier_name,
   };
+}
+
+/**
+ * Construct the vendor-scorecard route key. For LMC1000 (and any future
+ * multi-ship-from supplier where the vendor list namespaces per ship-from),
+ * this is `<key>::<seq>` — matching the format `_fetchVendorList` and
+ * `_fetchVendorDetail` use. For everything else it's just the trimmed
+ * supplier_key. Keep this in sync with src/lib/vendor-scorecard/queries.ts.
+ */
+function buildVendorRouteKey(
+  supplierKey: string,
+  supplierCode: string | null | undefined,
+  shipFromSeqNum: number | null | undefined,
+): string {
+  const key = supplierKey.trim();
+  if (supplierCode === 'LMC1000') {
+    return `${key}::${shipFromSeqNum ?? 0}`;
+  }
+  return key;
 }
 
 // ---------------------------------------------------------------------------
@@ -924,7 +945,7 @@ async function _fetchItemSuppliers(itemCode: string): Promise<ItemSupplierRow[]>
   `;
 
   return rows.map((r) => ({
-    supplierKey: r.supplier_key.trim(),
+    supplierKey: buildVendorRouteKey(r.supplier_key, r.supplier_code, r.ship_from_seq_num),
     supplierCode: r.supplier_code ?? r.supplier_key.trim(),
     supplierName: r.supplier_name,
     shipFromSeqNum: r.ship_from_seq_num,
