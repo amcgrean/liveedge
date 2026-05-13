@@ -9,11 +9,12 @@ import type { DeliveryStop } from '../api/dispatch/deliveries/route';
 import type { DispatchKpis } from '../api/dispatch/kpis/route';
 import type { DispatchInitResponse } from '../api/dispatch/init/route';
 import type { OrderLine } from '../api/dispatch/orders/[so_number]/lines/route';
+import type { DriverRoute } from '../api/dispatch/drivers/route';
 import Link from 'next/link';
 import {
   X, ChevronDown, ChevronRight, ChevronUp, Truck, AlertCircle,
   MapPin, Map as MapIcon, LayoutList, User, Plus, Trash2, RefreshCw, Search, Package, MessageSquare, Send, Camera, Phone, GripVertical,
-  Pencil, Clock, Bell, FileText,
+  Pencil, Clock, Bell, FileText, Users, LogIn, LogOut,
 } from 'lucide-react';
 
 // Leaflet requires browser APIs — load without SSR
@@ -977,6 +978,138 @@ function StopInlineEditor({
   );
 }
 
+// ── Driver Roster Panel ───────────────────────────────────────────────────────
+
+function DriverRosterPanel({
+  drivers, onClose, onToggleClock,
+}: {
+  drivers: DriverRoute[];
+  onClose: () => void;
+  onToggleClock: (driver: DriverRoute) => Promise<void>;
+}) {
+  const [togglingId, setTogglingId] = useState<number | null>(null);
+
+  async function handleToggle(driver: DriverRoute) {
+    if (driver.id == null) return;
+    setTogglingId(driver.id);
+    try { await onToggleClock(driver); } finally { setTogglingId(null); }
+  }
+
+  const off = drivers.filter((d) => !d.clocked_in);
+  const available = drivers.filter((d) => d.clocked_in && !d.on_route_id);
+  const onRoute = drivers.filter((d) => d.clocked_in && d.on_route_id);
+
+  function DriverRow({ driver }: { driver: DriverRoute }) {
+    const isOff = !driver.clocked_in;
+    const busy = togglingId === driver.id;
+    return (
+      <div className="flex items-center gap-2 px-3 py-2 rounded transition" style={{ background: 'var(--panel)', border: '1px solid var(--line)' }}>
+        <div className="flex-1 min-w-0">
+          <div className="text-xs font-medium truncate" style={{ color: 'var(--text)' }}>
+            {driver.driver_name}
+          </div>
+          <div className="text-[10px] flex items-center gap-1.5 mt-0.5" style={{ color: 'var(--text-3)' }}>
+            <span className="font-mono">{driver.route_code}</span>
+            {driver.phone && (
+              <>
+                <span>·</span>
+                <Phone className="w-2.5 h-2.5" />
+                <span>{driver.phone}</span>
+              </>
+            )}
+            {driver.on_route_name && (
+              <>
+                <span>·</span>
+                <span style={{ color: '#4ec48a' }}>{driver.on_route_name}</span>
+              </>
+            )}
+            {driver.assigned_truck_id && (
+              <>
+                <span>·</span>
+                <Truck className="w-2.5 h-2.5" />
+                <span>{driver.assigned_truck_id}</span>
+              </>
+            )}
+          </div>
+        </div>
+        {driver.clocked_in_at && (
+          <span className="text-[9px] font-mono shrink-0" style={{ color: 'var(--text-4)' }}>
+            {new Date(driver.clocked_in_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+          </span>
+        )}
+        {driver.id != null && (
+          <button
+            onClick={() => handleToggle(driver)}
+            disabled={busy}
+            title={isOff ? 'Clock in' : 'Clock out'}
+            className="shrink-0 flex items-center gap-1 px-2 py-1 rounded text-[10px] font-medium transition disabled:opacity-40"
+            style={isOff
+              ? { background: 'rgba(31,138,79,0.15)', border: '1px solid rgba(31,138,79,0.5)', color: '#4ec48a' }
+              : { background: 'rgba(255,255,255,0.04)', border: '1px solid var(--line)', color: 'var(--text-4)' }
+            }
+          >
+            {busy ? '…' : isOff ? <><LogIn className="w-3 h-3" /> In</> : <><LogOut className="w-3 h-3" /> Out</>}
+          </button>
+        )}
+      </div>
+    );
+  }
+
+  function Section({ label, color, items }: { label: string; color: string; items: DriverRoute[] }) {
+    if (items.length === 0) return null;
+    return (
+      <div>
+        <div className="flex items-center gap-1.5 mb-1.5">
+          <span className="text-[9px] font-bold uppercase tracking-wider" style={{ color }}>{label}</span>
+          <span className="text-[9px] font-mono" style={{ color: 'var(--text-4)' }}>{items.length}</span>
+        </div>
+        <div className="space-y-1 mb-3">
+          {items.map((d) => <DriverRow key={d.route_code} driver={d} />)}
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="shrink-0 border-b border-gray-800 bg-gray-900/60 px-4 py-3">
+      <div className="flex items-center justify-between mb-3">
+        <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wider flex items-center gap-1.5">
+          <Users className="w-3.5 h-3.5" /> Driver Availability
+          <span className="text-[10px] font-mono px-1.5 py-0.5 rounded normal-case" style={{ background: 'var(--panel-2)', border: '1px solid var(--line)', color: 'var(--text-3)' }}>
+            {drivers.filter(d => d.clocked_in).length} / {drivers.length} clocked in
+          </span>
+        </h3>
+        <button onClick={onClose} className="text-gray-600 hover:text-gray-400">
+          <ChevronUp className="w-4 h-4" />
+        </button>
+      </div>
+      {drivers.length === 0 ? (
+        <div className="text-xs text-gray-600">No drivers found for this branch.</div>
+      ) : (
+        <div className="overflow-x-auto">
+          <div className="flex gap-6" style={{ minWidth: 'max-content' }}>
+            {onRoute.length > 0 && (
+              <div style={{ minWidth: 240 }}>
+                <Section label="On Route" color="#4ec48a" items={onRoute} />
+              </div>
+            )}
+            {available.length > 0 && (
+              <div style={{ minWidth: 240 }}>
+                <Section label="Available" color="#d4a23a" items={available} />
+              </div>
+            )}
+            {off.length > 0 && (
+              <div style={{ minWidth: 240 }}>
+                <Section label="Off / Not Clocked In" color="var(--text-4)" items={off} />
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function RoutesDrawer({
   routes, routeStops, stopLookup, unassignedStops, selectedSoId,
   onSelectStop, onAssignStop, onRemoveStop, onDeleteRoute, onUpdateStop, onClose,
@@ -1429,6 +1562,9 @@ export default function DispatchClient({ isAdmin, userBranch, userName, userRole
   const [groupKey, setGroupKey] = useState<'none' | 'date' | 'city'>('none');
   const [routesDrawerOpen, setRoutesDrawerOpen] = useState(false);
   const [vehicleCount, setVehicleCount] = useState<number | null>(null);
+  const [drivers, setDrivers] = useState<DriverRoute[]>([]);
+  const [showDriverRoster, setShowDriverRoster] = useState(false);
+  const [driversLoaded, setDriversLoaded] = useState(false);
 
   // Close ship-via dropdown on outside click
   useEffect(() => {
@@ -1589,6 +1725,29 @@ export default function DispatchClient({ isAdmin, userBranch, userName, userRole
     } finally {
       setErpRoutesLoaded(true);
     }
+  }
+
+  async function loadDrivers() {
+    const params = branch ? `?branch=${branch}` : '';
+    const res = await fetch(`/api/dispatch/drivers${params}`);
+    if (res.ok) {
+      const data = await res.json() as { drivers: DriverRoute[]; synced: boolean };
+      setDrivers(data.drivers);
+    }
+    setDriversLoaded(true);
+  }
+
+  async function toggleDriverClock(driver: DriverRoute) {
+    if (driver.id == null) return;
+    const next = !driver.clocked_in;
+    setDrivers((prev) => prev.map((d) => d.id === driver.id ? { ...d, clocked_in: next, clocked_in_at: next ? new Date().toISOString() : null } : d));
+    await fetch(`/api/dispatch/drivers/${driver.id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ clocked_in: next }),
+    });
+    // Refresh to get server-side clocked_in_at
+    await loadDrivers();
   }
 
   function openNewRoute() {
@@ -1883,6 +2042,19 @@ export default function DispatchClient({ isAdmin, userBranch, userName, userRole
                 <Truck className="w-3.5 h-3.5" />
                 Trucks
               </button>
+              <button
+                onClick={() => {
+                  const next = !showDriverRoster;
+                  setShowDriverRoster(next);
+                  if (next && !driversLoaded) loadDrivers();
+                }}
+                className={`flex items-center gap-1.5 px-3 py-1.5 text-sm border rounded transition ${
+                  showDriverRoster ? 'bg-cyan-800 border-cyan-600 text-cyan-200' : 'bg-gray-800 border-gray-700 text-gray-300 hover:text-white'
+                }`}
+              >
+                <Users className="w-3.5 h-3.5" />
+                Drivers
+              </button>
               <div className="flex rounded border border-gray-700 overflow-hidden">
                 <button
                   onClick={() => setViewMode('board')}
@@ -1951,6 +2123,15 @@ export default function DispatchClient({ isAdmin, userBranch, userName, userRole
               </div>
             )}
           </div>
+        )}
+
+        {/* ── Driver Roster ── */}
+        {showDriverRoster && (
+          <DriverRosterPanel
+            drivers={drivers}
+            onClose={() => setShowDriverRoster(false)}
+            onToggleClock={toggleDriverClock}
+          />
         )}
 
         {/* ── Three-Panel Layout ── */}
