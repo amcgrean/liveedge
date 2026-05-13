@@ -2,7 +2,7 @@
 
 import React, { useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
-import { Mail, CheckCircle, AlertCircle, Clock, XCircle, Search, RefreshCw, Zap } from 'lucide-react';
+import { Mail, CheckCircle, AlertCircle, Clock, XCircle, Search, RefreshCw } from 'lucide-react';
 import { cn } from '../../../src/lib/utils';
 
 type EmailRow = {
@@ -88,8 +88,6 @@ export default function HubbellClient() {
   const [searchInput, setSearchInput] = useState('');
   const [loading, setLoading]         = useState(true);
   const [error, setError]             = useState('');
-  const [reprocessing, setReprocessing] = useState(false);
-  const [reprocessResult, setReprocessResult] = useState<string | null>(null);
 
   const fetchEmails = useCallback(async (p = page, s = status, q = search) => {
     setLoading(true);
@@ -124,40 +122,6 @@ export default function HubbellClient() {
     fetchEmails(1, status, searchInput);
   }
 
-  async function handleReprocess() {
-    setReprocessing(true);
-    setReprocessResult(null);
-    let totalProcessed = 0, totalMatched = 0, totalPending = 0, totalStill = 0;
-    try {
-      // Loop in batches of 20 until nothing left to process
-      while (true) {
-        const res = await fetch('/api/admin/hubbell/reprocess', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ statuses: ['unmatched', 'pending'], limit: 20 }),
-        });
-        if (!res.ok) throw new Error(await res.text());
-        const data = await res.json();
-        totalProcessed  += data.processed;
-        totalMatched    += data.matched;
-        totalPending    += data.pending;
-        totalStill      += data.stillUnmatched;
-        setReprocessResult(
-          `Processing… ${totalProcessed} done — ${totalMatched} matched, ${totalPending} pending, ${totalStill} still unmatched`
-        );
-        if (data.processed === 0 || data.processed < 20) break;
-      }
-      setReprocessResult(
-        `Done — ${totalProcessed} processed: ${totalMatched} matched, ${totalPending} pending, ${totalStill} still unmatched`
-      );
-      fetchEmails(1, status, search);
-    } catch (e: unknown) {
-      setReprocessResult(e instanceof Error ? e.message : 'Reprocess failed');
-    } finally {
-      setReprocessing(false);
-    }
-  }
-
   const totalPages = Math.ceil(total / 50);
 
   return (
@@ -165,9 +129,9 @@ export default function HubbellClient() {
       {/* Header */}
       <div className="flex items-center justify-between gap-4 flex-wrap">
         <div>
-          <h1 className="text-xl font-bold text-white">Hubbell Email Inbox</h1>
+          <h1 className="text-xl font-bold text-white">Hubbell PO/WO Inbox</h1>
           <p className="text-sm text-slate-400 mt-0.5">
-            Inbound PO &amp; WO emails forwarded to hubbell@beisser.cloud — matched to sales orders by job site address.
+            Hubbell PO &amp; WO records uploaded from the local portal scrape — matched to sales orders by job site address.
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -178,22 +142,8 @@ export default function HubbellClient() {
             <RefreshCw className="w-3.5 h-3.5" />
             Refresh
           </button>
-          <button
-            onClick={handleReprocess}
-            disabled={reprocessing}
-            title="Re-extract and re-match up to 200 unmatched/pending emails"
-            className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-amber-600/20 hover:bg-amber-600/30 text-amber-300 text-sm transition disabled:opacity-50"
-          >
-            <Zap className="w-3.5 h-3.5" />
-            {reprocessing ? 'Reprocessing…' : 'Reprocess Unmatched'}
-          </button>
         </div>
       </div>
-      {reprocessResult && (
-        <div className="px-3 py-2 rounded-lg bg-slate-800 text-sm text-slate-300">
-          {reprocessResult}
-        </div>
-      )}
 
       {/* Status tabs */}
       <div className="flex gap-1 flex-wrap border-b border-white/10 pb-0">
