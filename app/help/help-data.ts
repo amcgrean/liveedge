@@ -680,9 +680,9 @@ export const TOPICS: Topic[] = [
     group: 'admin',
     path: '/admin/hubbell',
     roles: ['admin'],
-    keywords: ['hubbell', 'email', 'reconcile', 'po confirmation'],
+    keywords: ['hubbell', 'reconcile', 'po confirmation', 'wo'],
     body:
-      `Reconcile inbound Hubbell supply-house emails (PO confirmations, WO acknowledgements) against LiveEdge sales orders. Tabs: Pending · Matched · Confirmed · No Match · Rejected. Open an email to see the extracted data, candidate matches sorted by confidence, and Confirm / Reject / Reset actions.\n\nThe Jobs view aggregates confirmed emails by job site (customer + address) so you can see all the Hubbell traffic for one project at a glance.`,
+      `Reconcile Hubbell supply-house POs and WO acknowledgements against LiveEdge sales orders. Records are scraped from the Hubbell portal locally (same workflow as AR recon) and uploaded into the inbox — email ingest was retired 2026-05-13. Tabs: Pending · Matched · Confirmed · No Match · Rejected. Open a record to see the extracted data, candidate matches sorted by confidence, and Confirm / Reject / Reset actions.\n\nThe Jobs view aggregates confirmed records by job site (customer + address) so you can see all the Hubbell traffic for one project at a glance.`,
   },
   {
     id: 'admin-audit',
@@ -794,16 +794,17 @@ export const TOPICS: Topic[] = [
   },
   {
     id: 'workflow-hubbell',
-    title: 'Reconcile a Hubbell email to a sales order',
+    title: 'Reconcile a Hubbell PO to a sales order',
     group: 'workflows',
     keywords: ['hubbell', 'reconcile', 'workflow'],
     body:
-      `Match an inbound Hubbell PO confirmation to the right SO.`,
+      `Match a Hubbell PO confirmation (uploaded from the local portal scrape) to the right SO.`,
     steps: [
+      'Run the local Hubbell-portal scraper and upload the batch into LiveEdge.',
       'Admin → Hubbell, open the Pending tab.',
-      'Click an email. Review the extracted PO #, SO #, and customer.',
+      'Click a record. Review the extracted PO #, SO #, and customer.',
       'Pick the best candidate from the suggested matches.',
-      'Click Confirm to lock the match. The email moves to the Confirmed tab.',
+      'Click Confirm to lock the match. The record moves to the Confirmed tab.',
       'Use Jobs view to see all confirmed Hubbell traffic for a single job site.',
     ],
   },

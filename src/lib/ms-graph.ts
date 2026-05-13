@@ -4,7 +4,7 @@
 // The Entra app registration "LiveEdge Inbound Email" must have:
 //   - Application permission: Mail.Read (admin-consented)
 //   - Optionally an Exchange Online RBAC Application Access Policy or
-//     RBAC-for-Applications role scoping the app to credits@/hubbell@ only.
+//     RBAC-for-Applications role scoping the app to the credits@ mailbox only.
 //
 // Env vars required:
 //   MS_GRAPH_TENANT_ID

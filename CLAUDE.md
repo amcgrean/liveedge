@@ -4,7 +4,7 @@
 Beisser Lumber Co. internal estimating app (Next.js 15, TypeScript, Tailwind, Drizzle ORM, Supabase Postgres, NextAuth v5). Used by sales staff/estimators at four Iowa lumberyard locations.
 
 ## Route Reference
-Full API and page route inventory: **`docs/routes.md`** (last audited 2026-04-17, 147 API routes / 77 pages).
+Full API and page route inventory: **`docs/routes.md`** (last audited 2026-05-13; Hubbell email-ingest routes removed).
 
 ## Access Control — COMPLETE
 Capability-based access control is fully rolled out (all 5 phases). See **`docs/access-control-plan.md`** for the full design, 28-capability vocabulary, and role-defaults table.
@@ -371,7 +371,7 @@ Full WH-Tracker (Python/Flask) migration into LiveEdge. All modules ported:
 
 **Inbound email webhook** (`POST /api/inbound/credits`):
 - Receives Resend `email.received` events for `credits@beisser.cloud` and `*@rma.beisser.cloud` (both accepted)
-- TO address guard: skips events not addressed to either address (prevents credits emails from appearing in Hubbell module)
+- TO address guard: skips events not addressed to either address
 - **Attachment capture**: fetches bytes via `GET /emails/receiving/{emailId}/attachments/{id}` → `download_url` (Resend no longer sends `content` inline)
 - **Inline skip logic**: only skips parts with BOTH `content_id` AND `content_disposition: inline` AND `size < 20000` — Outlook sets `content_id` on real forwarded attachments so the old `if (content_id) skip` was too aggressive
 - **Nested email support**: `message/rfc822` attachments (forwarded `.eml` files) are parsed by `extractPartsFromRawEmail()` — zero-dependency recursive MIME walker that handles `multipart/*` boundaries, base64/binary encoding, skips parts < 5 KB
@@ -381,9 +381,7 @@ Full WH-Tracker (Python/Flask) migration into LiveEdge. All modules ported:
 - Env var: `RESEND_WEBHOOK_SECRET` (Svix signature secret from Resend dashboard)
 - Webhook URL must be set to `https://app.beisser.cloud/api/inbound/credits` (not the Vercel preview URL — Resend does not follow redirects)
 
-**Hubbell webhook** (`POST /api/inbound/hubbell`):
-- Has TO address guard: only processes emails to `hubbell@beisser.cloud`
-- Env var: `RESEND_HUBBELL_WEBHOOK_SECRET`
+**Hubbell email ingest — REMOVED (2026-05-13).** The Resend webhook (`/api/inbound/hubbell`), Microsoft Graph dispatch branch, reprocess cron (`/api/cron/hubbell-reprocess`), admin reprocess endpoint (`/api/admin/hubbell/reprocess`), and source-agnostic `processHubbellEmail()` were all deleted. Email forwarding from Hubbell was unreliable. Going forward, PO/WO data is **scraped from the Hubbell portal locally** (same workflow already used for AR recon), normalized in a desktop tool, then **uploaded to LiveEdge via a forthcoming `POST /api/admin/hubbell/upload` endpoint** (not yet built — wire alongside `bids.hubbell_emails` insert path; reuse `extractEmailData()` is no longer needed since the local tool emits the structured fields directly). Existing `bids.hubbell_emails` rows + `bids.hubbell_email_candidates` + `bids.hubbell_address_cache` are preserved for history. Admin UI (`/admin/hubbell`, `/admin/hubbell/jobs`) and `hubbell.review` capability remain in place.
 
 #### Nav Restructuring (2026-04-02) — COMPLETE, EXTENDED 2026-04-03
 - TopNav completely rewritten 2026-04-03 — 8 domain dropdowns replacing flat links + 4 domain dropdowns
@@ -429,23 +427,28 @@ Branch: `claude/auth-unification-FelEf` (merged to `main`)
 3. Backfilled `password_hash` in `app_users` via `UPDATE public.app_users SET password_hash = u.password FROM bids."user" u WHERE estimating_user_id = u.id` (69/70 — `po-test` is OTP-only, no estimating user)
 4. `password_hash` column is now inert — auth no longer reads it
 
-#### Hubbell Email Reconciliation (2026-04-22) — COMPLETE
+#### Hubbell PO/WO Reconciliation (2026-04-22, ingest switched 2026-05-13)
 
-Admin tool for reconciling Hubbell supply-house emails (PO confirmations / WO acknowledgements) against LiveEdge sales orders.
+Admin tool for reconciling Hubbell supply-house POs / WO acknowledgements against LiveEdge sales orders.
 
-**Pages:**
-- `/admin/hubbell` — Email inbox: all ingested Hubbell emails, tabbed by match status (Pending / Matched / Confirmed / No Match / Rejected), paginated at 50/page, search by subject/sender/PO#/SO#
-- `/admin/hubbell/[id]` — Email detail: extracted data, match candidates sorted by confidence, confirm/reject/reset actions
-- `/admin/hubbell/jobs` — Jobs index: one row per job site (customer + address), aggregates all confirmed emails; paginated at 50/page; click row to view orders
-- `/admin/hubbell/jobs/[soId]` — Job detail: SO header, reconciliation table (all SOs at same address vs emails received), unmatched email warnings
+**Ingest path (current — local portal scrape + upload):**
+- Email ingest (Resend webhook + Graph dispatch + reprocess cron) was removed 2026-05-13 — see "Hubbell email ingest — REMOVED" note above
+- PO/WO data is scraped from the Hubbell portal locally (same flow already used for AR recon), normalized, then **uploaded into `bids.hubbell_emails`** by a local tool
+- Upload endpoint **not yet built**. When wiring: accept a batch of pre-normalized records (the local tool emits `poNumber`, `woNumber`, `address`, `city`, `state`, `zip`, `amount`, …), insert into `bids.hubbell_emails` with `messageId = NULL`, then run the same priority-1 PO-field match → priority-2 address cache → fallback address-matcher pipeline that the old webhook used (logic still lives in `src/lib/hubbell/{extractor,address-matcher,address-cache}.ts`)
 
-**API routes:**
+**Pages (unchanged):**
+- `/admin/hubbell` — Inbox: tabbed by match status (Pending / Matched / Confirmed / No Match / Rejected), paginated at 50/page, search by subject/sender/PO#/SO#
+- `/admin/hubbell/[id]` — Detail: extracted data, match candidates sorted by confidence, confirm/reject/reset actions
+- `/admin/hubbell/jobs` — Jobs index: one row per job site (customer + address), aggregates all confirmed records; paginated at 50/page; click row to view orders
+- `/admin/hubbell/jobs/[soId]` — Job detail: SO header, reconciliation table (all SOs at same address vs records received), unmatched warnings
+
+**API routes (remaining):**
 - `GET /api/admin/hubbell/emails` — paginated inbox with status/search filtering
 - `GET/POST /api/admin/hubbell/emails/[id]` — detail + confirm/reject/reset actions
 - `GET /api/admin/hubbell/jobs` — aggregated jobs list
-- `GET /api/admin/hubbell/jobs/[soId]` — per-SO detail with related SOs and emails
+- `GET /api/admin/hubbell/jobs/[soId]` — per-SO detail with related SOs and records
 
-**DB table:** `bids.hubbell_emails` (Drizzle-managed, `db/schema.ts`)
+**DB table:** `bids.hubbell_emails` (Drizzle-managed, `db/schema.ts`) — name is historical; rows now come from the local uploader, not email. `bids.hubbell_email_candidates` + `bids.hubbell_address_cache` still used by the matcher.
 
 **AR balance query pattern** — `agility_ar_open.cust_key` is NOT the same as `agility_so_header.cust_code`. Always resolve via `agility_customers` first:
 ```sql

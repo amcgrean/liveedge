@@ -316,8 +316,6 @@ export async function POST(req: NextRequest) {
   }
 
   // Only handle emails addressed to credits@beisser.cloud or *@rma.beisser.cloud (legacy).
-  // The hubbell@beisser.cloud guard in /api/inbound/hubbell is a separate exact match,
-  // so there is no collision even though both addresses share the beisser.cloud domain.
   const toAddresses = payload.data.to ?? [];
   const isCreditsEmail = toAddresses.some(addr =>
     /^credits@beisser\.cloud$/i.test(addr) ||

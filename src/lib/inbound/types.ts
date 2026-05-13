@@ -1,6 +1,6 @@
 // Normalized inbound email shape.
 // Producers: Resend webhooks (legacy) and Microsoft Graph (current).
-// Consumers: processCreditEmail / processHubbellEmail.
+// Consumers: processCreditEmail.
 
 export type NormalizedAttachment = {
   filename:           string;

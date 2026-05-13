@@ -1,6 +1,6 @@
 # LiveEdge Route Reference
 
-**Last audited: 2026-04-28 (scorecard, management, hubbell, jobs added)**
+**Last audited: 2026-05-13 (Hubbell email ingest removed — see `/api/admin/hubbell/` notes)**
 **API routes: ~175 | Page routes: ~95**
 
 All API routes require a valid NextAuth session (`session?.user`) unless noted as **public**.
@@ -302,12 +302,14 @@ Branch-scoped routes respect the active branch cookie; admin users see all branc
 |-------|---------|---------|-------|
 | `/api/admin/jobs` | GET | Job review list | Paginated SO list with GPS match status. Search + filter by branch/status/GPS. Admin only |
 | `/api/admin/jobs/[so_id]` | GET | Job detail | SO header, customer card, GPS coordinates, ship-to address. Admin only |
-| `/api/admin/hubbell/emails` | GET | Hubbell email inbox | Tabbed by match status (Pending/Matched/Confirmed/No Match/Rejected). Paginated 50/page |
-| `/api/admin/hubbell/emails/[id]` | GET POST | Email detail + actions | POST body: `{ action: 'confirm' | 'reject' | 'reset', soId? }` |
-| `/api/admin/hubbell/jobs` | GET | Hubbell jobs list | One row per job site, aggregates confirmed emails |
-| `/api/admin/hubbell/jobs/[soId]` | GET | Hubbell job detail | SO header, reconciliation table, unmatched email warnings |
-| `/api/inbound/hubbell` | POST | Hubbell inbound email webhook | Resend `email.received` events to `hubbell@beisser.cloud`. Stores in `bids.hubbell_emails` |
+| `/api/admin/hubbell/emails` | GET | Hubbell PO/WO inbox | Reads `bids.hubbell_emails` (rows now ingested via local portal-scrape upload, not email). Tabbed by match status (Pending/Matched/Confirmed/No Match/Rejected). Paginated 50/page |
+| `/api/admin/hubbell/emails/[id]` | GET POST | PO/WO detail + actions | POST body: `{ action: 'confirm' \| 'reject' \| 'reset', soId? }` |
+| `/api/admin/hubbell/jobs` | GET | Hubbell jobs list | One row per job site, aggregates confirmed records |
+| `/api/admin/hubbell/jobs/[soId]` | GET | Hubbell job detail | SO header, reconciliation table, unmatched warnings |
 | `/api/inbound/credits` | POST | RMA credits inbound email webhook | Resend events to `*@rma.beisser.cloud`. Uploads attachments to R2, upserts `public.credit_images` |
+| `/api/inbound/graph` | POST | Microsoft Graph change-notification webhook | Validation handshake + per-mailbox dispatch. Currently routes only `credits@…` to `processCreditEmail` |
+
+**Removed 2026-05-13:** `POST /api/inbound/hubbell` (Resend webhook), `GET /api/cron/hubbell-reprocess`, `POST /api/admin/hubbell/reprocess`, and the Microsoft Graph dispatch branch for the Hubbell mailbox. PO/WO data now arrives via a local portal-scrape uploader (endpoint not yet built — will land at `POST /api/admin/hubbell/upload`).
 
 ---
 

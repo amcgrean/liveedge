@@ -9,7 +9,6 @@ import {
   type GraphAttachment,
 } from '@/lib/ms-graph';
 import { processCreditEmail } from '@/lib/inbound/process-credits';
-import { processHubbellEmail } from '@/lib/inbound/process-hubbell';
 import type { NormalizedAttachment, NormalizedInboundEmail } from '@/lib/inbound/types';
 
 // POST /api/inbound/graph
@@ -19,10 +18,9 @@ import type { NormalizedAttachment, NormalizedInboundEmail } from '@/lib/inbound
 //      MUST reply 200 text/plain with the token within 10 seconds.
 //   2. Notification — JSON body { value: [{ subscriptionId, clientState, resource, resourceData: { id } }, …] }.
 //      For each entry: verify clientState, fetch the message via Graph, dispatch
-//      to processCreditEmail or processHubbellEmail by mailbox.
+//      to processCreditEmail by mailbox.
 
 const CREDITS_MAILBOX = (process.env.MS_GRAPH_CREDITS_MAILBOX ?? 'credits@beisserlumber.com').toLowerCase();
-const HUBBELL_MAILBOX = (process.env.MS_GRAPH_HUBBELL_MAILBOX ?? 'hubbell@beisserlumber.com').toLowerCase();
 
 type GraphNotification = {
   subscriptionId:        string;
@@ -171,8 +169,6 @@ export async function POST(req: NextRequest) {
 
       if (mailbox === CREDITS_MAILBOX) {
         await processCreditEmail(normalized);
-      } else if (mailbox === HUBBELL_MAILBOX) {
-        await processHubbellEmail(normalized);
       } else {
         console.warn('[inbound/graph] notification for unconfigured mailbox', mailbox);
         continue;

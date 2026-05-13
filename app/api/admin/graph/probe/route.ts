@@ -17,7 +17,6 @@ const DEFAULT_CANDIDATES = [
   'creditmemos@beisserlumber.com',
   'credit-memos@beisserlumber.com',
   'rma@beisserlumber.com',
-  'hubbell@beisserlumber.com',
 ];
 
 type Probe = {

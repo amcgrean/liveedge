@@ -11,7 +11,7 @@ import {
 } from '@/lib/ms-graph';
 
 // POST /api/admin/graph/setup
-// Bootstrap (or re-bootstrap) Graph mail-change subscriptions for both shared mailboxes.
+// Bootstrap (or re-bootstrap) Graph mail-change subscriptions for shared mailboxes.
 //
 // For each mailbox in MAILBOXES:
 //   - Delete any prior subscription row + the upstream Graph subscription
@@ -21,7 +21,6 @@ import {
 
 const MAILBOXES = [
   { env: 'MS_GRAPH_CREDITS_MAILBOX', fallback: 'credits@beisserlumber.com' },
-  { env: 'MS_GRAPH_HUBBELL_MAILBOX', fallback: 'hubbell@beisserlumber.com' },
 ];
 
 function getNotificationUrl(req: NextRequest): string {
