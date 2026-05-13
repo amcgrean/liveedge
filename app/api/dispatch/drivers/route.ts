@@ -12,6 +12,10 @@ export type DriverRoute = {
   phone: string | null;
   notes: string | null;
   is_active: boolean | null; // null = no dispatch_drivers row (treated as active)
+  clocked_in: boolean | null;
+  clocked_in_at: string | null;
+  on_route_id: number | null;
+  on_route_name: string | null;
 };
 
 // GET /api/dispatch/drivers?branch=20GR
@@ -38,11 +42,17 @@ export async function GET(req: NextRequest) {
         dd.name                     AS assigned_truck_name,
         dd.phone,
         dd.notes,
-        dd.is_active
+        dd.is_active,
+        COALESCE(dd.clocked_in, false)   AS clocked_in,
+        dd.clocked_in_at::text           AS clocked_in_at,
+        dd.on_route_id,
+        dr2.route_name                   AS on_route_name
       FROM public.delv_route dr
       LEFT JOIN public.dispatch_drivers dd
         ON dd.route_code = dr.route_id_char
         AND dd.branch_code = dr.system_id
+      LEFT JOIN public.dispatch_routes dr2
+        ON dr2.id = dd.on_route_id
       WHERE (${effectiveBranch} = '' OR dr.system_id = ${effectiveBranch})
         AND dr.active = true
         AND dr.system_id <> '30CD'
