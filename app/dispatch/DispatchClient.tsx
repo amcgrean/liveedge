@@ -1953,7 +1953,7 @@ export default function DispatchClient({ isAdmin, userBranch, userName, userRole
                   <ChevronDown className="w-3 h-3" />
                 </button>
                 {shipViaOpen && (
-                  <div className="absolute top-full left-0 mt-1 z-[1001] min-w-[160px] rounded-lg border border-gray-700 bg-gray-900 shadow-xl py-1">
+                  <div className="absolute top-full left-0 mt-1 z-[9999] min-w-[160px] rounded-lg border border-gray-700 bg-gray-900 shadow-xl py-1">
                     {shipViaOptions.length === 0 ? (
                       <div className="px-3 py-2 text-xs text-gray-500">No options</div>
                     ) : (
