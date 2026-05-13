@@ -267,6 +267,18 @@ export default function OpenPosClient({ isAdmin, userBranch }: Props) {
                     <th className="px-4 py-3 text-xs font-semibold text-slate-400 uppercase tracking-wider">Order Date</th>
                     <th className="px-4 py-3 text-xs font-semibold text-slate-400 uppercase tracking-wider">Expect Date</th>
                     <th className="px-4 py-3 text-xs font-semibold text-slate-400 uppercase tracking-wider">Receipts</th>
+                    <th
+                      className="px-4 py-3 text-xs font-semibold text-slate-400 uppercase tracking-wider"
+                      title="Max lead time (days) across this PO's items, from supplier purchasing rules"
+                    >
+                      Lead
+                    </th>
+                    <th
+                      className="px-4 py-3 text-xs font-semibold text-slate-400 uppercase tracking-wider"
+                      title="At least one line on this PO has a Block-level min-order-qty rule"
+                    >
+                      Min
+                    </th>
                     {isAdmin && (
                       <th className="px-4 py-3 text-xs font-semibold text-slate-400 uppercase tracking-wider">Branch</th>
                     )}
@@ -315,6 +327,23 @@ export default function OpenPosClient({ isAdmin, userBranch }: Props) {
                           {isOverdue && <span className="ml-1">⚠</span>}
                         </td>
                         <td className="px-4 py-3 text-slate-400 text-xs">{p.receipt_count ?? 0}</td>
+                        <td className="px-4 py-3 text-slate-300 text-xs">
+                          {p.lead_time_max_days != null
+                            ? <>{p.lead_time_max_days}<span className="text-slate-500">d</span></>
+                            : <span className="text-slate-600">—</span>}
+                        </td>
+                        <td className="px-4 py-3 text-xs">
+                          {p.has_blocking_min_violation ? (
+                            <span
+                              className="inline-flex px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-300 font-medium"
+                              title="Block-level min-order-qty rule on at least one line"
+                            >
+                              Block
+                            </span>
+                          ) : (
+                            <span className="text-slate-600">—</span>
+                          )}
+                        </td>
                         {isAdmin && (
                           <td className="px-4 py-3 text-slate-400 text-xs">{p.system_id ?? '—'}</td>
                         )}
