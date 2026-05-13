@@ -136,17 +136,17 @@ export default async function ProductItemScorecard({
   const fromHint = `product-item:${itemCode}`;
 
   const breadcrumbItems = [
-    { href: '/scorecard/overview', label: 'Scorecards' },
-    { href: '/scorecard/product', label: 'Product Groups' },
+    { href: `/scorecard/overview${childQs}`, label: 'Scorecards' },
+    { href: `/scorecard/product${childQs}`, label: 'Product Groups' },
     ...(header?.majorCode
       ? [{
-          href: `/scorecard/product/major/${encodeURIComponent(header.majorCode)}`,
+          href: `/scorecard/product/major/${encodeURIComponent(header.majorCode)}${childQs}`,
           label: header.majorName ?? header.majorCode,
         }]
       : []),
     ...(header?.majorCode && header?.minorCode
       ? [{
-          href: `/scorecard/product/minor/${encodeURIComponent(header.majorCode)}/${encodeURIComponent(header.minorCode)}`,
+          href: `/scorecard/product/minor/${encodeURIComponent(header.majorCode)}/${encodeURIComponent(header.minorCode)}${childQs}`,
           label: header.minorName ?? header.minorCode,
         }]
       : []),

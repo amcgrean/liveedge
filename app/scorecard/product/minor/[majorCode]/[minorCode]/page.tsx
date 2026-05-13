@@ -139,9 +139,9 @@ export default async function ProductMinorScorecard({
     <>
       <Breadcrumb
         items={[
-          { href: '/scorecard/overview', label: 'Scorecards' },
-          { href: '/scorecard/product', label: 'Product Groups' },
-          { href: `/scorecard/product/major/${encodeURIComponent(majorCode)}`, label: subtitle },
+          { href: `/scorecard/overview${childQs}`, label: 'Scorecards' },
+          { href: `/scorecard/product${childQs}`, label: 'Product Groups' },
+          { href: `/scorecard/product/major/${encodeURIComponent(majorCode)}${childQs}`, label: subtitle },
           { label: title },
         ]}
       />

@@ -148,8 +148,8 @@ export default async function BranchScorecardPage({
     <>
       <Breadcrumb
         items={[
-          { href: '/scorecard/overview', label: 'Scorecards' },
-          { href: '/scorecard/branch', label: 'By Branch' },
+          { href: `/scorecard/overview?${qs}`, label: 'Scorecards' },
+          { href: `/scorecard/branch?${qs}`, label: 'By Branch' },
           { label: BRANCH_LABELS[branchId] ?? branchId },
         ]}
       />

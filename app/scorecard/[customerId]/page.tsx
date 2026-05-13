@@ -145,12 +145,22 @@ export default async function ScorecardPage({
       ? kpis.compare.gp / kpis.compare.sales
       : null;
 
+  const filterQs = (() => {
+    const qsp = new URLSearchParams();
+    qsp.set('baseYear', String(baseYear));
+    qsp.set('compareYear', String(compareYear));
+    qsp.set('period', period);
+    qsp.set('cutoffDate', cutoffDate);
+    branchIds.forEach((b) => qsp.append('branch', b));
+    return qsp.toString();
+  })();
+
   return (
     <>
       <Breadcrumb
         items={[
-          { href: '/scorecard/overview', label: 'Scorecards' },
-          { href: '/scorecard', label: 'Customers' },
+          { href: `/scorecard/overview?${filterQs}`, label: 'Scorecards' },
+          { href: `/scorecard?${filterQs}`, label: 'Customers' },
           { label: kpis.customerName || scorecardParams.customerId },
         ]}
       />

@@ -114,7 +114,8 @@ export default async function RepScorecardPage({
   const writtenSaleTypes = writtenSaleTypesRes.status === 'fulfilled' ? writtenSaleTypesRes.value : [];
 
   const periodLabel = period === 'YTD' ? `YTD thru ${cutoffDate}` : 'Full Year';
-  const repListUrl = `/scorecard/rep?baseYear=${baseYear}&compareYear=${compareYear}&period=${period}&cutoffDate=${cutoffDate}${branchIds.map((b) => `&branch=${b}`).join('')}`;
+  const filterQs = `baseYear=${baseYear}&compareYear=${compareYear}&period=${period}&cutoffDate=${cutoffDate}${branchIds.map((b) => `&branch=${b}`).join('')}`;
+  const repListUrl = `/scorecard/rep?${filterQs}`;
 
   function kpiPcts(kpis: typeof assignedKpis) {
     return {
@@ -138,8 +139,8 @@ export default async function RepScorecardPage({
     <>
       <Breadcrumb
         items={[
-          { href: '/scorecard/overview', label: 'Scorecards' },
-          { href: '/scorecard/rep', label: 'By Sales Rep' },
+          { href: `/scorecard/overview?${filterQs}`, label: 'Scorecards' },
+          { href: repListUrl, label: 'By Sales Rep' },
           { label: decodedRep },
         ]}
       />
