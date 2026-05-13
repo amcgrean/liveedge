@@ -1037,20 +1037,18 @@ function DriverRosterPanel({
             {new Date(driver.clocked_in_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
           </span>
         )}
-        {driver.id != null && (
-          <button
-            onClick={() => handleToggle(driver)}
-            disabled={busy}
-            title={isOff ? 'Clock in' : 'Clock out'}
-            className="shrink-0 flex items-center gap-1 px-2 py-1 rounded text-[10px] font-medium transition disabled:opacity-40"
-            style={isOff
-              ? { background: 'rgba(31,138,79,0.15)', border: '1px solid rgba(31,138,79,0.5)', color: '#4ec48a' }
-              : { background: 'rgba(255,255,255,0.04)', border: '1px solid var(--line)', color: 'var(--text-4)' }
-            }
-          >
-            {busy ? '…' : isOff ? <><LogIn className="w-3 h-3" /> In</> : <><LogOut className="w-3 h-3" /> Out</>}
-          </button>
-        )}
+        <button
+          onClick={() => handleToggle(driver)}
+          disabled={busy || (!isOff && driver.id == null)}
+          title={isOff ? 'Clock in' : 'Clock out'}
+          className="shrink-0 flex items-center gap-1 px-2 py-1 rounded text-[10px] font-medium transition disabled:opacity-40"
+          style={isOff
+            ? { background: 'rgba(31,138,79,0.15)', border: '1px solid rgba(31,138,79,0.5)', color: '#4ec48a' }
+            : { background: 'rgba(255,255,255,0.04)', border: '1px solid var(--line)', color: 'var(--text-4)' }
+          }
+        >
+          {busy ? '…' : isOff ? <><LogIn className="w-3 h-3" /> In</> : <><LogOut className="w-3 h-3" /> Out</>}
+        </button>
       </div>
     );
   }
@@ -1566,6 +1564,12 @@ export default function DispatchClient({ isAdmin, userBranch, userName, userRole
   const [showDriverRoster, setShowDriverRoster] = useState(false);
   const [driversLoaded, setDriversLoaded] = useState(false);
 
+  // Invalidate driver roster when branch changes so re-opening fetches fresh data
+  useEffect(() => {
+    setDriversLoaded(false);
+    setDrivers([]);
+  }, [branch]);
+
   // Close ship-via dropdown on outside click
   useEffect(() => {
     if (!shipViaOpen) return;
@@ -1738,10 +1742,28 @@ export default function DispatchClient({ isAdmin, userBranch, userName, userRole
   }
 
   async function toggleDriverClock(driver: DriverRoute) {
-    if (driver.id == null) return;
     const next = !driver.clocked_in;
-    setDrivers((prev) => prev.map((d) => d.id === driver.id ? { ...d, clocked_in: next, clocked_in_at: next ? new Date().toISOString() : null } : d));
-    await fetch(`/api/dispatch/drivers/${driver.id}`, {
+    let driverId = driver.id;
+
+    // If no dispatch_drivers row exists yet, create one before clocking in
+    if (driverId == null && next) {
+      const res = await fetch('/api/dispatch/drivers', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ route_code: driver.route_code, branch_code: driver.branch_code }),
+      });
+      if (!res.ok) return;
+      const row = await res.json() as { id: number };
+      driverId = row.id;
+    }
+    if (driverId == null) return;
+
+    setDrivers((prev) => prev.map((d) =>
+      d.route_code === driver.route_code
+        ? { ...d, id: driverId, clocked_in: next, clocked_in_at: next ? new Date().toISOString() : null }
+        : d
+    ));
+    await fetch(`/api/dispatch/drivers/${driverId}`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ clocked_in: next }),
