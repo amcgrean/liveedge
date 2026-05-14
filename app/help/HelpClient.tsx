@@ -40,6 +40,21 @@ function topicMatches(t: Topic, q: string): boolean {
   return hay.includes(q.toLowerCase());
 }
 
+function normalizePath(input: string): string {
+  const clean = input.split('?')[0]?.split('#')[0] ?? '';
+  if (!clean) return '/';
+  return clean.startsWith('/') ? clean : `/${clean}`;
+}
+
+function resolveTopicFromPath(fromPath: string | null): string | null {
+  if (!fromPath) return null;
+  const normalized = normalizePath(fromPath);
+  const direct = TOPICS.find((t) => t.path && normalizePath(t.path) === normalized);
+  if (direct) return direct.id;
+  const prefix = TOPICS.find((t) => t.path && normalized.startsWith(normalizePath(t.path)));
+  return prefix?.id ?? null;
+}
+
 function ArticleBody({ topic, q, onSelectTopic }: { topic: Topic; q: string; onSelectTopic: (id: string) => void }) {
   const paragraphs: string[] = topic.body.split(/\n\n+/);
   return (
@@ -118,7 +133,9 @@ type Props = { initialTopicId?: string };
 export default function HelpClient({ initialTopicId }: Props) {
   const searchParams = useSearchParams();
   const router = useRouter();
-  const urlTopic = searchParams.get('topic') || initialTopicId || TOPICS[0].id;
+  const fromPath = searchParams.get('from');
+  const inferredTopic = resolveTopicFromPath(fromPath);
+  const urlTopic = searchParams.get('topic') || inferredTopic || initialTopicId || TOPICS[0].id;
 
   const [q, setQ] = React.useState('');
   const [openGroups, setOpenGroups] = React.useState<Record<string, boolean>>(() =>

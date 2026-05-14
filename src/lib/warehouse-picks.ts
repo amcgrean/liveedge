@@ -3,7 +3,9 @@ import { getErpSql } from '../../db/supabase';
 export interface OpenPickSummary {
   so_number: string;
   customer_name: string;
+  customer_code: string | null;
   reference: string | null;
+  primary_item_code: string | null;
   so_status: string;
   handling_codes: string[];
   system_id: string;
@@ -30,12 +32,14 @@ export async function fetchOpenPickSummaries(
   type RawRow = {
     so_id: string;
     cust_name: string | null;
+    cust_code: string | null;
     reference: string | null;
     so_status: string | null;
     system_id: string;
     expect_date: string | null;
     sale_type: string | null;
     handling_codes: string[] | null;
+    primary_item_code: string | null;
     line_count: number;
     ship_via: string | null;
     driver: string | null;
@@ -50,6 +54,7 @@ export async function fetchOpenPickSummaries(
         soh.system_id,
         soh.so_id,
         soh.cust_name,
+        soh.cust_code,
         soh.reference,
         soh.so_status,
         soh.expect_date::text AS expect_date,
@@ -82,6 +87,7 @@ export async function fetchOpenPickSummaries(
         sol.system_id,
         sol.so_id,
         ARRAY_AGG(DISTINCT UPPER(COALESCE(sol.handling_code, 'UNROUTED'))) AS handling_codes,
+        MIN(NULLIF(BTRIM(sol.item_code), '')) AS primary_item_code,
         COUNT(*)::int AS line_count
       FROM agility_so_lines sol
       JOIN eligible_so eso
@@ -120,12 +126,14 @@ export async function fetchOpenPickSummaries(
     SELECT
       eso.so_id,
       eso.cust_name,
+      eso.cust_code,
       eso.reference,
       eso.so_status,
       eso.system_id,
       eso.expect_date,
       eso.sale_type,
       ls.handling_codes,
+      ls.primary_item_code,
       ls.line_count,
       sh.ship_via,
       sh.driver,
@@ -145,7 +153,9 @@ export async function fetchOpenPickSummaries(
   return rows.map((row) => ({
     so_number: row.so_id,
     customer_name: row.cust_name ?? 'Unknown',
+    customer_code: row.cust_code?.trim() ? row.cust_code.trim() : null,
     reference: row.reference ?? null,
+    primary_item_code: row.primary_item_code?.trim() ? row.primary_item_code.trim() : null,
     so_status: row.so_status ?? '',
     handling_codes: row.handling_codes ?? ['UNROUTED'],
     system_id: row.system_id,

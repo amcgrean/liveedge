@@ -470,7 +470,16 @@ function OrderLinesSection({ lines, loading }: { lines: OrderLine[] | null; load
                 <div className="text-gray-400">{l.uom ?? '—'}</div>
                 <div className="min-w-0">
                   <div className="flex items-baseline gap-1.5 flex-wrap">
-                    <span className="text-cyan-400 font-semibold">{l.item_code ?? '—'}</span>
+                    {l.item_code ? (
+                      <Link
+                        href={`/sales/products?query=${encodeURIComponent(l.item_code)}`}
+                        className="text-cyan-400 font-semibold hover:underline"
+                      >
+                        {l.item_code}
+                      </Link>
+                    ) : (
+                      <span className="text-cyan-400 font-semibold">—</span>
+                    )}
                     {isShort && (
                       <span className="font-sans text-[9px] font-semibold uppercase tracking-wider px-1 py-px rounded"
                         style={{ color: '#d4a23a', background: 'rgba(212,162,58,0.16)', border: '1px solid rgba(212,162,58,0.45)' }}>
@@ -615,10 +624,20 @@ function DetailPanel({ stop, routeStop, onClose }: { stop: DeliveryStop; routeSt
       <div className="flex items-start justify-between gap-2 px-4 pt-4 pb-3 border-b border-gray-700 shrink-0">
         <div className="min-w-0">
           <div className="flex items-center gap-2">
-            <span className="font-mono text-cyan-300 text-sm font-bold">{stop.so_id}</span>
+            <Link href={`/sales/orders/${encodeURIComponent(stop.so_id)}`} className="font-mono text-cyan-300 text-sm font-bold hover:underline">
+              {stop.so_id}
+            </Link>
             {statusBadge(stop.status_flag)}
           </div>
-          <div className="text-sm font-medium text-gray-200 mt-0.5 truncate">{stop.customer_name ?? '—'}</div>
+            <div className="text-sm font-medium text-gray-200 mt-0.5 truncate">
+              {timeline?.so.cust_code ? (
+                <Link href={`/sales/customers/${encodeURIComponent(timeline.so.cust_code)}`} className="hover:underline">
+                  {stop.customer_name ?? '—'}
+                </Link>
+              ) : (
+                stop.customer_name ?? '—'
+              )}
+            </div>
           <div className="flex items-center gap-3 mt-0.5 flex-wrap">
             <div className="text-xs text-gray-500 flex items-center gap-1">
               <MapPin className="w-3 h-3" />
