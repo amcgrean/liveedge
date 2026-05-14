@@ -32,6 +32,36 @@ function highlight(text: string, q: string): React.ReactNode {
   return <>{out}</>;
 }
 
+
+function normalizePath(path: string): string {
+  const [withoutQuery] = path.split(/[?#]/, 1);
+  const trimmed = withoutQuery.replace(/\/+$/, '');
+  return trimmed || '/';
+}
+
+function pathPatternToRegex(pattern: string): RegExp {
+  const normalized = normalizePath(pattern);
+  const escaped = normalized.replace(/[.*+?^${}()|[\]\]/g, '\\$&');
+  const withDynamicSegments = escaped.replace(/\\[[^\\]]+\\]/g, '[^/]+');
+  return new RegExp(`^${withDynamicSegments}$`);
+}
+
+function resolveTopicFromPath(path: string | null): string | null {
+  if (!path) return null;
+  const normalized = normalizePath(path);
+
+  for (const topic of TOPICS) {
+    if (!topic.path) continue;
+    if (topic.path.includes('[')) {
+      if (pathPatternToRegex(topic.path).test(normalized)) return topic.id;
+      continue;
+    }
+    if (normalizePath(topic.path) === normalized) return topic.id;
+  }
+
+  return null;
+}
+
 function topicMatches(t: Topic, q: string): boolean {
   if (!q) return true;
   const hay = (
