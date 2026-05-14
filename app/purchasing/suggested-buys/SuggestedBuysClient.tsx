@@ -1,8 +1,9 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
+import Link from 'next/link';
 import { TopNav } from '../../../src/components/nav/TopNav';
-import { ChevronDown, ChevronRight, RefreshCw, Search } from 'lucide-react';
+import { ChevronDown, ChevronRight, RefreshCw, Search, AlertTriangle, ExternalLink } from 'lucide-react';
 import { usePageTracking } from '@/hooks/usePageTracking';
 
 const BRANCHES = ['10FD', '20GR', '25BW', '40CV'];
@@ -29,6 +30,16 @@ interface SuggestedLine {
   stocking_uom: string | null;
   qty_on_hand: number | null;
   default_location: string | null;
+  /** Tier-1 lead time (days) for the suggested-PO supplier × this item. */
+  lead_time_days: number | null;
+  min_order_qty: number | null;
+  min_order_qty_uom: string | null;
+  /** 'Allow' | 'Allow - Question' | 'Block' | null */
+  min_order_violation: string | null;
+  supplier_uom: string | null;
+  /** Supplier flagged is_primary for this item (may differ from suggested supplier). */
+  supplier_code_primary: string | null;
+  supplier_name_primary: string | null;
 }
 
 interface Props {
@@ -98,6 +109,10 @@ export default function SuggestedBuysClient({ isAdmin, userBranch, userName, use
     (acc[key] ??= []).push(s);
     return acc;
   }, {});
+
+  // The supplier_code of the currently-expanded PPO — used to flag lines
+  // where the item's primary supplier differs from the suggested supplier.
+  const expandedSupplierCode = suggestions.find((s) => s.ppo_id === expandedId)?.supplier_code ?? null;
 
   return (
     <>
@@ -227,12 +242,31 @@ export default function SuggestedBuysClient({ isAdmin, userBranch, userName, use
                                 <th className="pb-1 text-right font-medium">Unit Cost</th>
                                 <th className="pb-1 text-right font-medium">On Hand</th>
                                 <th className="pb-1 text-left font-medium">Location</th>
+                                <th className="pb-1 text-right font-medium" title="Tier-1 lead time (days) for this item × suggested supplier">Lead</th>
+                                <th className="pb-1 text-right font-medium" title="Min order qty — amber when violation = Block">Min Ord</th>
+                                <th className="pb-1 text-left font-medium" title="Supplier-side unit of measure">Supp UOM</th>
+                                <th className="pb-1 text-left font-medium" title="Primary supplier per agility_item_supplier — chip shows when it differs from the suggested supplier">Primary</th>
                               </tr>
                             </thead>
                             <tbody>
-                              {detailLines.map((l) => (
+                              {detailLines.map((l) => {
+                                const mismatch =
+                                  !!l.supplier_code_primary &&
+                                  !!expandedSupplierCode &&
+                                  l.supplier_code_primary !== expandedSupplierCode;
+                                return (
                                 <tr key={l.id} className="border-b border-gray-700/50">
-                                  <td className="py-1 pr-3 font-mono text-cyan-300">{l.item_code || '—'}</td>
+                                  <td className="py-1 pr-3 font-mono text-cyan-300">
+                                    {l.item_code ? (
+                                      <Link
+                                        href={`/scorecard/product/item/${encodeURIComponent(l.item_code)}?from=purchasing-suggested-buys`}
+                                        className="inline-flex items-center gap-1 hover:text-cyan-200 hover:underline"
+                                      >
+                                        {l.item_code}
+                                        <ExternalLink className="w-3 h-3 opacity-60" />
+                                      </Link>
+                                    ) : '—'}
+                                  </td>
                                   <td className="py-1 pr-3 text-gray-300 max-w-[220px] truncate">{l.description || '—'}</td>
                                   <td className="py-1 pr-3 text-right text-gray-200 font-medium">
                                     {l.qty_to_order != null ? Number(l.qty_to_order).toLocaleString() : '—'}
@@ -244,9 +278,50 @@ export default function SuggestedBuysClient({ isAdmin, userBranch, userName, use
                                   <td className="py-1 pr-3 text-right text-gray-400">
                                     {l.qty_on_hand != null ? Number(l.qty_on_hand).toLocaleString() : '—'}
                                   </td>
-                                  <td className="py-1 text-gray-500">{l.default_location || '—'}</td>
+                                  <td className="py-1 pr-3 text-gray-500">{l.default_location || '—'}</td>
+                                  <td className="py-1 pr-3 text-right text-gray-300">
+                                    {l.lead_time_days != null
+                                      ? <>{l.lead_time_days}<span className="text-gray-500">d</span></>
+                                      : <span className="text-gray-600">—</span>}
+                                  </td>
+                                  <td className="py-1 pr-3 text-right">
+                                    {l.min_order_qty && l.min_order_qty > 0 ? (
+                                      <span
+                                        className={
+                                          l.min_order_violation === 'Block'
+                                            ? 'inline-flex items-baseline gap-1 px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-300 font-medium'
+                                            : 'inline-flex items-baseline gap-1 text-gray-300'
+                                        }
+                                        title={l.min_order_violation ? `Violation rule: ${l.min_order_violation}` : undefined}
+                                      >
+                                        {l.min_order_qty}
+                                        {l.min_order_qty_uom && (
+                                          <span className="text-gray-500">{l.min_order_qty_uom}</span>
+                                        )}
+                                      </span>
+                                    ) : (
+                                      <span className="text-gray-600">—</span>
+                                    )}
+                                  </td>
+                                  <td className="py-1 pr-3 text-gray-400">{l.supplier_uom || '—'}</td>
+                                  <td className="py-1 text-gray-500">
+                                    {mismatch ? (
+                                      <span
+                                        className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-300 font-medium"
+                                        title={`Primary supplier is ${l.supplier_name_primary ?? l.supplier_code_primary} — differs from suggested ${expandedSupplierCode}`}
+                                      >
+                                        <AlertTriangle className="w-3 h-3" />
+                                        {l.supplier_code_primary}
+                                      </span>
+                                    ) : l.supplier_code_primary ? (
+                                      <span className="text-gray-500">{l.supplier_code_primary}</span>
+                                    ) : (
+                                      '—'
+                                    )}
+                                  </td>
                                 </tr>
-                              ))}
+                                );
+                              })}
                             </tbody>
                           </table>
                         )}
