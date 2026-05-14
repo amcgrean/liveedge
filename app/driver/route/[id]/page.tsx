@@ -1,6 +1,7 @@
 import { auth } from '../../../../auth';
 import { redirect } from 'next/navigation';
 import DriverRouteClient from './DriverRouteClient';
+import { TopNav } from '@/components/nav/TopNav';
 
 export const metadata = { title: 'Route — LiveEdge Driver' };
 
@@ -14,9 +15,12 @@ export default async function DriverRoutePage({ params }: Props) {
 
   const { id } = await params;
   return (
-    <DriverRouteClient
+    <>
+      <TopNav userName={session.user.name} userRole={session.user.role} />
+      <DriverRouteClient
       routeId={parseInt(id, 10)}
       driverName={session.user.name ?? ''}
     />
+    </>
   );
 }

@@ -7,6 +7,17 @@
 
 This document is a filesystem-grounded index for agents. Pair it with `docs/routes.md` for behavior notes and permissions details.
 
+## Navigation shell notes (2026-05-14 update)
+
+- Standard app pages are expected to render `TopNav`; kiosk remains the explicit no-nav exception.
+- Added `TopNav` to previously no-shell operational pages:
+  - `/driver` (`app/driver/page.tsx`)
+  - `/driver/route/[id]` (`app/driver/route/[id]/page.tsx`)
+  - `/dispatch/pod/[so]` (`app/dispatch/pod/[so]/page.tsx`)
+  - `/dispatch/run-sheet/[routeId]` (`app/dispatch/run-sheet/[routeId]/page.tsx`)
+- Redirect-only routes (for example `/sales/deliveries`, `/sales/history`, `/ops-login`) still do not render page chrome by design.
+
+
 ## API Route Handlers (`app/api/**/route.ts`)
 
 - `/api/admin/agility/status` → `app/api/admin/agility/status/route.ts`
