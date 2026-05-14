@@ -93,4 +93,10 @@ export interface ForecastPayload {
     grand_unshipped_value: number;
   };
   forecast_days: number;
+  /** % of open SO lines with `extended_price` populated.
+   *  Backfill is mid-flight; while < 99 the client should hide $ KPIs since
+   *  totals reflect only the populated subset. Once >= 99 it's safe to display. */
+  dollars_coverage_pct: number;
+  /** Convenience flag: dollars_coverage_pct >= 99. */
+  dollars_ready: boolean;
 }

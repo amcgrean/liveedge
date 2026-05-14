@@ -23,9 +23,13 @@ import {
 //  - open_orders       — sale-type × branch pivot with $ alongside counts
 //  - forecast          — per-day count + unshipped $ (next `days` days)
 //
-// $ figures are computed inline from agility_so_lines:
-//   ordered_value   = SUM(qty_ordered * price)
-//   unshipped_value = SUM((qty_ordered - COALESCE(qty_shipped, 0)) * price)
+// $ figures use UOM-aware columns populated upstream by sync-worker PR #32
+// (beisser-api repo, 2026-05-14):
+//   agility_so_lines.extended_price            = qty_ordered * price / disp_price_conv
+//   agility_so_lines.unshipped_extended_price  = (qty_ordered - COALESCE(qty_shipped,0)) * price / disp_price_conv
+// The previous naive `qty_ordered * price` math overstated $ 10-100× on lumber
+// lines because price is denominated in a UOM (e.g. per-MBF) identified by
+// price_uom_ptr — disp_price_conv is the conversion factor to per-unit.
 // Covers all open statuses (I/C/X/HOLD/XINSTALL excluded) — same scope as counts.
 export async function GET(req: NextRequest) {
   const authResult = await requireCapability('branch.all');
@@ -73,7 +77,11 @@ export async function GET(req: NextRequest) {
       bucket: 'far_future' | 'unscheduled';
     };
 
-    const [openRows, forecastRows, horizonRows, farFutureRows] = await Promise.all([
+    // Coverage gate: extended_price is populated by an upstream sync worker.
+    // While backfill is in progress we hide $ KPIs so partial sums don't get
+    // quoted as truth. Threshold of 99% leaves a tiny margin for non-essential
+    // rows (e.g. lines without an active item record).
+    const [openRows, forecastRows, horizonRows, farFutureRows, coverageRows] = await Promise.all([
       // ── Open orders by sale_type × branch (with $) ────────────────────────
       sql<OpenRow[]>`
         SELECT
@@ -85,8 +93,8 @@ export async function GET(req: NextRequest) {
         FROM agility_so_header soh
         LEFT JOIN (
           SELECT system_id, so_id,
-            SUM(qty_ordered * price)                                       AS ordered_value,
-            SUM((qty_ordered - COALESCE(qty_shipped, 0)) * price)          AS unshipped_value
+            SUM(extended_price)                                            AS ordered_value,
+            SUM(unshipped_extended_price)                                  AS unshipped_value
           FROM agility_so_lines
           WHERE is_deleted = false
           GROUP BY system_id, so_id
@@ -108,7 +116,7 @@ export async function GET(req: NextRequest) {
         FROM agility_so_header soh
         LEFT JOIN (
           SELECT system_id, so_id,
-            SUM((qty_ordered - COALESCE(qty_shipped, 0)) * price) AS unshipped_value
+            SUM(unshipped_extended_price) AS unshipped_value
           FROM agility_so_lines
           WHERE is_deleted = false
           GROUP BY system_id, so_id
@@ -142,8 +150,8 @@ export async function GET(req: NextRequest) {
         FROM agility_so_header soh
         LEFT JOIN (
           SELECT system_id, so_id,
-            SUM(qty_ordered * price)                                       AS ordered_value,
-            SUM((qty_ordered - COALESCE(qty_shipped, 0)) * price)          AS unshipped_value
+            SUM(extended_price)                                            AS ordered_value,
+            SUM(unshipped_extended_price)                                  AS unshipped_value
           FROM agility_so_lines
           WHERE is_deleted = false
           GROUP BY system_id, so_id
@@ -171,8 +179,8 @@ export async function GET(req: NextRequest) {
         FROM agility_so_header soh
         LEFT JOIN (
           SELECT system_id, so_id,
-            SUM(qty_ordered * price)                                       AS ordered_value,
-            SUM((qty_ordered - COALESCE(qty_shipped, 0)) * price)          AS unshipped_value
+            SUM(extended_price)                                            AS ordered_value,
+            SUM(unshipped_extended_price)                                  AS unshipped_value
           FROM agility_so_lines
           WHERE is_deleted = false
           GROUP BY system_id, so_id
@@ -188,7 +196,27 @@ export async function GET(req: NextRequest) {
         ORDER BY COALESCE(v.ordered_value, 0) DESC, soh.so_id DESC
         LIMIT 20
       `,
+      // ── Coverage gate — % of open SO lines with extended_price populated ──
+      sql<{ pct: string }[]>`
+        SELECT
+          COALESCE(
+            COUNT(*) FILTER (WHERE sol.extended_price IS NOT NULL) * 100.0
+              / NULLIF(COUNT(*), 0),
+            0
+          )::text AS pct
+        FROM agility_so_lines sol
+        JOIN agility_so_header soh
+          ON soh.so_id = sol.so_id AND soh.system_id = sol.system_id
+        WHERE sol.is_deleted = false
+          AND soh.is_deleted = false
+          AND UPPER(COALESCE(soh.so_status, '')) NOT IN ('I', 'C', 'X')
+          AND UPPER(COALESCE(soh.sale_type, '')) NOT IN ('HOLD', 'XINSTALL')
+          ${branch ? sql`AND soh.system_id = ${branch}` : sql``}
+      `,
     ]);
+
+    const dollarsCoveragePct = Number(coverageRows[0]?.pct ?? 0);
+    const dollarsReady = dollarsCoveragePct >= 99;
 
     // ── Pivot open orders: rows = sale_type, columns = branch ──
     const openMap = new Map<string, OpenOrderRow>();
@@ -350,6 +378,8 @@ export async function GET(req: NextRequest) {
         grand_unshipped_value: fcGrandUnshipped,
       },
       forecast_days: forecastDays,
+      dollars_coverage_pct: dollarsCoveragePct,
+      dollars_ready: dollarsReady,
     };
 
     const res = NextResponse.json(payload);
