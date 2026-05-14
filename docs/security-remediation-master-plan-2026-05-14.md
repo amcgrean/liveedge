@@ -225,3 +225,10 @@ This plan delivers a professional SaaS-grade authorization posture through six i
 2. Is step-up approval required for admin permission changes in addition to `change_reason`?
 3. What is the retention period for permission-change audit metadata?
 4. Which service routes must use signature auth vs static internal token?
+
+
+## Progress Update — 2026-05-14
+- ✅ PR1 delivered: route policy baseline, scanner script, npm script, CI workflow.
+- ✅ PR2 delivered (cron scope): shared `src/lib/service-auth.ts` + cron route standardization.
+- ℹ️ Remaining PR2 follow-up: inbound webhook routes still tracked as `serviceAuthLegacy` pending provider-specific auth finalization.
+- ▶ Next active phase: PR3 (scorecard/page guard consistency).

@@ -8,6 +8,7 @@ import {
   createSubscription,
   maxSubscriptionExpiration,
 } from '@/lib/ms-graph';
+import { verifyCronSignature } from '../../../../src/lib/service-auth';
 
 // GET /api/cron/graph-subscription-renew
 // Renews each Graph subscription whose expirationDateTime is within 24 hours.
@@ -19,15 +20,8 @@ import {
 const RENEW_WITHIN_HOURS = 24;
 
 export async function GET(req: NextRequest) {
-  const authHeader = req.headers.get('Authorization');
-  const cronSecret = process.env.CRON_SECRET;
-  if (cronSecret) {
-    if (authHeader !== `Bearer ${cronSecret}`) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
-  } else if (!req.headers.get('x-vercel-cron')) {
-    return NextResponse.json({ error: 'Missing CRON_SECRET or Vercel cron header' }, { status: 401 });
-  }
+  const authError = verifyCronSignature(req);
+  if (authError) return authError;
 
   const db = getDb();
   const cutoff = new Date(Date.now() + RENEW_WITHIN_HOURS * 3600 * 1000);
