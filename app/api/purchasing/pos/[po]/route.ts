@@ -67,6 +67,7 @@ export async function GET(_req: NextRequest, context: RouteContext) {
           ON ph.system_id = pl.system_id AND ph.po_id = pl.po_id AND ph.is_deleted = false
         LEFT JOIN agility_item_supplier ims
           ON ims.item_ptr = pl.item_ptr
+         AND ims.system_id = pl.system_id
          AND TRIM(ims.supplier_key) = TRIM(ph.supplier_key)
          AND ims.ship_from_seq_num = ph.shipfrom_seq
          AND ims.is_deleted = false

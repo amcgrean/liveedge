@@ -40,6 +40,7 @@ export async function GET(req: NextRequest) {
         FROM agility_po_lines pl
         JOIN agility_item_supplier ims
           ON ims.item_ptr = pl.item_ptr
+         AND ims.system_id = ph.system_id
          AND TRIM(ims.supplier_key) = TRIM(ph.supplier_key)
          AND ims.ship_from_seq_num = ph.shipfrom_seq
          AND ims.is_deleted = false
