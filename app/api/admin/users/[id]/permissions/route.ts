@@ -131,7 +131,7 @@ export async function PUT(req: NextRequest, context: RouteContext) {
     if (roles !== undefined) {
       await sql`
         UPDATE app_users
-        SET roles = ${sql.array(newRoles)}::json,
+        SET roles = ${sql.array(newRoles)}::text[],
             granted_capabilities = ${sql.array(normalizedGranted)}::text[],
             revoked_capabilities = ${sql.array(normalizedRevoked)}::text[]
         WHERE id = ${userId}
