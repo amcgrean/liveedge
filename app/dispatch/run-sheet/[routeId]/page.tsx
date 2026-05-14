@@ -3,6 +3,7 @@ import { redirect } from 'next/navigation';
 import { getErpSql } from '../../../../db/supabase';
 import type { RunSheetData, RunSheetStop } from '../../../api/dispatch/routes/[id]/run-sheet/route';
 import { PrintButton } from './PrintButton';
+import { TopNav } from '@/components/nav/TopNav';
 
 interface PageProps {
   params: Promise<{ routeId: string }>;
@@ -93,6 +94,7 @@ export default async function RunSheetPage({ params }: PageProps) {
 
   return (
     <>
+      <TopNav userName={session.user.name} userRole={session.user.role} />
       <style>{`
         @media print {
           @page { size: letter portrait; margin: 0.5in; }

@@ -40,18 +40,6 @@ function topicMatches(t: Topic, q: string): boolean {
   return hay.includes(q.toLowerCase());
 }
 
-
-function resolveTopicFromPath(fromPath: string | null): string | null {
-  if (!fromPath) return null;
-  const normalized = fromPath.split('?')[0].replace(/\/+$/, '') || '/';
-  const candidates = TOPICS.filter((t) => t.path && !t.path.includes('['));
-  const exact = candidates.find((t) => t.path === normalized);
-  if (exact) return exact.id;
-  const prefix = candidates
-    .filter((t) => normalized.startsWith(t.path!))
-    .sort((a, b) => (b.path?.length ?? 0) - (a.path?.length ?? 0))[0];
-  return prefix?.id ?? null;
-}
 function ArticleBody({ topic, q, onSelectTopic }: { topic: Topic; q: string; onSelectTopic: (id: string) => void }) {
   const paragraphs: string[] = topic.body.split(/\n\n+/);
   return (
