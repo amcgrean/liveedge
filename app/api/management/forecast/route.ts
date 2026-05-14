@@ -23,9 +23,13 @@ import {
 //  - open_orders       — sale-type × branch pivot with $ alongside counts
 //  - forecast          — per-day count + unshipped $ (next `days` days)
 //
-// $ figures are computed inline from agility_so_lines:
-//   ordered_value   = SUM(qty_ordered * price)
-//   unshipped_value = SUM((qty_ordered - COALESCE(qty_shipped, 0)) * price)
+// $ figures use UOM-aware columns populated upstream by sync-worker PR #32
+// (beisser-api repo, 2026-05-14):
+//   agility_so_lines.extended_price            = qty_ordered * price / disp_price_conv
+//   agility_so_lines.unshipped_extended_price  = (qty_ordered - COALESCE(qty_shipped,0)) * price / disp_price_conv
+// The previous naive `qty_ordered * price` math overstated $ 10-100× on lumber
+// lines because price is denominated in a UOM (e.g. per-MBF) identified by
+// price_uom_ptr — disp_price_conv is the conversion factor to per-unit.
 // Covers all open statuses (I/C/X/HOLD/XINSTALL excluded) — same scope as counts.
 export async function GET(req: NextRequest) {
   const authResult = await requireCapability('branch.all');
@@ -85,8 +89,8 @@ export async function GET(req: NextRequest) {
         FROM agility_so_header soh
         LEFT JOIN (
           SELECT system_id, so_id,
-            SUM(qty_ordered * price)                                       AS ordered_value,
-            SUM((qty_ordered - COALESCE(qty_shipped, 0)) * price)          AS unshipped_value
+            SUM(extended_price)                                            AS ordered_value,
+            SUM(unshipped_extended_price)                                  AS unshipped_value
           FROM agility_so_lines
           WHERE is_deleted = false
           GROUP BY system_id, so_id
@@ -108,7 +112,7 @@ export async function GET(req: NextRequest) {
         FROM agility_so_header soh
         LEFT JOIN (
           SELECT system_id, so_id,
-            SUM((qty_ordered - COALESCE(qty_shipped, 0)) * price) AS unshipped_value
+            SUM(unshipped_extended_price) AS unshipped_value
           FROM agility_so_lines
           WHERE is_deleted = false
           GROUP BY system_id, so_id
@@ -142,8 +146,8 @@ export async function GET(req: NextRequest) {
         FROM agility_so_header soh
         LEFT JOIN (
           SELECT system_id, so_id,
-            SUM(qty_ordered * price)                                       AS ordered_value,
-            SUM((qty_ordered - COALESCE(qty_shipped, 0)) * price)          AS unshipped_value
+            SUM(extended_price)                                            AS ordered_value,
+            SUM(unshipped_extended_price)                                  AS unshipped_value
           FROM agility_so_lines
           WHERE is_deleted = false
           GROUP BY system_id, so_id
@@ -171,8 +175,8 @@ export async function GET(req: NextRequest) {
         FROM agility_so_header soh
         LEFT JOIN (
           SELECT system_id, so_id,
-            SUM(qty_ordered * price)                                       AS ordered_value,
-            SUM((qty_ordered - COALESCE(qty_shipped, 0)) * price)          AS unshipped_value
+            SUM(extended_price)                                            AS ordered_value,
+            SUM(unshipped_extended_price)                                  AS unshipped_value
           FROM agility_so_lines
           WHERE is_deleted = false
           GROUP BY system_id, so_id
