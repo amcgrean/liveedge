@@ -115,6 +115,20 @@ function ArticleBody({ topic, q, onSelectTopic }: { topic: Topic; q: string; onS
 
 type Props = { initialTopicId?: string };
 
+/** Pick the most specific TOPIC whose `path` prefixes the given route.
+ *  Lets a Help link with `?from=/sales/products` auto-select the products topic. */
+function resolveTopicFromPath(fromPath: string | null): string | undefined {
+  if (!fromPath) return undefined;
+  let best: { id: string; len: number } | null = null;
+  for (const t of TOPICS) {
+    if (!t.path) continue;
+    if (t.path === fromPath || fromPath.startsWith(t.path.replace(/\/$/, '') + '/')) {
+      if (!best || t.path.length > best.len) best = { id: t.id, len: t.path.length };
+    }
+  }
+  return best?.id;
+}
+
 export default function HelpClient({ initialTopicId }: Props) {
   const searchParams = useSearchParams();
   const router = useRouter();
