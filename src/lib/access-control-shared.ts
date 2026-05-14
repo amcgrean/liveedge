@@ -60,6 +60,49 @@ export const CAPABILITIES = {
 
 export type Capability = (typeof CAPABILITIES)[keyof typeof CAPABILITIES];
 
+export type CapabilityMetadata = {
+  code: Capability;
+  label: string;
+  description: string;
+  category: 'operations' | 'dispatch' | 'sales' | 'estimating' | 'purchasing' | 'accounting' | 'admin' | 'cross-cutting';
+  risk: 'low' | 'medium' | 'high' | 'critical';
+};
+
+const CAPABILITIES_METADATA_BY_CODE = {
+  [CAPABILITIES.PICKS_RELEASE]: { label: 'Release Picks', description: 'Release picks from staging to outbound workflow.', category: 'operations', risk: 'medium' },
+  [CAPABILITIES.PICKERS_MANAGE]: { label: 'Manage Pickers', description: 'Assign and manage picker workload and status.', category: 'operations', risk: 'high' },
+  [CAPABILITIES.WORKORDERS_ASSIGN]: { label: 'Assign Work Orders', description: 'Create and assign work orders to operations teams.', category: 'operations', risk: 'high' },
+  [CAPABILITIES.YARD_VIEW]: { label: 'View Yard', description: 'View yard operations and order readiness.', category: 'operations', risk: 'low' },
+  [CAPABILITIES.DISPATCH_VIEW]: { label: 'View Dispatch', description: 'View route, vehicle, and dispatch execution data.', category: 'dispatch', risk: 'low' },
+  [CAPABILITIES.DISPATCH_MANAGE]: { label: 'Manage Dispatch', description: 'Modify dispatch plans, assignments, and delivery execution.', category: 'dispatch', risk: 'high' },
+  [CAPABILITIES.SALES_VIEW]: { label: 'View Sales', description: 'Access sales order and customer scorecard experiences.', category: 'sales', risk: 'low' },
+  [CAPABILITIES.CUSTOMERS_NOTES_WRITE]: { label: 'Write Customer Notes', description: 'Create and edit customer-facing account notes.', category: 'sales', risk: 'medium' },
+  [CAPABILITIES.ORDERS_PUSH_TO_ERP]: { label: 'Push Orders to ERP', description: 'Trigger outbound order synchronization to ERP.', category: 'sales', risk: 'high' },
+  [CAPABILITIES.QUOTES_MANAGE]: { label: 'Manage Quotes', description: 'Create, update, and manage sales quotes.', category: 'sales', risk: 'high' },
+  [CAPABILITIES.BIDS_MANAGE]: { label: 'Manage Bids', description: 'Create and manage estimating bids.', category: 'estimating', risk: 'high' },
+  [CAPABILITIES.DESIGNS_MANAGE]: { label: 'Manage Designs', description: 'Create and maintain design artifacts.', category: 'estimating', risk: 'high' },
+  [CAPABILITIES.EWP_MANAGE]: { label: 'Manage EWP', description: 'Maintain engineered wood product records and workflow.', category: 'estimating', risk: 'high' },
+  [CAPABILITIES.PROJECTS_MANAGE]: { label: 'Manage Projects', description: 'Create and update project records and assignments.', category: 'estimating', risk: 'high' },
+  [CAPABILITIES.PURCHASING_VIEW]: { label: 'View Purchasing', description: 'View purchasing dashboards, POs, and receiving status.', category: 'purchasing', risk: 'low' },
+  [CAPABILITIES.PURCHASING_RECEIVE]: { label: 'Receive Purchasing', description: 'Record and process inbound receiving actions.', category: 'purchasing', risk: 'high' },
+  [CAPABILITIES.PURCHASING_REVIEW]: { label: 'Review Purchasing', description: 'Approve and review purchasing exceptions and activity.', category: 'purchasing', risk: 'high' },
+  [CAPABILITIES.CREDITS_VIEW]: { label: 'View Credits', description: 'Access credits and returns records.', category: 'accounting', risk: 'medium' },
+  [CAPABILITIES.CREDITS_MANAGE]: { label: 'Manage Credits', description: 'Create or modify credits and returns outcomes.', category: 'accounting', risk: 'high' },
+  [CAPABILITIES.AR_VIEW]: { label: 'View AR', description: 'Access accounts receivable and aging information.', category: 'accounting', risk: 'medium' },
+  [CAPABILITIES.ADMIN_USERS_MANAGE]: { label: 'Manage Users', description: 'Create users and modify role/capability assignments.', category: 'admin', risk: 'critical' },
+  [CAPABILITIES.ADMIN_AUDIT_VIEW]: { label: 'View Audit', description: 'View security and audit event trails.', category: 'admin', risk: 'high' },
+  [CAPABILITIES.ADMIN_CONFIG_MANAGE]: { label: 'Manage Config', description: 'Modify platform-level configuration.', category: 'admin', risk: 'critical' },
+  [CAPABILITIES.ADMIN_JOBS_REVIEW]: { label: 'Review Jobs', description: 'Review and triage operational/admin job queues.', category: 'admin', risk: 'high' },
+  [CAPABILITIES.ADMIN_PRODUCTS_VIEW]: { label: 'View Product Admin', description: 'Access admin product maintenance surfaces.', category: 'admin', risk: 'medium' },
+  [CAPABILITIES.ADMIN_CUSTOMERS_VIEW]: { label: 'View Customer Admin', description: 'Access admin customer maintenance surfaces.', category: 'admin', risk: 'medium' },
+  [CAPABILITIES.HUBBELL_REVIEW]: { label: 'Review Hubbell', description: 'Review Hubbell-specific integration or workflow data.', category: 'admin', risk: 'high' },
+  [CAPABILITIES.BRANCH_ALL]: { label: 'All Branch Access', description: 'Bypass branch scoping and access all branches.', category: 'cross-cutting', risk: 'critical' },
+} as const satisfies Record<Capability, Omit<CapabilityMetadata, 'code'>>;
+
+export const CAPABILITIES_METADATA: readonly CapabilityMetadata[] = (
+  Object.entries(CAPABILITIES_METADATA_BY_CODE) as [Capability, Omit<CapabilityMetadata, 'code'>][]
+).map(([code, metadata]) => ({ code, ...metadata }));
+
 /** Every defined capability code, as a Set, for O(1) validation. */
 export const ALL_CAPABILITIES: ReadonlySet<Capability> = new Set(
   Object.values(CAPABILITIES) as Capability[]
