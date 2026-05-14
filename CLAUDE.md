@@ -680,8 +680,19 @@ PR [#278](https://github.com/amcgrean/liveedge/pull/278). Joined `agility_item_s
 - `OpenPO` type in `src/lib/purchasing.ts` extended with `lead_time_max_days` and `has_blocking_min_violation`.
 - No new indexes — `idx_agility_item_supplier_supplier (supplier_key, ship_from_seq_num)` covers the lookup.
 
+#### Suggested Buys supplier rules + primary mismatch (2026-05-14) — COMPLETE
+PR [#296](https://github.com/amcgrean/liveedge/pull/296). The `/purchasing/suggested-buys` page already existed as a read-only viewer of `agility_suggested_po_header/lines`; this PR enriched the expanded-row detail with `agility_item_supplier` rules and a primary-supplier mismatch signal.
+
+- **API (`/api/purchasing/suggested-buys/[ppo_id]`)** — two LATERAL joins on the lines query:
+  - `ims_sup` — looks up the rule row for `(this item × the suggested PO's supplier)` by resolving the suggested `supplier_code` to a `supplier_key` via `agility_suppliers`. Returns `lead_time_1`, `min_ord_qty + display UOM`, `min_ord_violation`, `supp_uom`.
+  - `ims_primary` — looks up `is_primary = true` for the item independently, returns its `supplier_code` + name for client-side mismatch comparison.
+  - Both LATERALs use `LEFT JOIN … ON true` so lines without rules still render.
+- **UI** — 4 new columns on the expanded line table: Lead / Min Ord / Supp UOM / Primary. Amber background on Min Ord when violation = `'Block'`. Primary column shows an amber `AlertTriangle` chip when the item's primary supplier differs from the suggested PO's supplier. Item codes are now `Link`s to `/scorecard/product/item/[itemCode]?from=purchasing-suggested-buys`.
+- **`ScorecardBreadcrumb`** — added `'purchasing-suggested-buys'` origin kind → "Back to Suggested Buys".
+- **Override dropdown deferred**: the handoff prompt called for an inline dropdown to override the suggested supplier per line, but the page is a read-only ERP viewer (no Agility write-back wire-up yet), so a non-functional override control would be misleading. Surfacing the mismatch chip + linking out to the item scorecard accomplishes the same intent: a buyer can see at a glance that a non-primary supplier was suggested and click through to investigate before approving. Build the override dropdown only when an Agility write-back endpoint exists for `agility_suggested_po_lines.supplier_code` mutation.
+- No new indexes — `(item_ptr)` and `(supplier_key, ship_from_seq_num)` already cover both LATERAL lookups.
+
 #### Still Missing / Deferred
-- **Suggested Buys** (`/purchasing/suggested-buys`): `app_purchasing_queue` view confirmed missing. Check `agility_suggested_po_header` + `agility_suggested_po_lines` before building. Once built, default-select the primary supplier per item from `agility_item_supplier WHERE is_primary` and let the user override.
 - **RMA Credits thumbnails**: email pipeline, doc counts, address-based matching, and nested email support are all live. Next: add `GET /api/credits/[id]/images` presigned URL route + thumbnail previews in CreditsClient so users can view uploaded docs inline without leaving the page.
 - **WH-Tracker kiosk/TV/smart scan**: not appropriate for LiveEdge web app pattern — intentionally deferred
 - **Purchasing workflow** (tasks, approvals, exceptions, PO notes): verify `purchasing_tasks`, `purchasing_approvals`, etc. exist in `public` schema first

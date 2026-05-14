@@ -10,7 +10,8 @@ type Origin =
   | { kind: 'product-minor'; majorCode: string; minorCode: string }
   | { kind: 'product-item'; code: string }
   | { kind: 'product-overview' }
-  | { kind: 'vendor-overview' };
+  | { kind: 'vendor-overview' }
+  | { kind: 'purchasing-suggested-buys' };
 
 function parseFrom(from: string | null | undefined): Origin | null {
   if (!from) return null;
@@ -37,6 +38,8 @@ function parseFrom(from: string | null | undefined): Origin | null {
       return { kind: 'product-overview' };
     case 'vendor-overview':
       return { kind: 'vendor-overview' };
+    case 'purchasing-suggested-buys':
+      return { kind: 'purchasing-suggested-buys' };
     default:
       return null;
   }
@@ -65,6 +68,8 @@ function originLink(origin: Origin): { href: string; label: string } {
       return { href: '/scorecard/product', label: 'Product Groups' };
     case 'vendor-overview':
       return { href: '/scorecard/vendor', label: 'Vendors' };
+    case 'purchasing-suggested-buys':
+      return { href: '/purchasing/suggested-buys', label: 'Suggested Buys' };
   }
 }
 
