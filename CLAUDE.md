@@ -663,6 +663,23 @@ Expansion of the scorecard suite to add product (major/minor/item) and vendor dr
 
 **Vendors tab in `ScorecardTabs`** added between Sales Reps and Product Groups (`app/scorecard/_components/ScorecardTabs.tsx`).
 
+#### Open POs + PO Detail supplier rules (2026-05-14) — COMPLETE
+PR [#278](https://github.com/amcgrean/liveedge/pull/278). Joined `agility_item_supplier` to PO queries so buyers see lead time, min-order-qty, and violation rule inline.
+
+- **`/purchasing/open-pos`** — added two PO-level columns via `LEFT JOIN LATERAL` aggregating across the PO's items:
+  - **Lead**: `MAX(ims.lead_time_1)` (conservative — surfaces the worst case)
+  - **Min**: amber **Block** chip when any line has `ims.min_ord_violation = 'Block'`
+- **`/purchasing/pos/[po]`** — added three per-line columns: Lead (`lead_time_1`), Min Ord (`min_ord_qty` + `min_ord_qty_disp_uom`, amber when violation = `'Block'`), Supp UOM (`supp_uom`).
+- Join predicate (mandatory `TRIM` on supplier_key — `agility_item_supplier.supplier_key` is left-padded):
+  ```sql
+  ON ims.item_ptr = pl.item_ptr
+  AND TRIM(ims.supplier_key) = TRIM(ph.supplier_key)
+  AND ims.ship_from_seq_num = ph.shipfrom_seq
+  AND ims.is_deleted = false
+  ```
+- `OpenPO` type in `src/lib/purchasing.ts` extended with `lead_time_max_days` and `has_blocking_min_violation`.
+- No new indexes — `idx_agility_item_supplier_supplier (supplier_key, ship_from_seq_num)` covers the lookup.
+
 #### Still Missing / Deferred
 - **Suggested Buys** (`/purchasing/suggested-buys`): `app_purchasing_queue` view confirmed missing. Check `agility_suggested_po_header` + `agility_suggested_po_lines` before building. Once built, default-select the primary supplier per item from `agility_item_supplier WHERE is_primary` and let the user override.
 - **RMA Credits thumbnails**: email pipeline, doc counts, address-based matching, and nested email support are all live. Next: add `GET /api/credits/[id]/images` presigned URL route + thumbnail previews in CreditsClient so users can view uploaded docs inline without leaving the page.
@@ -674,7 +691,6 @@ Expansion of the scorecard suite to add product (major/minor/item) and vendor dr
 - **Page tracking rollout**: `POST /api/track-visit` exists but not yet wired into module client components — Quick Access strip on homepage stays empty until called
 - **Open order value metrics** (2026-05-05): Sync worker PR #16 added `v_open_order_value` to Supabase — a view exposing `ordered_value` and `unshipped_value` per open order (`so_status = 'K'`), grouped by `(system_id, branch_code, so_id, ...)`. No LiveEdge UI consumes it yet. Best candidates: (1) Management/Forecast page — already groups by branch and sale type, adding value columns is natural; (2) Home KPI strip — could surface a company-wide open order dollar total; (3) Sales Hub KPI cards. Query with `SELECT branch_code, SUM(ordered_value), SUM(unshipped_value) FROM v_open_order_value WHERE system_id = 'AUS' GROUP BY branch_code`.
 - **`qty_shipped` now populated** (2026-05-05): Sync worker PR #16 also updated `dbo.vw_agility_so_lines` to aggregate `qty_shipped` from `dbo.shipments_detail`. The `agility_so_lines.qty_shipped` column already exists in Supabase and is already selected by `app/api/warehouse/orders/[so_number]/route.ts` and `app/api/dispatch/orders/[so_number]/lines/route.ts` — those screens will now show real shipped quantities automatically after a sync cycle. No LiveEdge code changes needed; noting here in case future features (e.g. backorder highlighting, unshipped value per line) want to build on it.
-- **Open POs / PO detail supplier rules** (2026-05-13): surface `lead_time_1`, `min_ord_qty`, `min_ord_violation`, and `supp_uom` from `agility_item_supplier` on `/purchasing/open-pos` and `/purchasing/pos/[po]`. Join `agility_item_supplier ims ON ims.item_ptr = pl.item_ptr AND TRIM(ims.supplier_key) = TRIM(ph.supplier_key) AND ims.ship_from_seq_num = ph.shipfrom_seq AND ims.is_deleted = false` — `TRIM()` is mandatory per the supplier_key gotcha above. No new indexes needed; `idx_agility_item_supplier_supplier` covers it.
 - **Vendor scorecard "Items I primarily supply"** (2026-05-13): add a section on `/scorecard/vendor/[supplierKey]` listing items where `is_primary = true` for this supplier. Parse `<key>::<seq>` first to preserve LMC1000 ship-from. Each row links to `/scorecard/product/item/[itemCode]?from=vendor:<supplierKey>`.
 - **Item scorecard "Inbound POs" section** (2026-05-13): on `/scorecard/product/item/[itemCode]`, query open POs containing this item via `agility_po_lines.item_ptr → agility_po_header WHERE po_status NOT IN ('CLOSED','CANCELED','COMPLETE','RECEIVED') AND canceled = false`. Helpful for slow-mover review.
 - **Vendor scorecard fact table** (2026-05-13, deferred): only build if `/scorecard/vendor/[supplierKey]` 3-year query is slow (>2s) at scale. Would need a sync-worker matview keyed `(supplier_key, ship_from_seq, system_id, year, month)` with pre-aggregated spend/lines/receipts/on-time-count. Don't start LiveEdge work without the matview landing first.
