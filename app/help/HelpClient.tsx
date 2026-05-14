@@ -40,6 +40,12 @@ function topicMatches(t: Topic, q: string): boolean {
   return hay.includes(q.toLowerCase());
 }
 
+function normalizePath(input: string): string {
+  const clean = input.split('?')[0]?.split('#')[0] ?? '';
+  if (!clean) return '/';
+  return clean.startsWith('/') ? clean : `/${clean}`;
+}
+
 function ArticleBody({ topic, q, onSelectTopic }: { topic: Topic; q: string; onSelectTopic: (id: string) => void }) {
   const paragraphs: string[] = topic.body.split(/\n\n+/);
   return (
@@ -115,16 +121,27 @@ function ArticleBody({ topic, q, onSelectTopic }: { topic: Topic; q: string; onS
 
 type Props = { initialTopicId?: string };
 
-/** Pick the most specific TOPIC whose `path` prefixes the given route.
- *  Lets a Help link with `?from=/sales/products` auto-select the products topic. */
+/** Pick the most specific TOPIC whose `path` matches the given route.
+ *  Topic paths use Next.js dynamic segment syntax (`/tv/[branch]`, `/sales/orders/[so_number]`)
+ *  while `?from=` carries the concrete pathname from `usePathname()` (`/tv/20GR`,
+ *  `/sales/orders/1170210`), so we match segment-by-segment and treat any `[param]`
+ *  as a wildcard. Longest path wins so deeper routes beat shallower ones. */
 function resolveTopicFromPath(fromPath: string | null): string | undefined {
   if (!fromPath) return undefined;
+  const fromSegs = fromPath.replace(/\/+$/, '').split('/').filter(Boolean);
   let best: { id: string; len: number } | null = null;
   for (const t of TOPICS) {
     if (!t.path) continue;
-    if (t.path === fromPath || fromPath.startsWith(t.path.replace(/\/$/, '') + '/')) {
-      if (!best || t.path.length > best.len) best = { id: t.id, len: t.path.length };
+    const topicSegs = t.path.replace(/\/+$/, '').split('/').filter(Boolean);
+    if (topicSegs.length > fromSegs.length) continue;
+    let match = true;
+    for (let i = 0; i < topicSegs.length; i++) {
+      const ts = topicSegs[i];
+      if (ts.startsWith('[') && ts.endsWith(']')) continue; // wildcard segment
+      if (ts !== fromSegs[i]) { match = false; break; }
     }
+    if (!match) continue;
+    if (!best || topicSegs.length > best.len) best = { id: t.id, len: topicSegs.length };
   }
   return best?.id;
 }
