@@ -84,18 +84,27 @@ prevention; this is the actual fix.
 
 1. **Scorecard guard.** Edit `app/scorecard/layout.tsx`:
    - Replace the `auth()`+redirect with
-     `const session = await requirePageAccess('sales.view');`
+     `const session = await requirePageAccess('scorecard.view');`
    - Pass `session.user.name` / role to `TopNav` as before.
-   - Do **not** introduce a new `scorecard.view` capability — `sales.view`
-     is the existing analogue (see role defaults: `management`, `sales`,
-     `viewer` all have it). Reuse it.
+   - **Add a new `scorecard.view` capability** to
+     `src/lib/access-control-shared.ts`. Reusing `sales.view` does not
+     work here because the `viewer` role already has `sales.view`
+     (`access-control-shared.ts:164-166`), and the whole point of the
+     scorecard fix is to keep viewer-only accounts away from customer
+     revenue, GM%, vendor spend, and rep performance.
+   - Update `ROLE_DEFAULTS` to grant `scorecard.view` to `admin`
+     (already gets everything via `ALL`), `management`, and `sales`.
+     Do **not** grant it to `viewer`, `driver`, `warehouse`, `dispatch`,
+     `purchasing`, `estimator`, or `designer`.
+   - Add the new code to `CAPABILITIES_METADATA` in PR2 (high-risk
+     category: `sales`).
 
 2. **Page-guard sweep.** For each route group below, change the layout
    (or page if no layout) to use `requirePageAccess(<cap>)`:
    | Path | Capability |
    |------|------------|
    | `app/management/layout.tsx` | `sales.view` |
-   | `app/scorecard/layout.tsx` | `sales.view` |
+   | `app/scorecard/layout.tsx` | `scorecard.view` (new — see step 1) |
    | `app/sales/layout.tsx` (if exists, else each `page.tsx`) | `sales.view` |
    | `app/purchasing/**/page.tsx` | `purchasing.view` |
    | `app/credits/page.tsx` | `credits.view` |
@@ -119,7 +128,8 @@ prevention; this is the actual fix.
    | `/api/bids/**`, `/api/legacy-bids/**`, `/api/designs/**`, `/api/ewp/**`, `/api/projects/**`, `/api/takeoff/**` | `bids.manage` / `designs.manage` / `ewp.manage` / `projects.manage` |
    | `/api/admin/**` | existing admin caps; do not change |
    | `/api/erp/**` | `sales.view` (reads); writes use `orders.push_to_erp` / `quotes.manage` |
-   | `/api/home`, `/api/dashboard`, `/api/track-visit`, `/api/auth/**`, `/api/it-issues/**`, `/api/files/**` (per-user file lookups) | session-only is acceptable; add to **allowlist** in `scripts/check-route-guards.mjs` (see PR3) |
+   | `/api/home`, `/api/dashboard`, `/api/track-visit`, `/api/auth/**`, `/api/it-issues/**` | session-only is acceptable; add to **allowlist** in `scripts/check-route-guards.mjs` (see PR3) |
+   | `/api/files/**` | **NOT session-only.** See step 6 below — these routes have an existing IDOR and must not be allowlisted. |
 
    Walk each route file individually — do not bulk-edit. Some files
    have route-specific writes that need a stronger capability than the
@@ -154,7 +164,31 @@ prevention; this is the actual fix.
    `canAccessBranch(session, record.system_id)` and return 404 (not
    403 — don't leak record existence) on false.
 
-5. **JWT staleness shortcut.** In `auth.ts`, drop the session
+5. **Files routes — IDOR fix (do not allowlist).**
+   `app/api/files/route.ts` currently accepts caller-supplied
+   `entity_type`/`entity_id` and lists all files for that entity with
+   no ownership check. `app/api/files/[id]/route.ts` returns a
+   presigned R2 URL for any file UUID with only authentication. Both
+   need either:
+   - **Option A (preferred):** require the caller to hold the
+     entity's owning capability (e.g. files attached to a `legacy_bid`
+     require `bids.manage`; files attached to an `it_issue` require
+     the issue creator's user_id to match `session.user.id`).
+     Implement a small `assertFileAccess(session, entityType, entityId)`
+     helper that switches on `entity_type` and returns 404 on mismatch.
+   - **Option B (interim, if the entity-type universe is large):**
+     gate the routes behind `bids.manage` as a coarse stand-in until
+     per-entity ownership is wired up. Document this as interim in
+     `docs/security-policy-routes.md` so PR3's scanner doesn't
+     permanently bless the gap.
+   Apply the same treatment to
+   `app/api/legacy-bids/[id]/files/route.ts` and any
+   `app/api/legacy-bids/[id]/download-all/route.ts` paths — confirm
+   the caller has access to the parent legacy bid before returning
+   presigned URLs. **The route-policy doc must not list any file
+   route as `session-only`.**
+
+6. **JWT staleness shortcut.** In `auth.ts`, drop the session
    `maxAge` from 7 days to **8 hours** for now. Document the
    tradeoff in the JWT block comment: revocation latency vs. login
    friction. Do not implement a per-request DB check or refresh-token
@@ -163,20 +197,30 @@ prevention; this is the actual fix.
 
 **Acceptance**
 
-- `app/scorecard/**` returns 302 to `/` for sessions without `sales.view`.
+- `app/scorecard/**` returns 302 to `/` for sessions without
+  `scorecard.view`. A `viewer`-role session (which has `sales.view`
+  but not `scorecard.view`) is redirected.
 - A user with role `driver` (only `dispatch.view`) hitting
   `/api/sales/customers/00001` returns 403.
 - A Grimes-only sales user (no `branch.all`) hitting a Fort Dodge SO
   returns 404.
+- `GET /api/files?entity_type=legacy_bid&entity_id=<id>` returns 404
+  when the caller cannot access that legacy bid; same for
+  `GET /api/files/[id]` against a file UUID belonging to a record the
+  caller cannot reach.
 - Manual smoke: existing admin and sales users can still load every
   screen they used before.
 - Sessions older than 8h require re-login.
 
 **Out of scope for this PR**
 
-- New capabilities (e.g. `scorecard.view`) — reuse what exists.
+- Additional new capabilities beyond `scorecard.view`. Do not split
+  `sales.view` further; do not invent new branch capabilities.
 - The CI scanner (PR3).
-- Catalog refactor (PR2).
+- Catalog refactor (PR2). (`scorecard.view` itself only needs the
+  vocabulary entry + role-defaults change in PR1; its
+  `CAPABILITIES_METADATA` row lands with the rest of the catalog in
+  PR2.)
 
 ---
 
@@ -378,7 +422,10 @@ additions. **Skip them unless explicitly re-authorized:**
 - `if_match_version`, `change_reason`, `ticket_ref` on the permissions
   PUT contract. Optimistic concurrency on permission edits is solving
   a problem that hasn't bitten a 4-yard internal tool.
-- New `scorecard.view` capability. Reuse `sales.view`.
+- ~~New `scorecard.view` capability. Reuse `sales.view`.~~
+  **Revised:** `scorecard.view` is required in PR1. Reusing
+  `sales.view` does not exclude the `viewer` role, which has
+  `sales.view` by default. See PR1 step 1.
 - Per-request DB capability lookup or refresh-token rotation. The 8h
   JWT TTL in PR1 is the chosen compromise; revisit only if a stronger
   revocation guarantee is requested.
