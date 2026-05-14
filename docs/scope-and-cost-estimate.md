@@ -21,10 +21,10 @@ This document is intended for executive/board-level review. Every number ties ba
 | Production dependencies | 28 |
 | In-code TODO/FIXME markers | 11 (zero FIXME/XXX/HACK) |
 | **Modules in inventory** | **21** |
-| **Total custom-build effort (low–high)** | **3,890 – 5,810 hours** |
-| **Solo contractor @ $140/hr** | **$545K – $813K** |
-| **Small agency @ $185/hr (+20% PM buffer)** | **$864K – $1.29M** |
-| **Large agency @ $225/hr (+35% disc./PM/QA buffer)** | **$1.18M – $1.77M** |
+| **Total custom-build effort (low–high)** | **3,870 – 5,870 hours** |
+| **Solo contractor @ $140/hr** | **$542K – $822K** |
+| **Small agency @ $185/hr (+20% PM buffer)** | **$859K – $1.30M** |
+| **Large agency @ $225/hr (+35% disc./PM/QA buffer)** | **$1.18M – $1.78M** |
 | **Closest SaaS-equivalent annual cost** | **~$185K/yr (range $130K–$260K)** |
 | **Remaining-to-ship effort** | **~316 hrs (~$44K @ contractor)** |
 
@@ -153,16 +153,16 @@ Summing the tier hour ranges from the inventory table:
 
 | Rate card | Hourly | Hours (low) | Hours (high) | Buffer | **Cost low** | **Cost high** |
 |---|---:|---:|---:|---|---:|---:|
-| Solo senior contractor (Midwest US) | $140 | 3,890 | 5,810 | 0% | **$544,600** | **$813,400** |
-| Small agency (with PM) | $185 | 3,890 | 5,810 | +20% | **$863,640** | **$1,289,820** |
-| Large agency (full discovery + PM + QA + design) | $225 | 3,890 | 5,810 | +35% | **$1,181,890** | **$1,765,290** |
+| Solo senior contractor (Midwest US) | $140 | 3,870 | 5,870 | 0% | **$541,800** | **$821,800** |
+| Small agency (with PM) | $185 | 3,870 | 5,870 | +20% | **$859,140** | **$1,303,140** |
+| Large agency (full discovery + PM + QA + design) | $225 | 3,870 | 5,870 | +35% | **$1,175,513** | **$1,783,013** |
 
-Sanity check: 90,113 LOC ÷ midpoint 4,850 hrs ≈ **18.6 LOC/hr** of finished, type-checked, working code. That's at the slower end of the industry envelope (20–50 LOC/hr greenfield) and accounts for design time, debugging, integration work, and the 32 migrations that needed to land cleanly against a live ERP. Numbers feel honest.
+Sanity check: 90,113 LOC ÷ midpoint 4,870 hrs ≈ **18.5 LOC/hr** of finished, type-checked, working code. That's at the slower end of the industry envelope (20–50 LOC/hr greenfield) and accounts for design time, debugging, integration work, and the 32 migrations that needed to land cleanly against a live ERP. Numbers feel honest.
 
 ### Range commentary
 
-- **Low end of contractor** ($545K) assumes a single senior dev who already knows the Beisser domain and the Agility schema, working efficiently with minimal stakeholder rework.
-- **High end of large agency** ($1.77M) is what you'd budget for a procurement RFP to a Tier-1 LBM/ERP specialist (e.g. a DMSI partner consultancy) doing full waterfall with formal QA, dedicated designers, and PM overhead.
+- **Low end of contractor** ($542K) assumes a single senior dev who already knows the Beisser domain and the Agility schema, working efficiently with minimal stakeholder rework.
+- **High end of large agency** ($1.78M) is what you'd budget for a procurement RFP to a Tier-1 LBM/ERP specialist (e.g. a DMSI partner consultancy) doing full waterfall with formal QA, dedicated designers, and PM overhead.
 - **Most likely real-world cost** if rebuilt today through a typical agency: **$1.0M–$1.3M** over 9–14 calendar months.
 
 ---
