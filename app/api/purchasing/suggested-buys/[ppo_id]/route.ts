@@ -64,6 +64,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ ppo_
          AND s.ship_from_seq = ims.ship_from_seq_num
          AND s.is_deleted = false
         WHERE ims.item_ptr = spl.item_ptr
+          AND ims.system_id = spl.system_id
           AND s.supplier_code = sph.supplier_code
           AND ims.is_deleted = false
         ORDER BY ims.is_primary DESC NULLS LAST, ims.lead_time_1 ASC NULLS LAST
@@ -78,6 +79,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ ppo_
          AND s.ship_from_seq = ims.ship_from_seq_num
          AND s.is_deleted = false
         WHERE ims.item_ptr = spl.item_ptr
+          AND ims.system_id = spl.system_id
           AND ims.is_primary = true
           AND ims.is_deleted = false
         LIMIT 1
