@@ -178,3 +178,50 @@ This plan delivers a professional SaaS-grade authorization posture through six i
 - 100% capability catalog parity between backend and admin UI.
 - 0 silent permission-overwrite incidents.
 - Reduced unauthorized errors from missing/incorrect guards.
+
+
+---
+
+## Codex Handoff (Execution Starter)
+
+### Branch / PR workflow
+1. Create branch: `security/pr1-route-policy-and-guard-check`.
+2. Keep PRs strictly aligned to the 6 phases above (one phase per PR).
+3. In each PR description include:
+   - scope boundaries (what is intentionally excluded)
+   - acceptance checks run
+   - rollback notes
+
+### Suggested owner map
+- PR1 + PR2: Platform/API engineer
+- PR3 + PR4: Full-stack engineer (auth + admin UI)
+- PR5: Backend engineer + DBA review
+- PR6: QA/SDET + platform engineer
+
+### First commands Codex should run
+- `rg -n "export async function (GET|POST|PUT|PATCH|DELETE)" app/api`
+- `rg -n "requireCapability\(|auth\(\)|requirePageAccess\(" app src`
+- `npm run lint`
+- `npm run typecheck`
+
+### PR1 implementation checklist (ready-to-execute)
+1. Add `docs/security-policy-routes.md` and enumerate all current exceptions.
+2. Implement `scripts/check-route-guards.mjs` with:
+   - allowlist file support (`docs/security-policy-routes.md` parsing or JSON companion)
+   - clear failure output listing exact unguarded files
+3. Add `check:route-guards` to `package.json`.
+4. Run checker locally and fix/allowlist as needed.
+5. Add CI step and verify it fails on synthetic unguarded sample.
+
+### Quality gate template (copy into each PR)
+- [ ] Lint clean
+- [ ] Typecheck clean
+- [ ] Authorization tests updated (if behavior changed)
+- [ ] Route-policy docs updated (if new public/service route)
+- [ ] Backward-compatibility and rollback documented
+
+### Open decisions requiring product/security sign-off
+1. Should scorecard use `sales.view` or a dedicated `scorecard.view`?
+2. Is step-up approval required for admin permission changes in addition to `change_reason`?
+3. What is the retention period for permission-change audit metadata?
+4. Which service routes must use signature auth vs static internal token?
