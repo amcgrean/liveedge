@@ -174,9 +174,13 @@ export default function ForecastClient({ isAdmin, userBranch }: Props) {
       accessor: (r) => r.by_branch[b] ?? 0,
       align: 'right',
     })),
-    { key: 'total',           header: 'Orders',         accessor: (r) => r.total,           align: 'right' },
-    { key: 'ordered_value',   header: 'Ordered $',      accessor: (r) => r.ordered_value,   align: 'right' },
-    { key: 'unshipped_value', header: 'Unshipped $',    accessor: (r) => r.unshipped_value, align: 'right' },
+    { key: 'total', header: 'Orders', accessor: (r) => r.total, align: 'right' },
+    // $ columns are excluded entirely when SHOW_DOLLARS is off so the CSV/copy
+    // export from TableToolbar can't leak the pre-UOM-conversion raw values.
+    ...(SHOW_DOLLARS ? [
+      { key: 'ordered_value',   header: 'Ordered $',   accessor: (r: OpenOrderRow) => r.ordered_value,   align: 'right' as const },
+      { key: 'unshipped_value', header: 'Unshipped $', accessor: (r: OpenOrderRow) => r.unshipped_value, align: 'right' as const },
+    ] : []),
   ], [branchesShown]);
 
   const { sortedRows: sortedOpenOrders, sort: openSort, toggle: toggleOpen } = useTableSort({
@@ -200,8 +204,10 @@ export default function ForecastClient({ isAdmin, userBranch }: Props) {
         accessor: (d) => d.by_ship_via[sv] ?? 0,
         align: 'right',
       })),
-      { key: 'total',           header: 'Orders',      accessor: (d) => d.total,           align: 'right' },
-      { key: 'unshipped_value', header: 'Unshipped $', accessor: (d) => d.unshipped_value, align: 'right' },
+      { key: 'total', header: 'Orders', accessor: (d) => d.total, align: 'right' },
+      ...(SHOW_DOLLARS ? [
+        { key: 'unshipped_value', header: 'Unshipped $', accessor: (d: ForecastDayRow) => d.unshipped_value, align: 'right' as const },
+      ] : []),
     ];
   }, [data, branchesShown]);
 
