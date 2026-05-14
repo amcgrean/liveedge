@@ -1900,7 +1900,7 @@ export default function DispatchClient({ isAdmin, userBranch, userName, userRole
       <div className="flex-1 flex flex-col overflow-hidden">
 
         {/* ── Command Bar ── */}
-        <div className="shrink-0 px-4 py-3 border-b border-gray-800 bg-gray-900/80 backdrop-blur">
+        <div className="shrink-0 px-4 py-3 border-b border-gray-800 bg-gray-900/80 backdrop-blur relative z-[200]">
           <div className="flex flex-wrap gap-3 items-center">
             {/* KPI tiles — Total Stops clickable to open Routes drawer */}
             <div className="flex gap-2">
