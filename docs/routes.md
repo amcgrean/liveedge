@@ -1,10 +1,12 @@
 # LiveEdge Route Reference
 
-**Last audited: 2026-05-13 (Hubbell email ingest removed — see `/api/admin/hubbell/` notes)**
+**Last audited: 2026-05-14 (paired with `docs/agent-routes-modules.md` for exhaustive filesystem index)**
 **API routes: ~175 | Page routes: ~95**
 
 All API routes require a valid NextAuth session (`session?.user`) unless noted as **public**.
 Branch-scoped routes respect the active branch cookie; admin users see all branches.
+
+> Agent-maintenance note: this file is the human summary. For exhaustive, file-by-file route/module coverage used by coding agents, also keep `docs/agent-routes-modules.md` in sync.
 
 ---
 
