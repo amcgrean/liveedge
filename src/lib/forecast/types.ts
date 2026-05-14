@@ -10,6 +10,9 @@ export interface OpenOrderRow {
   /** Branch code → open SO count */
   by_branch: Partial<Record<Branch, number>>;
   total: number;
+  /** Ready-to-ship dollar value (status K only — from v_open_order_value) */
+  ordered_value: number;
+  unshipped_value: number;
 }
 
 export interface ForecastDayRow {
@@ -17,21 +20,78 @@ export interface ForecastDayRow {
   total: number;
   by_branch: Partial<Record<Branch, number>>;
   by_ship_via: Record<string, number>;
+  /** Sum of unshipped_value across orders expected this day (K-status only) */
+  unshipped_value: number;
+}
+
+/** Bucketed-by-time-horizon open orders. Counts cover all open statuses
+ *  (excluding HOLD/XINSTALL/I/C/X); value fields reflect ready-to-ship (K)
+ *  orders only, since v_open_order_value is K-scoped. */
+export interface HorizonBucket {
+  count: number;
+  ordered_value: number;
+  unshipped_value: number;
+  by_branch: Partial<Record<Branch, { count: number; ordered_value: number; unshipped_value: number }>>;
+}
+
+export type HorizonKey =
+  | 'overdue'
+  | 'next_7'
+  | 'next_8_30'
+  | 'next_31_90'
+  | 'next_91_plus'
+  | 'far_future'
+  | 'unscheduled';
+
+export type HorizonBuckets = Record<HorizonKey, HorizonBucket>;
+
+export interface ForecastKpis {
+  open_order_count: number;
+  ordered_value: number;
+  unshipped_value: number;
+  unscheduled_or_far_future_count: number;
+  by_branch: Array<{
+    branch: Branch;
+    count: number;
+    ordered_value: number;
+    unshipped_value: number;
+  }>;
+}
+
+export interface FarFutureOrder {
+  so_id: string;
+  system_id: string;
+  cust_name: string | null;
+  cust_code: string | null;
+  rep_1: string | null;
+  expect_date: string | null;
+  sale_type: string | null;
+  so_status: string | null;
+  ordered_value: number;
+  unshipped_value: number;
+  bucket: 'far_future' | 'unscheduled';
 }
 
 export interface ForecastPayload {
   branches: readonly Branch[];
   ship_vias: string[];
+  kpis: ForecastKpis;
+  horizons: HorizonBuckets;
+  far_future_orders: FarFutureOrder[];
   open_orders: {
     rows: OpenOrderRow[];
     branch_totals: Partial<Record<Branch, number>>;
+    branch_value_totals: Partial<Record<Branch, { ordered_value: number; unshipped_value: number }>>;
     grand_total: number;
+    grand_ordered_value: number;
+    grand_unshipped_value: number;
   };
   forecast: {
     days: ForecastDayRow[];
     branch_totals: Partial<Record<Branch, number>>;
     ship_via_totals: Record<string, number>;
     grand_total: number;
+    grand_unshipped_value: number;
   };
   forecast_days: number;
 }
