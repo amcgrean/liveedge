@@ -19,6 +19,6 @@ export interface CreditMemo {
 }
 
 export const ALLOWED_SORTS = [
-  'so_id', 'cust_name', 'reference', 'city', 'so_status', 'system_id', 'doc_count', 'created_date',
+  'so_id', 'cust_name', 'reference', 'city', 'so_status', 'system_id', 'doc_count', 'created_date', 'expect_date',
 ] as const;
 export type SortCol = typeof ALLOWED_SORTS[number];

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { requireCapability, hasCapability } from '../../../src/lib/access-control';
 import { getErpSql } from '../../../db/supabase';
+import { getSelectedBranchCode } from '../../../src/lib/branch-context';
 import { ALLOWED_SORTS } from './_shared';
 import type { CreditMemo, SortCol } from './_shared';
 
@@ -13,6 +14,7 @@ const SORT_SQL: Record<SortCol, string> = {
   system_id:    'soh.system_id',
   doc_count:    'COUNT(ci.id)',
   created_date: 'soh.created_date',
+  expect_date:  'soh.expect_date',
 };
 
 // GET /api/credits?q=&branch=&page=1&sort=created_date&dir=desc
@@ -42,9 +44,15 @@ export async function GET(req: NextRequest) {
     ? `${SORT_SQL[sort]} ${dir} ${nulls}`
     : `${SORT_SQL[sort]} ${dir} ${nulls}, soh.so_id DESC`;
 
+  // Follow the nav branch switcher: cookie wins. Admins selecting "All" (no cookie)
+  // see every branch; non-admins fall back to their assigned home branch if the
+  // cookie isn't set yet. An explicit ?branch= param overrides for admins.
   const isAdmin = hasCapability(session, 'branch.all');
-  const userBranch      = session.user.branch ?? '';
-  const effectiveBranch = isAdmin ? branch : userBranch;
+  const cookieBranch = (await getSelectedBranchCode()) ?? '';
+  const userBranch   = session.user.branch ?? '';
+  const effectiveBranch = isAdmin
+    ? (branch || cookieBranch)
+    : (cookieBranch || userBranch);
 
   try {
     const sql = getErpSql();

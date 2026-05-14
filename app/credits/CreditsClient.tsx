@@ -173,6 +173,17 @@ function ImagesPanel({ soId, onUploaded }: { soId: string; onUploaded: () => voi
                 : <ExternalLink className="w-3 h-3" />}
               View
             </button>
+          ) : img.link_url ? (
+            <a
+              href={img.link_url}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex items-center gap-1 text-xs text-cyan-400 hover:text-cyan-300 shrink-0"
+              title={img.link_url}
+            >
+              <ExternalLink className="w-3 h-3" />
+              Open Link
+            </a>
           ) : (
             <span className="text-xs text-gray-600 shrink-0">No file</span>
           )}
@@ -326,7 +337,7 @@ export default function CreditsClient() {
               <SortableHeader col="reference"    label="Reference / PO" activeCol={sortCol} activeDir={sortDir} onSort={handleSort} className="hidden lg:table-cell" />
               <SortableHeader col="city"         label="Location"       activeCol={sortCol} activeDir={sortDir} onSort={handleSort} className="hidden md:table-cell" />
               <SortableHeader col="so_status"    label="Status"         activeCol={sortCol} activeDir={sortDir} onSort={handleSort} />
-              <SortableHeader col="system_id"    label="Branch"         activeCol={sortCol} activeDir={sortDir} onSort={handleSort} className="hidden sm:table-cell" />
+              <SortableHeader col="expect_date"  label="Expected Pickup" activeCol={sortCol} activeDir={sortDir} onSort={handleSort} className="hidden sm:table-cell" />
               <SortableHeader col="doc_count"    label="Docs"           activeCol={sortCol} activeDir={sortDir} onSort={handleSort} />
               <SortableHeader col="created_date" label="Created"        activeCol={sortCol} activeDir={sortDir} onSort={handleSort} className="hidden md:table-cell" />
             </tr>
@@ -372,8 +383,8 @@ export default function CreditsClient() {
                     <td className="px-4 py-3">
                       <StatusBadge status={cm.so_status} />
                     </td>
-                    <td className="px-4 py-3 hidden sm:table-cell text-xs text-gray-400">
-                      {cm.system_id ?? '—'}
+                    <td className="px-4 py-3 hidden sm:table-cell text-xs text-gray-400 whitespace-nowrap">
+                      {fmt(cm.expect_date)}
                     </td>
                     <td className="px-4 py-3">
                       <button
