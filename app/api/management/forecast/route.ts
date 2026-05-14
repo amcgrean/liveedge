@@ -77,7 +77,11 @@ export async function GET(req: NextRequest) {
       bucket: 'far_future' | 'unscheduled';
     };
 
-    const [openRows, forecastRows, horizonRows, farFutureRows] = await Promise.all([
+    // Coverage gate: extended_price is populated by an upstream sync worker.
+    // While backfill is in progress we hide $ KPIs so partial sums don't get
+    // quoted as truth. Threshold of 99% leaves a tiny margin for non-essential
+    // rows (e.g. lines without an active item record).
+    const [openRows, forecastRows, horizonRows, farFutureRows, coverageRows] = await Promise.all([
       // ── Open orders by sale_type × branch (with $) ────────────────────────
       sql<OpenRow[]>`
         SELECT
@@ -192,7 +196,27 @@ export async function GET(req: NextRequest) {
         ORDER BY COALESCE(v.ordered_value, 0) DESC, soh.so_id DESC
         LIMIT 20
       `,
+      // ── Coverage gate — % of open SO lines with extended_price populated ──
+      sql<{ pct: string }[]>`
+        SELECT
+          COALESCE(
+            COUNT(*) FILTER (WHERE sol.extended_price IS NOT NULL) * 100.0
+              / NULLIF(COUNT(*), 0),
+            0
+          )::text AS pct
+        FROM agility_so_lines sol
+        JOIN agility_so_header soh
+          ON soh.so_id = sol.so_id AND soh.system_id = sol.system_id
+        WHERE sol.is_deleted = false
+          AND soh.is_deleted = false
+          AND UPPER(COALESCE(soh.so_status, '')) NOT IN ('I', 'C', 'X')
+          AND UPPER(COALESCE(soh.sale_type, '')) NOT IN ('HOLD', 'XINSTALL')
+          ${branch ? sql`AND soh.system_id = ${branch}` : sql``}
+      `,
     ]);
+
+    const dollarsCoveragePct = Number(coverageRows[0]?.pct ?? 0);
+    const dollarsReady = dollarsCoveragePct >= 99;
 
     // ── Pivot open orders: rows = sale_type, columns = branch ──
     const openMap = new Map<string, OpenOrderRow>();
@@ -354,6 +378,8 @@ export async function GET(req: NextRequest) {
         grand_unshipped_value: fcGrandUnshipped,
       },
       forecast_days: forecastDays,
+      dollars_coverage_pct: dollarsCoveragePct,
+      dollars_ready: dollarsReady,
     };
 
     const res = NextResponse.json(payload);

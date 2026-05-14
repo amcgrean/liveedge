@@ -88,7 +88,11 @@ function isWeekend(s: string): boolean {
   return d === 0 || d === 6;
 }
 
-function fmtMoney(n: number, compact = false): string {
+function fmtMoney(n: number, compact = false, ready = true): string {
+  // The server flips `dollars_ready` to false while the upstream extended_price
+  // backfill is < 99% populated. Until then $ aggregates reflect only the
+  // populated subset, so we render '—' to avoid quoting a wrong-too-low total.
+  if (!ready) return '—';
   if (!Number.isFinite(n) || n === 0) return '$0';
   if (compact && Math.abs(n) >= 1000) {
     return '$' + new Intl.NumberFormat('en-US', {
@@ -106,6 +110,10 @@ export default function ForecastClient({ isAdmin, userBranch }: Props) {
   const [data, setData] = useState<ForecastPayload | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  // Wraps fmtMoney with the server's coverage gate so every $ tile/cell/column
+  // automatically reads '—' until extended_price backfill is >= 99% populated.
+  const dollarsReady = data?.dollars_ready ?? false;
+  const $m = (n: number, compact = false) => fmtMoney(n, compact, dollarsReady);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -162,10 +170,15 @@ export default function ForecastClient({ isAdmin, userBranch }: Props) {
       accessor: (r) => r.by_branch[b] ?? 0,
       align: 'right',
     })),
-    { key: 'total',           header: 'Orders',         accessor: (r) => r.total,           align: 'right' },
-    { key: 'ordered_value',   header: 'Ordered $',      accessor: (r) => r.ordered_value,   align: 'right' },
-    { key: 'unshipped_value', header: 'Unshipped $',    accessor: (r) => r.unshipped_value, align: 'right' },
-  ], [branchesShown]);
+    { key: 'total', header: 'Orders', accessor: (r) => r.total, align: 'right' },
+    // $ columns are excluded from the export column defs while the upstream
+    // extended_price backfill is incomplete — otherwise the CSV/copy buttons
+    // (TableToolbar -> rowsToCsv) would leak the partial-coverage subset totals.
+    ...(dollarsReady ? [
+      { key: 'ordered_value',   header: 'Ordered $',   accessor: (r: OpenOrderRow) => r.ordered_value,   align: 'right' as const },
+      { key: 'unshipped_value', header: 'Unshipped $', accessor: (r: OpenOrderRow) => r.unshipped_value, align: 'right' as const },
+    ] : []),
+  ], [branchesShown, dollarsReady]);
 
   const { sortedRows: sortedOpenOrders, sort: openSort, toggle: toggleOpen } = useTableSort({
     rows: data?.open_orders.rows ?? [],
@@ -188,10 +201,12 @@ export default function ForecastClient({ isAdmin, userBranch }: Props) {
         accessor: (d) => d.by_ship_via[sv] ?? 0,
         align: 'right',
       })),
-      { key: 'total',           header: 'Orders',      accessor: (d) => d.total,           align: 'right' },
-      { key: 'unshipped_value', header: 'Unshipped $', accessor: (d) => d.unshipped_value, align: 'right' },
+      { key: 'total', header: 'Orders', accessor: (d) => d.total, align: 'right' },
+      ...(dollarsReady ? [
+        { key: 'unshipped_value', header: 'Unshipped $', accessor: (d: ForecastDayRow) => d.unshipped_value, align: 'right' as const },
+      ] : []),
     ];
-  }, [data, branchesShown]);
+  }, [data, branchesShown, dollarsReady]);
 
   return (
     <div className="p-4 md:p-6 space-y-6 max-w-[110rem] mx-auto">
@@ -264,6 +279,19 @@ export default function ForecastClient({ isAdmin, userBranch }: Props) {
         </div>
       )}
 
+      {data && !dollarsReady && (
+        <div className="p-3 bg-amber-950/30 border border-amber-700/60 rounded-lg text-amber-200 text-sm flex items-start gap-2">
+          <AlertTriangle className="w-4 h-4 mt-0.5 shrink-0 text-amber-400" />
+          <div>
+            <strong className="font-semibold">Dollar values temporarily hidden.</strong>{' '}
+            UOM-aware <code className="font-mono text-amber-300">extended_price</code> is
+            <strong> {data.dollars_coverage_pct.toFixed(1)}%</strong> populated upstream
+            (target ≥ 99%). Counts remain accurate; $ tiles will return automatically once
+            the backfill completes.
+          </div>
+        </div>
+      )}
+
       {data && (
         <>
           {/* ── KPI Strip ─────────────────────────────────────────────────── */}
@@ -279,14 +307,14 @@ export default function ForecastClient({ isAdmin, userBranch }: Props) {
               <KpiTile
                 icon={<DollarSign className="w-5 h-5 text-emerald-400" />}
                 label="Open Ordered $"
-                value={fmtMoney(data.kpis.ordered_value, true)}
+                value={$m(data.kpis.ordered_value, true)}
                 hint="all open SOs · sold value"
                 emphasize
               />
               <KpiTile
                 icon={<Truck className="w-5 h-5 text-emerald-400" />}
                 label="Unshipped $"
-                value={fmtMoney(data.kpis.unshipped_value, true)}
+                value={$m(data.kpis.unshipped_value, true)}
                 hint="qty_ordered − qty_shipped × price"
                 emphasize
               />
@@ -317,7 +345,7 @@ export default function ForecastClient({ isAdmin, userBranch }: Props) {
                     <div className="text-right">
                       <div className="text-[10px] uppercase tracking-wide text-slate-500">Unshipped</div>
                       <div className="text-sm font-mono tabular-nums text-emerald-300">
-                        {fmtMoney(b.unshipped_value, true)}
+                        {$m(b.unshipped_value, true)}
                       </div>
                     </div>
                   </div>
@@ -362,7 +390,7 @@ export default function ForecastClient({ isAdmin, userBranch }: Props) {
                     </div>
                     <div className="text-[10px] text-slate-500 mb-2">{h.sub}</div>
                     <div className="text-xs font-mono tabular-nums text-emerald-300">
-                      {fmtMoney(b.unshipped_value, true)}
+                      {$m(b.unshipped_value, true)}
                     </div>
                     <div className="text-[10px] text-slate-500">unshipped $</div>
                   </div>
@@ -427,10 +455,10 @@ export default function ForecastClient({ isAdmin, userBranch }: Props) {
                             )}
                           </td>
                           <td className="px-3 py-2 text-right font-mono tabular-nums text-slate-300">
-                            {fmtMoney(o.ordered_value)}
+                            {$m(o.ordered_value)}
                           </td>
                           <td className="px-3 py-2 text-right font-mono tabular-nums text-emerald-300">
-                            {fmtMoney(o.unshipped_value)}
+                            {$m(o.unshipped_value)}
                           </td>
                         </tr>
                       ))}
@@ -549,10 +577,10 @@ export default function ForecastClient({ isAdmin, userBranch }: Props) {
                             {row.total.toLocaleString()}
                           </td>
                           <td className="px-4 py-2.5 text-right font-mono tabular-nums text-emerald-300">
-                            {fmtMoney(row.ordered_value, true)}
+                            {$m(row.ordered_value, true)}
                           </td>
                           <td className="px-4 py-2.5 text-right font-mono tabular-nums text-emerald-300 pr-4">
-                            {fmtMoney(row.unshipped_value, true)}
+                            {$m(row.unshipped_value, true)}
                           </td>
                         </tr>
                       ))}
@@ -572,10 +600,10 @@ export default function ForecastClient({ isAdmin, userBranch }: Props) {
                           {data.open_orders.grand_total.toLocaleString()}
                         </td>
                         <td className="px-4 py-2.5 text-right font-mono tabular-nums text-emerald-300">
-                          {fmtMoney(data.open_orders.grand_ordered_value, true)}
+                          {$m(data.open_orders.grand_ordered_value, true)}
                         </td>
                         <td className="px-4 py-2.5 text-right font-mono tabular-nums text-emerald-300 pr-4">
-                          {fmtMoney(data.open_orders.grand_unshipped_value, true)}
+                          {$m(data.open_orders.grand_unshipped_value, true)}
                         </td>
                       </tr>
                     </tbody>
@@ -613,7 +641,7 @@ export default function ForecastClient({ isAdmin, userBranch }: Props) {
                         Forecast by Day · Stacked by Branch
                       </span>
                       <span className="ml-auto text-xs text-slate-500">
-                        next {days} days · {fmtMoney(data.forecast.grand_unshipped_value, true)} unshipped $
+                        next {days} days · {$m(data.forecast.grand_unshipped_value, true)} unshipped $
                       </span>
                     </div>
                     <TimeSeriesChart
@@ -730,7 +758,7 @@ export default function ForecastClient({ isAdmin, userBranch }: Props) {
                               {d.total.toLocaleString()}
                             </td>
                             <td className="px-4 py-2.5 text-right font-mono tabular-nums text-emerald-300 pr-4">
-                              {d.unshipped_value ? fmtMoney(d.unshipped_value, true) : <span className="text-slate-700">·</span>}
+                              {d.unshipped_value ? $m(d.unshipped_value, true) : <span className="text-slate-700">·</span>}
                             </td>
                           </tr>
                         );
@@ -761,7 +789,7 @@ export default function ForecastClient({ isAdmin, userBranch }: Props) {
                           {data.forecast.grand_total.toLocaleString()}
                         </td>
                         <td className="px-4 py-2.5 text-right font-mono tabular-nums text-emerald-300 pr-4">
-                          {fmtMoney(data.forecast.grand_unshipped_value, true)}
+                          {$m(data.forecast.grand_unshipped_value, true)}
                         </td>
                       </tr>
                     </tbody>
