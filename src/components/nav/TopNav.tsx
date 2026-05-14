@@ -443,6 +443,7 @@ interface Props {
 export function TopNav({ userName, userRole }: Props) {
   const { data: session } = useSession();
   const pathname = usePathname();
+  const helpHref = `/help?from=${encodeURIComponent(pathname || '/')}`;
   const [openMenu, setOpenMenu] = React.useState<string | null>(null);
   const [mobileOpen, setMobileOpen] = React.useState(false);
   const [mobileOpenSections, setMobileOpenSections] = React.useState<Set<string>>(new Set());
@@ -685,7 +686,7 @@ export function TopNav({ userName, userRole }: Props) {
                     Report an Issue
                   </Link>
                   <Link
-                    href="/help"
+                    href={helpHref}
                     onClick={() => setOpenMenu(null)}
                     className="flex items-center gap-2.5 px-4 py-2.5 text-sm text-slate-300 hover:bg-slate-800 hover:text-white transition"
                   >
@@ -914,7 +915,7 @@ export function TopNav({ userName, userRole }: Props) {
                   Report an Issue
                 </Link>
                 <Link
-                  href="/help"
+                  href={helpHref}
                   className="flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm text-slate-300 hover:text-white hover:bg-slate-800 transition"
                 >
                   <HelpCircle className="w-4 h-4" />

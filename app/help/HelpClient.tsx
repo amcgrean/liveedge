@@ -118,7 +118,9 @@ type Props = { initialTopicId?: string };
 export default function HelpClient({ initialTopicId }: Props) {
   const searchParams = useSearchParams();
   const router = useRouter();
-  const urlTopic = searchParams.get('topic') || initialTopicId || TOPICS[0].id;
+  const fromPath = searchParams.get('from');
+  const inferredTopic = resolveTopicFromPath(fromPath);
+  const urlTopic = searchParams.get('topic') || inferredTopic || initialTopicId || TOPICS[0].id;
 
   const [q, setQ] = React.useState('');
   const [openGroups, setOpenGroups] = React.useState<Record<string, boolean>>(() =>
