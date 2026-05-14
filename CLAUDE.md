@@ -65,7 +65,7 @@ All LiveEdge API routes now query the optimized `agility_*` tables instead of th
 | `agility_receiving_header` | `erp_mirror_receiving_header` | Same structure |
 | `agility_receiving_lines` | `erp_mirror_receiving_detail` | Same structure |
 | `agility_ar_open` | (new) | AR open items — `cust_key`, `ref_num`, `open_amt`, `open_flag`. **`cust_key` ≠ `cust_code`** — must resolve via `agility_customers` LATERAL join first (see AR query pattern below) |
-| `agility_item_supplier` | (new, 2026-05-13) | Item × supplier × ship-from purchasing rules. One row per `(system_id, supplier_key, item_ptr, ship_from_seq_num)`. **`is_primary` flags the primary supplier per item.** Carries `lead_time_1..5`, `lead_time_flag`, `min_ord_qty`/`min_pak` + their `*_disp_uom` + `min_*_violation` rules (`Allow` / `Allow - Question` / `Block`), `supp_uom`, `use_uom_for_{po_entry,printed_po,po_check_in,receiving}`. Join to items via `item_ptr` (NOT `item`), to suppliers via `(supplier_key, ship_from_seq → ship_from_seq_num)`. Trim `supplier_key` — source pads with leading spaces. |
+| `agility_item_supplier` | (new, 2026-05-13) | Item × supplier × ship-from purchasing rules. One row per `(system_id, supplier_key, item_ptr, ship_from_seq_num)`. **`is_primary` flags the primary supplier per item.** Carries `lead_time_1..5`, `lead_time_flag`, `min_ord_qty`/`min_pak` + their `*_disp_uom` + `min_*_violation` rules (`Allow` / `Allow - Question` / `Block`), `supp_uom`, `use_uom_for_{po_entry,printed_po,po_check_in,receiving}`. Join to items via `item_ptr` (NOT `item`), to suppliers via `(supplier_key, ship_from_seq → ship_from_seq_num)`. **Always include `system_id` in the join predicate** — branch leak otherwise; items sold across branches resolve to the wrong rule. Trim `supplier_key` — source pads with leading spaces. |
 
 App views backed by agility_ tables (via the old erp_mirror_ as of 2026-04-04 — will be updated to point at agility_ tables):
 - `app_po_search` → `app_po_header` (matview) — enriched PO list for purchasing routes
@@ -670,9 +670,10 @@ PR [#278](https://github.com/amcgrean/liveedge/pull/278). Joined `agility_item_s
   - **Lead**: `MAX(ims.lead_time_1)` (conservative — surfaces the worst case)
   - **Min**: amber **Block** chip when any line has `ims.min_ord_violation = 'Block'`
 - **`/purchasing/pos/[po]`** — added three per-line columns: Lead (`lead_time_1`), Min Ord (`min_ord_qty` + `min_ord_qty_disp_uom`, amber when violation = `'Block'`), Supp UOM (`supp_uom`).
-- Join predicate (mandatory `TRIM` on supplier_key — `agility_item_supplier.supplier_key` is left-padded):
+- Join predicate (mandatory `TRIM` on supplier_key — `agility_item_supplier.supplier_key` is left-padded; **branch scoping** added by PR [#299](https://github.com/amcgrean/liveedge/pull/299) — `agility_item_supplier` is keyed by `(system_id, supplier_key, item_ptr, ship_from_seq_num)`, and without the `system_id` predicate an item sold across branches can resolve to a rule row from the wrong branch):
   ```sql
   ON ims.item_ptr = pl.item_ptr
+  AND ims.system_id = pl.system_id        -- mandatory; without it, cross-branch leak
   AND TRIM(ims.supplier_key) = TRIM(ph.supplier_key)
   AND ims.ship_from_seq_num = ph.shipfrom_seq
   AND ims.is_deleted = false
@@ -690,6 +691,7 @@ PR [#296](https://github.com/amcgrean/liveedge/pull/296). The `/purchasing/sugge
 - **UI** — 4 new columns on the expanded line table: Lead / Min Ord / Supp UOM / Primary. Amber background on Min Ord when violation = `'Block'`. Primary column shows an amber `AlertTriangle` chip when the item's primary supplier differs from the suggested PO's supplier. Item codes are now `Link`s to `/scorecard/product/item/[itemCode]?from=purchasing-suggested-buys`.
 - **`ScorecardBreadcrumb`** — added `'purchasing-suggested-buys'` origin kind → "Back to Suggested Buys".
 - **Override dropdown deferred**: the handoff prompt called for an inline dropdown to override the suggested supplier per line, but the page is a read-only ERP viewer (no Agility write-back wire-up yet), so a non-functional override control would be misleading. Surfacing the mismatch chip + linking out to the item scorecard accomplishes the same intent: a buyer can see at a glance that a non-primary supplier was suggested and click through to investigate before approving. Build the override dropdown only when an Agility write-back endpoint exists for `agility_suggested_po_lines.supplier_code` mutation.
+- **Branch scoping** (added in-PR after Codex P2 review): both LATERALs filter `ims.system_id = spl.system_id`. Without it, an item sold across multiple branches with branch-specific purchasing rules could resolve to the wrong row.
 - No new indexes — `(item_ptr)` and `(supplier_key, ship_from_seq_num)` already cover both LATERAL lookups.
 
 #### Still Missing / Deferred
