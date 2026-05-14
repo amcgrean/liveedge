@@ -45,6 +45,17 @@ const BRANCH_OPTIONS = [
 
 const DAYS_OPTIONS = [7, 14, 30] as const;
 
+// ── Temporary kill-switch for dollar KPIs ────────────────────────────────────
+// The previous `qty_ordered * price` math overstated open-order $ by 10–100×
+// because `price` is denominated in a UOM identified by `price_uom_ptr` with
+// no conversion factor available in Supabase. Sync-worker PR #32 (beisser-api
+// repo) added a UOM-aware `extended_price` column on `agility_so_lines` plus
+// a rebuilt `v_open_order_value` view. Backfill is mid-flight as of 2026-05-14.
+// Re-enable this flag once `extended_price IS NOT NULL` on ≥99% of open SO
+// lines (verify with the SQL in the PR-32 handoff) and swap the API route to
+// `SUM(extended_price)` / `SUM(unshipped_extended_price)`.
+const SHOW_DOLLARS = false;
+
 // Horizon display order + labels. Overdue and far-future/unscheduled get
 // stronger visual weight since they're the actionable buckets.
 const HORIZONS: Array<{
@@ -89,6 +100,7 @@ function isWeekend(s: string): boolean {
 }
 
 function fmtMoney(n: number, compact = false): string {
+  if (!SHOW_DOLLARS) return '—';
   if (!Number.isFinite(n) || n === 0) return '$0';
   if (compact && Math.abs(n) >= 1000) {
     return '$' + new Intl.NumberFormat('en-US', {
@@ -250,6 +262,20 @@ export default function ForecastClient({ isAdmin, userBranch }: Props) {
           </button>
         </div>
       </div>
+
+      {!SHOW_DOLLARS && (
+        <div className="p-3 bg-amber-950/30 border border-amber-700/60 rounded-lg text-amber-200 text-sm flex items-start gap-2">
+          <AlertTriangle className="w-4 h-4 mt-0.5 shrink-0 text-amber-400" />
+          <div>
+            <strong className="font-semibold">Dollar values temporarily hidden.</strong>{' '}
+            The forecast previously summed <code className="font-mono text-amber-300">qty_ordered × price</code> without
+            applying UOM conversion, which overstated open-order $ by 10–100× on lumber lines.
+            A UOM-aware <code className="font-mono text-amber-300">extended_price</code> column is being backfilled
+            upstream (beisser-api PR #32). Counts remain accurate; $ tiles will return once the
+            backfill is verified.
+          </div>
+        </div>
+      )}
 
       {error && (
         <div className="p-3 bg-red-900/30 border border-red-700/60 rounded-lg text-red-300 text-sm">
