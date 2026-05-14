@@ -17,14 +17,16 @@ import {
 // GET /api/management/forecast?days=14&branch=
 //
 // Backs the /management/forecast page. Returns:
-//  - kpis              — open order count + ready-to-ship $ totals (overall + per branch)
+//  - kpis              — open order count + $ totals (overall + per branch)
 //  - horizons          — open orders bucketed by time horizon (overdue / 7 / 8-30 / 31-90 / 91+ / far-future / unscheduled)
 //  - far_future_orders — top 20 orders with placeholder or missing dates (data-hygiene drill-down)
-//  - open_orders       — sale-type × branch pivot, now with $ alongside counts
+//  - open_orders       — sale-type × branch pivot with $ alongside counts
 //  - forecast          — per-day count + unshipped $ (next `days` days)
 //
-// $ figures come from v_open_order_value which is scoped to so_status='K'
-// (ready-to-ship). Counts cover all open statuses except I/C/X/HOLD/XINSTALL.
+// $ figures are computed inline from agility_so_lines:
+//   ordered_value   = SUM(qty_ordered * price)
+//   unshipped_value = SUM((qty_ordered - COALESCE(qty_shipped, 0)) * price)
+// Covers all open statuses (I/C/X/HOLD/XINSTALL excluded) — same scope as counts.
 export async function GET(req: NextRequest) {
   const authResult = await requireCapability('branch.all');
   if (authResult instanceof NextResponse) return authResult;
@@ -81,8 +83,14 @@ export async function GET(req: NextRequest) {
           COALESCE(SUM(v.ordered_value), 0)::text   AS ordered_value,
           COALESCE(SUM(v.unshipped_value), 0)::text AS unshipped_value
         FROM agility_so_header soh
-        LEFT JOIN v_open_order_value v
-          ON v.so_id = soh.so_id AND v.system_id = soh.system_id
+        LEFT JOIN (
+          SELECT system_id, so_id,
+            SUM(qty_ordered * price)                                       AS ordered_value,
+            SUM((qty_ordered - COALESCE(qty_shipped, 0)) * price)          AS unshipped_value
+          FROM agility_so_lines
+          WHERE is_deleted = false
+          GROUP BY system_id, so_id
+        ) v ON v.so_id = soh.so_id AND v.system_id = soh.system_id
         WHERE soh.is_deleted = false
           AND UPPER(COALESCE(soh.so_status, '')) NOT IN ('I', 'C', 'X')
           AND UPPER(COALESCE(soh.sale_type, '')) NOT IN ('HOLD', 'XINSTALL')
@@ -98,8 +106,13 @@ export async function GET(req: NextRequest) {
           COUNT(*)::text AS cnt,
           COALESCE(SUM(v.unshipped_value), 0)::text AS unshipped_value
         FROM agility_so_header soh
-        LEFT JOIN v_open_order_value v
-          ON v.so_id = soh.so_id AND v.system_id = soh.system_id
+        LEFT JOIN (
+          SELECT system_id, so_id,
+            SUM((qty_ordered - COALESCE(qty_shipped, 0)) * price) AS unshipped_value
+          FROM agility_so_lines
+          WHERE is_deleted = false
+          GROUP BY system_id, so_id
+        ) v ON v.so_id = soh.so_id AND v.system_id = soh.system_id
         WHERE soh.is_deleted = false
           AND UPPER(COALESCE(soh.so_status, '')) NOT IN ('I', 'C', 'X')
           AND UPPER(COALESCE(soh.sale_type, '')) NOT IN ('DIRECT', 'WILLCALL', 'XINSTALL', 'HOLD')
@@ -127,8 +140,14 @@ export async function GET(req: NextRequest) {
           COALESCE(SUM(v.ordered_value), 0)::text   AS ordered_value,
           COALESCE(SUM(v.unshipped_value), 0)::text AS unshipped_value
         FROM agility_so_header soh
-        LEFT JOIN v_open_order_value v
-          ON v.so_id = soh.so_id AND v.system_id = soh.system_id
+        LEFT JOIN (
+          SELECT system_id, so_id,
+            SUM(qty_ordered * price)                                       AS ordered_value,
+            SUM((qty_ordered - COALESCE(qty_shipped, 0)) * price)          AS unshipped_value
+          FROM agility_so_lines
+          WHERE is_deleted = false
+          GROUP BY system_id, so_id
+        ) v ON v.so_id = soh.so_id AND v.system_id = soh.system_id
         WHERE soh.is_deleted = false
           AND UPPER(COALESCE(soh.so_status, '')) NOT IN ('I', 'C', 'X')
           AND UPPER(COALESCE(soh.sale_type, '')) NOT IN ('HOLD', 'XINSTALL')
@@ -150,8 +169,14 @@ export async function GET(req: NextRequest) {
           COALESCE(v.unshipped_value, 0)::text AS unshipped_value,
           CASE WHEN soh.expect_date IS NULL THEN 'unscheduled' ELSE 'far_future' END AS bucket
         FROM agility_so_header soh
-        LEFT JOIN v_open_order_value v
-          ON v.so_id = soh.so_id AND v.system_id = soh.system_id
+        LEFT JOIN (
+          SELECT system_id, so_id,
+            SUM(qty_ordered * price)                                       AS ordered_value,
+            SUM((qty_ordered - COALESCE(qty_shipped, 0)) * price)          AS unshipped_value
+          FROM agility_so_lines
+          WHERE is_deleted = false
+          GROUP BY system_id, so_id
+        ) v ON v.so_id = soh.so_id AND v.system_id = soh.system_id
         WHERE soh.is_deleted = false
           AND UPPER(COALESCE(soh.so_status, '')) NOT IN ('I', 'C', 'X')
           AND UPPER(COALESCE(soh.sale_type, '')) NOT IN ('HOLD', 'XINSTALL')

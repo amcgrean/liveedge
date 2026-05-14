@@ -10,7 +10,7 @@ export interface OpenOrderRow {
   /** Branch code → open SO count */
   by_branch: Partial<Record<Branch, number>>;
   total: number;
-  /** Ready-to-ship dollar value (status K only — from v_open_order_value) */
+  /** Dollar value computed inline from agility_so_lines (all open statuses) */
   ordered_value: number;
   unshipped_value: number;
 }
@@ -20,13 +20,12 @@ export interface ForecastDayRow {
   total: number;
   by_branch: Partial<Record<Branch, number>>;
   by_ship_via: Record<string, number>;
-  /** Sum of unshipped_value across orders expected this day (K-status only) */
+  /** Sum of unshipped_value across orders expected this day */
   unshipped_value: number;
 }
 
-/** Bucketed-by-time-horizon open orders. Counts cover all open statuses
- *  (excluding HOLD/XINSTALL/I/C/X); value fields reflect ready-to-ship (K)
- *  orders only, since v_open_order_value is K-scoped. */
+/** Bucketed-by-time-horizon open orders. Counts and $ both cover all open
+ *  statuses (excluding HOLD/XINSTALL/I/C/X). */
 export interface HorizonBucket {
   count: number;
   ordered_value: number;

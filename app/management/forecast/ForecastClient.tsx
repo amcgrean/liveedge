@@ -278,16 +278,16 @@ export default function ForecastClient({ isAdmin, userBranch }: Props) {
               />
               <KpiTile
                 icon={<DollarSign className="w-5 h-5 text-emerald-400" />}
-                label="Ordered $ (ready-to-ship)"
+                label="Open Ordered $"
                 value={fmtMoney(data.kpis.ordered_value, true)}
-                hint="status K only · sold value"
+                hint="all open SOs · sold value"
                 emphasize
               />
               <KpiTile
                 icon={<Truck className="w-5 h-5 text-emerald-400" />}
-                label="Unshipped $ (ready-to-ship)"
+                label="Unshipped $"
                 value={fmtMoney(data.kpis.unshipped_value, true)}
-                hint="status K only · still to ship"
+                hint="qty_ordered − qty_shipped × price"
                 emphasize
               />
               <KpiTile
@@ -332,7 +332,7 @@ export default function ForecastClient({ isAdmin, userBranch }: Props) {
               <SectionTitle>Open Orders by Time Horizon</SectionTitle>
               <span className="text-[10px] text-slate-500 flex items-center gap-1">
                 <HelpCircle className="w-3 h-3" />
-                $ figures reflect status-K (ready-to-ship) orders only
+                $ = SUM(qty_ordered × price) on all open SO lines
               </span>
             </div>
             <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-7 gap-2">
@@ -776,14 +776,15 @@ export default function ForecastClient({ isAdmin, userBranch }: Props) {
           <p className="text-xs text-slate-500 flex items-start gap-2">
             <Truck className="w-3.5 h-3.5 mt-0.5 shrink-0 text-slate-600" />
             <span>
-              Open-order <strong className="text-slate-400">counts</strong> include all open statuses
-              (will-call, direct, ready-to-ship, partial/short) and exclude HOLD/XINSTALL.
-              <strong className="text-slate-400"> Dollar values</strong> come from the ready-to-ship
-              view (status K only), so $ totals trend lower than count totals would suggest. The
-              daily delivery forecast still excludes will-call and direct ships since those don't
-              produce a yard/dispatch shipment. Far-future/unscheduled orders cover anything past
-              two years out or with a NULL expect-date — these don't appear in the daily forecast
-              chart and represent data-hygiene opportunities for sales reps.
+              Open-order <strong className="text-slate-400">counts and dollars</strong> include
+              all open statuses (will-call, direct, ready-to-ship, partial/short) and exclude
+              HOLD/XINSTALL. Dollar values are computed inline from agility_so_lines as
+              SUM(qty_ordered × price) for ordered and SUM((qty_ordered − qty_shipped) × price)
+              for unshipped. The daily delivery forecast still excludes will-call and direct
+              ships since those don't produce a yard/dispatch shipment. Far-future/unscheduled
+              orders cover anything past two years out or with a NULL expect-date — these don't
+              appear in the daily forecast chart and represent data-hygiene opportunities for
+              sales reps.
             </span>
           </p>
         </>
