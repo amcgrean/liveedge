@@ -216,7 +216,12 @@ export async function GET(req: NextRequest) {
     ]);
 
     const dollarsCoveragePct = Number(coverageRows[0]?.pct ?? 0);
-    const dollarsReady = dollarsCoveragePct >= 99;
+    // Backfill caught up 2026-05-15 with ~96.83% coverage. The ~3.17% gap is
+    // structural — source SO lines with NULL/0 price or qty for which the
+    // upstream view can't compute extended_price (comment lines, freight,
+    // legacy data). They will never populate. Threshold sits below the
+    // structural floor so the gate is "live" once the watermark is current.
+    const dollarsReady = dollarsCoveragePct >= 95;
 
     // ── Pivot open orders: rows = sale_type, columns = branch ──
     const openMap = new Map<string, OpenOrderRow>();
