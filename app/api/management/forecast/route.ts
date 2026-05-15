@@ -216,12 +216,16 @@ export async function GET(req: NextRequest) {
     ]);
 
     const dollarsCoveragePct = Number(coverageRows[0]?.pct ?? 0);
-    // Backfill caught up 2026-05-15 with ~96.83% coverage. The ~3.17% gap is
-    // structural — source SO lines with NULL/0 price or qty for which the
-    // upstream view can't compute extended_price (comment lines, freight,
-    // legacy data). They will never populate. Threshold sits below the
-    // structural floor so the gate is "live" once the watermark is current.
-    const dollarsReady = dollarsCoveragePct >= 95;
+    // Coverage gate intentionally always-on as of 2026-05-15. Backfill is
+    // ~96% steady-state and the remaining gap is structural (source SO lines
+    // with NULL/0 price or qty — comment lines, freight, legacy data — that
+    // can never produce an extended_price). The threshold floats just below
+    // 0 so the page shows $ unconditionally. `dollars_coverage_pct` is still
+    // returned on the payload as an emergency lever: bump this back to e.g.
+    // 90 if a sync outage ever drops coverage far enough to materially distort
+    // totals, and the banner/hide logic kicks back in without further code.
+    const DOLLARS_COVERAGE_THRESHOLD = -1;
+    const dollarsReady = dollarsCoveragePct >= DOLLARS_COVERAGE_THRESHOLD;
 
     // ── Pivot open orders: rows = sale_type, columns = branch ──
     const openMap = new Map<string, OpenOrderRow>();
