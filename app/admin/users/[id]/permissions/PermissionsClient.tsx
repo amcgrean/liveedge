@@ -154,24 +154,6 @@ export default function PermissionsClient() {
     setSuccess('');
   };
 
-  if (loading) return <div className="max-w-3xl p-8 text-slate-400">Loading…</div>;
-  if (!data) return (
-    <div className="max-w-3xl p-8">
-      <p className="text-red-400 mb-4">{error || 'User not found'}</p>
-      {error && (
-        <button onClick={() => fetchData()} className="btn-secondary text-sm">
-          Retry
-        </button>
-      )}
-    </div>
-  );
-
-  const { user } = data;
-  const effectiveSet = new Set(data.effective_capabilities);
-  const roleDefaultSet = new Set(
-    user.roles.flatMap((r) => data.role_defaults[r] ?? [])
-  );
-
   const tabs = useMemo(
     () => Object.entries(
       capabilities.reduce<Record<string, CapabilityDef[]>>((acc, cap) => {
@@ -189,6 +171,24 @@ export default function PermissionsClient() {
       setActiveTab(tabs[0].id);
     }
   }, [tabs, activeTab]);
+
+  if (loading) return <div className="max-w-3xl p-8 text-slate-400">Loading…</div>;
+  if (!data) return (
+    <div className="max-w-3xl p-8">
+      <p className="text-red-400 mb-4">{error || 'User not found'}</p>
+      {error && (
+        <button onClick={() => fetchData()} className="btn-secondary text-sm">
+          Retry
+        </button>
+      )}
+    </div>
+  );
+
+  const { user } = data;
+  const effectiveSet = new Set(data.effective_capabilities);
+  const roleDefaultSet = new Set(
+    user.roles.flatMap((r) => data.role_defaults[r] ?? [])
+  );
 
   return (
     <div className="max-w-3xl">
