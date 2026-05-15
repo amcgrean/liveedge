@@ -4,8 +4,9 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import {
   Calendar, RefreshCw, ChevronLeft, Truck, Layers, AlertTriangle, BarChart3,
-  DollarSign, Package, Clock, HelpCircle,
+  DollarSign, Package, Clock, HelpCircle, X, ExternalLink,
 } from 'lucide-react';
+import type { DrillBucket, DrillOrder } from '../../api/management/forecast/drill/route';
 import type {
   ForecastPayload, Branch, OpenOrderRow, ForecastDayRow,
   HorizonKey, HorizonBucket,
@@ -110,6 +111,7 @@ export default function ForecastClient({ isAdmin, userBranch }: Props) {
   const [data, setData] = useState<ForecastPayload | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [drill, setDrill] = useState<{ bucket: DrillBucket; label: string; branch?: string } | null>(null);
   // Wraps fmtMoney with the server's coverage gate so every $ tile/cell/column
   // automatically reads '—' until extended_price backfill is >= 99% populated.
   const dollarsReady = data?.dollars_ready ?? false;
@@ -303,6 +305,7 @@ export default function ForecastClient({ isAdmin, userBranch }: Props) {
                 label="Open Orders"
                 value={data.kpis.open_order_count.toLocaleString()}
                 hint="all open statuses · excl. HOLD/XINSTALL"
+                onClick={() => setDrill({ bucket: 'open', label: 'All open orders' })}
               />
               <KpiTile
                 icon={<DollarSign className="w-5 h-5 text-emerald-400" />}
@@ -310,6 +313,7 @@ export default function ForecastClient({ isAdmin, userBranch }: Props) {
                 value={$m(data.kpis.ordered_value, true)}
                 hint="all open SOs · sold value"
                 emphasize
+                onClick={() => setDrill({ bucket: 'open', label: 'All open orders (sorted by $)' })}
               />
               <KpiTile
                 icon={<Truck className="w-5 h-5 text-emerald-400" />}
@@ -317,6 +321,7 @@ export default function ForecastClient({ isAdmin, userBranch }: Props) {
                 value={$m(data.kpis.unshipped_value, true)}
                 hint="qty_ordered − qty_shipped × price"
                 emphasize
+                onClick={() => setDrill({ bucket: 'open', label: 'All open orders (sorted by unshipped $)' })}
               />
               <KpiTile
                 icon={<AlertTriangle className="w-5 h-5 text-amber-400" />}
@@ -324,19 +329,27 @@ export default function ForecastClient({ isAdmin, userBranch }: Props) {
                 value={data.kpis.unscheduled_or_far_future_count.toLocaleString()}
                 hint="parked on placeholder dates · clean up"
                 warn={data.kpis.unscheduled_or_far_future_count > 0}
+                onClick={() => setDrill({ bucket: 'far_future_unscheduled', label: 'No-date / far-future orders' })}
               />
             </div>
 
             {data.kpis.by_branch.length > 0 && (
               <div className="mt-3 grid grid-cols-2 lg:grid-cols-4 gap-2">
                 {data.kpis.by_branch.map((b) => (
-                  <div
+                  <button
                     key={b.branch}
-                    className="bg-slate-800/40 border border-slate-700 rounded-lg px-3 py-2 flex items-center justify-between"
+                    type="button"
+                    onClick={() => setDrill({
+                      bucket: 'open',
+                      branch: b.branch,
+                      label: `${BRANCH_LABELS[b.branch] ?? b.branch} · open orders`,
+                    })}
+                    className="bg-slate-800/40 border border-slate-700 rounded-lg px-3 py-2 flex items-center justify-between text-left transition hover:border-cyan-500/60 hover:bg-slate-800/60 focus:outline-none focus:ring-2 focus:ring-cyan-500/50"
                   >
                     <div>
-                      <div className="text-[10px] uppercase tracking-wide text-slate-500">
+                      <div className="text-[10px] uppercase tracking-wide text-slate-500 flex items-center gap-1">
                         {BRANCH_LABELS[b.branch] ?? b.branch}
+                        <ExternalLink className="w-3 h-3 text-slate-600" />
                       </div>
                       <div className="text-sm font-semibold text-white">
                         {b.count.toLocaleString()} <span className="text-xs text-slate-500 font-normal">orders</span>
@@ -348,7 +361,7 @@ export default function ForecastClient({ isAdmin, userBranch }: Props) {
                         {$m(b.unshipped_value, true)}
                       </div>
                     </div>
-                  </div>
+                  </button>
                 ))}
               </div>
             )}
@@ -366,10 +379,22 @@ export default function ForecastClient({ isAdmin, userBranch }: Props) {
             <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-7 gap-2">
               {HORIZONS.map((h) => {
                 const b: HorizonBucket = data.horizons[h.key];
+                const disabled = b.count === 0;
                 return (
-                  <div
+                  <button
                     key={h.key}
-                    className={`rounded-lg border ${TONE_CLASSES[h.tone]} p-3 print:break-inside-avoid`}
+                    type="button"
+                    disabled={disabled}
+                    onClick={() => setDrill({
+                      bucket: h.key,
+                      label: `${h.label} · ${h.sub}`,
+                      branch: branch || undefined,
+                    })}
+                    className={`rounded-lg border ${TONE_CLASSES[h.tone]} p-3 print:break-inside-avoid text-left transition ${
+                      disabled
+                        ? 'opacity-50 cursor-not-allowed'
+                        : 'hover:border-cyan-500/60 hover:bg-slate-800/60 focus:outline-none focus:ring-2 focus:ring-cyan-500/50 cursor-pointer'
+                    }`}
                   >
                     <div className="flex items-center gap-1 mb-1">
                       <Clock className={`w-3 h-3 ${
@@ -384,6 +409,7 @@ export default function ForecastClient({ isAdmin, userBranch }: Props) {
                       }`}>
                         {h.label}
                       </span>
+                      {!disabled && <ExternalLink className="w-3 h-3 text-slate-600 ml-auto" />}
                     </div>
                     <div className="text-xl font-bold text-white font-mono tabular-nums">
                       {b.count.toLocaleString()}
@@ -393,7 +419,7 @@ export default function ForecastClient({ isAdmin, userBranch }: Props) {
                       {$m(b.unshipped_value, true)}
                     </div>
                     <div className="text-[10px] text-slate-500">unshipped $</div>
-                  </div>
+                  </button>
                 );
               })}
             </div>
@@ -817,12 +843,21 @@ export default function ForecastClient({ isAdmin, userBranch }: Props) {
           </p>
         </>
       )}
+
+      {drill && (
+        <DrillModal
+          bucket={drill.bucket}
+          branch={drill.branch ?? branch}
+          label={drill.label}
+          onClose={() => setDrill(null)}
+        />
+      )}
     </div>
   );
 }
 
 function KpiTile({
-  icon, label, value, hint, emphasize, warn,
+  icon, label, value, hint, emphasize, warn, onClick,
 }: {
   icon: React.ReactNode;
   label: string;
@@ -830,16 +865,19 @@ function KpiTile({
   hint?: string;
   emphasize?: boolean;
   warn?: boolean;
+  onClick?: () => void;
 }) {
-  return (
-    <div className={`rounded-lg border p-4 ${
-      warn ? 'border-amber-700/60 bg-amber-950/20'
-      : emphasize ? 'border-emerald-700/40 bg-emerald-950/10'
-      : 'border-slate-700 bg-slate-800/40'
-    } print:break-inside-avoid`}>
+  const baseCls = `rounded-lg border p-4 text-left w-full ${
+    warn ? 'border-amber-700/60 bg-amber-950/20'
+    : emphasize ? 'border-emerald-700/40 bg-emerald-950/10'
+    : 'border-slate-700 bg-slate-800/40'
+  } print:break-inside-avoid ${onClick ? 'transition hover:border-cyan-500/60 hover:bg-slate-800/60 cursor-pointer focus:outline-none focus:ring-2 focus:ring-cyan-500/50' : ''}`;
+  const inner = (
+    <>
       <div className="flex items-center gap-2 mb-1">
         {icon}
         <span className="text-[10px] uppercase tracking-widest font-bold text-slate-400">{label}</span>
+        {onClick && <ExternalLink className="w-3 h-3 text-slate-600 ml-auto" />}
       </div>
       <div className={`font-mono tabular-nums ${emphasize ? 'text-3xl' : 'text-2xl'} font-bold ${
         warn ? 'text-amber-200' : 'text-white'
@@ -847,6 +885,195 @@ function KpiTile({
         {value}
       </div>
       {hint && <div className="text-[10px] text-slate-500 mt-1">{hint}</div>}
+    </>
+  );
+  return onClick ? (
+    <button type="button" onClick={onClick} className={baseCls}>{inner}</button>
+  ) : (
+    <div className={baseCls}>{inner}</div>
+  );
+}
+
+// ────────────────────────── Drill modal ──────────────────────────
+// Fetches /api/management/forecast/drill on open and renders a filterable list
+// of the SOs behind a given KPI / horizon tile. ESC + backdrop click close.
+
+function fmtMoneyStrict(n: number, compact = false): string {
+  if (!Number.isFinite(n) || n === 0) return '$0';
+  if (compact && Math.abs(n) >= 1000) {
+    return '$' + new Intl.NumberFormat('en-US', {
+      notation: 'compact', maximumFractionDigits: 1,
+    }).format(n);
+  }
+  return '$' + Math.round(n).toLocaleString();
+}
+
+function DrillModal({
+  bucket, branch, label, onClose,
+}: {
+  bucket: DrillBucket;
+  branch: string;
+  label: string;
+  onClose: () => void;
+}) {
+  const [orders, setOrders] = useState<DrillOrder[] | null>(null);
+  const [truncated, setTruncated] = useState(false);
+  const [err, setErr] = useState('');
+  const [search, setSearch] = useState('');
+
+  useEffect(() => {
+    let cancelled = false;
+    setOrders(null);
+    setErr('');
+    const params = new URLSearchParams({ bucket });
+    if (branch) params.set('branch', branch);
+    fetch(`/api/management/forecast/drill?${params}`)
+      .then((r) => r.ok ? r.json() : Promise.reject(new Error(String(r.status))))
+      .then((d: { orders: DrillOrder[]; truncated: boolean }) => {
+        if (cancelled) return;
+        setOrders(d.orders);
+        setTruncated(d.truncated);
+      })
+      .catch((e: unknown) => {
+        if (cancelled) return;
+        setErr(`Failed to load drill: ${e instanceof Error ? e.message : ''}`);
+      });
+    return () => { cancelled = true; };
+  }, [bucket, branch]);
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [onClose]);
+
+  const filtered = useMemo(() => {
+    if (!orders) return null;
+    const q = search.trim().toLowerCase();
+    if (!q) return orders;
+    return orders.filter((o) =>
+      o.so_id.includes(q)
+      || (o.cust_name ?? '').toLowerCase().includes(q)
+      || (o.cust_code ?? '').toLowerCase().includes(q)
+      || (o.rep_1 ?? '').toLowerCase().includes(q),
+    );
+  }, [orders, search]);
+
+  const totalOrdered = useMemo(
+    () => filtered?.reduce((s, o) => s + o.ordered_value, 0) ?? 0,
+    [filtered],
+  );
+  const totalUnshipped = useMemo(
+    () => filtered?.reduce((s, o) => s + o.unshipped_value, 0) ?? 0,
+    [filtered],
+  );
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4" role="dialog" aria-modal="true">
+      <div className="absolute inset-0 bg-slate-950/80 backdrop-blur-sm" onClick={onClose} />
+      <div className="relative bg-slate-900 border border-white/15 rounded-2xl shadow-2xl w-full max-w-5xl max-h-[85vh] flex flex-col">
+        <div className="flex items-center justify-between px-6 py-4 border-b border-white/10">
+          <div>
+            <div className="text-[10px] uppercase tracking-widest text-slate-500 font-semibold">Drill</div>
+            <h2 className="text-lg font-bold text-white mt-0.5">{label}</h2>
+            {orders && (
+              <div className="text-xs text-slate-400 mt-0.5 font-mono tabular-nums">
+                {filtered?.length.toLocaleString()} {filtered?.length === 1 ? 'order' : 'orders'}
+                {truncated && ' (top 200 by unshipped $)'}
+                {' · '}
+                <span className="text-emerald-300">{fmtMoneyStrict(totalOrdered, true)}</span> ordered
+                {' · '}
+                <span className="text-emerald-300">{fmtMoneyStrict(totalUnshipped, true)}</span> unshipped
+              </div>
+            )}
+          </div>
+          <button
+            onClick={onClose}
+            className="p-2 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition"
+            aria-label="Close"
+          >
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+
+        <div className="px-6 py-3 border-b border-white/10">
+          <input
+            type="text"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Filter by SO #, customer, code, or rep..."
+            autoFocus
+            className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-cyan-500"
+          />
+        </div>
+
+        <div className="flex-1 overflow-auto">
+          {err && <div className="p-6 text-sm text-red-300">{err}</div>}
+          {!err && !orders && (
+            <div className="p-10 flex items-center justify-center text-slate-500 text-sm">
+              <RefreshCw className="w-4 h-4 animate-spin mr-2" />
+              Loading orders…
+            </div>
+          )}
+          {orders && filtered && filtered.length === 0 && (
+            <div className="p-10 text-center text-slate-500 text-sm">No orders match.</div>
+          )}
+          {filtered && filtered.length > 0 && (
+            <table className="w-full text-sm">
+              <thead className="sticky top-0 bg-slate-900 border-b border-slate-700 z-10">
+                <tr>
+                  <th className="px-4 py-2 text-left text-[10px] uppercase tracking-wide text-slate-400 font-semibold">SO #</th>
+                  <th className="px-4 py-2 text-left text-[10px] uppercase tracking-wide text-slate-400 font-semibold">Branch</th>
+                  <th className="px-4 py-2 text-left text-[10px] uppercase tracking-wide text-slate-400 font-semibold">Customer</th>
+                  <th className="px-4 py-2 text-left text-[10px] uppercase tracking-wide text-slate-400 font-semibold">Rep</th>
+                  <th className="px-4 py-2 text-left text-[10px] uppercase tracking-wide text-slate-400 font-semibold">Expect</th>
+                  <th className="px-4 py-2 text-left text-[10px] uppercase tracking-wide text-slate-400 font-semibold">Status</th>
+                  <th className="px-4 py-2 text-left text-[10px] uppercase tracking-wide text-slate-400 font-semibold">Type</th>
+                  <th className="px-4 py-2 text-right text-[10px] uppercase tracking-wide text-emerald-300 font-semibold">Ordered $</th>
+                  <th className="px-4 py-2 text-right text-[10px] uppercase tracking-wide text-emerald-300 font-semibold pr-6">Unshipped $</th>
+                </tr>
+              </thead>
+              <tbody>
+                {filtered.map((o) => (
+                  <tr key={`${o.system_id}-${o.so_id}`} className="border-b border-slate-800/60 hover:bg-slate-800/40 transition">
+                    <td className="px-4 py-2">
+                      <Link href={`/sales/orders/${o.so_id}`} className="text-cyan-400 hover:text-cyan-300 font-mono">
+                        {o.so_id}
+                      </Link>
+                    </td>
+                    <td className="px-4 py-2 text-slate-400 font-mono">{o.system_id}</td>
+                    <td className="px-4 py-2 text-slate-300">
+                      {o.cust_name ?? <span className="text-slate-600">—</span>}
+                      {o.cust_code && <span className="text-slate-500 text-xs ml-1">({o.cust_code})</span>}
+                    </td>
+                    <td className="px-4 py-2 text-slate-400">{o.rep_1 ?? '—'}</td>
+                    <td className="px-4 py-2 text-slate-400 font-mono">
+                      {o.expect_date
+                        ? new Date(o.expect_date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+                        : <span className="text-amber-400 italic">none</span>}
+                    </td>
+                    <td className="px-4 py-2">
+                      <span className="text-[10px] uppercase font-bold px-1.5 py-0.5 rounded bg-slate-700/60 text-slate-300">
+                        {o.so_status || 'B'}
+                      </span>
+                    </td>
+                    <td className="px-4 py-2 text-slate-400">{o.sale_type ?? '—'}</td>
+                    <td className="px-4 py-2 text-right font-mono tabular-nums text-slate-300">{fmtMoneyStrict(o.ordered_value)}</td>
+                    <td className="px-4 py-2 text-right font-mono tabular-nums text-emerald-300 pr-6">{fmtMoneyStrict(o.unshipped_value)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </div>
+
+        {orders && truncated && (
+          <div className="px-6 py-2 border-t border-white/10 text-[10px] text-amber-400/80 flex items-center gap-1">
+            <AlertTriangle className="w-3 h-3" />
+            Showing top 200 of a larger result. Narrow with the filter above or refine the bucket.
+          </div>
+        )}
+      </div>
     </div>
   );
 }
