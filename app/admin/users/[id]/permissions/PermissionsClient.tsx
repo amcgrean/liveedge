@@ -190,6 +190,21 @@ export default function PermissionsClient() {
     user.roles.flatMap((r) => data.role_defaults[r] ?? [])
   );
 
+  const tabs = Object.entries(
+    capabilities.reduce<Record<string, CapabilityDef[]>>((acc, cap) => {
+      (acc[cap.category] ||= []).push(cap);
+      return acc;
+    }, {})
+  ).map(([id, caps]) => ({ id, label: CATEGORY_LABELS[id] ?? id, caps }));
+
+  const currentTab = tabs.find((t) => t.id === activeTab) ?? tabs[0];
+
+  useEffect(() => {
+    if (tabs.length > 0 && !tabs.some((t) => t.id === activeTab)) {
+      setActiveTab(tabs[0].id);
+    }
+  }, [tabs, activeTab]);
+
   return (
     <div className="max-w-3xl">
       {/* Header */}
