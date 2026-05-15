@@ -849,6 +849,7 @@ export default function ForecastClient({ isAdmin, userBranch }: Props) {
           bucket={drill.bucket}
           branch={drill.branch ?? branch}
           label={drill.label}
+          dollarsReady={dollarsReady}
           onClose={() => setDrill(null)}
         />
       )}
@@ -898,7 +899,10 @@ function KpiTile({
 // Fetches /api/management/forecast/drill on open and renders a filterable list
 // of the SOs behind a given KPI / horizon tile. ESC + backdrop click close.
 
-function fmtMoneyStrict(n: number, compact = false): string {
+function fmtMoneyStrict(n: number, compact = false, ready = true): string {
+  // Mirrors fmtMoney() at the top of the file. Drill modal stays consistent
+  // with the parent page's coverage gate — '—' when dollarsReady is false.
+  if (!ready) return '—';
   if (!Number.isFinite(n) || n === 0) return '$0';
   if (compact && Math.abs(n) >= 1000) {
     return '$' + new Intl.NumberFormat('en-US', {
@@ -909,11 +913,12 @@ function fmtMoneyStrict(n: number, compact = false): string {
 }
 
 function DrillModal({
-  bucket, branch, label, onClose,
+  bucket, branch, label, dollarsReady, onClose,
 }: {
   bucket: DrillBucket;
   branch: string;
   label: string;
+  dollarsReady: boolean;
   onClose: () => void;
 }) {
   const [orders, setOrders] = useState<DrillOrder[] | null>(null);
@@ -979,11 +984,15 @@ function DrillModal({
             {orders && (
               <div className="text-xs text-slate-400 mt-0.5 font-mono tabular-nums">
                 {filtered?.length.toLocaleString()} {filtered?.length === 1 ? 'order' : 'orders'}
-                {truncated && ' (top 200 by unshipped $)'}
-                {' · '}
-                <span className="text-emerald-300">{fmtMoneyStrict(totalOrdered, true)}</span> ordered
-                {' · '}
-                <span className="text-emerald-300">{fmtMoneyStrict(totalUnshipped, true)}</span> unshipped
+                {truncated && ' (top 200)'}
+                {dollarsReady && (
+                  <>
+                    {' · '}
+                    <span className="text-emerald-300">{fmtMoneyStrict(totalOrdered, true, dollarsReady)}</span> ordered
+                    {' · '}
+                    <span className="text-emerald-300">{fmtMoneyStrict(totalUnshipped, true, dollarsReady)}</span> unshipped
+                  </>
+                )}
               </div>
             )}
           </div>
@@ -1029,8 +1038,12 @@ function DrillModal({
                   <th className="px-4 py-2 text-left text-[10px] uppercase tracking-wide text-slate-400 font-semibold">Expect</th>
                   <th className="px-4 py-2 text-left text-[10px] uppercase tracking-wide text-slate-400 font-semibold">Status</th>
                   <th className="px-4 py-2 text-left text-[10px] uppercase tracking-wide text-slate-400 font-semibold">Type</th>
-                  <th className="px-4 py-2 text-right text-[10px] uppercase tracking-wide text-emerald-300 font-semibold">Ordered $</th>
-                  <th className="px-4 py-2 text-right text-[10px] uppercase tracking-wide text-emerald-300 font-semibold pr-6">Unshipped $</th>
+                  {dollarsReady && (
+                    <>
+                      <th className="px-4 py-2 text-right text-[10px] uppercase tracking-wide text-emerald-300 font-semibold">Ordered $</th>
+                      <th className="px-4 py-2 text-right text-[10px] uppercase tracking-wide text-emerald-300 font-semibold pr-6">Unshipped $</th>
+                    </>
+                  )}
                 </tr>
               </thead>
               <tbody>
@@ -1058,8 +1071,12 @@ function DrillModal({
                       </span>
                     </td>
                     <td className="px-4 py-2 text-slate-400">{o.sale_type ?? '—'}</td>
-                    <td className="px-4 py-2 text-right font-mono tabular-nums text-slate-300">{fmtMoneyStrict(o.ordered_value)}</td>
-                    <td className="px-4 py-2 text-right font-mono tabular-nums text-emerald-300 pr-6">{fmtMoneyStrict(o.unshipped_value)}</td>
+                    {dollarsReady && (
+                      <>
+                        <td className="px-4 py-2 text-right font-mono tabular-nums text-slate-300">{fmtMoneyStrict(o.ordered_value, false, dollarsReady)}</td>
+                        <td className="px-4 py-2 text-right font-mono tabular-nums text-emerald-300 pr-6">{fmtMoneyStrict(o.unshipped_value, false, dollarsReady)}</td>
+                      </>
+                    )}
                   </tr>
                 ))}
               </tbody>
