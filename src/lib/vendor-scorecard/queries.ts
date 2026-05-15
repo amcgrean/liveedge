@@ -336,7 +336,7 @@ async function _fetchVendorList(params: VendorScorecardParams): Promise<VendorLi
             CASE WHEN ph.supplier_code = 'LMC1000'
               THEN ph.supplier_key || '::' || COALESCE(ph.shipfrom_seq::text, '0')
               ELSE ph.supplier_key END AS vendor_key,
-            ai.link_product_group AS product_group,
+            ai.product_major AS product_group,
             SUM(rl.cost) AS gs
           FROM agility_receiving_lines rl
           JOIN agility_receiving_header rh
@@ -349,8 +349,8 @@ async function _fetchVendorList(params: VendorScorecardParams): Promise<VendorLi
             AND ph.is_deleted = false AND ai.is_deleted = false
             AND ph.supplier_key = ANY(${rawKeys})
             AND rh.receive_date >= ${s}::date AND rh.receive_date < ${e}::date + 1
-            AND ai.link_product_group IS NOT NULL AND ai.link_product_group <> ''
-          GROUP BY vendor_key, ai.link_product_group
+            AND ai.product_major IS NOT NULL AND ai.product_major <> ''
+          GROUP BY vendor_key, ai.product_major
         ) sub
         ORDER BY vendor_key, gs DESC
       `;
@@ -516,7 +516,7 @@ async function _fetchVendorDetail(
           AND (${params.branch} = 'all' OR system_id = ${params.branch})
       )
       SELECT
-        COALESCE(ai.link_product_group, 'Unassigned') AS product_group,
+        COALESCE(NULLIF(TRIM(ai.product_major), ''), 'Unassigned') AS product_group,
         SUM(rl.cost)::numeric(18,2)::text AS spend_ytd
       FROM h
       JOIN agility_receiving_lines rl
@@ -697,14 +697,14 @@ async function _fetchProductGroups(
         AND receive_date >= ${s}::date AND receive_date < ${e}::date + 1
         AND (${params.branch} = 'all' OR system_id = ${params.branch})
     )
-    SELECT DISTINCT ai.link_product_group AS product_group
+    SELECT DISTINCT ai.product_major AS product_group
     FROM h
     JOIN agility_receiving_lines rl
       ON rl.system_id = h.system_id AND rl.po_id = h.po_id AND rl.receive_num = h.receive_num
     JOIN agility_items ai
       ON ai.item_ptr = rl.item_ptr
     WHERE rl.is_deleted = false AND ai.is_deleted = false
-      AND ai.link_product_group IS NOT NULL AND ai.link_product_group <> ''
+      AND ai.product_major IS NOT NULL AND ai.product_major <> ''
     ORDER BY product_group
     LIMIT 40
   `;
