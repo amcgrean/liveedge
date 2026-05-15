@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { useParams } from 'next/navigation';
 import { ArrowLeft, Save, Shield, Check, X } from 'lucide-react';
 import Link from 'next/link';
@@ -153,6 +153,24 @@ export default function PermissionsClient() {
     });
     setSuccess('');
   };
+
+  const tabs = useMemo(
+    () => Object.entries(
+      capabilities.reduce<Record<string, CapabilityDef[]>>((acc, cap) => {
+        (acc[cap.category] ||= []).push(cap);
+        return acc;
+      }, {})
+    ).map(([id, caps]) => ({ id, label: CATEGORY_LABELS[id] ?? id, caps })),
+    [capabilities]
+  );
+
+  const currentTab = tabs.find((t) => t.id === activeTab) ?? tabs[0];
+
+  useEffect(() => {
+    if (tabs.length > 0 && !tabs.some((t) => t.id === activeTab)) {
+      setActiveTab(tabs[0].id);
+    }
+  }, [tabs, activeTab]);
 
   if (loading) return <div className="max-w-3xl p-8 text-slate-400">Loading…</div>;
   if (!data) return (
