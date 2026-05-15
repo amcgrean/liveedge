@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { useParams } from 'next/navigation';
 import { ArrowLeft, Save, Shield, Check, X } from 'lucide-react';
 import Link from 'next/link';
@@ -13,56 +13,20 @@ interface CapabilityDef {
   code: string;
   label: string;
   desc: string;
+  category: string;
+  risk: string;
 }
 
-const TABS: { id: string; label: string; caps: CapabilityDef[] }[] = [
-  {
-    id: 'pages',
-    label: 'Pages & Menus',
-    caps: [
-      { code: 'yard.view',             label: 'Yard View',             desc: 'Access to picks board, open picks, picker stats, work orders' },
-      { code: 'dispatch.view',         label: 'Dispatch View',         desc: 'Access to dispatch board, delivery tracker, fleet map' },
-      { code: 'sales.view',            label: 'Sales View',            desc: 'Access to sales hub, customers, transactions, orders' },
-      { code: 'credits.view',          label: 'Credits View',          desc: 'Access to RMA credits list' },
-      { code: 'purchasing.view',       label: 'Purchasing View',       desc: 'Access to buyer workspace, open POs, command center' },
-      { code: 'ar.view',              label: 'AR View',               desc: 'Access to accounts receivable data' },
-      { code: 'admin.audit.view',      label: 'Admin — Audit Log',     desc: 'Access to the audit log page' },
-      { code: 'admin.products.view',   label: 'Admin — Products/SKUs', desc: 'Access to product and SKU management' },
-      { code: 'admin.customers.view',  label: 'Admin — Customers',     desc: 'Access to admin customer detail pages' },
-      { code: 'branch.all',            label: 'All Branches',          desc: 'Can view data across all branches (not scoped to own branch)' },
-    ],
-  },
-  {
-    id: 'actions',
-    label: 'Actions',
-    caps: [
-      { code: 'picks.release',         label: 'Release Picks',         desc: 'Release pick files for warehouse orders' },
-      { code: 'pickers.manage',        label: 'Manage Pickers',        desc: 'Add, edit, delete picker accounts' },
-      { code: 'workorders.assign',     label: 'Assign Work Orders',    desc: 'Assign and complete work orders' },
-      { code: 'dispatch.manage',       label: 'Manage Dispatch',       desc: 'Create routes, mark deliveries complete, POD signatures' },
-      { code: 'customers.notes.write', label: 'Write Customer Notes',  desc: 'Add and edit notes on customer profiles' },
-      { code: 'orders.push_to_erp',    label: 'Push Orders to ERP',    desc: 'Create or cancel sales orders in Agility' },
-      { code: 'quotes.manage',         label: 'Manage Quotes',         desc: 'Create and release Agility quotes' },
-      { code: 'bids.manage',           label: 'Manage Bids',           desc: 'Create, edit, and manage estimating bids' },
-      { code: 'designs.manage',        label: 'Manage Designs',        desc: 'Create, edit, and manage design records' },
-      { code: 'ewp.manage',            label: 'Manage EWP',            desc: 'Create, edit, and manage EWP records' },
-      { code: 'projects.manage',       label: 'Manage Projects',       desc: 'Create, edit, and manage estimating projects' },
-      { code: 'purchasing.receive',    label: 'Receive POs',           desc: 'Submit PO check-ins and receiving records' },
-      { code: 'purchasing.review',     label: 'Review PO Submissions', desc: 'Access the purchasing review queue' },
-      { code: 'credits.manage',        label: 'Manage Credits',        desc: 'Upload documents and manage RMA credit records' },
-    ],
-  },
-  {
-    id: 'admin',
-    label: 'Admin',
-    caps: [
-      { code: 'admin.users.manage',    label: 'Manage Users',          desc: 'Add, edit, deactivate users and change permissions' },
-      { code: 'admin.config.manage',   label: 'Manage Config',         desc: 'Edit bid fields, formulas, and system configuration' },
-      { code: 'admin.jobs.review',     label: 'Review Jobs',           desc: 'Access the admin job review (SO GPS status) page' },
-      { code: 'hubbell.review',        label: 'Hubbell Review',        desc: 'Access Hubbell email reconciliation tool' },
-    ],
-  },
-];
+const CATEGORY_LABELS: Record<string, string> = {
+  operations: 'Operations',
+  dispatch: 'Dispatch',
+  sales: 'Sales',
+  estimating: 'Estimating',
+  purchasing: 'Purchasing',
+  accounting: 'Accounting',
+  admin: 'Admin',
+  'cross-cutting': 'Cross-cutting',
+};
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -96,9 +60,10 @@ export default function PermissionsClient() {
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
   const [data, setData] = useState<PermissionsData | null>(null);
-  const [activeTab, setActiveTab] = useState('pages');
+  const [activeTab, setActiveTab] = useState('operations');
   // Map of capability code → UI state
   const [capStates, setCapStates] = useState<Record<string, CapState>>({});
+  const [capabilities, setCapabilities] = useState<CapabilityDef[]>([]);
 
   const fetchData = useCallback(async () => {
     setLoading(true);
@@ -113,18 +78,31 @@ export default function PermissionsClient() {
         return;
       }
       const d: PermissionsData = await res.json();
+      const capsRes = await fetch('/api/admin/capabilities', { signal: controller.signal });
+      if (!capsRes.ok) {
+        const body = await capsRes.json().catch(() => ({}));
+        setError(`Error ${capsRes.status}: ${(body as { error?: string }).error ?? 'Failed to load capability catalog'}`);
+        return;
+      }
+      const capsBody = await capsRes.json() as { capabilities?: Array<{ code: string; label: string; description: string; category: string; risk: string }> };
+      const catalog = (capsBody.capabilities ?? []).map((c) => ({
+        code: c.code,
+        label: c.label,
+        desc: c.description,
+        category: c.category,
+        risk: c.risk,
+      }));
       setData(d);
+      setCapabilities(catalog);
 
       // Build initial capStates from granted/revoked arrays
       const states: Record<string, CapState> = {};
       const grantedSet = new Set(d.granted_capabilities);
       const revokedSet = new Set(d.revoked_capabilities);
-      for (const tab of TABS) {
-        for (const { code } of tab.caps) {
-          if (grantedSet.has(code)) states[code] = 'granted';
-          else if (revokedSet.has(code)) states[code] = 'revoked';
-          else states[code] = 'inherited';
-        }
+      for (const { code } of catalog) {
+        if (grantedSet.has(code)) states[code] = 'granted';
+        else if (revokedSet.has(code)) states[code] = 'revoked';
+        else states[code] = 'inherited';
       }
       setCapStates(states);
     } catch (e) {
@@ -176,6 +154,24 @@ export default function PermissionsClient() {
     setSuccess('');
   };
 
+  const tabs = useMemo(
+    () => Object.entries(
+      capabilities.reduce<Record<string, CapabilityDef[]>>((acc, cap) => {
+        (acc[cap.category] ||= []).push(cap);
+        return acc;
+      }, {})
+    ).map(([id, caps]) => ({ id, label: CATEGORY_LABELS[id] ?? id, caps })),
+    [capabilities]
+  );
+
+  const currentTab = tabs.find((t) => t.id === activeTab) ?? tabs[0];
+
+  useEffect(() => {
+    if (tabs.length > 0 && !tabs.some((t) => t.id === activeTab)) {
+      setActiveTab(tabs[0].id);
+    }
+  }, [tabs, activeTab]);
+
   if (loading) return <div className="max-w-3xl p-8 text-slate-400">Loading…</div>;
   if (!data) return (
     <div className="max-w-3xl p-8">
@@ -193,8 +189,6 @@ export default function PermissionsClient() {
   const roleDefaultSet = new Set(
     user.roles.flatMap((r) => data.role_defaults[r] ?? [])
   );
-
-  const currentTab = TABS.find((t) => t.id === activeTab) ?? TABS[0];
 
   return (
     <div className="max-w-3xl">
@@ -243,7 +237,7 @@ export default function PermissionsClient() {
       {/* Tabs */}
       <div className="border-b border-white/10 mb-4">
         <div className="flex gap-1">
-          {TABS.map((tab) => (
+          {tabs.map((tab) => (
             <button
               key={tab.id}
               onClick={() => setActiveTab(tab.id)}
@@ -261,7 +255,7 @@ export default function PermissionsClient() {
 
       {/* Capability rows */}
       <div className="admin-card divide-y divide-white/5">
-        {currentTab.caps.map(({ code, label, desc }) => {
+        {currentTab?.caps.map(({ code, label, desc, risk }) => {
           const state = capStates[code] ?? 'inherited';
           const isEffective = effectiveSet.has(code);
           const isFromRole = roleDefaultSet.has(code);
@@ -296,6 +290,7 @@ export default function PermissionsClient() {
                   )}
                 </div>
                 <p className="text-xs text-slate-500 mt-0.5">{desc}</p>
+                <p className="text-[10px] text-amber-400/80 mt-0.5 uppercase tracking-wide">risk: {risk}</p>
                 <p className="text-[10px] text-slate-600 font-mono mt-0.5">{code}</p>
               </div>
 

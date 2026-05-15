@@ -230,5 +230,13 @@ This plan delivers a professional SaaS-grade authorization posture through six i
 ## Progress Update — 2026-05-14
 - ✅ PR1 delivered: route policy baseline, scanner script, npm script, CI workflow.
 - ✅ PR2 delivered (cron scope): shared `src/lib/service-auth.ts` + cron route standardization.
-- ℹ️ Remaining PR2 follow-up: inbound webhook routes still tracked as `serviceAuthLegacy` pending provider-specific auth finalization.
-- ▶ Next active phase: PR3 (scorecard/page guard consistency).
+- ✅ PR3 delivered: scorecard layout now uses capability-based page guard (`requirePageAccess('sales.view')`).
+  - Intentional behavior change: scorecard no longer auth-only; users without `sales.view` are redirected.
+- ✅ PR4 delivered:
+  - `CAPABILITIES_METADATA` catalog in `src/lib/access-control-shared.ts` with compile-time coverage guard.
+  - `GET /api/admin/capabilities` protected endpoint.
+  - Admin permissions UI refactored to consume catalog API (no hardcoded capability tabs).
+- ℹ️ Remaining follow-ups:
+  - inbound webhook auth still tracked as `serviceAuthLegacy` pending provider-auth finalization.
+  - add explicit parity test coverage for catalog-driven permissions UI rendering.
+- ▶ Next active phase: PR5 (permission governance hardening).
