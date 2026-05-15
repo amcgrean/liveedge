@@ -3,6 +3,15 @@
 ## Goal
 Enable non-developer users to manage **field definitions**, **formula logic**, and **takeoff workflow integrations** from the UI while collecting production-quality bid telemetry for ML training.
 
+## Security & Permissions status (2026-05-15)
+- Security remediation PR1–PR4 are complete.
+- Admin permissions UI is now driven by the backend capability catalog (`GET /api/admin/capabilities`) instead of hardcoded tabs.
+- Scorecard pages are now least-privilege gated via `requirePageAccess('sales.view')`.
+- Next security phase for admin workflows is PR5: permission-governance hardening (optimistic concurrency, change reason/ticket metadata, last-admin lockout protection).
+- Reference docs for continuation:
+  - `docs/security-remediation-handoff-2026-05-14-pr4.md`
+  - `docs/security-remediation-next-agent-prompt-2026-05-15.md`
+
 ## Core Admin Modules
 1. **Field Registry**
    - CRUD for bid input fields.
