@@ -45,9 +45,12 @@ for (const rel of routeFiles) {
   const hasGuard = guardPatterns.some((pattern) => contents.includes(pattern));
 
   if (serviceMatchers.some((r) => r.test(rel))) {
-    const hasServiceGuard = contents.includes('verifyCronSignature(') || contents.includes('verifyInternalToken(');
+    const hasServiceGuard =
+      contents.includes('verifyCronSignature(') ||
+      contents.includes('verifyInternalToken(') ||
+      contents.includes('verifyHubbellUploadToken(');
     if (!hasServiceGuard && !serviceLegacyMatchers.some((r) => r.test(rel))) {
-      failures.push(`${rel} (serviceAuth route missing verifyCronSignature/verifyInternalToken)`);
+      failures.push(`${rel} (serviceAuth route missing verifyCronSignature/verifyInternalToken/verifyHubbellUploadToken)`);
     }
     continue;
   }

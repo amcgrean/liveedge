@@ -15,6 +15,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import crypto from 'node:crypto';
 import { eq } from 'drizzle-orm';
 import { getDb, schema } from '../../../../../db/index';
+import { verifyHubbellUploadToken } from '../../../../../src/lib/service-auth';
 import { buildHubbellKey, putHubbellPdf } from '../../../../../src/lib/hubbell/r2';
 import { matchDocumentToSos } from '../../../../../src/lib/hubbell/document-matcher';
 import { normalizeDocNumber } from '../../../../../src/lib/hubbell/po-number-parser';
@@ -33,22 +34,6 @@ type Metadata = {
   line_items?: unknown;
 };
 
-function checkAuth(req: NextRequest): NextResponse | null {
-  const expected = process.env.HUBBELL_UPLOAD_TOKEN;
-  if (!expected) {
-    return NextResponse.json(
-      { error: 'HUBBELL_UPLOAD_TOKEN not configured on server' },
-      { status: 500 }
-    );
-  }
-  const header = req.headers.get('authorization') ?? '';
-  const m = header.match(/^Bearer\s+(.+)$/i);
-  if (!m || m[1] !== expected) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-  }
-  return null;
-}
-
 function parseDate(s: string | null | undefined): Date | null {
   if (!s) return null;
   const d = new Date(s);
@@ -63,7 +48,7 @@ function parseNumber(v: unknown): string | null {
 }
 
 export async function POST(req: NextRequest) {
-  const denied = checkAuth(req);
+  const denied = verifyHubbellUploadToken(req);
   if (denied) return denied;
 
   let form: FormData;
