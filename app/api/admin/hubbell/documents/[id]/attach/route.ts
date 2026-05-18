@@ -69,8 +69,15 @@ export async function POST(
   // Look up the SO header — we need cust_code for denormalization AND the
   // current po_number value so we can append (not replace) when writing
   // back to Agility.
+  //
+  // CRITICAL: if this lookup fails (mirror hiccup) or returns no row (SO
+  // not yet synced), we MUST NOT assume the existing po_number is empty —
+  // doing so would have us write only the Hubbell doc# back to Agility,
+  // clobbering any real customer-PO value already in place. The
+  // `headerLookupOk` flag gates the writeback below.
   let custCode: string | null = null;
   let currentPoNumber: string | null = null;
+  let headerLookupOk = false;
   try {
     const sql = getErpSql();
     const rows = await sql<Array<{ cust_code: string | null; po_number: string | null }>>`
@@ -79,8 +86,13 @@ export async function POST(
       WHERE so_id = ${soId}
       LIMIT 1
     `;
-    custCode = rows[0]?.cust_code?.trim() || null;
-    currentPoNumber = rows[0]?.po_number ?? null;
+    if (rows.length > 0) {
+      custCode = rows[0].cust_code?.trim() || null;
+      currentPoNumber = rows[0].po_number ?? null;
+      headerLookupOk = true;
+    } else {
+      console.warn(`[hubbell attach] SO ${soId} not found in agility_so_header mirror`);
+    }
   } catch (err) {
     console.error('[hubbell attach] SO header lookup failed', err);
   }
@@ -152,6 +164,14 @@ export async function POST(
 
     if (!docNumber) {
       agilityWriteback.skipped_reason = 'document not found';
+    } else if (!headerLookupOk) {
+      // The mirror lookup failed or the SO isn't in the mirror yet. We
+      // cannot safely write because we don't know the current PO value
+      // to preserve. Skip — leave posted_to_agility_at NULL so a retry
+      // attach later will re-attempt the writeback when the mirror catches up.
+      agilityWriteback.success = false;
+      agilityWriteback.error = `SO ${soId} not in agility_so_header mirror — refusing to write without current PO value`;
+      agilityWriteback.skipped_reason = 'mirror lookup failed';
     } else {
       // Append-not-replace: parse existing po_number, add the Hubbell
       // doc_number if not already present, rejoin with commas.
