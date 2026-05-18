@@ -52,11 +52,10 @@ export async function runGeocodeBatch(
       AND geocode_source = 'failed'
       AND UPPER(TRIM(state)) = ${stateFilter}
       AND COALESCE(TRIM(address_1),'') <> ''
-      -- Must START with a house number — the matcher's normalizeAddress
-      -- requires it. Rows like "PO 111111", "#152102", "NW 104th Court"
-      -- would slip through `[0-9]` but normalize to null, eat the 5-batch
-      -- zero-progress budget, and block legitimate addresses behind them.
-      AND address_1 ~ '^\s*\d'
+      -- Must START with a house number. Rows like "PO 111111", "#152102",
+      -- "NW 104th Court" pass a digit-anywhere check but normalize to null,
+      -- eat the zero-progress budget, and block legitimate addresses behind.
+      AND address_1 ~ '^\\s*\\d'
       AND LOWER(TRIM(address_1)) !~ ${JUNK_ADDRESS_SQL_REGEX}
     ORDER BY geocoded_at ASC NULLS FIRST, id
     LIMIT ${batchSize}
@@ -191,7 +190,7 @@ export async function runGeocodeBatch(
     WHERE is_deleted = false AND geocode_source = 'failed'
       AND UPPER(TRIM(state)) = ${stateFilter}
       AND COALESCE(TRIM(address_1),'') <> ''
-      AND address_1 ~ '^\s*\d'
+      AND address_1 ~ '^\\s*\\d'
       AND LOWER(TRIM(address_1)) !~ ${JUNK_ADDRESS_SQL_REGEX}
   `;
 
