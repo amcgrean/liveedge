@@ -33,15 +33,13 @@ export async function GET(req: NextRequest) {
 
   const sql = getErpSql();
 
-  const searchClause = q
-    ? sql`AND (
-        s.cust_name ILIKE ${'%' + q + '%'}
-        OR s.cust_code ILIKE ${'%' + q + '%'}
-        OR s.shipto_address_1 ILIKE ${'%' + q + '%'}
-        OR s.shipto_city ILIKE ${'%' + q + '%'}
-      )`
-    : sql``;
-
+  // The aggregate is keyed on (cust_code, shipto_address_1). A single Hubbell
+  // doc can be attached to N SOs at the same job site, so we must dedupe doc
+  // membership per job *before* summing — otherwise extracted_total gets
+  // counted once per attached SO. Two CTEs:
+  //   doc_at_site — DISTINCT (cust_code, address, document_id, total)
+  //   so_at_site  — DISTINCT (cust_code, address, so_id)
+  // Each is aggregated separately, joined back at the end.
   const rows = await sql<JobRow[]>`
     WITH attached AS (
       SELECT DISTINCT j.so_id, j.document_id
@@ -61,24 +59,74 @@ export async function GET(req: NextRequest) {
       FROM agility_so_header soh
       WHERE soh.so_id IN (SELECT so_id FROM attached)
         AND soh.is_deleted = false
+    ),
+    doc_at_site AS (
+      SELECT DISTINCT
+        s.cust_code,
+        s.shipto_address_1,
+        a.document_id,
+        d.extracted_total
+      FROM soh_keyed s
+      JOIN attached a ON a.so_id = s.so_id
+      JOIN bids.hubbell_documents d ON d.id = a.document_id
+    ),
+    so_at_site AS (
+      SELECT DISTINCT
+        s.cust_code,
+        s.shipto_address_1,
+        s.so_id,
+        s.cust_name,
+        s.shipto_city,
+        s.shipto_state,
+        s.shipto_zip
+      FROM soh_keyed s
+      JOIN attached a ON a.so_id = s.so_id
+    ),
+    site_meta AS (
+      SELECT
+        cust_code,
+        shipto_address_1,
+        MAX(cust_name)      AS cust_name,
+        MAX(shipto_city)    AS shipto_city,
+        MAX(shipto_state)   AS shipto_state,
+        MAX(shipto_zip)     AS shipto_zip,
+        MIN(so_id)::int     AS primary_so_id,
+        COUNT(*)::int       AS so_count
+      FROM so_at_site
+      GROUP BY cust_code, shipto_address_1
+    ),
+    site_docs AS (
+      SELECT
+        cust_code,
+        shipto_address_1,
+        COUNT(*)::int                            AS doc_count,
+        COALESCE(SUM(extracted_total), 0)::text  AS hubbell_total
+      FROM doc_at_site
+      GROUP BY cust_code, shipto_address_1
     )
     SELECT
-      s.cust_code,
-      MAX(s.cust_name)         AS cust_name,
-      s.shipto_address_1,
-      MAX(s.shipto_city)       AS shipto_city,
-      MAX(s.shipto_state)      AS shipto_state,
-      MAX(s.shipto_zip)        AS shipto_zip,
-      MIN(s.so_id)::int        AS primary_so_id,
-      COUNT(DISTINCT a.document_id)::int        AS doc_count,
-      COUNT(DISTINCT a.so_id)::int              AS so_count,
-      COALESCE(SUM(d.extracted_total), 0)::text AS hubbell_total
-    FROM soh_keyed s
-    JOIN attached a ON a.so_id = s.so_id
-    JOIN bids.hubbell_documents d ON d.id = a.document_id
-    WHERE 1=1 ${searchClause}
-    GROUP BY s.cust_code, s.shipto_address_1
-    ORDER BY MAX(s.cust_name) NULLS LAST
+      m.cust_code,
+      m.cust_name,
+      m.shipto_address_1,
+      m.shipto_city,
+      m.shipto_state,
+      m.shipto_zip,
+      m.primary_so_id,
+      sd.doc_count,
+      m.so_count,
+      sd.hubbell_total
+    FROM site_meta m
+    JOIN site_docs sd
+      ON sd.cust_code IS NOT DISTINCT FROM m.cust_code
+     AND sd.shipto_address_1 IS NOT DISTINCT FROM m.shipto_address_1
+    WHERE 1=1 ${q ? sql`
+      AND (
+        m.cust_name ILIKE ${'%' + q + '%'}
+        OR m.cust_code ILIKE ${'%' + q + '%'}
+        OR m.shipto_address_1 ILIKE ${'%' + q + '%'}
+        OR m.shipto_city ILIKE ${'%' + q + '%'}
+      )` : sql``}
+    ORDER BY m.cust_name NULLS LAST
     LIMIT ${limit} OFFSET ${offset}
   `;
 

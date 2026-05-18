@@ -123,8 +123,10 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'PDF storage failed' }, { status: 502 });
   }
 
-  // Insert document row.
-  const [doc] = await db
+  // Insert document row. Race-safe: ON CONFLICT (source_hash) DO NOTHING means
+  // a concurrent uploader for the same bytes returns an empty `inserted` set,
+  // and we then SELECT the row that won the race and return as duplicate.
+  const inserted = await db
     .insert(schema.hubbellDocuments)
     .values({
       docType,
@@ -142,7 +144,30 @@ export async function POST(req: NextRequest) {
       lineItems: (metadata.line_items as object) ?? null,
       matchStatus: 'unmatched',
     })
+    .onConflictDoNothing({ target: schema.hubbellDocuments.sourceHash })
     .returning({ id: schema.hubbellDocuments.id });
+
+  if (inserted.length === 0) {
+    // Lost the race — another concurrent upload already wrote this hash.
+    const winner = await db
+      .select({
+        id: schema.hubbellDocuments.id,
+        matchStatus: schema.hubbellDocuments.matchStatus,
+      })
+      .from(schema.hubbellDocuments)
+      .where(eq(schema.hubbellDocuments.sourceHash, sourceHash))
+      .limit(1);
+    if (winner.length > 0) {
+      return NextResponse.json({
+        status: 'duplicate',
+        id: winner[0].id,
+        match_status: winner[0].matchStatus,
+      });
+    }
+    // Should never happen — conflict fired but no row exists. Surface clearly.
+    return NextResponse.json({ error: 'Insert race resolved unexpectedly' }, { status: 500 });
+  }
+  const doc = inserted[0];
 
   // Run the matcher.
   let attachedSos: Array<{ so_id: number; cust_code: string | null; match_source: string; confidence: number }> = [];
