@@ -17,6 +17,9 @@ type Document = {
   extractedTotal: string | null;
   extractedNeedBy: string | null;
   lineItems: Array<{ sku?: string; desc?: string; qty?: number; uom?: string; unit_price?: number; ext?: number }> | null;
+  scrapeCustCode: string | null;
+  scrapeSeqNum: string | null;
+  scrapeMatchRatio: string | null;
   receivedAt: string;
 };
 
@@ -50,7 +53,7 @@ type Candidate = {
   shiptoState: string | null;
   shiptoZip: string | null;
   soStatus: string | null;
-  matchSource: 'address' | 'po_number_split';
+  matchSource: 'address' | 'address_scrape' | 'po_number_split';
   confidence: number;
   matchReasons: string[];
 };
@@ -77,7 +80,7 @@ export default function DocumentDetailClient({ documentId }: { documentId: strin
 
   useEffect(() => { load(); }, [load]);
 
-  async function attach(soId: number, source: 'manual' | 'address', confidence?: number, reasons?: string[]) {
+  async function attach(soId: number, source: 'manual' | 'address' | 'address_scrape', confidence?: number, reasons?: string[]) {
     setBusy(true);
     await fetch(`/api/admin/hubbell/documents/${documentId}/attach`, {
       method: 'POST',
@@ -160,6 +163,15 @@ export default function DocumentDetailClient({ documentId }: { documentId: strin
               {[doc.extractedCity, doc.extractedState, doc.extractedZip].filter(Boolean).join(', ') || '—'}
             </div>
           </div>
+          {doc.scrapeCustCode && (
+            <div className="mt-3 pt-3 border-t border-slate-800 text-xs text-slate-400 flex flex-wrap gap-x-4 gap-y-1">
+              <span>Local agent matched: <span className="font-mono text-slate-300">{doc.scrapeCustCode}</span></span>
+              {doc.scrapeSeqNum && <span>seq <span className="font-mono text-slate-300">{doc.scrapeSeqNum}</span></span>}
+              {doc.scrapeMatchRatio && (
+                <span>ratio <span className="font-mono text-slate-300">{parseFloat(doc.scrapeMatchRatio).toFixed(2)}</span></span>
+              )}
+            </div>
+          )}
         </div>
         <div className="bg-slate-900/40 border border-slate-800 rounded p-4">
           <div className="text-xs uppercase text-slate-500 mb-2">Totals</div>
@@ -274,7 +286,14 @@ export default function DocumentDetailClient({ documentId }: { documentId: strin
                     <td className="px-3 py-1 text-xs text-slate-400">{c.matchReasons.join(', ')}</td>
                     <td className="px-3 py-1 text-right">
                       <button
-                        onClick={() => attach(c.soId, c.matchSource === 'address' ? 'address' : 'manual', c.confidence, c.matchReasons)}
+                        onClick={() => attach(
+                          c.soId,
+                          c.matchSource === 'address' || c.matchSource === 'address_scrape'
+                            ? c.matchSource
+                            : 'manual',
+                          c.confidence,
+                          c.matchReasons,
+                        )}
                         disabled={busy}
                         className="px-2 py-0.5 bg-emerald-900/40 border border-emerald-700/50 text-emerald-300 rounded text-xs hover:bg-emerald-900/60 disabled:opacity-50"
                       >

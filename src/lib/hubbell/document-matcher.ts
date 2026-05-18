@@ -25,10 +25,22 @@ export interface MatchResult {
   shiptoState: string | null;
   shiptoZip: string | null;
   soStatus: string | null;
-  matchSource: 'po_number_split' | 'address';
+  matchSource: 'po_number_split' | 'address' | 'address_scrape';
   confidence: number;        // 0–100
   matchReasons: string[];
 }
+
+// Hints handed up by the local Python scraper (hubbell_daily_fetch.py uses
+// best_job_match against the ERP shipto master). When ratio ≥ MIN, we trust
+// the (cust_code, seq_num) pairing and query open SOs at that exact shipto —
+// faster + more accurate than the server-side fuzzy scorer.
+export interface ScrapeMatchHint {
+  custCode: string | null;
+  seqNum: string | null;
+  matchRatio: number | null;
+}
+
+const SCRAPE_HINT_MIN_RATIO = 0.78;
 
 type SoRow = {
   so_id: number;
@@ -124,6 +136,7 @@ function scoreAddress(candidate: SoRow, extracted: ExtractedAddress): { score: n
 export async function matchDocumentToSos(params: {
   docNumber: string;
   address?: ExtractedAddress;
+  scrapeHint?: ScrapeMatchHint;
 }): Promise<MatchResult[]> {
   const docNumberNormalized = normalizeDocNumber(params.docNumber);
   const sql = getErpSql();
@@ -177,6 +190,68 @@ export async function matchDocumentToSos(params: {
   }
 
   if (exactHits.length > 0) return exactHits;
+
+  // ---- Signal A': scrape hint (local agent's deterministic shipto match) ----
+  // If the Python scraper already resolved the PDF's address to a specific
+  // (cust_code, shipto_seq_num) at ratio ≥ 0.78, query open SOs at that exact
+  // shipto. These are higher-quality candidates than fuzzy scoring because the
+  // local agent ran against the canonical ERP shipto master (with multi-unit
+  // expansion). We surface them as candidates rather than auto-attaching since
+  // a single shipto can host multiple concurrent SOs.
+  const hint = params.scrapeHint;
+  if (
+    hint &&
+    hint.custCode &&
+    hint.seqNum &&
+    hint.matchRatio !== null &&
+    hint.matchRatio >= SCRAPE_HINT_MIN_RATIO
+  ) {
+    const seqNumInt = parseInt(hint.seqNum, 10);
+    const ratioForLabel = hint.matchRatio;
+    if (Number.isFinite(seqNumInt)) {
+      const scrapeRows = await sql<SoRow[]>`
+        SELECT
+          soh.so_id::int          AS so_id,
+          soh.system_id,
+          TRIM(soh.cust_code)     AS cust_code,
+          soh.cust_name,
+          soh.reference,
+          soh.po_number,
+          soh.shipto_address_1,
+          soh.shipto_city,
+          soh.shipto_state,
+          soh.shipto_zip,
+          soh.so_status
+        FROM agility_so_header soh
+        WHERE soh.is_deleted = false
+          AND UPPER(COALESCE(soh.so_status,'')) NOT IN ('I','C','X')
+          AND UPPER(TRIM(soh.cust_code)) = ${hint.custCode.toUpperCase()}
+          AND soh.shipto_seq_num = ${seqNumInt}
+        ORDER BY soh.created_date DESC NULLS LAST
+        LIMIT 20
+      `;
+
+      if (scrapeRows.length > 0) {
+        const confidence = Math.round(hint.matchRatio * 100);
+        return scrapeRows.map((row) => ({
+          soId: row.so_id,
+          systemId: row.system_id,
+          custCode: row.cust_code?.trim() || null,
+          custName: row.cust_name?.trim() || null,
+          reference: row.reference?.trim() || null,
+          poNumber: row.po_number?.trim() || null,
+          shiptoAddress: row.shipto_address_1?.trim() || null,
+          shiptoCity: row.shipto_city?.trim() || null,
+          shiptoState: row.shipto_state?.trim() || null,
+          shiptoZip: row.shipto_zip?.trim() || null,
+          soStatus: row.so_status?.trim() || null,
+          matchSource: 'address_scrape' as const,
+          confidence,
+          matchReasons: ['scrape_seq_num', `ratio:${ratioForLabel.toFixed(2)}`],
+        }));
+      }
+    }
+  }
 
   // ---- Signal B: address fuzzy match ----
   const addr = params.address;

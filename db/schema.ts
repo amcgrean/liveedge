@@ -433,6 +433,15 @@ export const hubbellDocuments = bidsSchema.table(
     extractedNeedBy:    date('extracted_need_by'),
     lineItems:          jsonb('line_items'),
 
+    // Local scraper's pre-computed address match hints (from hubbell_daily_fetch.py
+    // → best_job_match against the ERP shipto master). When match_ratio is ≥ 0.78
+    // the upload route looks up open SOs at (scrape_cust_code, scrape_seq_num)
+    // and surfaces them as address-based candidates without re-running fuzzy
+    // scoring server-side.
+    scrapeCustCode:     varchar('scrape_cust_code', { length: 50 }),
+    scrapeSeqNum:       varchar('scrape_seq_num', { length: 50 }),
+    scrapeMatchRatio:   numeric('scrape_match_ratio', { precision: 4, scale: 3 }),
+
     // 'unmatched' | 'auto_matched' | 'confirmed' | 'rejected'
     matchStatus:        varchar('match_status', { length: 20 }).notNull().default('unmatched'),
 
