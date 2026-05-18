@@ -132,6 +132,7 @@ export async function GET(
         WHERE j.document_id = ANY(${attached.map((a) => a.document_id)})
           AND j.so_id <> ${soId}
           AND soh.is_deleted = false
+          AND UPPER(TRIM(soh.cust_code)) LIKE 'HUBB%'
         GROUP BY soh.so_id, soh.cust_code, soh.cust_name, soh.reference, soh.so_status, soh.shipto_address_1
         ORDER BY COUNT(*) DESC
       `;
