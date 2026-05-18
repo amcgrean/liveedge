@@ -85,6 +85,11 @@ export async function GET(
   // Re-run matcher for fresh candidates (skip the ones already attached).
   let candidates: Awaited<ReturnType<typeof matchDocumentToSos>> = [];
   try {
+    const ratioRaw = doc.scrapeMatchRatio;
+    const ratioNum =
+      ratioRaw !== null && ratioRaw !== undefined && ratioRaw !== ''
+        ? Number(ratioRaw)
+        : null;
     candidates = await matchDocumentToSos({
       docNumber: doc.docNumber,
       address: {
@@ -92,6 +97,11 @@ export async function GET(
         city: doc.extractedCity,
         state: doc.extractedState,
         zip: doc.extractedZip,
+      },
+      scrapeHint: {
+        custCode: doc.scrapeCustCode,
+        seqNum: doc.scrapeSeqNum,
+        matchRatio: ratioNum !== null && Number.isFinite(ratioNum) ? ratioNum : null,
       },
     });
   } catch (err) {

@@ -32,6 +32,11 @@ type Metadata = {
   total?: number | string | null;
   need_by?: string | null;
   line_items?: unknown;
+  // Scrape hints from hubbell_daily_fetch.py best_job_match() — when present
+  // and ratio is high enough, the matcher uses these instead of fuzzing again.
+  erp_cust_code?: string | null;
+  erp_seq_num?: string | number | null;
+  match_ratio?: number | string | null;
 };
 
 function parseDate(s: string | null | undefined): Date | null {
@@ -123,6 +128,24 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'PDF storage failed' }, { status: 502 });
   }
 
+  // Normalize scrape hints from the local agent (uploader.py).
+  const scrapeCustCode =
+    typeof metadata.erp_cust_code === 'string' && metadata.erp_cust_code.trim()
+      ? metadata.erp_cust_code.trim().toUpperCase()
+      : null;
+  const scrapeSeqNum =
+    metadata.erp_seq_num !== null && metadata.erp_seq_num !== undefined && String(metadata.erp_seq_num).trim() !== ''
+      ? String(metadata.erp_seq_num).trim()
+      : null;
+  const scrapeMatchRatioNum =
+    metadata.match_ratio !== null && metadata.match_ratio !== undefined && metadata.match_ratio !== ''
+      ? Number(metadata.match_ratio)
+      : null;
+  const scrapeMatchRatio =
+    scrapeMatchRatioNum !== null && Number.isFinite(scrapeMatchRatioNum)
+      ? scrapeMatchRatioNum.toFixed(3)
+      : null;
+
   // Insert document row. Race-safe: ON CONFLICT (source_hash) DO NOTHING means
   // a concurrent uploader for the same bytes returns an empty `inserted` set,
   // and we then SELECT the row that won the race and return as duplicate.
@@ -142,6 +165,9 @@ export async function POST(req: NextRequest) {
       extractedTotal: parseNumber(metadata.total),
       extractedNeedBy: parseDate(metadata.need_by ?? null) as unknown as string | null,
       lineItems: (metadata.line_items as object) ?? null,
+      scrapeCustCode,
+      scrapeSeqNum,
+      scrapeMatchRatio,
       matchStatus: 'unmatched',
     })
     .onConflictDoNothing({ target: schema.hubbellDocuments.sourceHash })
@@ -180,6 +206,11 @@ export async function POST(req: NextRequest) {
         city: metadata.city ?? null,
         state: metadata.state ?? null,
         zip: metadata.zip ?? null,
+      },
+      scrapeHint: {
+        custCode: scrapeCustCode,
+        seqNum: scrapeSeqNum,
+        matchRatio: scrapeMatchRatioNum,
       },
     });
     const autoMatches = matches.filter((m) => m.matchSource === 'po_number_split');

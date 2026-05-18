@@ -17,6 +17,9 @@ type Document = {
   extractedTotal: string | null;
   extractedNeedBy: string | null;
   lineItems: Array<{ sku?: string; desc?: string; qty?: number; uom?: string; unit_price?: number; ext?: number }> | null;
+  scrapeCustCode: string | null;
+  scrapeSeqNum: string | null;
+  scrapeMatchRatio: string | null;
   receivedAt: string;
 };
 
@@ -160,6 +163,15 @@ export default function DocumentDetailClient({ documentId }: { documentId: strin
               {[doc.extractedCity, doc.extractedState, doc.extractedZip].filter(Boolean).join(', ') || '—'}
             </div>
           </div>
+          {doc.scrapeCustCode && (
+            <div className="mt-3 pt-3 border-t border-slate-800 text-xs text-slate-400 flex flex-wrap gap-x-4 gap-y-1">
+              <span>Local agent matched: <span className="font-mono text-slate-300">{doc.scrapeCustCode}</span></span>
+              {doc.scrapeSeqNum && <span>seq <span className="font-mono text-slate-300">{doc.scrapeSeqNum}</span></span>}
+              {doc.scrapeMatchRatio && (
+                <span>ratio <span className="font-mono text-slate-300">{parseFloat(doc.scrapeMatchRatio).toFixed(2)}</span></span>
+              )}
+            </div>
+          )}
         </div>
         <div className="bg-slate-900/40 border border-slate-800 rounded p-4">
           <div className="text-xs uppercase text-slate-500 mb-2">Totals</div>
