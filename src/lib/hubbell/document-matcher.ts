@@ -132,6 +132,13 @@ function scoreAddress(candidate: SoRow, extracted: ExtractedAddress): { score: n
   return { score: Math.min(score, 100), reasons };
 }
 
+// All matcher signals are scoped to Hubbell customer codes only. Hubbell uses
+// HUBB1000 / HUBB1200 (primary) / HUBB1400 / HUBB1700 (Trim), plus legacy
+// HUBB1001 / 1100 / 1201 / 1300 / 1600. The prefix is stable enough that
+// `cust_code ILIKE 'HUBB%'` captures everything Hubbell-related without
+// hard-coding a list, and excludes every other customer.
+const HUBBELL_CUST_PREFIX_PATTERN = 'HUBB%';
+
 // ───────────────────────── main matcher ─────────────────────────────────────
 export async function matchDocumentToSos(params: {
   docNumber: string;
@@ -162,6 +169,7 @@ export async function matchDocumentToSos(params: {
     FROM agility_so_header soh
     WHERE soh.is_deleted = false
       AND UPPER(COALESCE(soh.so_status,'')) NOT IN ('I','C','X')
+      AND UPPER(TRIM(soh.cust_code)) LIKE ${HUBBELL_CUST_PREFIX_PATTERN}
       AND soh.po_number IS NOT NULL
       AND TRIM(soh.po_number) <> ''
   `;
@@ -209,6 +217,11 @@ export async function matchDocumentToSos(params: {
     const seqNumInt = parseInt(hint.seqNum, 10);
     const ratioForLabel = hint.matchRatio;
     if (Number.isFinite(seqNumInt)) {
+      // Signal A' cust_code is already locked to a Hubbell HUBB* value (the
+      // local agent's best_job_match only matches Hubbell shiptos), so this
+      // query is inherently Hubbell-scoped. We still add the HUBB% filter as
+      // belt-and-suspenders so a future bug in the local agent that produces
+      // a non-Hubbell cust_code hint can't surface non-Hubbell candidates.
       const scrapeRows = await sql<SoRow[]>`
         SELECT
           soh.so_id::int          AS so_id,
@@ -225,6 +238,7 @@ export async function matchDocumentToSos(params: {
         FROM agility_so_header soh
         WHERE soh.is_deleted = false
           AND UPPER(COALESCE(soh.so_status,'')) NOT IN ('I','C','X')
+          AND UPPER(TRIM(soh.cust_code)) LIKE ${HUBBELL_CUST_PREFIX_PATTERN}
           AND UPPER(TRIM(soh.cust_code)) = ${hint.custCode.toUpperCase()}
           AND soh.shipto_seq_num = ${seqNumInt}
         ORDER BY soh.created_date DESC NULLS LAST
@@ -284,6 +298,7 @@ export async function matchDocumentToSos(params: {
     FROM agility_so_header soh
     WHERE soh.is_deleted = false
       AND UPPER(COALESCE(soh.so_status,'')) NOT IN ('I','C','X')
+      AND UPPER(TRIM(soh.cust_code)) LIKE ${HUBBELL_CUST_PREFIX_PATTERN}
       AND (FALSE ${zipClause} ${cityClause} ${addrClause})
     LIMIT 200
   `;
