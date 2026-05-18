@@ -52,7 +52,11 @@ export async function runGeocodeBatch(
       AND geocode_source = 'failed'
       AND UPPER(TRIM(state)) = ${stateFilter}
       AND COALESCE(TRIM(address_1),'') <> ''
-      AND address_1 ~ '[0-9]'
+      -- Must START with a house number — the matcher's normalizeAddress
+      -- requires it. Rows like "PO 111111", "#152102", "NW 104th Court"
+      -- would slip through `[0-9]` but normalize to null, eat the 5-batch
+      -- zero-progress budget, and block legitimate addresses behind them.
+      AND address_1 ~ '^\s*\d'
       AND LOWER(TRIM(address_1)) !~ ${JUNK_ADDRESS_SQL_REGEX}
     ORDER BY geocoded_at ASC NULLS FIRST, id
     LIMIT ${batchSize}
@@ -118,18 +122,32 @@ export async function runGeocodeBatch(
 
     const tier3 = parsed.filter((p) => !matched.has(p.id));
     if (tier3.length > 0) {
+      // Tier-3: only accept a "unique in state" match when at least one
+      // location signal corroborates it — zip-3 prefix OR city. Without this,
+      // numbered-street addresses (e.g. "2380 52ND ST") would silently bind
+      // to whatever lone IA row exists for that street, sometimes 100+ miles
+      // from the customer's actual town.
       const stateHits = await sql<{ id: number; lat: string; lon: string }[]>`
         WITH inputs AS (
           SELECT * FROM unnest(
-            ${tier3.map((p) => p.id)}::bigint[], ${tier3.map((p) => p.number)}::text[],
-            ${tier3.map((p) => p.street)}::text[]
-          ) AS t(id, num, street)
+            ${tier3.map((p) => p.id)}::bigint[],
+            ${tier3.map((p) => p.number)}::text[],
+            ${tier3.map((p) => p.street)}::text[],
+            ${tier3.map((p) => (p.zip ? p.zip.slice(0, 3) : null))}::text[],
+            ${tier3.map((p) => p.city)}::text[]
+          ) AS t(id, num, street, zip3, city)
         ),
         joined AS (
           SELECT i.id, gi.lat, gi.lon, COUNT(*) OVER (PARTITION BY i.id)::int AS n
           FROM inputs i
           JOIN public.geocode_index gi
-            ON gi.number_norm = i.num AND gi.street_norm = i.street AND gi.state_norm = ${stateFilter}
+            ON gi.number_norm = i.num
+           AND gi.street_norm = i.street
+           AND gi.state_norm = ${stateFilter}
+           AND (
+                 (i.zip3 IS NOT NULL AND gi.postcode IS NOT NULL AND LEFT(gi.postcode, 3) = i.zip3)
+              OR (i.city IS NOT NULL AND gi.city_norm = i.city)
+           )
         )
         SELECT DISTINCT ON (id) id, lat::text, lon::text FROM joined WHERE n = 1
       `;
@@ -173,7 +191,7 @@ export async function runGeocodeBatch(
     WHERE is_deleted = false AND geocode_source = 'failed'
       AND UPPER(TRIM(state)) = ${stateFilter}
       AND COALESCE(TRIM(address_1),'') <> ''
-      AND address_1 ~ '[0-9]'
+      AND address_1 ~ '^\s*\d'
       AND LOWER(TRIM(address_1)) !~ ${JUNK_ADDRESS_SQL_REGEX}
   `;
 

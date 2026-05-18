@@ -129,10 +129,11 @@ export async function GET(req: NextRequest) {
       const matchedThisBatch = batch.matched_city + batch.matched_zip + batch.matched_state_unique;
       if (matchedThisBatch === 0) {
         consecutiveNoProgress += 1;
-        // Higher threshold (was 2) — with ORDER BY geocoded_at ASC NULLS FIRST
-        // the runner now plows through all rows; brief sparse stretches in the
-        // middle of the queue shouldn't terminate the run.
-        if (consecutiveNoProgress >= 5) {
+        // Higher threshold (was 5) — even with the start-with-digit filter,
+        // the queue can include long runs of legitimate-looking addresses
+        // that aren't in OA / county atlases (new subdivisions, etc.).
+        // 10 batches × 500 rows = 5,000 attempts before we give up.
+        if (consecutiveNoProgress >= 10) {
           result.geocode.stop_reason = 'no progress (likely missing from index)';
           break;
         }
