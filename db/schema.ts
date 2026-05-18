@@ -5,6 +5,7 @@ import {
   text,
   boolean,
   timestamp,
+  date,
   integer,
   jsonb,
   numeric,
@@ -401,97 +402,76 @@ export const poSubmissions = bidsSchema.table(
 );
 
 // ============================================================
-// HUBBELL EMAIL FORWARDING
+// HUBBELL PORTAL DOCUMENTS
 // ============================================================
-export const hubbellEmails = bidsSchema.table(
-  'hubbell_emails',
+// Replaces the previous email-shaped pipeline. PO/WO PDFs are scraped from the
+// Hubbell portal locally (Playwright in C:\Users\amcgrean\python\hubbell test),
+// parsed for line items + address, then POSTed to /api/admin/hubbell/upload
+// which stores the PDF in R2 and writes a row here.
+//
+// One Hubbell doc → N Agility SOs and one Agility SO → N Hubbell docs.
+// The junction is hubbell_document_sos. Initial attach comes from splitting
+// agility_so_header.po_number on commas (the team types Hubbell PO/WO numbers
+// into Agility's customer-PO field by hand, comma-separated).
+export const hubbellDocuments = bidsSchema.table(
+  'hubbell_documents',
   {
-    id:          uuid('id').primaryKey().defaultRandom(),
-    messageId:   varchar('message_id', { length: 500 }).unique(),
-    fromEmail:   varchar('from_email', { length: 255 }).notNull(),
-    fromName:    varchar('from_name', { length: 255 }),
-    subject:     text('subject').notNull(),
-    bodyText:    text('body_text'),
-    emailType:   varchar('email_type', { length: 20 }),
-    // 'po' | 'wo' | 'other'
-    extractedPoNumber:    varchar('extracted_po_number', { length: 100 }),
-    extractedWoNumber:    varchar('extracted_wo_number', { length: 100 }),
-    extractedAddress:     text('extracted_address'),
-    extractedCity:        varchar('extracted_city', { length: 100 }),
-    extractedState:       varchar('extracted_state', { length: 50 }),
-    extractedZip:         varchar('extracted_zip', { length: 20 }),
-    extractedAmount:       numeric('extracted_amount', { precision: 12, scale: 2 }),
-    extractedTaxAmount:    numeric('extracted_tax_amount', { precision: 12, scale: 2 }),
-    extractedShipping:     numeric('extracted_shipping', { precision: 12, scale: 2 }),
-    extractedNeedByDate:   varchar('extracted_need_by_date', { length: 20 }),
-    extractedContactName:  varchar('extracted_contact_name', { length: 255 }),
-    extractedContactPhone: varchar('extracted_contact_phone', { length: 50 }),
-    extractedDescription:  text('extracted_description'),
-    // 'pending' | 'matched' | 'unmatched' | 'confirmed' | 'rejected'
-    matchStatus:       varchar('match_status', { length: 20 }).notNull().default('pending'),
-    confirmedSoId:     varchar('confirmed_so_id', { length: 50 }),
-    confirmedCustCode: varchar('confirmed_cust_code', { length: 50 }),
-    confirmedCustName: varchar('confirmed_cust_name', { length: 255 }),
-    matchConfidence:   numeric('match_confidence', { precision: 5, scale: 2 }),
-    confirmedBy:  varchar('confirmed_by', { length: 100 }),
-    confirmedAt:  timestamp('confirmed_at', { withTimezone: true }),
-    receivedAt:   timestamp('received_at', { withTimezone: true }).notNull().defaultNow(),
-    createdAt:    timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
-    updatedAt:    timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+    id:                 uuid('id').primaryKey().defaultRandom(),
+    docType:            varchar('doc_type', { length: 10 }).notNull(),
+    // 'po' | 'wo'
+    docNumber:          varchar('doc_number', { length: 100 }).notNull(),
+    checkNumber:        varchar('check_number', { length: 50 }),
+    r2Key:              text('r2_key').notNull(),
+    sourceRunId:        varchar('source_run_id', { length: 100 }).notNull(),
+    sourceHash:         varchar('source_hash', { length: 64 }).notNull(),
+
+    extractedAddress:   text('extracted_address'),
+    extractedCity:      varchar('extracted_city', { length: 100 }),
+    extractedState:     varchar('extracted_state', { length: 50 }),
+    extractedZip:       varchar('extracted_zip', { length: 20 }),
+    extractedTotal:     numeric('extracted_total', { precision: 12, scale: 2 }),
+    extractedNeedBy:    date('extracted_need_by'),
+    lineItems:          jsonb('line_items'),
+
+    // 'unmatched' | 'auto_matched' | 'confirmed' | 'rejected'
+    matchStatus:        varchar('match_status', { length: 20 }).notNull().default('unmatched'),
+
+    receivedAt:         timestamp('received_at', { withTimezone: true }).notNull().defaultNow(),
+    createdAt:          timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt:          timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => [
-    index('hubbell_emails_match_status_idx').on(table.matchStatus),
-    index('hubbell_emails_received_at_idx').on(table.receivedAt),
-    index('hubbell_emails_confirmed_so_id_idx').on(table.confirmedSoId),
+    uniqueIndex('hubbell_documents_source_hash_uq').on(table.sourceHash),
+    index('hubbell_documents_doc_number_idx').on(table.docNumber),
+    index('hubbell_documents_match_status_recv_idx').on(table.matchStatus, table.receivedAt),
+    index('hubbell_documents_doc_type_idx').on(table.docType),
+    index('hubbell_documents_received_at_idx').on(table.receivedAt),
   ]
 );
 
-export const hubbellEmailCandidates = bidsSchema.table(
-  'hubbell_email_candidates',
+export const hubbellDocumentSos = bidsSchema.table(
+  'hubbell_document_sos',
   {
-    id:       uuid('id').primaryKey().defaultRandom(),
-    emailId:  uuid('email_id').notNull(),
-    soId:     varchar('so_id', { length: 50 }).notNull(),
-    systemId: varchar('system_id', { length: 20 }),
-    custCode: varchar('cust_code', { length: 50 }),
-    custName: varchar('cust_name', { length: 255 }),
-    reference:     varchar('reference', { length: 255 }),
-    shiptoAddress: varchar('shipto_address', { length: 255 }),
-    shiptoCity:    varchar('shipto_city', { length: 100 }),
-    shiptoState:   varchar('shipto_state', { length: 50 }),
-    shiptoZip:     varchar('shipto_zip', { length: 20 }),
-    confidence:    numeric('confidence', { precision: 5, scale: 2 }).notNull(),
-    matchReasons:  jsonb('match_reasons'),
-    rank:          integer('rank').notNull(),
-    createdAt:     timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    id:                  uuid('id').primaryKey().defaultRandom(),
+    documentId:          uuid('document_id').notNull(),
+    // No FK to agility_so_header (lives in public schema, owned by sync worker)
+    soId:                integer('so_id').notNull(),
+    custCode:            varchar('cust_code', { length: 50 }),
+    // 'po_number_split' | 'address' | 'manual'
+    matchSource:         varchar('match_source', { length: 30 }).notNull(),
+    confidence:          integer('confidence').notNull().default(0),
+    matchReasons:        text('match_reasons').array().notNull().default([]),
+    confirmedBy:         varchar('confirmed_by', { length: 100 }),
+    confirmedAt:         timestamp('confirmed_at', { withTimezone: true }),
+    // Phase-2 hook for write-back to agility_so_header.po_number via the live API.
+    postedToAgilityAt:   timestamp('posted_to_agility_at', { withTimezone: true }),
+    createdAt:           timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => [
-    index('hubbell_candidates_email_id_idx').on(table.emailId),
-    index('hubbell_candidates_so_id_idx').on(table.soId),
-  ]
-);
-
-export const hubbellAddressCache = bidsSchema.table(
-  'hubbell_address_cache',
-  {
-    id:              uuid('id').primaryKey().defaultRandom(),
-    addressKey:      varchar('address_key', { length: 200 }).notNull().unique(),
-    addressRaw:      varchar('address_raw', { length: 255 }),
-    soId:            varchar('so_id', { length: 50 }).notNull(),
-    systemId:        varchar('system_id', { length: 20 }),
-    custCode:        varchar('cust_code', { length: 50 }),
-    custName:        varchar('cust_name', { length: 255 }),
-    shiptoAddress:   varchar('shipto_address', { length: 255 }),
-    shiptoCity:      varchar('shipto_city', { length: 100 }),
-    shiptoState:     varchar('shipto_state', { length: 50 }),
-    shiptoZip:       varchar('shipto_zip', { length: 20 }),
-    confirmedCount:  integer('confirmed_count').notNull().default(1),
-    lastConfirmedAt: timestamp('last_confirmed_at', { withTimezone: true }).notNull().defaultNow(),
-    createdAt:       timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
-    updatedAt:       timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
-  },
-  (table) => [
-    index('hubbell_address_cache_so_id_idx').on(table.soId),
+    uniqueIndex('hubbell_document_sos_doc_so_uq').on(table.documentId, table.soId),
+    index('hubbell_document_sos_so_id_idx').on(table.soId),
+    index('hubbell_document_sos_document_id_idx').on(table.documentId),
+    index('hubbell_document_sos_cust_code_idx').on(table.custCode),
   ]
 );
 

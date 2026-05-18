@@ -381,7 +381,7 @@ Full WH-Tracker (Python/Flask) migration into LiveEdge. All modules ported:
 - Env var: `RESEND_WEBHOOK_SECRET` (Svix signature secret from Resend dashboard)
 - Webhook URL must be set to `https://app.beisser.cloud/api/inbound/credits` (not the Vercel preview URL — Resend does not follow redirects)
 
-**Hubbell email ingest — REMOVED (2026-05-13).** The Resend webhook (`/api/inbound/hubbell`), Microsoft Graph dispatch branch, reprocess cron (`/api/cron/hubbell-reprocess`), admin reprocess endpoint (`/api/admin/hubbell/reprocess`), and source-agnostic `processHubbellEmail()` were all deleted. Email forwarding from Hubbell was unreliable. Going forward, PO/WO data is **scraped from the Hubbell portal locally** (same workflow already used for AR recon), normalized in a desktop tool, then **uploaded to LiveEdge via a forthcoming `POST /api/admin/hubbell/upload` endpoint** (not yet built — wire alongside `bids.hubbell_emails` insert path; reuse `extractEmailData()` is no longer needed since the local tool emits the structured fields directly). Existing `bids.hubbell_emails` rows + `bids.hubbell_email_candidates` + `bids.hubbell_address_cache` are preserved for history. Admin UI (`/admin/hubbell`, `/admin/hubbell/jobs`) and `hubbell.review` capability remain in place.
+**Hubbell email ingest — REMOVED (2026-05-13). Daily portal scrape + LiveEdge upload — LIVE (2026-05-18).** Email ingest (Resend webhook, Graph dispatch, reprocess cron) was killed in May 2026; the rewrite is now complete. See **Hubbell PO/WO Daily Ingest** below for the live architecture. The legacy `bids.hubbell_emails` / `hubbell_email_candidates` / `hubbell_address_cache` tables were dropped in migration `0021_hubbell_documents.sql` (no email-era data retained — the schema-clarity gain outweighed losing the address-cache learning).
 
 #### Nav Restructuring (2026-04-02) — COMPLETE, EXTENDED 2026-04-03
 - TopNav completely rewritten 2026-04-03 — 8 domain dropdowns replacing flat links + 4 domain dropdowns
@@ -427,28 +427,64 @@ Branch: `claude/auth-unification-FelEf` (merged to `main`)
 3. Backfilled `password_hash` in `app_users` via `UPDATE public.app_users SET password_hash = u.password FROM bids."user" u WHERE estimating_user_id = u.id` (69/70 — `po-test` is OTP-only, no estimating user)
 4. `password_hash` column is now inert — auth no longer reads it
 
-#### Hubbell PO/WO Reconciliation (2026-04-22, ingest switched 2026-05-13)
+#### Hubbell PO/WO Daily Ingest (2026-05-18) — COMPLETE
 
 Admin tool for reconciling Hubbell supply-house POs / WO acknowledgements against LiveEdge sales orders.
 
-**Ingest path (current — local portal scrape + upload):**
-- Email ingest (Resend webhook + Graph dispatch + reprocess cron) was removed 2026-05-13 — see "Hubbell email ingest — REMOVED" note above
-- PO/WO data is scraped from the Hubbell portal locally (same flow already used for AR recon), normalized, then **uploaded into `bids.hubbell_emails`** by a local tool
-- Upload endpoint **not yet built**. When wiring: accept a batch of pre-normalized records (the local tool emits `poNumber`, `woNumber`, `address`, `city`, `state`, `zip`, `amount`, …), insert into `bids.hubbell_emails` with `messageId = NULL`, then run the same priority-1 PO-field match → priority-2 address cache → fallback address-matcher pipeline that the old webhook used (logic still lives in `src/lib/hubbell/{extractor,address-matcher,address-cache}.ts`)
+**Architecture:**
+```
+Local Windows box (Task Scheduler, daily 6 AM)
+  hubbell_daily_fetch.py  →  PDF parse  →  uploader.py
+                                              │
+                                              ▼ POST multipart, Bearer auth
+LiveEdge: POST /api/admin/hubbell/upload  →  R2 (PDF)
+                                          →  bids.hubbell_documents (insert)
+                                          →  matcher (po_number_split + address)
+                                          →  bids.hubbell_document_sos (junction)
+```
 
-**Pages (unchanged):**
-- `/admin/hubbell` — Inbox: tabbed by match status (Pending / Matched / Confirmed / No Match / Rejected), paginated at 50/page, search by subject/sender/PO#/SO#
-- `/admin/hubbell/[id]` — Detail: extracted data, match candidates sorted by confidence, confirm/reject/reset actions
-- `/admin/hubbell/jobs` — Jobs index: one row per job site (customer + address), aggregates all confirmed records; paginated at 50/page; click row to view orders
-- `/admin/hubbell/jobs/[soId]` — Job detail: SO header, reconciliation table (all SOs at same address vs records received), unmatched warnings
+**Tables (migration `0021_hubbell_documents.sql`):**
+- `bids.hubbell_documents` — one row per PO/WO PDF. Keyed by `source_hash` (sha256 of bytes) for idempotent re-upload. Columns: `doc_type` ('po'|'wo'), `doc_number`, `r2_key`, extracted `address/city/state/zip/total/need_by/line_items`, `match_status` ('unmatched'|'auto_matched'|'confirmed'|'rejected').
+- `bids.hubbell_document_sos` — junction (one document × one Agility SO). Holds `match_source` ('po_number_split'|'address'|'manual'), `confidence`, `match_reasons`, `confirmed_by`, plus a phase-2 `posted_to_agility_at` hook for future write-back.
 
-**API routes (remaining):**
-- `GET /api/admin/hubbell/emails` — paginated inbox with status/search filtering
-- `GET/POST /api/admin/hubbell/emails/[id]` — detail + confirm/reject/reset actions
-- `GET /api/admin/hubbell/jobs` — aggregated jobs list
-- `GET /api/admin/hubbell/jobs/[soId]` — per-SO detail with related SOs and records
+**Many-to-many:** one Hubbell doc → N Agility SOs; one Agility SO → N Hubbell docs. The team types Hubbell PO/WO numbers into Agility's customer-PO field by hand, **comma-separated** when multiple apply. The matcher parses `agility_so_header.po_number` via `parsePoNumberField()` (`src/lib/hubbell/po-number-parser.ts`) which splits on `[,;|/\s]+` and uppercases.
 
-**DB table:** `bids.hubbell_emails` (Drizzle-managed, `db/schema.ts`) — name is historical; rows now come from the local uploader, not email. `bids.hubbell_email_candidates` + `bids.hubbell_address_cache` still used by the matcher.
+**Matcher strategy (`src/lib/hubbell/document-matcher.ts`):**
+1. **Signal A — `po_number_split`** (confidence 100): pull all open SOs with non-empty `po_number`, split, look for the Hubbell doc number. If any hit, return only those (this is authoritative — the buyer typed it in).
+2. **Signal B — `address`** (confidence 0–100): fuzzy score against `shipto_address_1/city/state/zip`. Same algorithm as the legacy email matcher (zip 35 + city 20 + state 5 + street 40). Only runs when Signal A returns empty.
+
+The matcher runs at ingest time AND on document-detail page open (so the reviewer sees current Agility state).
+
+**Pages:**
+- `/admin/hubbell` — `DocumentsClient.tsx`. Tabbed inbox (`?tab=unmatched|auto_matched|confirmed|rejected|all`), search across doc#/SO#/cust_code/address, type filter.
+- `/admin/hubbell/[id]` — `DocumentDetailClient.tsx`. Header (doc#, type, status, total, need-by), View-PDF button (presigned R2 URL), extracted address card, line-items table, attached-SOs section with detach, candidate-SOs section with attach, free-text manual attach, Reject button.
+- `/admin/hubbell/jobs` — `JobsIndexClient.tsx`. Aggregates auto_matched + confirmed docs by `(cust_code, shipto_address_1)`. Columns: customer, address, # docs, # SOs, Hubbell $.
+- `/admin/hubbell/jobs/[soId]` — `JobDetailClient.tsx`. SO header card, attached Hubbell docs, **sibling SOs** (SOs that share a doc with this one — the multi-SO visibility ask), unattached docs at the same address.
+- `/admin/hubbell/status` — `StatusClient.tsx`. Last received timestamp + staleness banner, last 24h PO/WO counts, totals by match_status.
+
+**API routes:**
+- `POST /api/admin/hubbell/upload` — service-token endpoint (Bearer `HUBBELL_UPLOAD_TOKEN`). multipart/form-data: `doc_type`, `doc_number`, `source_run_id`, `check_number?`, `metadata` (JSON string), `pdf` (file). Computes sha256; returns `{status:'duplicate', id, match_status}` if seen; otherwise uploads to R2 at `hubbell/{yyyy}/{doc_type}/{doc_number}.pdf`, inserts the row, runs the matcher, returns `{status:'inserted', id, match_status, attached_sos:[...]}`.
+- `GET /api/admin/hubbell/documents` — paginated list, status counts, filters.
+- `GET /api/admin/hubbell/documents/[id]` — detail + attached SOs (hydrated with current `agility_so_header` data) + fresh matcher candidates.
+- `POST /api/admin/hubbell/documents/[id]/attach` — body `{ so_id, source?: 'manual'|'address', confidence?, reasons? }`. Inserts junction row (UPSERT on conflict), bumps `match_status`.
+- `POST /api/admin/hubbell/documents/[id]/detach` — body `{ so_id }`. Deletes junction row; if zero remain, document goes back to `unmatched`.
+- `POST /api/admin/hubbell/documents/[id]/reject` — sets `match_status='rejected'`.
+- `GET /api/admin/hubbell/documents/[id]/pdf` — returns `{url}` (5-min presigned R2 URL).
+- `GET /api/admin/hubbell/jobs` — aggregated jobs list.
+- `GET /api/admin/hubbell/jobs/[soId]` — per-SO detail + sibling SOs + unattached address docs.
+- `GET /api/admin/hubbell/status` — last_document_at, last_24_hours, by_status.
+- `GET /api/cron/hubbell-stale-check` — daily 2 PM UTC; logs a warning when no doc has arrived in 36+ hours.
+
+**Local scraper (`C:\Users\amcgrean\python\hubbell test`):**
+- `hubbell_daily_fetch.py` — Playwright traversal, PDF download, line-item regex, address extraction. Now calls `uploader.upload_document()` per doc and writes `hubbell_inbox/YYYY_MM/upload_log.csv` (attempt timestamp, status, document_id, match_status, attached_so_count, error).
+- `uploader.py` — POSTs multipart to `LIVEEDGE_BASE_URL/api/admin/hubbell/upload`. Retries 5xx with exponential backoff, fails fast on 4xx.
+- `requirements.txt`, `README.md`, `docs/daily-flow.md`, `docs/troubleshooting.md` added.
+- Idempotency is **server-side** via `source_hash`; the local `hubbell_docs_seen.json` is still consulted as a fast-skip but losing it just means one slow re-pull — server dedup turns repeats into no-ops.
+
+**Env vars (Vercel):**
+- `HUBBELL_UPLOAD_TOKEN` — bearer token; service-to-service auth on the upload endpoint. Must match `LIVEEDGE_HUBBELL_TOKEN` in the local `.env`.
+
+**Phase 2 (deferred):** Agility write-back. The team continues to type Hubbell PO/WO numbers into `agility_so_header.po_number` by hand. When a write-back endpoint is available, set `hubbell_document_sos.posted_to_agility_at` after the call succeeds (column already exists). No schema work needed.
 
 **AR balance query pattern** — `agility_ar_open.cust_key` is NOT the same as `agility_so_header.cust_code`. Always resolve via `agility_customers` first:
 ```sql
