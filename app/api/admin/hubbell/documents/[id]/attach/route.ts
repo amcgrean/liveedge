@@ -31,7 +31,16 @@ export async function POST(
   if (!Number.isFinite(soId)) {
     return NextResponse.json({ error: 'so_id is required' }, { status: 400 });
   }
-  const source = body.source === 'address' ? 'address' : 'manual';
+  // Valid sources for a reviewer-initiated attach. 'manual' is the default
+  // when the reviewer typed an SO# by hand; the other two preserve the
+  // attribution from the matcher so we can tell later whether the link came
+  // from a deterministic local-agent shipto match (address_scrape) or a
+  // server-side fuzzy address score (address).
+  const validSources = ['manual', 'address', 'address_scrape'] as const;
+  type Source = typeof validSources[number];
+  const source: Source = validSources.includes(body.source as Source)
+    ? (body.source as Source)
+    : 'manual';
   const confidence = typeof body.confidence === 'number' ? Math.max(0, Math.min(100, body.confidence)) : 100;
   const reasons = Array.isArray(body.reasons) ? body.reasons.filter((r) => typeof r === 'string') : ['manual_attach'];
 
@@ -83,20 +92,16 @@ export async function POST(
       },
     });
 
-  // Bump document status if it was unmatched.
-  if (docs[0].matchStatus === 'unmatched' || docs[0].matchStatus === 'rejected') {
-    await db
-      .update(schema.hubbellDocuments)
-      .set({ matchStatus: source === 'manual' ? 'confirmed' : 'auto_matched', updatedAt: new Date() })
-      .where(eq(schema.hubbellDocuments.id, id));
-  }
-  // Mark whole doc as 'confirmed' once any manual attach lands.
-  if (source === 'manual') {
-    await db
-      .update(schema.hubbellDocuments)
-      .set({ matchStatus: 'confirmed', updatedAt: dsql`now()` })
-      .where(eq(schema.hubbellDocuments.id, id));
-  }
+  // Status transitions:
+  //   - 'manual': reviewer explicitly entered the SO# → confirmed
+  //   - 'address' or 'address_scrape': reviewer clicked a matcher-surfaced
+  //     candidate → confirmed (they actively chose it)
+  //   For all reviewer-initiated attaches the document is now confirmed,
+  //   regardless of which signal surfaced the candidate.
+  await db
+    .update(schema.hubbellDocuments)
+    .set({ matchStatus: 'confirmed', updatedAt: dsql`now()` })
+    .where(eq(schema.hubbellDocuments.id, id));
 
   return NextResponse.json({ ok: true });
 }

@@ -53,7 +53,7 @@ type Candidate = {
   shiptoState: string | null;
   shiptoZip: string | null;
   soStatus: string | null;
-  matchSource: 'address' | 'po_number_split';
+  matchSource: 'address' | 'address_scrape' | 'po_number_split';
   confidence: number;
   matchReasons: string[];
 };
@@ -80,7 +80,7 @@ export default function DocumentDetailClient({ documentId }: { documentId: strin
 
   useEffect(() => { load(); }, [load]);
 
-  async function attach(soId: number, source: 'manual' | 'address', confidence?: number, reasons?: string[]) {
+  async function attach(soId: number, source: 'manual' | 'address' | 'address_scrape', confidence?: number, reasons?: string[]) {
     setBusy(true);
     await fetch(`/api/admin/hubbell/documents/${documentId}/attach`, {
       method: 'POST',
@@ -286,7 +286,14 @@ export default function DocumentDetailClient({ documentId }: { documentId: strin
                     <td className="px-3 py-1 text-xs text-slate-400">{c.matchReasons.join(', ')}</td>
                     <td className="px-3 py-1 text-right">
                       <button
-                        onClick={() => attach(c.soId, c.matchSource === 'address' ? 'address' : 'manual', c.confidence, c.matchReasons)}
+                        onClick={() => attach(
+                          c.soId,
+                          c.matchSource === 'address' || c.matchSource === 'address_scrape'
+                            ? c.matchSource
+                            : 'manual',
+                          c.confidence,
+                          c.matchReasons,
+                        )}
                         disabled={busy}
                         className="px-2 py-0.5 bg-emerald-900/40 border border-emerald-700/50 text-emerald-300 rounded text-xs hover:bg-emerald-900/60 disabled:opacity-50"
                       >
