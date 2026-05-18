@@ -1,14 +1,14 @@
 import { requirePageAccess } from '../../../../src/lib/access-control';
-import EmailDetailClient from './EmailDetailClient';
+import DocumentDetailClient from './DocumentDetailClient';
 
-export const metadata = { title: 'Email Detail — LiveEdge Admin' };
+export const metadata = { title: 'Document Detail — LiveEdge Admin' };
 
-export default async function HubbellEmailDetailPage({
+export default async function HubbellDocumentDetailPage({
   params,
 }: {
   params: Promise<{ id: string }>;
 }) {
   await requirePageAccess('hubbell.review');
   const { id } = await params;
-  return <EmailDetailClient emailId={id} />;
+  return <DocumentDetailClient documentId={id} />;
 }

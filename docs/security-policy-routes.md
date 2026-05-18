@@ -18,7 +18,8 @@ This policy defines authorization expectations for `app/api/**/route.ts`.
   ],
   "serviceAuth": [
     "app/api/cron/**/route.ts",
-    "app/api/inbound/**/route.ts"
+    "app/api/inbound/**/route.ts",
+    "app/api/admin/hubbell/upload/route.ts"
   ],
   "serviceAuthLegacy": [
     "app/api/inbound/**/route.ts"
@@ -34,7 +35,8 @@ This policy defines authorization expectations for `app/api/**/route.ts`.
     "requirePageAccess(",
     "await auth(",
     "verifyCronSignature(",
-    "verifyInternalToken("
+    "verifyInternalToken(",
+    "verifyHubbellUploadToken("
   ]
 }
 ```

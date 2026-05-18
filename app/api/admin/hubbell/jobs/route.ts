@@ -1,180 +1,134 @@
+// GET /api/admin/hubbell/jobs
+// Aggregates Hubbell documents (auto_matched + confirmed) by job site.
+// A job site is (cust_code, shipto_address_1). Returns one row per site.
+
 import { NextRequest, NextResponse } from 'next/server';
 import { requireCapability } from '../../../../../src/lib/access-control';
-import { getDb } from '../../../../../db/index';
 import { getErpSql } from '../../../../../db/supabase';
-import { sql } from 'drizzle-orm';
 
-export const maxDuration = 30;
+export const runtime = 'nodejs';
 
-// Customer codes that represent the same entity and should be merged into one job row.
-// Key = alias code (lower-trimmed), value = canonical code to group under.
-const CUST_CODE_ALIASES: Record<string, string> = {
-  hubb1700: 'hubb1200',
+type JobRow = {
+  cust_code: string | null;
+  cust_name: string | null;
+  shipto_address_1: string | null;
+  shipto_city: string | null;
+  shipto_state: string | null;
+  shipto_zip: string | null;
+  primary_so_id: number | null;
+  doc_count: number;
+  so_count: number;
+  hubbell_total: string | null;
 };
 
-function canonicalCustCode(code: string | null): string {
-  const c = (code ?? '').trim().toLowerCase();
-  return CUST_CODE_ALIASES[c] ?? c;
-}
-
-// GET /api/admin/hubbell/jobs
-// One row per job site (customer + address), aggregating all confirmed emails and SOs.
-// Uses two separate queries (bids DB + ERP DB) to avoid cross-schema permission issues.
 export async function GET(req: NextRequest) {
   const authResult = await requireCapability('hubbell.review');
   if (authResult instanceof NextResponse) return authResult;
 
-  const db = getDb();
+  const { searchParams } = req.nextUrl;
+  const q = (searchParams.get('q') ?? '').trim();
+  const page = Math.max(1, parseInt(searchParams.get('page') ?? '1', 10) || 1);
+  const limit = Math.min(200, Math.max(1, parseInt(searchParams.get('limit') ?? '50', 10) || 50));
+  const offset = (page - 1) * limit;
 
-  // Step 1: Aggregate per confirmedSoId directly in SQL — avoids loading thousands of rows into JS
-  type StatsRow = {
-    confirmed_so_id: string;
-    email_count: string;
-    po_count: string;
-    wo_count: string;
-    total_amount: string;
-    last_received: Date;
-  };
+  const sql = getErpSql();
 
-  const statsRows = await db.execute<StatsRow>(sql`
+  // The aggregate is keyed on (cust_code, shipto_address_1). A single Hubbell
+  // doc can be attached to N SOs at the same job site, so we must dedupe doc
+  // membership per job *before* summing — otherwise extracted_total gets
+  // counted once per attached SO. Two CTEs:
+  //   doc_at_site — DISTINCT (cust_code, address, document_id, total)
+  //   so_at_site  — DISTINCT (cust_code, address, so_id)
+  // Each is aggregated separately, joined back at the end.
+  const rows = await sql<JobRow[]>`
+    WITH attached AS (
+      SELECT DISTINCT j.so_id, j.document_id
+      FROM bids.hubbell_document_sos j
+      JOIN bids.hubbell_documents d ON d.id = j.document_id
+      WHERE d.match_status IN ('auto_matched', 'confirmed')
+    ),
+    soh_keyed AS (
+      SELECT
+        soh.so_id,
+        TRIM(soh.cust_code) AS cust_code,
+        soh.cust_name,
+        soh.shipto_address_1,
+        soh.shipto_city,
+        soh.shipto_state,
+        soh.shipto_zip
+      FROM agility_so_header soh
+      WHERE soh.so_id IN (SELECT so_id FROM attached)
+        AND soh.is_deleted = false
+    ),
+    doc_at_site AS (
+      SELECT DISTINCT
+        s.cust_code,
+        s.shipto_address_1,
+        a.document_id,
+        d.extracted_total
+      FROM soh_keyed s
+      JOIN attached a ON a.so_id = s.so_id
+      JOIN bids.hubbell_documents d ON d.id = a.document_id
+    ),
+    so_at_site AS (
+      SELECT DISTINCT
+        s.cust_code,
+        s.shipto_address_1,
+        s.so_id,
+        s.cust_name,
+        s.shipto_city,
+        s.shipto_state,
+        s.shipto_zip
+      FROM soh_keyed s
+      JOIN attached a ON a.so_id = s.so_id
+    ),
+    site_meta AS (
+      SELECT
+        cust_code,
+        shipto_address_1,
+        MAX(cust_name)      AS cust_name,
+        MAX(shipto_city)    AS shipto_city,
+        MAX(shipto_state)   AS shipto_state,
+        MAX(shipto_zip)     AS shipto_zip,
+        MIN(so_id)::int     AS primary_so_id,
+        COUNT(*)::int       AS so_count
+      FROM so_at_site
+      GROUP BY cust_code, shipto_address_1
+    ),
+    site_docs AS (
+      SELECT
+        cust_code,
+        shipto_address_1,
+        COUNT(*)::int                            AS doc_count,
+        COALESCE(SUM(extracted_total), 0)::text  AS hubbell_total
+      FROM doc_at_site
+      GROUP BY cust_code, shipto_address_1
+    )
     SELECT
-      confirmed_so_id,
-      COUNT(*)::text                                                                   AS email_count,
-      COUNT(*) FILTER (WHERE email_type = 'po')::text                                 AS po_count,
-      COUNT(*) FILTER (WHERE email_type = 'wo')::text                                 AS wo_count,
-      COALESCE(SUM(extracted_amount::numeric) FILTER (WHERE extracted_amount IS NOT NULL), 0)::text AS total_amount,
-      MAX(received_at)                                                                 AS last_received
-    FROM bids.hubbell_emails
-    WHERE confirmed_so_id IS NOT NULL
-      AND match_status IN ('confirmed', 'matched')
-    GROUP BY confirmed_so_id
-  `);
-
-  if (statsRows.length === 0) return NextResponse.json({ jobs: [] });
-
-  type StatsMap = {
-    emailCount: number; poCount: number; woCount: number;
-    totalAmount: number; lastReceived: Date;
-  };
-  const statsMap = new Map<string, StatsMap>();
-  for (const r of statsRows) {
-    statsMap.set(r.confirmed_so_id, {
-      emailCount:   parseInt(r.email_count)  || 0,
-      poCount:      parseInt(r.po_count)     || 0,
-      woCount:      parseInt(r.wo_count)     || 0,
-      totalAmount:  parseFloat(r.total_amount) || 0,
-      lastReceived: r.last_received ? new Date(String(r.last_received)) : new Date(0),
-    });
-  }
-
-  const soIds = [...statsMap.keys()];
-  const erpSql = getErpSql();
-
-  // Step 2a: Fetch SO headers from ERP
-  type SoRow = {
-    so_id: string;
-    cust_code: string | null;
-    cust_name: string | null;
-    shipto_address_1: string | null;
-    shipto_city: string | null;
-    shipto_state: string | null;
-    shipto_zip: string | null;
-  };
-
-  const soHeaders = await erpSql<SoRow[]>`
-    SELECT
-      soh.so_id::text,
-      TRIM(soh.cust_code) AS cust_code,
-      soh.cust_name,
-      soh.shipto_address_1,
-      soh.shipto_city,
-      soh.shipto_state,
-      soh.shipto_zip
-    FROM agility_so_header soh
-    WHERE soh.so_id::text = ANY(${soIds})
-      AND soh.is_deleted = false
+      m.cust_code,
+      m.cust_name,
+      m.shipto_address_1,
+      m.shipto_city,
+      m.shipto_state,
+      m.shipto_zip,
+      m.primary_so_id,
+      sd.doc_count,
+      m.so_count,
+      sd.hubbell_total
+    FROM site_meta m
+    JOIN site_docs sd
+      ON sd.cust_code IS NOT DISTINCT FROM m.cust_code
+     AND sd.shipto_address_1 IS NOT DISTINCT FROM m.shipto_address_1
+    WHERE 1=1 ${q ? sql`
+      AND (
+        m.cust_name ILIKE ${'%' + q + '%'}
+        OR m.cust_code ILIKE ${'%' + q + '%'}
+        OR m.shipto_address_1 ILIKE ${'%' + q + '%'}
+        OR m.shipto_city ILIKE ${'%' + q + '%'}
+      )` : sql``}
+    ORDER BY m.cust_name NULLS LAST
+    LIMIT ${limit} OFFSET ${offset}
   `;
 
-  // Step 2b: Fetch open AR per SO via shipments (shipment_num = invoice = AR ref_num)
-  type ArRow = { so_id: string; balance: string };
-  const arRows = soIds.length
-    ? await erpSql<ArRow[]>`
-        SELECT sh.so_id::text AS so_id, SUM(ar.open_amt)::text AS balance
-        FROM agility_shipments sh
-        JOIN agility_ar_open ar
-          ON ar.ref_num    = sh.shipment_num::text
-         AND ar.is_deleted = false
-         AND ar.open_flag  = true
-        WHERE sh.so_id::text = ANY(${soIds})
-          AND sh.is_deleted  = false
-        GROUP BY sh.so_id
-      `
-    : [];
-
-  const soArBalance = new Map(arRows.map((r) => [r.so_id, parseFloat(r.balance ?? '0') || 0]));
-
-  // Step 3: Group by job site (canonical cust_code + shipto_address_1)
-  type JobGroup = {
-    cust_code: string | null;
-    cust_name: string | null;
-    shipto_address_1: string | null;
-    shipto_city: string | null;
-    shipto_state: string | null;
-    shipto_zip: string | null;
-    arBalance: number;
-    so_ids: string[];
-    poCount: number;
-    woCount: number;
-    totalAmount: number;
-    lastReceived: Date;
-  };
-
-  const groupMap = new Map<string, JobGroup>();
-
-  for (const so of soHeaders) {
-    const s = statsMap.get(so.so_id);
-    if (!s) continue;
-    const canonical = canonicalCustCode(so.cust_code);
-    const key = `${canonical}|${(so.shipto_address_1 ?? '').toLowerCase()}`;
-    const g = groupMap.get(key) ?? {
-      cust_code:        so.cust_code,
-      cust_name:        so.cust_name,
-      shipto_address_1: so.shipto_address_1,
-      shipto_city:      so.shipto_city,
-      shipto_state:     so.shipto_state,
-      shipto_zip:       so.shipto_zip,
-      arBalance:        0,
-      so_ids:           [],
-      poCount:          0,
-      woCount:          0,
-      totalAmount:      0,
-      lastReceived:     new Date(0),
-    };
-    g.so_ids.push(so.so_id);
-    g.poCount     += s.poCount;
-    g.woCount     += s.woCount;
-    g.totalAmount += s.totalAmount;
-    g.arBalance   += soArBalance.get(so.so_id) ?? 0;
-    if (s.lastReceived > g.lastReceived) g.lastReceived = s.lastReceived;
-    groupMap.set(key, g);
-  }
-
-  const jobs = [...groupMap.values()]
-    .sort((a, b) => b.lastReceived.getTime() - a.lastReceived.getTime())
-    .map((g) => ({
-      cust_code:        g.cust_code,
-      cust_name:        g.cust_name,
-      shipto_address_1: g.shipto_address_1,
-      shipto_city:      g.shipto_city,
-      shipto_state:     g.shipto_state,
-      shipto_zip:       g.shipto_zip,
-      ar_balance:       String(g.arBalance),
-      so_ids:           g.so_ids,
-      po_count:         String(g.poCount),
-      wo_count:         String(g.woCount),
-      total_amount:     String(g.totalAmount),
-      last_received:    g.lastReceived.toISOString(),
-    }));
-
-  return NextResponse.json({ jobs });
+  return NextResponse.json({ jobs: rows, page, limit });
 }
