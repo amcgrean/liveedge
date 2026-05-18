@@ -55,10 +55,26 @@ interface NightlyResult {
   total_elapsed_ms: number;
 }
 
+// DISABLED 2026-05-18. Geocoding consolidated on the Pi (agility-api-sync)
+// to avoid running two matchers against the same rows and to free the
+// ~666 MB `public.geocode_index` table that Supabase was hosting. The Pi
+// uses agility_api/geocoder_sqlite.py with a local SQLite parcel index.
+// Re-enabling this route requires:
+//   1. Recreating public.geocode_index (db/migrations/0014).
+//   2. Reloading source data (loadOpenAddresses + scripts/load-*-into-index).
+//   3. Re-adding the cron entry to vercel.json.
+// Until then, this endpoint is a no-op stub.
 export async function GET(req: NextRequest) {
   const authError = verifyCronSignature(req);
   if (authError) return authError;
+  return NextResponse.json({
+    disabled: true,
+    reason: 'Geocoding moved to Pi (agility-api-sync). See route header for re-enable steps.',
+  });
+}
 
+async function _disabled_GET(req: NextRequest) {
+  void req;
   const startedAt = new Date();
   const startMs = Date.now();
   const result: NightlyResult = {
