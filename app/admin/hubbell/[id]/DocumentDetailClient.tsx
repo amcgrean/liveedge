@@ -82,13 +82,35 @@ export default function DocumentDetailClient({ documentId }: { documentId: strin
 
   async function attach(soId: number, source: 'manual' | 'address' | 'address_scrape', confidence?: number, reasons?: string[]) {
     setBusy(true);
-    await fetch(`/api/admin/hubbell/documents/${documentId}/attach`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ so_id: soId, source, confidence, reasons }),
-    });
-    setBusy(false);
-    load();
+    try {
+      const r = await fetch(`/api/admin/hubbell/documents/${documentId}/attach`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ so_id: soId, source, confidence, reasons }),
+      });
+      const json = await r.json().catch(() => ({}));
+      const wb = json.agility_writeback;
+      // Surface a brief toast-style alert so the reviewer sees write-back status.
+      // Silent when writeback is disabled (default for prod until ops flips on).
+      if (wb?.attempted) {
+        if (wb.success) {
+          alert(
+            `Attached SO ${soId}.\n` +
+            `Agility (${wb.mode}): wrote po_number = ${wb.new_po_number ?? '?'}` +
+            (wb.skipped_reason ? `\n(${wb.skipped_reason})` : '')
+          );
+        } else {
+          alert(
+            `Attached SO ${soId} in LiveEdge — but Agility writeback (${wb.mode}) FAILED:\n` +
+            `${wb.error ?? 'unknown error'}\n\n` +
+            `The junction is recorded; retry the attach to re-attempt the writeback.`
+          );
+        }
+      }
+    } finally {
+      setBusy(false);
+      load();
+    }
   }
   async function detach(soId: number) {
     setBusy(true);

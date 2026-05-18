@@ -483,8 +483,14 @@ The matcher runs at ingest time AND on document-detail page open (so the reviewe
 
 **Env vars (Vercel):**
 - `HUBBELL_UPLOAD_TOKEN` — bearer token; service-to-service auth on the upload endpoint. Must match `LIVEEDGE_HUBBELL_TOKEN` in the local `.env`.
+- `AGILITY_API_TEST_URL` — DMSi test environment base URL (used by the Hubbell writeback when `HUBBELL_AGILITY_WRITEBACK_MODE=test`). Production calls go to the existing `AGILITY_API_URL`.
+- `HUBBELL_AGILITY_WRITEBACK_MODE` — `disabled` | `test` | `prod`. Default `disabled`. When `test`, every reviewer-confirmed attach in `/admin/hubbell/[id]` triggers an `Orders/SalesOrderHeaderUpdate` against the test environment. When `prod`, hits production. The junction insert always succeeds; writeback failures surface in the response and a UI alert.
 
-**Phase 2 (deferred):** Agility write-back. The team continues to type Hubbell PO/WO numbers into `agility_so_header.po_number` by hand. When a write-back endpoint is available, set `hubbell_document_sos.posted_to_agility_at` after the call succeeds (column already exists). No schema work needed.
+**Phase 2 — Agility write-back (LIVE in test, flag-gated for prod):**
+- `agilityApi.salesOrderHeaderUpdate(orderId, customerPo, { useTest })` in `src/lib/agility-api.ts` — minimal-payload update that only touches `CustomerPurchaseOrder` (line-item arrays are intentionally omitted so DMSi can't wipe them).
+- Append-not-replace: the attach route reads the current `agility_so_header.po_number`, parses via `parsePoNumberField()`, and only writes if the Hubbell doc# isn't already a token in the list.
+- `hubbell_document_sos.posted_to_agility_at` is set when ReturnCode == 0; left NULL on failure so a retry attach (idempotent) will re-attempt the writeback.
+- **Per DMSi docs, blank/null character fields MAY be cleared depending on the method's internal business rules. The minimal-payload approach assumes omitted fields are treated as "no change" — this needs to be verified in test against AGILITY_API_TEST_URL before flipping to prod.** If test shows other fields get cleared, fall back to the read-modify-write pattern (read current header values, echo all back plus the new `CustomerPurchaseOrder`).
 
 **AR balance query pattern** — `agility_ar_open.cust_key` is NOT the same as `agility_so_header.cust_code`. Always resolve via `agility_customers` first:
 ```sql
