@@ -6,8 +6,8 @@ import { useSearchParams, useRouter } from 'next/navigation';
 import { Briefcase, Search } from 'lucide-react';
 
 type Job = {
-  cust_code: string | null;
-  cust_name: string | null;
+  cust_codes: string;            // 'HUBB1200' or 'HUBB1200,HUBB1700'
+  cust_names: string | null;
   shipto_address_1: string | null;
   shipto_city: string | null;
   shipto_state: string | null;
@@ -57,7 +57,7 @@ export default function JobsIndexClient() {
         <Briefcase className="w-5 h-5 text-cyan-400" />
         <h1 className="text-xl font-semibold">Hubbell Jobs</h1>
         <span className="ml-auto text-sm text-slate-400">
-          Open HUBB* sales orders, grouped by ship-to address
+          Open HUBB1200 / HUBB1700 jobs, grouped by ship-to address
         </span>
       </div>
 
@@ -101,12 +101,12 @@ export default function JobsIndexClient() {
                 )}
                 {data.jobs.map((j) => (
                   <tr
-                    key={`${j.cust_code}-${j.shipto_address_1}`}
+                    key={`${j.shipto_address_1}`}
                     className="border-t border-slate-800 hover:bg-slate-900/50"
                   >
                     <td className="px-3 py-2">
-                      <div>{j.cust_name ?? '—'}</div>
-                      <div className="text-xs text-slate-500 font-mono">{j.cust_code ?? ''}</div>
+                      <div>{j.cust_names ?? '—'}</div>
+                      <div className="text-xs text-slate-500 font-mono">{j.cust_codes ?? ''}</div>
                     </td>
                     <td className="px-3 py-2 text-slate-300">
                       {j.shipto_address_1 ?? '—'}

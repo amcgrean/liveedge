@@ -1,9 +1,12 @@
 // GET /api/admin/hubbell/jobs
 //
-// Source-of-truth: open HUBB% sales orders in Agility, grouped by
-// (cust_code, shipto_address_1). Attached Hubbell document count + $ is a
-// sidecar metric — a job appears whether or not it has docs yet, so the
-// jobs page is useful before reviewers start confirming attachments.
+// Source-of-truth: open HUBB1200 + HUBB1700 sales orders in Agility, grouped
+// by shipto_address_1 only (one row per physical jobsite — HUBB1200 main and
+// HUBB1700 trim at the same address collapse into a single row).
+//
+// Doc attachment is by normalized address (not via the SO junction), so docs
+// land on the right job as soon as their PDF extracted address matches the
+// jobsite, regardless of whether a reviewer has linked them to a specific SO.
 //
 // Paginated 50/page. Search across customer name/code, address, city.
 
@@ -13,9 +16,14 @@ import { getErpSql } from '../../../../../db/supabase';
 
 export const runtime = 'nodejs';
 
+// Restrict to the two operational Hubbell customer codes only.
+// HUBB1000 (Construction Services), HUBB1400 (Warranty), and legacy codes are
+// intentionally excluded from this view.
+const HUBBELL_JOB_CUST_CODES = ['HUBB1200', 'HUBB1700'];
+
 type JobRow = {
-  cust_code: string | null;
-  cust_name: string | null;
+  cust_codes: string;            // 'HUBB1200' or 'HUBB1200,HUBB1700'
+  cust_names: string | null;
   shipto_address_1: string | null;
   shipto_city: string | null;
   shipto_state: string | null;
@@ -64,7 +72,7 @@ export async function GET(req: NextRequest) {
       FROM agility_so_header soh
       WHERE soh.is_deleted = false
         AND UPPER(COALESCE(soh.so_status,'')) NOT IN ('I','C','X')
-        AND UPPER(TRIM(soh.cust_code)) LIKE 'HUBB%'
+        AND UPPER(TRIM(soh.cust_code)) = ANY(${HUBBELL_JOB_CUST_CODES})
         AND soh.shipto_address_1 IS NOT NULL
         ${searchClause}
     ),
@@ -77,25 +85,19 @@ export async function GET(req: NextRequest) {
     ),
     site_meta AS (
       SELECT
-        h.cust_code,
         h.shipto_address_1,
-        MAX(h.cust_name)        AS cust_name,
-        MAX(h.shipto_city)      AS shipto_city,
-        MAX(h.shipto_state)     AS shipto_state,
-        MAX(h.shipto_zip)       AS shipto_zip,
-        MIN(h.so_id)::int       AS primary_so_id,
-        COUNT(DISTINCT h.so_id)::int                          AS so_count,
-        COALESCE(SUM(st.so_total), 0)::text                   AS so_open_value
+        STRING_AGG(DISTINCT h.cust_code, ',' ORDER BY h.cust_code) AS cust_codes,
+        STRING_AGG(DISTINCT h.cust_name, ' / ')                    AS cust_names,
+        MAX(h.shipto_city)                                         AS shipto_city,
+        MAX(h.shipto_state)                                        AS shipto_state,
+        MAX(h.shipto_zip)                                          AS shipto_zip,
+        MIN(h.so_id)::int                                          AS primary_so_id,
+        COUNT(DISTINCT h.so_id)::int                               AS so_count,
+        COALESCE(SUM(st.so_total), 0)::text                        AS so_open_value
       FROM hubbell_open h
       LEFT JOIN so_totals st ON st.so_id = h.so_id AND st.system_id = h.system_id
-      GROUP BY h.cust_code, h.shipto_address_1
+      GROUP BY h.shipto_address_1
     ),
-    -- Docs are associated with a job site by physical address, not via the
-    -- SO junction. Every doc has an extracted_address parsed from the PDF
-    -- header; that's enough to map it to a job site at the same address
-    -- regardless of whether a reviewer has confirmed an SO attachment yet.
-    -- Address normalize: lowercase + strip non-alphanumerics to absorb
-    -- punctuation/spacing drift ("1224, 1228 Granite St" ~ "1224 Granite Street").
     docs_normalized AS (
       SELECT
         d.id,
@@ -108,7 +110,6 @@ export async function GET(req: NextRequest) {
     ),
     docs_for_site AS (
       SELECT
-        s.cust_code,
         s.shipto_address_1,
         COUNT(DISTINCT d.id)::int                  AS doc_count,
         COALESCE(SUM(d.extracted_total), 0)::text  AS hubbell_total
@@ -116,11 +117,11 @@ export async function GET(req: NextRequest) {
       LEFT JOIN docs_normalized d
         ON d.norm_addr =
            LOWER(REGEXP_REPLACE(s.shipto_address_1, '[^a-z0-9]', '', 'gi'))
-      GROUP BY s.cust_code, s.shipto_address_1
+      GROUP BY s.shipto_address_1
     )
     SELECT
-      m.cust_code,
-      m.cust_name,
+      m.cust_codes,
+      m.cust_names,
       m.shipto_address_1,
       m.shipto_city,
       m.shipto_state,
@@ -132,29 +133,22 @@ export async function GET(req: NextRequest) {
       COALESCE(d.hubbell_total, '0')  AS hubbell_total
     FROM site_meta m
     LEFT JOIN docs_for_site d
-      ON d.cust_code IS NOT DISTINCT FROM m.cust_code
-     AND d.shipto_address_1 IS NOT DISTINCT FROM m.shipto_address_1
-    ORDER BY m.cust_name NULLS LAST, m.shipto_address_1
+      ON d.shipto_address_1 IS NOT DISTINCT FROM m.shipto_address_1
+    ORDER BY m.cust_names NULLS LAST, m.shipto_address_1
     LIMIT ${limit} OFFSET ${offset}
   `;
 
   const totalRows = await sql<TotalRow[]>`
     WITH hubbell_open AS (
-      SELECT
-        TRIM(soh.cust_code) AS cust_code,
-        soh.shipto_address_1
+      SELECT soh.shipto_address_1
       FROM agility_so_header soh
       WHERE soh.is_deleted = false
         AND UPPER(COALESCE(soh.so_status,'')) NOT IN ('I','C','X')
-        AND UPPER(TRIM(soh.cust_code)) LIKE 'HUBB%'
+        AND UPPER(TRIM(soh.cust_code)) = ANY(${HUBBELL_JOB_CUST_CODES})
         AND soh.shipto_address_1 IS NOT NULL
         ${searchClause}
     )
-    SELECT COUNT(*)::int AS total FROM (
-      SELECT cust_code, shipto_address_1
-      FROM hubbell_open
-      GROUP BY cust_code, shipto_address_1
-    ) t
+    SELECT COUNT(DISTINCT shipto_address_1)::int AS total FROM hubbell_open
   `;
   const total = totalRows[0]?.total ?? 0;
 
