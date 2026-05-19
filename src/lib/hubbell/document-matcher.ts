@@ -25,8 +25,10 @@ export interface MatchResult {
   shiptoState: string | null;
   shiptoZip: string | null;
   soStatus: string | null;
+  expectDate: string | null;
+  orderTotal: string | null;       // SUM(extended_price), nullable when no lines yet
   matchSource: 'po_number_split' | 'address' | 'address_scrape';
-  confidence: number;        // 0–100
+  confidence: number;              // 0–100
   matchReasons: string[];
 }
 
@@ -42,6 +44,32 @@ export interface ScrapeMatchHint {
 
 const SCRAPE_HINT_MIN_RATIO = 0.78;
 
+function toMatchResult(
+  row: SoRow,
+  matchSource: MatchResult['matchSource'],
+  confidence: number,
+  matchReasons: string[],
+): MatchResult {
+  return {
+    soId: row.so_id,
+    systemId: row.system_id,
+    custCode: row.cust_code?.trim() || null,
+    custName: row.cust_name?.trim() || null,
+    reference: row.reference?.trim() || null,
+    poNumber: row.po_number?.trim() || null,
+    shiptoAddress: row.shipto_address_1?.trim() || null,
+    shiptoCity: row.shipto_city?.trim() || null,
+    shiptoState: row.shipto_state?.trim() || null,
+    shiptoZip: row.shipto_zip?.trim() || null,
+    soStatus: row.so_status?.trim() || null,
+    expectDate: row.expect_date ?? null,
+    orderTotal: row.order_total ?? null,
+    matchSource,
+    confidence,
+    matchReasons,
+  };
+}
+
 type SoRow = {
   so_id: number;
   system_id: string | null;
@@ -54,6 +82,8 @@ type SoRow = {
   shipto_state: string | null;
   shipto_zip: string | null;
   so_status: string | null;
+  expect_date: string | null;
+  order_total: string | null;
 };
 
 export interface ExtractedAddress {
@@ -165,8 +195,15 @@ export async function matchDocumentToSos(params: {
       soh.shipto_city,
       soh.shipto_state,
       soh.shipto_zip,
-      soh.so_status
+      soh.so_status,
+      soh.expect_date::text         AS expect_date,
+      ot.order_total::text          AS order_total
     FROM agility_so_header soh
+    LEFT JOIN LATERAL (
+      SELECT SUM(extended_price) AS order_total
+      FROM agility_so_lines
+      WHERE so_id = soh.so_id AND is_deleted = false
+    ) ot ON true
     WHERE soh.is_deleted = false
       AND UPPER(COALESCE(soh.so_status,'')) NOT IN ('I','C','X')
       AND UPPER(TRIM(soh.cust_code)) LIKE ${HUBBELL_CUST_PREFIX_PATTERN}
@@ -178,34 +215,30 @@ export async function matchDocumentToSos(params: {
   for (const row of poMatchRows) {
     const tokens = parsePoNumberField(row.po_number).map(normalizeDocNumber);
     if (tokens.includes(docNumberNormalized)) {
-      exactHits.push({
-        soId: row.so_id,
-        systemId: row.system_id,
-        custCode: row.cust_code?.trim() || null,
-        custName: row.cust_name?.trim() || null,
-        reference: row.reference?.trim() || null,
-        poNumber: row.po_number?.trim() || null,
-        shiptoAddress: row.shipto_address_1?.trim() || null,
-        shiptoCity: row.shipto_city?.trim() || null,
-        shiptoState: row.shipto_state?.trim() || null,
-        shiptoZip: row.shipto_zip?.trim() || null,
-        soStatus: row.so_status?.trim() || null,
-        matchSource: 'po_number_split',
-        confidence: 100,
-        matchReasons: ['po_number_split'],
-      });
+      exactHits.push(toMatchResult(row, 'po_number_split', 100, ['po_number_split']));
     }
   }
 
   if (exactHits.length > 0) return exactHits;
 
+  // No po_number_split hit — collect candidates from Signal A' (scrape hint)
+  // and Signal B (server-side fuzzy address) in parallel. Both contribute to
+  // the same merged candidate list so a doc whose local agent matched HUBB1200
+  // can still surface a HUBB1700 sibling at the same physical address via B.
+  const merged = new Map<number, MatchResult>();
+  const upsertCandidate = (m: MatchResult): void => {
+    const existing = merged.get(m.soId);
+    if (!existing || m.confidence > existing.confidence) {
+      merged.set(m.soId, m);
+    }
+  };
+
   // ---- Signal A': scrape hint (local agent's deterministic shipto match) ----
-  // If the Python scraper already resolved the PDF's address to a specific
-  // (cust_code, shipto_seq_num) at ratio ≥ 0.78, query open SOs at that exact
-  // shipto. These are higher-quality candidates than fuzzy scoring because the
-  // local agent ran against the canonical ERP shipto master (with multi-unit
-  // expansion). We surface them as candidates rather than auto-attaching since
-  // a single shipto can host multiple concurrent SOs.
+  // Returns open SOs at the exact (cust_code, shipto_seq_num) the local
+  // scraper resolved. High confidence because the local agent ran against the
+  // canonical ERP shipto master with multi-unit expansion. NOT auto-attached
+  // since a single shipto can host multiple concurrent SOs across customer
+  // codes (HUBB1200 main + HUBB1700 trim is the common case).
   const hint = params.scrapeHint;
   if (
     hint &&
@@ -217,11 +250,6 @@ export async function matchDocumentToSos(params: {
     const seqNumInt = parseInt(hint.seqNum, 10);
     const ratioForLabel = hint.matchRatio;
     if (Number.isFinite(seqNumInt)) {
-      // Signal A' cust_code is already locked to a Hubbell HUBB* value (the
-      // local agent's best_job_match only matches Hubbell shiptos), so this
-      // query is inherently Hubbell-scoped. We still add the HUBB% filter as
-      // belt-and-suspenders so a future bug in the local agent that produces
-      // a non-Hubbell cust_code hint can't surface non-Hubbell candidates.
       const scrapeRows = await sql<SoRow[]>`
         SELECT
           soh.so_id::int          AS so_id,
@@ -234,8 +262,15 @@ export async function matchDocumentToSos(params: {
           soh.shipto_city,
           soh.shipto_state,
           soh.shipto_zip,
-          soh.so_status
+          soh.so_status,
+          soh.expect_date::text   AS expect_date,
+          ot.order_total::text    AS order_total
         FROM agility_so_header soh
+        LEFT JOIN LATERAL (
+          SELECT SUM(extended_price) AS order_total
+          FROM agility_so_lines
+          WHERE so_id = soh.so_id AND is_deleted = false
+        ) ot ON true
         WHERE soh.is_deleted = false
           AND UPPER(COALESCE(soh.so_status,'')) NOT IN ('I','C','X')
           AND UPPER(TRIM(soh.cust_code)) LIKE ${HUBBELL_CUST_PREFIX_PATTERN}
@@ -244,86 +279,75 @@ export async function matchDocumentToSos(params: {
         ORDER BY soh.created_date DESC NULLS LAST
         LIMIT 20
       `;
-
-      if (scrapeRows.length > 0) {
-        const confidence = Math.round(hint.matchRatio * 100);
-        return scrapeRows.map((row) => ({
-          soId: row.so_id,
-          systemId: row.system_id,
-          custCode: row.cust_code?.trim() || null,
-          custName: row.cust_name?.trim() || null,
-          reference: row.reference?.trim() || null,
-          poNumber: row.po_number?.trim() || null,
-          shiptoAddress: row.shipto_address_1?.trim() || null,
-          shiptoCity: row.shipto_city?.trim() || null,
-          shiptoState: row.shipto_state?.trim() || null,
-          shiptoZip: row.shipto_zip?.trim() || null,
-          soStatus: row.so_status?.trim() || null,
-          matchSource: 'address_scrape' as const,
-          confidence,
-          matchReasons: ['scrape_seq_num', `ratio:${ratioForLabel.toFixed(2)}`],
-        }));
+      const confidence = Math.round(hint.matchRatio * 100);
+      for (const row of scrapeRows) {
+        upsertCandidate(
+          toMatchResult(row, 'address_scrape', confidence, [
+            'scrape_seq_num',
+            `ratio:${ratioForLabel.toFixed(2)}`,
+          ]),
+        );
       }
     }
   }
 
   // ---- Signal B: address fuzzy match ----
+  // Always run if we have an address. This catches HUBB1700 sibling SOs at
+  // the same physical address as the scrape-hint match, plus addresses where
+  // the local agent didn't have a hint to give.
   const addr = params.address;
-  if (!addr || (!addr.zip && !addr.city && !addr.address)) return [];
+  if (addr && (addr.zip || addr.city || addr.address)) {
+    const zipClause = addr.zip
+      ? sql`OR TRIM(soh.shipto_zip) LIKE ${addr.zip.slice(0, 5) + '%'}`
+      : sql``;
+    const cityClause = addr.city
+      ? sql`OR LOWER(TRIM(soh.shipto_city)) ILIKE ${'%' + addr.city.toLowerCase() + '%'}`
+      : sql``;
+    const addrPrefix = addr.address?.match(/^(\d+)/)?.[1] ?? addr.address?.toLowerCase().slice(0, 8);
+    const addrClause = addrPrefix
+      ? sql`OR LOWER(soh.shipto_address_1) ILIKE ${addrPrefix + '%'}`
+      : sql``;
 
-  const zipClause = addr.zip
-    ? sql`OR TRIM(soh.shipto_zip) LIKE ${addr.zip.slice(0, 5) + '%'}`
-    : sql``;
-  const cityClause = addr.city
-    ? sql`OR LOWER(TRIM(soh.shipto_city)) ILIKE ${'%' + addr.city.toLowerCase() + '%'}`
-    : sql``;
-  const addrPrefix = addr.address?.match(/^(\d+)/)?.[1] ?? addr.address?.toLowerCase().slice(0, 8);
-  const addrClause = addrPrefix
-    ? sql`OR LOWER(soh.shipto_address_1) ILIKE ${addrPrefix + '%'}`
-    : sql``;
+    const candidates = await sql<SoRow[]>`
+      SELECT
+        soh.so_id::int          AS so_id,
+        soh.system_id,
+        TRIM(soh.cust_code)     AS cust_code,
+        soh.cust_name,
+        soh.reference,
+        soh.po_number,
+        soh.shipto_address_1,
+        soh.shipto_city,
+        soh.shipto_state,
+        soh.shipto_zip,
+        soh.so_status,
+        soh.expect_date::text   AS expect_date,
+        ot.order_total::text    AS order_total
+      FROM agility_so_header soh
+      LEFT JOIN LATERAL (
+        SELECT SUM(extended_price) AS order_total
+        FROM agility_so_lines
+        WHERE so_id = soh.so_id AND is_deleted = false
+      ) ot ON true
+      WHERE soh.is_deleted = false
+        AND UPPER(COALESCE(soh.so_status,'')) NOT IN ('I','C','X')
+        AND UPPER(TRIM(soh.cust_code)) LIKE ${HUBBELL_CUST_PREFIX_PATTERN}
+        AND (FALSE ${zipClause} ${cityClause} ${addrClause})
+      LIMIT 200
+    `;
 
-  const candidates = await sql<SoRow[]>`
-    SELECT
-      soh.so_id::int          AS so_id,
-      soh.system_id,
-      TRIM(soh.cust_code)     AS cust_code,
-      soh.cust_name,
-      soh.reference,
-      soh.po_number,
-      soh.shipto_address_1,
-      soh.shipto_city,
-      soh.shipto_state,
-      soh.shipto_zip,
-      soh.so_status
-    FROM agility_so_header soh
-    WHERE soh.is_deleted = false
-      AND UPPER(COALESCE(soh.so_status,'')) NOT IN ('I','C','X')
-      AND UPPER(TRIM(soh.cust_code)) LIKE ${HUBBELL_CUST_PREFIX_PATTERN}
-      AND (FALSE ${zipClause} ${cityClause} ${addrClause})
-    LIMIT 200
-  `;
+    type Scored = { row: SoRow; score: number; reasons: string[] };
+    const scored: Scored[] = candidates
+      .map((row) => ({ row, ...scoreAddress(row, addr) }))
+      .filter((s) => s.score >= 20)
+      .sort((a, b) => b.score - a.score)
+      .slice(0, 20);
 
-  type Scored = { row: SoRow; score: number; reasons: string[] };
-  const scored: Scored[] = candidates
-    .map((row) => ({ row, ...scoreAddress(row, addr) }))
-    .filter((s) => s.score >= 20)
-    .sort((a, b) => b.score - a.score)
-    .slice(0, 10);
+    for (const { row, score, reasons } of scored) {
+      upsertCandidate(toMatchResult(row, 'address', score, reasons));
+    }
+  }
 
-  return scored.map(({ row, score, reasons }) => ({
-    soId: row.so_id,
-    systemId: row.system_id,
-    custCode: row.cust_code?.trim() || null,
-    custName: row.cust_name?.trim() || null,
-    reference: row.reference?.trim() || null,
-    poNumber: row.po_number?.trim() || null,
-    shiptoAddress: row.shipto_address_1?.trim() || null,
-    shiptoCity: row.shipto_city?.trim() || null,
-    shiptoState: row.shipto_state?.trim() || null,
-    shiptoZip: row.shipto_zip?.trim() || null,
-    soStatus: row.so_status?.trim() || null,
-    matchSource: 'address' as const,
-    confidence: score,
-    matchReasons: reasons,
-  }));
+  return Array.from(merged.values()).sort((a, b) => b.confidence - a.confidence);
 }
+
