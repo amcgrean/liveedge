@@ -90,22 +90,32 @@ export async function GET(req: NextRequest) {
       LEFT JOIN so_totals st ON st.so_id = h.so_id AND st.system_id = h.system_id
       GROUP BY h.cust_code, h.shipto_address_1
     ),
+    -- Docs are associated with a job site by physical address, not via the
+    -- SO junction. Every doc has an extracted_address parsed from the PDF
+    -- header; that's enough to map it to a job site at the same address
+    -- regardless of whether a reviewer has confirmed an SO attachment yet.
+    -- Address normalize: lowercase + strip non-alphanumerics to absorb
+    -- punctuation/spacing drift ("1224, 1228 Granite St" ~ "1224 Granite Street").
+    docs_normalized AS (
+      SELECT
+        d.id,
+        d.extracted_total,
+        LOWER(REGEXP_REPLACE(COALESCE(d.extracted_address, ''), '[^a-z0-9]', '', 'gi')) AS norm_addr
+      FROM bids.hubbell_documents d
+      WHERE d.match_status <> 'rejected'
+        AND d.extracted_address IS NOT NULL
+        AND TRIM(d.extracted_address) <> ''
+    ),
     docs_for_site AS (
       SELECT
         s.cust_code,
         s.shipto_address_1,
-        COUNT(DISTINCT d.id)::int                       AS doc_count,
-        COALESCE(SUM(d.extracted_total), 0)::text       AS hubbell_total
+        COUNT(DISTINCT d.id)::int                  AS doc_count,
+        COALESCE(SUM(d.extracted_total), 0)::text  AS hubbell_total
       FROM site_meta s
-      LEFT JOIN bids.hubbell_document_sos j
-        ON j.cust_code = s.cust_code
-      LEFT JOIN bids.hubbell_documents d
-        ON d.id = j.document_id
-       AND d.match_status IN ('auto_matched', 'confirmed')
-      LEFT JOIN agility_so_header soh
-        ON soh.so_id = j.so_id
-       AND soh.shipto_address_1 = s.shipto_address_1
-      WHERE soh.so_id IS NOT NULL OR j.document_id IS NULL
+      LEFT JOIN docs_normalized d
+        ON d.norm_addr =
+           LOWER(REGEXP_REPLACE(s.shipto_address_1, '[^a-z0-9]', '', 'gi'))
       GROUP BY s.cust_code, s.shipto_address_1
     )
     SELECT
