@@ -137,7 +137,11 @@ export async function GET(
         ORDER BY COUNT(*) DESC
       `;
 
-  // Other docs at same address that aren't attached to anything yet.
+  // Other docs at the SAME PHYSICAL ADDRESS that aren't attached to anything
+  // yet. The old query OR'd on zip prefix which pulled in every doc anywhere
+  // in the same zipcode regardless of street — wrong. Match by normalized
+  // address (lowercase + strip non-alphanumerics) so 1000 Featherstone matches
+  // only docs at 1000 Featherstone, not 1121 or 2725.
   const unattached = !so.shipto_address_1
     ? []
     : await sql<UnattachedDoc[]>`
@@ -151,13 +155,13 @@ export async function GET(
           d.received_at::text     AS received_at
         FROM bids.hubbell_documents d
         WHERE d.match_status NOT IN ('rejected')
+          AND d.extracted_address IS NOT NULL
+          AND TRIM(d.extracted_address) <> ''
           AND NOT EXISTS (
             SELECT 1 FROM bids.hubbell_document_sos j2 WHERE j2.document_id = d.id
           )
-          AND (
-            d.extracted_address ILIKE ${'%' + (so.shipto_address_1?.slice(0, 20) ?? '') + '%'}
-            ${so.shipto_zip ? sql`OR d.extracted_zip = ${so.shipto_zip.slice(0, 5)}` : sql``}
-          )
+          AND bids.hubbell_normalize_address(d.extracted_address)
+            = bids.hubbell_normalize_address(${so.shipto_address_1})
         ORDER BY d.received_at DESC
         LIMIT 20
       `;
