@@ -19,7 +19,8 @@ This policy defines authorization expectations for `app/api/**/route.ts`.
   "serviceAuth": [
     "app/api/cron/**/route.ts",
     "app/api/inbound/**/route.ts",
-    "app/api/admin/hubbell/upload/route.ts"
+    "app/api/admin/hubbell/upload/route.ts",
+    "app/api/admin/hubbell/payments/import/route.ts"
   ],
   "serviceAuthLegacy": [
     "app/api/inbound/**/route.ts"
