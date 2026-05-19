@@ -146,6 +146,7 @@ export default function PermissionsClient() {
         granted_capabilities: updated.granted_capabilities,
         revoked_capabilities: updated.revoked_capabilities,
         effective_capabilities: updated.effective_capabilities,
+        permissions_version: updated.permissions_version ?? prev.permissions_version,
       } : prev);
       setSuccess('Permissions saved. Changes take effect on the user\'s next sign-in.');
     } catch { setError('Network error'); }
