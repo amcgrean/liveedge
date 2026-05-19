@@ -202,7 +202,7 @@ export async function matchDocumentToSos(params: {
     LEFT JOIN LATERAL (
       SELECT SUM(extended_price) AS order_total
       FROM agility_so_lines
-      WHERE so_id = soh.so_id AND is_deleted = false
+      WHERE so_id = soh.so_id AND system_id = soh.system_id AND is_deleted = false
     ) ot ON true
     WHERE soh.is_deleted = false
       AND UPPER(COALESCE(soh.so_status,'')) NOT IN ('I','C','X')
@@ -269,7 +269,7 @@ export async function matchDocumentToSos(params: {
         LEFT JOIN LATERAL (
           SELECT SUM(extended_price) AS order_total
           FROM agility_so_lines
-          WHERE so_id = soh.so_id AND is_deleted = false
+          WHERE so_id = soh.so_id AND system_id = soh.system_id AND is_deleted = false
         ) ot ON true
         WHERE soh.is_deleted = false
           AND UPPER(COALESCE(soh.so_status,'')) NOT IN ('I','C','X')
@@ -327,7 +327,7 @@ export async function matchDocumentToSos(params: {
       LEFT JOIN LATERAL (
         SELECT SUM(extended_price) AS order_total
         FROM agility_so_lines
-        WHERE so_id = soh.so_id AND is_deleted = false
+        WHERE so_id = soh.so_id AND system_id = soh.system_id AND is_deleted = false
       ) ot ON true
       WHERE soh.is_deleted = false
         AND UPPER(COALESCE(soh.so_status,'')) NOT IN ('I','C','X')
