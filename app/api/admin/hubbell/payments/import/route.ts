@@ -223,13 +223,21 @@ export async function POST(req: NextRequest) {
        AND d.extracted_total > 0
   `);
 
+  // postgres-js exposes affected-row count on `.count`, not `.rowCount`
+  // (the latter is the pg-native shape). Try both for safety.
+  const linkedCount: number | null = (() => {
+    if (typeof linkResult !== 'object' || linkResult === null) return null;
+    const obj = linkResult as { count?: number; rowCount?: number };
+    if (typeof obj.count === 'number') return obj.count;
+    if (typeof obj.rowCount === 'number') return obj.rowCount;
+    return null;
+  })();
+
   return NextResponse.json({
     status: 'ok',
     inserted,
     updated,
-    linked: typeof linkResult === 'object' && linkResult !== null && 'rowCount' in linkResult
-      ? (linkResult as { rowCount: number | null }).rowCount ?? null
-      : null,
+    linked: linkedCount,
     rejected: rowErrors,
   });
 }
