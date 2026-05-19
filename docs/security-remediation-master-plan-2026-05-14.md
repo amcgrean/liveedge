@@ -227,7 +227,7 @@ This plan delivers a professional SaaS-grade authorization posture through six i
 4. Which service routes must use signature auth vs static internal token?
 
 
-## Progress Update — 2026-05-14
+## Progress Update — 2026-05-15
 - ✅ PR1 delivered: route policy baseline, scanner script, npm script, CI workflow.
 - ✅ PR2 delivered (cron scope): shared `src/lib/service-auth.ts` + cron route standardization.
 - ✅ PR3 delivered: scorecard layout now uses capability-based page guard (`requirePageAccess('sales.view')`).
@@ -240,3 +240,4 @@ This plan delivers a professional SaaS-grade authorization posture through six i
   - inbound webhook auth still tracked as `serviceAuthLegacy` pending provider-auth finalization.
   - add explicit parity test coverage for catalog-driven permissions UI rendering.
 - ▶ Next active phase: PR5 (permission governance hardening).
+- 📌 Current kickoff handoff: `docs/security-remediation-handoff-2026-05-15-pr5-kickoff.md`.

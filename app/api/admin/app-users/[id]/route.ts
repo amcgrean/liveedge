@@ -63,7 +63,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     }
 
     const rows = await sql.unsafe(
-      `UPDATE app_users SET ${updates.join(', ')} WHERE id = $${idx}
+      `UPDATE app_users SET ${[...updates, 'updated_at = NOW()'].join(', ')} WHERE id = $${idx}
        RETURNING id, email, display_name, user_id, phone, roles, branch, is_active,
                  created_at::text, last_login_at::text`,
       [...vals, userId] as never[]

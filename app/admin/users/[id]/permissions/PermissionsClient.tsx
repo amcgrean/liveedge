@@ -47,6 +47,7 @@ interface PermissionsData {
   revoked_capabilities: string[];
   effective_capabilities: string[];
   role_defaults: Record<string, string[]>;
+  permissions_version: string | null;
 }
 
 // ─── Component ────────────────────────────────────────────────────────────────
@@ -64,6 +65,8 @@ export default function PermissionsClient() {
   // Map of capability code → UI state
   const [capStates, setCapStates] = useState<Record<string, CapState>>({});
   const [capabilities, setCapabilities] = useState<CapabilityDef[]>([]);
+  const [changeReason, setChangeReason] = useState('');
+  const [ticketRef, setTicketRef] = useState('');
 
   const fetchData = useCallback(async () => {
     setLoading(true);
@@ -121,6 +124,7 @@ export default function PermissionsClient() {
     if (!data) return;
     setSaving(true); setError(''); setSuccess('');
     try {
+      if (!changeReason.trim()) { setError('Change reason is required.'); return; }
       const granted = Object.entries(capStates).filter(([, s]) => s === 'granted').map(([c]) => c);
       const revoked = Object.entries(capStates).filter(([, s]) => s === 'revoked').map(([c]) => c);
       const res = await fetch(`/api/admin/users/${userId}/permissions`, {
@@ -130,6 +134,9 @@ export default function PermissionsClient() {
           roles: data.user.roles,
           granted_capabilities: granted,
           revoked_capabilities: revoked,
+          if_match_version: data.permissions_version,
+          change_reason: changeReason,
+          ticket_ref: ticketRef || undefined,
         }),
       });
       if (!res.ok) { const e = await res.json(); setError(e.error ?? 'Failed to save'); return; }
@@ -139,6 +146,7 @@ export default function PermissionsClient() {
         granted_capabilities: updated.granted_capabilities,
         revoked_capabilities: updated.revoked_capabilities,
         effective_capabilities: updated.effective_capabilities,
+        permissions_version: updated.permissions_version ?? prev.permissions_version,
       } : prev);
       setSuccess('Permissions saved. Changes take effect on the user\'s next sign-in.');
     } catch { setError('Network error'); }
@@ -213,6 +221,16 @@ export default function PermissionsClient() {
 
       {error && <div className="mb-4 p-3 bg-red-900/50 border border-red-700 rounded-lg text-red-300 text-sm">{error}</div>}
       {success && <div className="mb-4 p-3 bg-green-900/50 border border-green-700 rounded-lg text-green-300 text-sm">{success}</div>}
+      <div className="admin-card p-4 mb-4 space-y-3">
+        <div>
+          <label className="block text-xs text-slate-400 mb-1">Change reason <span className="text-red-400">*</span></label>
+          <input value={changeReason} onChange={(e) => setChangeReason(e.target.value)} className="w-full bg-slate-900 border border-slate-700 rounded px-3 py-2 text-sm" placeholder="Why are these permission changes needed?" />
+        </div>
+        <div>
+          <label className="block text-xs text-slate-400 mb-1">Ticket reference</label>
+          <input value={ticketRef} onChange={(e) => setTicketRef(e.target.value)} className="w-full bg-slate-900 border border-slate-700 rounded px-3 py-2 text-sm" placeholder="Optional: JIRA/incident/change ticket" />
+        </div>
+      </div>
 
       {/* Legend */}
       <div className="flex items-center gap-4 mb-4 text-xs text-slate-500">

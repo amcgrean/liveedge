@@ -66,6 +66,7 @@ export async function PUT(
     // Build parameterized SET clause — roles column is json type, needs explicit cast
     const setClauses = Object.keys(updates)
       .map((k, i) => k === 'roles' ? `${k} = $${i + 2}::json` : `${k} = $${i + 2}`)
+      .concat('updated_at = NOW()')
       .join(', ');
     const values = [userId, ...Object.values(updates)] as (string | number | boolean | null)[];
 
@@ -118,7 +119,7 @@ export async function DELETE(
 
   try {
     const sql = getErpSql();
-    await sql`UPDATE app_users SET is_active = false WHERE id = ${userId}`;
+    await sql`UPDATE app_users SET is_active = false, updated_at = NOW() WHERE id = ${userId}`;
     return NextResponse.json({ success: true });
   } catch (err) { return dbError(err); }
 }
