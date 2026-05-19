@@ -160,8 +160,8 @@ export async function GET(
           AND NOT EXISTS (
             SELECT 1 FROM bids.hubbell_document_sos j2 WHERE j2.document_id = d.id
           )
-          AND LOWER(REGEXP_REPLACE(d.extracted_address,  '[^a-z0-9]', '', 'gi'))
-            = LOWER(REGEXP_REPLACE(${so.shipto_address_1}, '[^a-z0-9]', '', 'gi'))
+          AND bids.hubbell_normalize_address(d.extracted_address)
+            = bids.hubbell_normalize_address(${so.shipto_address_1})
         ORDER BY d.received_at DESC
         LIMIT 20
       `;

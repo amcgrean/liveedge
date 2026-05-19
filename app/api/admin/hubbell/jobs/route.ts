@@ -102,10 +102,14 @@ export async function GET(req: NextRequest) {
       GROUP BY h.shipto_address_1, h.shipto_city, h.shipto_state, h.shipto_zip
     ),
     docs_normalized AS (
+      -- Normalize via bids.hubbell_normalize_address so street-type
+      -- abbreviations (Ave / Avenue, St / Street, Dr / Drive, etc.)
+      -- collapse to the same token. The function lowercases, expands
+      -- abbreviations to long form, then strips non-alphanumerics.
       SELECT
         d.id,
         d.extracted_total,
-        LOWER(REGEXP_REPLACE(COALESCE(d.extracted_address, ''), '[^a-z0-9]', '', 'gi')) AS norm_addr
+        bids.hubbell_normalize_address(d.extracted_address) AS norm_addr
       FROM bids.hubbell_documents d
       WHERE d.match_status <> 'rejected'
         AND d.extracted_address IS NOT NULL
@@ -121,8 +125,7 @@ export async function GET(req: NextRequest) {
         COALESCE(SUM(d.extracted_total), 0)::text  AS hubbell_total
       FROM site_meta s
       LEFT JOIN docs_normalized d
-        ON d.norm_addr =
-           LOWER(REGEXP_REPLACE(s.shipto_address_1, '[^a-z0-9]', '', 'gi'))
+        ON d.norm_addr = bids.hubbell_normalize_address(s.shipto_address_1)
       GROUP BY s.shipto_address_1, s.shipto_city, s.shipto_state, s.shipto_zip
     )
     SELECT
