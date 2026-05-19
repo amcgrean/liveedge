@@ -17,6 +17,16 @@ This document is a filesystem-grounded index for agents. Pair it with `docs/rout
   - `/dispatch/run-sheet/[routeId]` (`app/dispatch/run-sheet/[routeId]/page.tsx`)
 - Redirect-only routes (for example `/sales/deliveries`, `/sales/history`, `/ops-login`) still do not render page chrome by design.
 
+## Security remediation notes for agents (2026-05-15)
+
+- `app/scorecard/layout.tsx` is intentionally capability-gated with `requirePageAccess('sales.view')`.
+- Capability catalog now exists as shared metadata in `src/lib/access-control-shared.ts` and is exposed via `GET /api/admin/capabilities`.
+- Admin permissions UI (`app/admin/users/[id]/permissions/PermissionsClient.tsx`) is catalog-driven; avoid reintroducing hardcoded capability tab lists.
+- Active phase is PR5 (permission governance hardening). Start from:
+  - `docs/security-remediation-handoff-2026-05-15-pr5-kickoff.md`
+  - `docs/security-remediation-handoff-2026-05-14-pr4.md`
+  - `docs/security-remediation-next-agent-prompt-2026-05-15.md`
+
 
 ## API Route Handlers (`app/api/**/route.ts`)
 
