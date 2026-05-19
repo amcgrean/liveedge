@@ -427,70 +427,90 @@ Branch: `claude/auth-unification-FelEf` (merged to `main`)
 3. Backfilled `password_hash` in `app_users` via `UPDATE public.app_users SET password_hash = u.password FROM bids."user" u WHERE estimating_user_id = u.id` (69/70 — `po-test` is OTP-only, no estimating user)
 4. `password_hash` column is now inert — auth no longer reads it
 
-#### Hubbell PO/WO Daily Ingest (2026-05-18) — COMPLETE
+#### Hubbell PO/WO Daily Ingest (2026-05-18 → 2026-05-19) — LIVE
 
-Admin tool for reconciling Hubbell supply-house POs / WO acknowledgements against LiveEdge sales orders.
+Daily PO/WO scrape from Hubbell's `hub.ihmsweb.com` portal → LiveEdge inbox → reviewer matches docs to Agility SOs → optional Agility writeback. Replaces the unreliable email-ingest pipeline that was removed 2026-05-13.
 
 **Architecture:**
 ```
-Local Windows box (Task Scheduler, daily 6 AM)
+Pi (agility-api, /home/api/hubbell, systemd 06:00 daily)
   hubbell_daily_fetch.py  →  PDF parse  →  uploader.py
                                               │
                                               ▼ POST multipart, Bearer auth
 LiveEdge: POST /api/admin/hubbell/upload  →  R2 (PDF)
                                           →  bids.hubbell_documents (insert)
-                                          →  matcher (po_number_split + address)
+                                          →  matcher (3 signals)
                                           →  bids.hubbell_document_sos (junction)
+                                          →  auto-link orphan payments by doc#
 ```
 
-**Tables (migration `0021_hubbell_documents.sql`):**
-- `bids.hubbell_documents` — one row per PO/WO PDF. Keyed by `source_hash` (sha256 of bytes) for idempotent re-upload. Columns: `doc_type` ('po'|'wo'), `doc_number`, `r2_key`, extracted `address/city/state/zip/total/need_by/line_items`, `match_status` ('unmatched'|'auto_matched'|'confirmed'|'rejected').
-- `bids.hubbell_document_sos` — junction (one document × one Agility SO). Holds `match_source` ('po_number_split'|'address'|'manual'), `confidence`, `match_reasons`, `confirmed_by`, plus a phase-2 `posted_to_agility_at` hook for future write-back.
+Monthly reconciliation (payment matching, AR cross-check) stays on the PC at `C:\Users\amcgrean\python\hubbell test\`.
 
-**Many-to-many:** one Hubbell doc → N Agility SOs; one Agility SO → N Hubbell docs. The team types Hubbell PO/WO numbers into Agility's customer-PO field by hand, **comma-separated** when multiple apply. The matcher parses `agility_so_header.po_number` via `parsePoNumberField()` (`src/lib/hubbell/po-number-parser.ts`) which splits on `[,;|/\s]+` and uppercases.
+**Tables (apply migrations 0021/0022/0023/0024/0025 in Supabase SQL editor):**
+- `bids.hubbell_documents` — one row per PO/WO PDF. `source_hash` (sha256 of bytes) for idempotent re-upload. Columns include `doc_type / doc_number / r2_key`, extracted `address/city/state/zip/total/need_by/line_items`, scrape hints (`scrape_cust_code / scrape_seq_num / scrape_match_ratio`, migration 0022), job context (`dev_code / dev_name / house_number / block_lot / model_elevation`, migration 0023), payment rollups (`paid_amount_total / last_payment_date / last_check_number / payment_status`, migration 0024), `match_status` ('unmatched'|'auto_matched'|'confirmed'|'rejected').
+- `bids.hubbell_document_sos` — junction (one document × one Agility SO). `match_source` ('po_number_split'|'address'|'address_scrape'|'manual'), `confidence`, `match_reasons`, `confirmed_by`, `posted_to_agility_at` (set when the writeback succeeds).
+- `bids.hubbell_document_payments` — one row per `(doc_type, doc_number, check_number)`. Payments can land before docs and get linked when the matching doc arrives via the `/upload` route's auto-link.
+- `bids.hubbell_normalize_address(text)` — IMMUTABLE SQL helper (migration 0025). Lowercases, expands street-type abbreviations (ave→avenue, st→street, dr→drive, etc.), strips non-alphanumerics. Use it everywhere an SO's `shipto_address_1` is compared to a doc's `extracted_address`. `1000 Featherstone Ave NE` matches `1000 Featherstone Avenue NE`.
 
-**Matcher strategy (`src/lib/hubbell/document-matcher.ts`):**
-1. **Signal A — `po_number_split`** (confidence 100): pull all open SOs with non-empty `po_number`, split, look for the Hubbell doc number. If any hit, return only those (this is authoritative — the buyer typed it in).
-2. **Signal B — `address`** (confidence 0–100): fuzzy score against `shipto_address_1/city/state/zip`. Same algorithm as the legacy email matcher (zip 35 + city 20 + state 5 + street 40). Only runs when Signal A returns empty.
+**Many-to-many:** one Hubbell doc → N Agility SOs; one Agility SO → N Hubbell docs. Sales types Hubbell PO/WO numbers into Agility's customer-PO field by hand, **comma-separated** when multiple apply. `parsePoNumberField()` splits on `[,;|/\s]+`.
 
-The matcher runs at ingest time AND on document-detail page open (so the reviewer sees current Agility state).
+**Matcher (`src/lib/hubbell/document-matcher.ts`):**
+All three signals are scoped to `cust_code LIKE 'HUBB%'` to keep non-Hubbell SOs out of candidates.
+1. **Signal A — `po_number_split`** (confidence 100, auto-attach, exclusive return when hit): split open SOs' `po_number`, look for the Hubbell doc number. Authoritative — buyer typed it in.
+2. **Signal A' — `address_scrape`** (confidence = scrape_match_ratio × 100): local agent's `best_job_match` already resolved the PDF address to a `(cust_code, shipto_seq_num)` pre-upload. When that hint resolves to an open SO at the exact ERP shipto, return as candidate (not auto-attach — a single shipto can host concurrent SOs).
+3. **Signal B — `address`** (server-side fuzzy, confidence 0-100): zip+city+street tokenized scoring. Signals A' and B union by `so_id` keeping highest confidence — so HUBB1200 main + HUBB1700 trim at the same physical address both surface.
+
+The matcher runs at ingest time AND on document-detail page open. Doc-page candidate table columns: SO# / Customer / Reference / Cust PO / Address / Expect / Order $ (UOM-aware `SUM(extended_price)`, system_id scoped) / Status / Attach. **No Reasons column** — confused the UX since the candidates table reads as a related-orders list.
+
+**Jobs page (`/admin/hubbell/jobs`):**
+- One row per physical jobsite, keyed `(shipto_address_1, shipto_city, shipto_state, shipto_zip)`.
+- Restricted to `cust_code IN ('HUBB1200','HUBB1700')` — the operational pair. HUBB1000/HUBB1400/legacy excluded.
+- HUBB1200 main and HUBB1700 trim at the same physical address collapse to one row; customer cell shows both codes (`STRING_AGG(DISTINCT cust_code)`) and names slash-joined.
+- Columns: Customer · Address · SOs · Open $ · Docs · Hubbell $.
+- Sourced from `agility_so_header` directly — a jobsite appears whether or not it has docs attached yet.
+- Docs map to jobsites by **normalized address** (`bids.hubbell_normalize_address`), NOT via the SO junction — docs land on their job as soon as the address matches, regardless of attach status.
 
 **Pages:**
-- `/admin/hubbell` — `DocumentsClient.tsx`. Tabbed inbox (`?tab=unmatched|auto_matched|confirmed|rejected|all`), search across doc#/SO#/cust_code/address, type filter.
-- `/admin/hubbell/[id]` — `DocumentDetailClient.tsx`. Header (doc#, type, status, total, need-by), View-PDF button (presigned R2 URL), extracted address card, line-items table, attached-SOs section with detach, candidate-SOs section with attach, free-text manual attach, Reject button.
-- `/admin/hubbell/jobs` — `JobsIndexClient.tsx`. Aggregates auto_matched + confirmed docs by `(cust_code, shipto_address_1)`. Columns: customer, address, # docs, # SOs, Hubbell $.
-- `/admin/hubbell/jobs/[soId]` — `JobDetailClient.tsx`. SO header card, attached Hubbell docs, **sibling SOs** (SOs that share a doc with this one — the multi-SO visibility ask), unattached docs at the same address.
-- `/admin/hubbell/status` — `StatusClient.tsx`. Last received timestamp + staleness banner, last 24h PO/WO counts, totals by match_status.
+- `/admin/hubbell` — `DocumentsClient.tsx`. Tabbed inbox (Unmatched/Auto-matched/Confirmed/Rejected/All), search, type filter. Columns include payment status badge (paid/partial $X/unpaid).
+- `/admin/hubbell/[id]` — `DocumentDetailClient.tsx`. View-PDF button, extracted address with local-agent match chip, **Job context card** (dev_code, house_number, block_lot, model_elevation), Totals + payment block, line items, attached SOs, candidate SOs, manual attach by SO#, Reject.
+- `/admin/hubbell/jobs/[soId]` — `JobDetailClient.tsx`. **Currently still SO-anchored** (SO header + attached docs + sibling SOs + unattached docs at this address). Full job-site rebuild prompt in `docs/agent-prompts/hubbell-job-page-rebuild.md`.
+- `/admin/hubbell/status` — last_document_at, 24h counts, status totals.
 
 **API routes:**
-- `POST /api/admin/hubbell/upload` — service-token endpoint (Bearer `HUBBELL_UPLOAD_TOKEN`). multipart/form-data: `doc_type`, `doc_number`, `source_run_id`, `check_number?`, `metadata` (JSON string), `pdf` (file). Computes sha256; returns `{status:'duplicate', id, match_status}` if seen; otherwise uploads to R2 at `hubbell/{yyyy}/{doc_type}/{doc_number}.pdf`, inserts the row, runs the matcher, returns `{status:'inserted', id, match_status, attached_sos:[...]}`.
-- `GET /api/admin/hubbell/documents` — paginated list, status counts, filters.
-- `GET /api/admin/hubbell/documents/[id]` — detail + attached SOs (hydrated with current `agility_so_header` data) + fresh matcher candidates.
-- `POST /api/admin/hubbell/documents/[id]/attach` — body `{ so_id, source?: 'manual'|'address', confidence?, reasons? }`. Inserts junction row (UPSERT on conflict), bumps `match_status`.
-- `POST /api/admin/hubbell/documents/[id]/detach` — body `{ so_id }`. Deletes junction row; if zero remain, document goes back to `unmatched`.
-- `POST /api/admin/hubbell/documents/[id]/reject` — sets `match_status='rejected'`.
-- `GET /api/admin/hubbell/documents/[id]/pdf` — returns `{url}` (5-min presigned R2 URL).
-- `GET /api/admin/hubbell/jobs` — aggregated jobs list.
-- `GET /api/admin/hubbell/jobs/[soId]` — per-SO detail + sibling SOs + unattached address docs.
-- `GET /api/admin/hubbell/status` — last_document_at, last_24_hours, by_status.
-- `GET /api/cron/hubbell-stale-check` — daily 2 PM UTC; logs a warning when no doc has arrived in 36+ hours.
+- `POST /api/admin/hubbell/upload` — service-token Bearer auth (`HUBBELL_UPLOAD_TOKEN`). Idempotent via sha256. Auto-links orphan payments matching this doc's `(doc_type, doc_number)`.
+- `GET /api/admin/hubbell/documents` / `[id]` — list + detail (matcher re-runs live).
+- `POST /api/admin/hubbell/documents/[id]/attach` — junction insert; optional Agility writeback (see Phase 2 below).
+- `POST /api/admin/hubbell/documents/[id]/detach` / `/reject` / `GET .../pdf`.
+- `GET /api/admin/hubbell/jobs` — paginated jobs list.
+- `GET /api/admin/hubbell/jobs/[soId]` — per-job detail.
+- `POST /api/admin/hubbell/payments/import` — service-token. Bulk-imports payments per `(doc_type, doc_number, check_number)`. Empty `payments:[]` body triggers rollup refresh only (sets `payment_status='unpaid'` on docs with `extracted_total>0` and no payment rows).
+- `GET /api/admin/hubbell/status` — health dashboard.
+- `GET /api/cron/hubbell-stale-check` — daily 14:00 UTC.
 
-**Local scraper (`C:\Users\amcgrean\python\hubbell test`):**
-- `hubbell_daily_fetch.py` — Playwright traversal, PDF download, line-item regex, address extraction. Now calls `uploader.upload_document()` per doc and writes `hubbell_inbox/YYYY_MM/upload_log.csv` (attempt timestamp, status, document_id, match_status, attached_so_count, error).
-- `uploader.py` — POSTs multipart to `LIVEEDGE_BASE_URL/api/admin/hubbell/upload`. Retries 5xx with exponential backoff, fails fast on 4xx.
-- `requirements.txt`, `README.md`, `docs/daily-flow.md`, `docs/troubleshooting.md` added.
-- Idempotency is **server-side** via `source_hash`; the local `hubbell_docs_seen.json` is still consulted as a fast-skip but losing it just means one slow re-pull — server dedup turns repeats into no-ops.
+**Local scraper:**
+- Pi: `/home/api/hubbell/` (systemd `hubbell-daily.timer` at 06:00 EDT). `hubbell_daily_fetch.py` + `uploader.py` + Playwright + Chromium ARM64.
+- PC: `C:\Users\amcgrean\python\hubbell test\` — monthly recon (AgilitySQL ODBC, stays here), historical PDF backfill via `backfill_local_pdfs.py` (extracts job context + scrape hints), payments push via `monthly_recon_*.py`.
+- Tooling on PC at `C:\Users\amcgrean\python\api\scripts\`: `hubbell_pi_*.py` (deploy, smoke test, status, redeploy, log tail, backfill, payment rollup refresh).
 
 **Env vars (Vercel):**
-- `HUBBELL_UPLOAD_TOKEN` — bearer token; service-to-service auth on the upload endpoint. Must match `LIVEEDGE_HUBBELL_TOKEN` in the local `.env`.
-- `AGILITY_API_TEST_URL` — DMSi test environment base URL (used by the Hubbell writeback when `HUBBELL_AGILITY_WRITEBACK_MODE=test`). Production calls go to the existing `AGILITY_API_URL`.
-- `HUBBELL_AGILITY_WRITEBACK_MODE` — `disabled` | `test` | `prod`. Default `disabled`. When `test`, every reviewer-confirmed attach in `/admin/hubbell/[id]` triggers an `Orders/SalesOrderHeaderUpdate` against the test environment. When `prod`, hits production. The junction insert always succeeds; writeback failures surface in the response and a UI alert.
+- `HUBBELL_UPLOAD_TOKEN` — bearer for upload + payments-import endpoints. Mirrors `LIVEEDGE_HUBBELL_TOKEN` on PC + Pi `.env`.
+- `AGILITY_API_URL` — DMSi production base URL.
+- `AGILITY_API_TEST_URL` — DMSi non-prod URL (used by writeback when mode=test).
+- `HUBBELL_AGILITY_WRITEBACK_MODE` — `disabled` | `test` | `prod`. Default `disabled`. Gates the `Orders/SalesOrderHeaderUpdate` call on each attach.
 
-**Phase 2 — Agility write-back (LIVE in test, flag-gated for prod):**
-- `agilityApi.salesOrderHeaderUpdate(orderId, customerPo, { useTest })` in `src/lib/agility-api.ts` — minimal-payload update that only touches `CustomerPurchaseOrder` (line-item arrays are intentionally omitted so DMSi can't wipe them).
-- Append-not-replace: the attach route reads the current `agility_so_header.po_number`, parses via `parsePoNumberField()`, and only writes if the Hubbell doc# isn't already a token in the list.
-- `hubbell_document_sos.posted_to_agility_at` is set when ReturnCode == 0; left NULL on failure so a retry attach (idempotent) will re-attempt the writeback.
-- **Per DMSi docs, blank/null character fields MAY be cleared depending on the method's internal business rules. The minimal-payload approach assumes omitted fields are treated as "no change" — this needs to be verified in test against AGILITY_API_TEST_URL before flipping to prod.** If test shows other fields get cleared, fall back to the read-modify-write pattern (read current header values, echo all back plus the new `CustomerPurchaseOrder`).
+**Phase 2 — Agility write-back (code LIVE, flag-gated, NOT YET VALIDATED in test):**
+- `agilityApi.salesOrderHeaderUpdate(orderId, customerPo, { useTest })` in `src/lib/agility-api.ts` — minimal payload (only OrderID + CustomerPurchaseOrder, line-item arrays omitted).
+- Attach route reads current `agility_so_header.po_number`, parses via `parsePoNumberField()`, only writes when the Hubbell doc# isn't already a token. **Refuses to write if the mirror lookup fails** (`headerLookupOk` guard) so a stale/missing mirror can never clobber a real customer-PO value.
+- `posted_to_agility_at` is set when ReturnCode == 0; NULL on failure so re-attach re-attempts.
+- **Per DMSi docs, blank/null character fields MAY be cleared depending on the method's internal business rules. The minimal-payload approach assumes omitted fields are no-change — REQUIRES validation in test against AGILITY_API_TEST_URL before flipping to prod.** Test procedure at `docs/agent-prompts/hubbell-agility-writeback-test.md`. If test wipes other fields, fall back to read-modify-write (read current header values, echo all back plus the new CustomerPurchaseOrder).
+
+**Backfill state (as of 2026-05-19):**
+- 1,044 docs from Pi daily scrape (uploaded 2026-05-18 bulk + ongoing daily runs) — dev_code/dev_name backfilled from manifest; house_number/block_lot/model_elevation NULL on most (daily-fetch PDF format doesn't carry that band).
+- ~5,664 docs from PC historical monthly-recon backfill (hubbell-test agent's run, in flight 2026-05-19) — fully populated job context.
+- ~4,879 payment rows imported from the agent's recon workbook; auto-link in upload route (PR #333) closes the loop as PDFs land.
+- Forward-going: every Pi daily run + every monthly-recon payment push are now self-healing.
+
+**Hubbell-test agent handoff:** [`C:\Users\amcgrean\python\hubbell test\LIVEEDGE_BACKFILL_REQUEST_2026-05-19.md`](file:///C:/Users/amcgrean/python/hubbell%20test/LIVEEDGE_BACKFILL_REQUEST_2026-05-19.md) — complete brief for the PC-side agent covering PDF backfill, payment data push, and the eventual read endpoint for monthly recon consumption.
 
 **AR balance query pattern** — `agility_ar_open.cust_key` is NOT the same as `agility_so_header.cust_code`. Always resolve via `agility_customers` first:
 ```sql
