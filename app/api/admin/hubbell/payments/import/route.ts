@@ -109,7 +109,11 @@ export async function POST(req: NextRequest) {
     else parsed.push(r);
   });
 
-  if (parsed.length === 0) {
+  // If the caller supplied any rows, at least one must be valid. An empty
+  // payments array is allowed — it triggers a rollup-refresh sweep without
+  // ingesting new payment rows (useful for flipping pre-existing docs with
+  // no payments yet from NULL → 'unpaid').
+  if (Array.isArray(body.payments) && body.payments.length > 0 && parsed.length === 0) {
     return NextResponse.json(
       { error: 'No valid payment rows', row_errors: rowErrors },
       { status: 400 },
@@ -175,8 +179,11 @@ export async function POST(req: NextRequest) {
        AND d.doc_number = p.doc_number
   `);
 
-  // Refresh payment rollups on every document we just touched. Aggregate from
-  // hubbell_document_payments → hubbell_documents.
+  // Refresh payment rollups on every document. LEFT JOIN to the agg CTE so
+  // docs without payment rows are still touched and get marked 'unpaid'
+  // (instead of staying NULL and rendering as '—' in the inbox). Scoped to
+  // docs with a meaningful extracted_total — a doc whose total we don't know
+  // can't be classified.
   await db.execute(dsql`
     WITH agg AS (
       SELECT
@@ -194,15 +201,26 @@ export async function POST(req: NextRequest) {
            last_payment_date = a.last_date,
            last_check_number = a.last_check,
            payment_status = CASE
-             WHEN d.extracted_total IS NULL OR d.extracted_total = 0 THEN NULL
-             WHEN a.paid_total >= d.extracted_total                   THEN 'paid'
-             WHEN a.paid_total > 0                                    THEN 'partial'
-             ELSE                                                          'unpaid'
+             WHEN d.extracted_total IS NULL OR d.extracted_total = 0
+                  THEN NULL
+             WHEN COALESCE(a.paid_total, 0) >= d.extracted_total
+                  THEN 'paid'
+             WHEN COALESCE(a.paid_total, 0) > 0
+                  THEN 'partial'
+             ELSE 'unpaid'
            END,
            updated_at = now()
-      FROM agg a
-     WHERE d.doc_type   = a.doc_type
-       AND d.doc_number = a.doc_number
+      FROM (
+        -- Cross every document with its (possibly null) agg row.
+        SELECT d2.id, agg.doc_type, agg.doc_number, agg.paid_total, agg.last_date, agg.last_check
+          FROM bids.hubbell_documents d2
+          LEFT JOIN agg
+            ON agg.doc_type   = d2.doc_type
+           AND agg.doc_number = d2.doc_number
+      ) a
+     WHERE d.id = a.id
+       AND d.extracted_total IS NOT NULL
+       AND d.extracted_total > 0
   `);
 
   return NextResponse.json({
