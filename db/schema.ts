@@ -442,6 +442,15 @@ export const hubbellDocuments = bidsSchema.table(
     scrapeSeqNum:       varchar('scrape_seq_num', { length: 50 }),
     scrapeMatchRatio:   numeric('scrape_match_ratio', { precision: 4, scale: 3 }),
 
+    // Hubbell-portal job context: surfaced in /admin/hubbell/[id] so the
+    // reviewer doesn't have to open the PDF to see which house/lot the doc
+    // is for. Populated by the local scraper's metadata; all nullable.
+    devCode:            varchar('dev_code', { length: 20 }),
+    devName:            varchar('dev_name', { length: 120 }),
+    houseNumber:        varchar('house_number', { length: 30 }),
+    blockLot:           varchar('block_lot', { length: 30 }),
+    modelElevation:     varchar('model_elevation', { length: 200 }),
+
     // 'unmatched' | 'auto_matched' | 'confirmed' | 'rejected'
     matchStatus:        varchar('match_status', { length: 20 }).notNull().default('unmatched'),
 

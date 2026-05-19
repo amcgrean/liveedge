@@ -37,6 +37,13 @@ type Metadata = {
   erp_cust_code?: string | null;
   erp_seq_num?: string | number | null;
   match_ratio?: number | string | null;
+  // Job context from the Hubbell portal scrape (development + house + lot +
+  // model). Optional; persisted to the document row for inbox display.
+  dev_code?: string | null;
+  dev_name?: string | null;
+  house_number?: string | null;
+  block_lot?: string | null;
+  model_elevation?: string | null;
 };
 
 function parseDate(s: string | null | undefined): Date | null {
@@ -168,6 +175,11 @@ export async function POST(req: NextRequest) {
       scrapeCustCode,
       scrapeSeqNum,
       scrapeMatchRatio,
+      devCode:        metadata.dev_code        ?? null,
+      devName:        metadata.dev_name        ?? null,
+      houseNumber:    metadata.house_number    ?? null,
+      blockLot:       metadata.block_lot       ?? null,
+      modelElevation: metadata.model_elevation ?? null,
       matchStatus: 'unmatched',
     })
     .onConflictDoNothing({ target: schema.hubbellDocuments.sourceHash })

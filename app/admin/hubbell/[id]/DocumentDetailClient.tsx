@@ -20,6 +20,11 @@ type Document = {
   scrapeCustCode: string | null;
   scrapeSeqNum: string | null;
   scrapeMatchRatio: string | null;
+  devCode: string | null;
+  devName: string | null;
+  houseNumber: string | null;
+  blockLot: string | null;
+  modelElevation: string | null;
   receivedAt: string;
 };
 
@@ -53,6 +58,8 @@ type Candidate = {
   shiptoState: string | null;
   shiptoZip: string | null;
   soStatus: string | null;
+  expectDate: string | null;
+  orderTotal: string | null;
   matchSource: 'address' | 'address_scrape' | 'po_number_split';
   confidence: number;
   matchReasons: string[];
@@ -202,6 +209,42 @@ export default function DocumentDetailClient({ documentId }: { documentId: strin
         </div>
       </div>
 
+      {(doc.devCode || doc.devName || doc.houseNumber || doc.blockLot || doc.modelElevation) && (
+        <div className="mb-6 bg-slate-900/40 border border-slate-800 rounded p-4">
+          <div className="text-xs uppercase text-slate-500 mb-3">Job context</div>
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-x-6 gap-y-3 text-sm">
+            {(doc.devCode || doc.devName) && (
+              <div>
+                <div className="text-xs text-slate-500">Development</div>
+                <div className="text-slate-200">
+                  {doc.devCode && <span className="font-mono">{doc.devCode}</span>}
+                  {doc.devCode && doc.devName ? ' · ' : ''}
+                  {doc.devName}
+                </div>
+              </div>
+            )}
+            {doc.houseNumber && (
+              <div>
+                <div className="text-xs text-slate-500">House #</div>
+                <div className="text-slate-200 font-mono">{doc.houseNumber}</div>
+              </div>
+            )}
+            {doc.blockLot && (
+              <div>
+                <div className="text-xs text-slate-500">Block / Lot</div>
+                <div className="text-slate-200 font-mono">{doc.blockLot}</div>
+              </div>
+            )}
+            {doc.modelElevation && (
+              <div className="col-span-2 sm:col-span-4">
+                <div className="text-xs text-slate-500">Model / Elevation</div>
+                <div className="text-slate-200">{doc.modelElevation}</div>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
       {doc.lineItems && doc.lineItems.length > 0 && (
         <div className="mb-6 rounded border border-slate-800">
           <div className="px-3 py-2 text-xs uppercase text-slate-500 bg-slate-900/40 border-b border-slate-800">Line items</div>
@@ -288,24 +331,33 @@ export default function DocumentDetailClient({ documentId }: { documentId: strin
             <table className="w-full text-sm">
               <thead className="text-xs uppercase text-slate-500 bg-slate-900/40">
                 <tr>
-                  <th className="px-3 py-2 text-left">Confidence</th>
                   <th className="px-3 py-2 text-left">SO #</th>
                   <th className="px-3 py-2 text-left">Customer</th>
-                  <th className="px-3 py-2 text-left">Address</th>
+                  <th className="px-3 py-2 text-left">Reference</th>
                   <th className="px-3 py-2 text-left">Cust PO</th>
-                  <th className="px-3 py-2 text-left">Reasons</th>
+                  <th className="px-3 py-2 text-left">Address</th>
+                  <th className="px-3 py-2 text-left">Expect</th>
+                  <th className="px-3 py-2 text-right">Order $</th>
+                  <th className="px-3 py-2 text-left">Status</th>
                   <th className="px-3 py-2"></th>
                 </tr>
               </thead>
               <tbody>
                 {data.candidate_sos.map((c) => (
                   <tr key={c.soId} className="border-t border-slate-800">
-                    <td className="px-3 py-1 font-mono">{c.confidence}</td>
                     <td className="px-3 py-1 font-mono">{c.soId}</td>
-                    <td className="px-3 py-1">{c.custName ?? c.custCode ?? '—'}</td>
-                    <td className="px-3 py-1 text-slate-400 text-xs">{c.shiptoAddress ?? '—'}</td>
+                    <td className="px-3 py-1">
+                      <div>{c.custName ?? '—'}</div>
+                      <div className="text-xs text-slate-500 font-mono">{c.custCode ?? ''}</div>
+                    </td>
+                    <td className="px-3 py-1 text-xs">{c.reference ?? '—'}</td>
                     <td className="px-3 py-1 font-mono text-xs">{c.poNumber ?? '—'}</td>
-                    <td className="px-3 py-1 text-xs text-slate-400">{c.matchReasons.join(', ')}</td>
+                    <td className="px-3 py-1 text-slate-400 text-xs">{c.shiptoAddress ?? '—'}</td>
+                    <td className="px-3 py-1 text-xs">{c.expectDate ?? '—'}</td>
+                    <td className="px-3 py-1 text-right tabular-nums">
+                      {c.orderTotal ? `$${Math.round(parseFloat(c.orderTotal)).toLocaleString()}` : '—'}
+                    </td>
+                    <td className="px-3 py-1 text-xs">{c.soStatus ?? '—'}</td>
                     <td className="px-3 py-1 text-right">
                       <button
                         onClick={() => attach(
