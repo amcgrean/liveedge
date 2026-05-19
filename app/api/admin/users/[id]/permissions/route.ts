@@ -127,11 +127,12 @@ export async function PUT(req: NextRequest, context: RouteContext) {
     const normalizedGranted = granted.filter((c) => !roleDefaultSet.has(c as never));
     const normalizedRevoked = revoked.filter((c) => roleDefaultSet.has(c as never));
 
-    // Apply update
+    // Apply update — `roles` is a json column (see /api/admin/users/[id]/route.ts);
+    // granted/revoked_capabilities are text[] (migration 0015_user_capabilities.sql).
     if (roles !== undefined) {
       await sql`
         UPDATE app_users
-        SET roles = ${sql.array(newRoles)}::text[],
+        SET roles = ${JSON.stringify(newRoles)}::json,
             granted_capabilities = ${sql.array(normalizedGranted)}::text[],
             revoked_capabilities = ${sql.array(normalizedRevoked)}::text[]
         WHERE id = ${userId}
