@@ -20,6 +20,7 @@ type AppUserRow = {
   granted_capabilities: string[] | null;
   revoked_capabilities: string[] | null;
   is_active: boolean;
+  updated_at?: string | Date | null;
 };
 
 export async function GET(_req: NextRequest, context: RouteContext) {
@@ -34,7 +35,7 @@ export async function GET(_req: NextRequest, context: RouteContext) {
     const sql = getErpSql();
     const rows = await sql<AppUserRow[]>`
       SELECT id, display_name, username, email, roles,
-             granted_capabilities, revoked_capabilities, is_active
+             granted_capabilities, revoked_capabilities, is_active, updated_at
       FROM app_users
       WHERE id = ${userId}
       LIMIT 1
@@ -67,6 +68,7 @@ export async function GET(_req: NextRequest, context: RouteContext) {
       revoked_capabilities: revoked,
       effective_capabilities: effective,
       role_defaults: roleDefaults,
+      permissions_version: u.updated_at ? new Date(u.updated_at).toISOString() : null,
     });
   } catch (err) {
     console.error('[permissions GET]', err);
@@ -83,12 +85,29 @@ export async function PUT(req: NextRequest, context: RouteContext) {
   const userId = parseInt(id, 10);
   if (isNaN(userId)) return NextResponse.json({ error: 'Invalid ID' }, { status: 400 });
 
-  let body: { roles?: string[]; granted_capabilities?: string[]; revoked_capabilities?: string[] };
+  let body: {
+    roles?: string[];
+    granted_capabilities?: string[];
+    revoked_capabilities?: string[];
+    if_match_version?: string;
+    change_reason?: string;
+    ticket_ref?: string;
+  };
   try { body = await req.json(); } catch { return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 }); }
 
   const roles = Array.isArray(body.roles) ? body.roles : undefined;
   const granted = Array.isArray(body.granted_capabilities) ? body.granted_capabilities : [];
   const revoked = Array.isArray(body.revoked_capabilities) ? body.revoked_capabilities : [];
+  const ifMatchVersion = typeof body.if_match_version === 'string' ? body.if_match_version.trim() : '';
+  const changeReason = typeof body.change_reason === 'string' ? body.change_reason.trim() : '';
+  const ticketRef = typeof body.ticket_ref === 'string' ? body.ticket_ref.trim() : '';
+
+  if (!ifMatchVersion) {
+    return NextResponse.json({ error: 'if_match_version is required' }, { status: 400 });
+  }
+  if (!changeReason) {
+    return NextResponse.json({ error: 'change_reason is required for permission updates' }, { status: 400 });
+  }
 
   // Validate all capability codes
   const unknownGranted = granted.filter((c) => !ALL_CAPABILITIES.has(c as never));
@@ -106,7 +125,7 @@ export async function PUT(req: NextRequest, context: RouteContext) {
     // Fetch current state for diff/audit
     const current = await sql<AppUserRow[]>`
       SELECT id, display_name, username, email, roles,
-             granted_capabilities, revoked_capabilities
+             granted_capabilities, revoked_capabilities, is_active, updated_at
       FROM app_users
       WHERE id = ${userId}
       LIMIT 1
@@ -117,6 +136,15 @@ export async function PUT(req: NextRequest, context: RouteContext) {
     const prevRoles: string[] = Array.isArray(prev.roles) ? prev.roles : [];
     const prevGranted: string[] = Array.isArray(prev.granted_capabilities) ? prev.granted_capabilities : [];
     const prevRevoked: string[] = Array.isArray(prev.revoked_capabilities) ? prev.revoked_capabilities : [];
+    const prevVersion = prev.updated_at ? new Date(prev.updated_at).toISOString() : null;
+
+    if (!prevVersion || prevVersion !== ifMatchVersion) {
+      return NextResponse.json({
+        error: 'Permission record changed since last read',
+        code: 'stale_write_conflict',
+        current_version: prevVersion,
+      }, { status: 409 });
+    }
 
     const newRoles = roles ?? prevRoles;
 
@@ -127,27 +155,67 @@ export async function PUT(req: NextRequest, context: RouteContext) {
     const normalizedGranted = granted.filter((c) => !roleDefaultSet.has(c as never));
     const normalizedRevoked = revoked.filter((c) => roleDefaultSet.has(c as never));
 
-    // Apply update
-    if (roles !== undefined) {
-      await sql`
-        UPDATE app_users
-        SET roles = ${sql.array(newRoles)}::text[],
-            granted_capabilities = ${sql.array(normalizedGranted)}::text[],
-            revoked_capabilities = ${sql.array(normalizedRevoked)}::text[]
-        WHERE id = ${userId}
+    // Break-glass: prevent last-admin self lockout (admin.users.manage capability)
+    const actorId = parseInt(session.user.id ?? '0', 10);
+    if (!isNaN(actorId) && actorId > 0 && actorId === userId) {
+      const activeUsers = await sql<Pick<AppUserRow, 'id' | 'roles' | 'granted_capabilities' | 'revoked_capabilities'>[]>`
+        SELECT id, roles, granted_capabilities, revoked_capabilities
+        FROM app_users
+        WHERE is_active = true
       `;
-    } else {
-      await sql`
-        UPDATE app_users
-        SET granted_capabilities = ${sql.array(normalizedGranted)}::text[],
-            revoked_capabilities = ${sql.array(normalizedRevoked)}::text[]
-        WHERE id = ${userId}
-      `;
+      let adminsAfter = 0;
+      for (const row of activeUsers) {
+        const rowRoles = Array.isArray(row.roles) ? row.roles : [];
+        const rowGranted = Array.isArray(row.granted_capabilities) ? row.granted_capabilities : [];
+        const rowRevoked = Array.isArray(row.revoked_capabilities) ? row.revoked_capabilities : [];
+        const effective = row.id === userId
+          ? effectiveCapabilities(newRoles, normalizedGranted, normalizedRevoked)
+          : effectiveCapabilities(rowRoles, rowGranted, rowRevoked);
+        if (effective.has('admin.users.manage')) adminsAfter += 1;
+      }
+      if (adminsAfter < 1) {
+        return NextResponse.json({
+          error: 'Blocked: cannot remove the last active admin capability from your own account',
+          code: 'last_admin_lockout',
+        }, { status: 409 });
+      }
     }
+
+    // Apply update
+    const updateRows = roles !== undefined
+      ? await sql<Pick<AppUserRow, 'updated_at'>[]>`
+          UPDATE app_users
+          SET roles = ${sql.array(newRoles)}::text[],
+              granted_capabilities = ${sql.array(normalizedGranted)}::text[],
+              revoked_capabilities = ${sql.array(normalizedRevoked)}::text[],
+              updated_at = NOW()
+          WHERE id = ${userId} AND updated_at = ${ifMatchVersion}::timestamptz
+          RETURNING updated_at
+        `
+      : await sql<Pick<AppUserRow, 'updated_at'>[]>`
+          UPDATE app_users
+          SET granted_capabilities = ${sql.array(normalizedGranted)}::text[],
+              revoked_capabilities = ${sql.array(normalizedRevoked)}::text[],
+              updated_at = NOW()
+          WHERE id = ${userId} AND updated_at = ${ifMatchVersion}::timestamptz
+          RETURNING updated_at
+        `;
+
+    if (updateRows.length === 0) {
+      const fresh = await sql<Pick<AppUserRow, 'updated_at'>[]>`SELECT updated_at FROM app_users WHERE id = ${userId} LIMIT 1`;
+      const currentVersion = fresh[0]?.updated_at ? new Date(fresh[0].updated_at).toISOString() : null;
+      return NextResponse.json({
+        error: 'Permission record changed since last read',
+        code: 'stale_write_conflict',
+        current_version: currentVersion,
+      }, { status: 409 });
+    }
+
+    const permissionsVersion = updateRows[0]?.updated_at ? new Date(updateRows[0].updated_at).toISOString() : null;
 
     // Audit log
     try {
-      const adminId = parseInt(session.user.id ?? '0', 10);
+      const adminId = actorId;
       if (!isNaN(adminId) && adminId > 0) {
         const db = getDb();
         const changes: Record<string, unknown> = { targetUserId: userId };
@@ -164,7 +232,15 @@ export async function PUT(req: NextRequest, context: RouteContext) {
           userId: adminId,
           action: 'update_permissions',
           modelName: 'app_user',
-          changes: JSON.stringify(changes),
+          changes: JSON.stringify({
+            ...changes,
+            governance: {
+              if_match_version: ifMatchVersion,
+              resulting_version: permissionsVersion,
+              change_reason: changeReason,
+              ticket_ref: ticketRef || null,
+            },
+          }),
         });
       }
     } catch (auditErr) {
@@ -178,6 +254,7 @@ export async function PUT(req: NextRequest, context: RouteContext) {
       granted_capabilities: normalizedGranted,
       revoked_capabilities: normalizedRevoked,
       effective_capabilities: newEffective,
+      permissions_version: permissionsVersion,
     });
   } catch (err) {
     console.error('[permissions PUT]', err);
