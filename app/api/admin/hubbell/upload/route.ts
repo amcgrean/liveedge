@@ -13,7 +13,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import crypto from 'node:crypto';
-import { eq } from 'drizzle-orm';
+import { eq, sql as dsql } from 'drizzle-orm';
 import { getDb, schema } from '../../../../../db/index';
 import { verifyHubbellUploadToken } from '../../../../../src/lib/service-auth';
 import { buildHubbellKey, putHubbellPdf } from '../../../../../src/lib/hubbell/r2';
@@ -206,6 +206,54 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Insert race resolved unexpectedly' }, { status: 500 });
   }
   const doc = inserted[0];
+
+  // Claim any orphan payment rows that landed before this doc. Payments-
+  // import can run before the PDF is uploaded; those rows sit with
+  // document_id = NULL waiting for their doc to arrive. Linking here
+  // closes the loop without requiring a re-run of payments-import.
+  try {
+    await db.execute(dsql`
+      UPDATE bids.hubbell_document_payments AS p
+         SET document_id = ${doc.id}::uuid,
+             updated_at = now()
+       WHERE p.document_id IS NULL
+         AND p.doc_type   = ${docType}
+         AND p.doc_number = ${docNumber}
+    `);
+
+    // Refresh this doc's payment rollups from any newly-claimed payments.
+    await db.execute(dsql`
+      WITH agg AS (
+        SELECT
+          SUM(p.paid_amount)                                   AS paid_total,
+          MAX(p.payment_date)                                  AS last_date,
+          (ARRAY_AGG(p.check_number ORDER BY p.payment_date DESC NULLS LAST))[1]
+                                                               AS last_check
+        FROM bids.hubbell_document_payments p
+        WHERE p.document_id = ${doc.id}::uuid
+      )
+      UPDATE bids.hubbell_documents d
+         SET paid_amount_total = a.paid_total,
+             last_payment_date = a.last_date,
+             last_check_number = a.last_check,
+             payment_status = CASE
+               WHEN d.extracted_total IS NULL OR d.extracted_total = 0
+                    THEN NULL
+               WHEN COALESCE(a.paid_total, 0) >= d.extracted_total
+                    THEN 'paid'
+               WHEN COALESCE(a.paid_total, 0) > 0
+                    THEN 'partial'
+               ELSE 'unpaid'
+             END,
+             updated_at = now()
+        FROM agg a
+       WHERE d.id = ${doc.id}::uuid
+         AND d.extracted_total IS NOT NULL
+         AND d.extracted_total > 0
+    `);
+  } catch (err) {
+    console.error('[hubbell upload] payment link/rollup failed', err);
+  }
 
   // Run the matcher.
   let attachedSos: Array<{ so_id: number; cust_code: string | null; match_source: string; confidence: number }> = [];
