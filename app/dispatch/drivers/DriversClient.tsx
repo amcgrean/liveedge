@@ -166,21 +166,12 @@ export default function DriversClient({ isAdmin, userBranch, userName, userRole 
   }
 
   async function toggleActive(route: DriverRoute) {
-    const newActive = route.is_active === false ? true : false; // null = active, so toggling null→false
-    if (route.id) {
-      await fetch(`/api/dispatch/drivers/${route.id}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ is_active: newActive }),
-      });
-    } else {
-      // No dispatch_drivers row yet — create one just to mark it inactive
-      await fetch('/api/dispatch/drivers', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ route_code: route.route_code, branch_code: route.branch_code, is_active: newActive }),
-      });
-    }
+    const newActive = route.is_active === false; // false → true, null/true → false
+    await fetch('/api/dispatch/drivers/toggle', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ route_code: route.route_code, branch_code: route.branch_code, is_active: newActive }),
+    });
     await loadRoutes();
   }
 
