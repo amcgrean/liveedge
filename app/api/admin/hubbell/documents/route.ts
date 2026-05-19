@@ -66,6 +66,8 @@ export async function GET(req: NextRequest) {
       extractedState: schema.hubbellDocuments.extractedState,
       extractedZip: schema.hubbellDocuments.extractedZip,
       extractedTotal: schema.hubbellDocuments.extractedTotal,
+      paymentStatus: schema.hubbellDocuments.paymentStatus,
+      paidAmountTotal: schema.hubbellDocuments.paidAmountTotal,
       receivedAt: schema.hubbellDocuments.receivedAt,
       attachedCount: dsql<number>`(
         SELECT COUNT(*)::int FROM bids.hubbell_document_sos j

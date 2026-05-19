@@ -17,6 +17,8 @@ type DocumentRow = {
   extractedState: string | null;
   extractedZip: string | null;
   extractedTotal: string | null;
+  paymentStatus: 'paid' | 'partial' | 'unpaid' | null;
+  paidAmountTotal: string | null;
   receivedAt: string;
   attachedCount: number;
 };
@@ -134,6 +136,7 @@ export default function DocumentsClient() {
                   <th className="px-3 py-2">Type</th>
                   <th className="px-3 py-2">Address</th>
                   <th className="px-3 py-2 text-right">Total</th>
+                  <th className="px-3 py-2 text-center">Paid</th>
                   <th className="px-3 py-2 text-center">Attached</th>
                   <th className="px-3 py-2">Status</th>
                   <th className="px-3 py-2">Received</th>
@@ -160,6 +163,7 @@ export default function DocumentsClient() {
                     <td className="px-3 py-2 text-right tabular-nums">
                       {d.extractedTotal ? `$${parseFloat(d.extractedTotal).toLocaleString()}` : '—'}
                     </td>
+                    <td className="px-3 py-2 text-center"><PaymentBadge status={d.paymentStatus} paid={d.paidAmountTotal} /></td>
                     <td className="px-3 py-2 text-center">{d.attachedCount}</td>
                     <td className="px-3 py-2"><StatusBadge status={d.matchStatus} /></td>
                     <td className="px-3 py-2 text-slate-500 text-xs">{formatDate(d.receivedAt)}</td>
@@ -204,6 +208,21 @@ function StatusBadge({ status }: { status: string }) {
     <span className={`inline-block px-2 py-0.5 rounded text-xs ${styles[status] || styles.unmatched}`}>
       {status.replace('_', ' ')}
     </span>
+  );
+}
+
+function PaymentBadge({ status, paid }: { status: 'paid' | 'partial' | 'unpaid' | null; paid: string | null }) {
+  if (!status) return <span className="text-slate-600">—</span>;
+  const styles: Record<string, string> = {
+    paid:    'bg-emerald-900/40 text-emerald-300 border border-emerald-700/50',
+    partial: 'bg-amber-900/40 text-amber-300 border border-amber-700/50',
+    unpaid:  'bg-slate-700 text-slate-300',
+  };
+  const label = status === 'partial' && paid
+    ? `partial $${Math.round(parseFloat(paid)).toLocaleString()}`
+    : status;
+  return (
+    <span className={`inline-block px-2 py-0.5 rounded text-xs ${styles[status]}`}>{label}</span>
   );
 }
 

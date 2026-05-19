@@ -25,6 +25,10 @@ type Document = {
   houseNumber: string | null;
   blockLot: string | null;
   modelElevation: string | null;
+  paymentStatus: 'paid' | 'partial' | 'unpaid' | null;
+  paidAmountTotal: string | null;
+  lastPaymentDate: string | null;
+  lastCheckNumber: string | null;
   receivedAt: string;
 };
 
@@ -206,6 +210,29 @@ export default function DocumentDetailClient({ documentId }: { documentId: strin
           <div className="text-xs uppercase text-slate-500 mb-2">Totals</div>
           <div className="text-2xl font-mono">{doc.extractedTotal ? `$${parseFloat(doc.extractedTotal).toLocaleString()}` : '—'}</div>
           {doc.extractedNeedBy && <div className="text-xs text-slate-500 mt-1">Need by {doc.extractedNeedBy}</div>}
+          {doc.paymentStatus && (
+            <div className="mt-3 pt-3 border-t border-slate-800 text-xs">
+              <div className="flex items-center gap-2 mb-1">
+                <span className={`px-2 py-0.5 rounded ${
+                  doc.paymentStatus === 'paid'    ? 'bg-emerald-900/40 text-emerald-300 border border-emerald-700/50' :
+                  doc.paymentStatus === 'partial' ? 'bg-amber-900/40 text-amber-300 border border-amber-700/50' :
+                                                    'bg-slate-700 text-slate-300'
+                }`}>{doc.paymentStatus}</span>
+                {doc.paidAmountTotal && (
+                  <span className="text-slate-400">
+                    ${Math.round(parseFloat(doc.paidAmountTotal)).toLocaleString()} paid
+                  </span>
+                )}
+              </div>
+              {(doc.lastCheckNumber || doc.lastPaymentDate) && (
+                <div className="text-slate-500">
+                  {doc.lastCheckNumber && <>Check {doc.lastCheckNumber}</>}
+                  {doc.lastCheckNumber && doc.lastPaymentDate && <> · </>}
+                  {doc.lastPaymentDate}
+                </div>
+              )}
+            </div>
+          )}
         </div>
       </div>
 

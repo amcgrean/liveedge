@@ -451,6 +451,14 @@ export const hubbellDocuments = bidsSchema.table(
     blockLot:           varchar('block_lot', { length: 30 }),
     modelElevation:     varchar('model_elevation', { length: 200 }),
 
+    // Payment rollups — refreshed by /api/admin/hubbell/payments/import after
+    // each batch. Source of truth is the hubbell_document_payments child table.
+    paidAmountTotal:    numeric('paid_amount_total', { precision: 12, scale: 2 }),
+    lastPaymentDate:    date('last_payment_date'),
+    lastCheckNumber:    varchar('last_check_number', { length: 50 }),
+    paymentStatus:      varchar('payment_status', { length: 20 }),
+    // 'paid' | 'partial' | 'unpaid' | NULL
+
     // 'unmatched' | 'auto_matched' | 'confirmed' | 'rejected'
     matchStatus:        varchar('match_status', { length: 20 }).notNull().default('unmatched'),
 
@@ -464,6 +472,31 @@ export const hubbellDocuments = bidsSchema.table(
     index('hubbell_documents_match_status_recv_idx').on(table.matchStatus, table.receivedAt),
     index('hubbell_documents_doc_type_idx').on(table.docType),
     index('hubbell_documents_received_at_idx').on(table.receivedAt),
+  ]
+);
+
+// One row per (doc + check_number). Populated by the monthly recon agent via
+// POST /api/admin/hubbell/payments/import. The hubbell_documents table carries
+// denormalized rollups (paid_amount_total, last_payment_date, last_check_number,
+// payment_status) refreshed after each import batch.
+export const hubbellDocumentPayments = bidsSchema.table(
+  'hubbell_document_payments',
+  {
+    id:             uuid('id').primaryKey().defaultRandom(),
+    docType:        varchar('doc_type', { length: 10 }).notNull(),
+    docNumber:      varchar('doc_number', { length: 100 }).notNull(),
+    checkNumber:    varchar('check_number', { length: 50 }).notNull(),
+    paidAmount:     numeric('paid_amount', { precision: 12, scale: 2 }).notNull(),
+    paymentDate:    date('payment_date'),
+    documentId:     uuid('document_id'),    // FK → hubbell_documents.id; nullable for unlinked rows
+    sourceRunId:    varchar('source_run_id', { length: 100 }),
+    createdAt:      timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt:      timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    uniqueIndex('hubbell_document_payments_uq').on(table.docType, table.docNumber, table.checkNumber),
+    index('hubbell_document_payments_document_id_idx').on(table.documentId),
+    index('hubbell_document_payments_doc_number_idx').on(table.docNumber),
   ]
 );
 
