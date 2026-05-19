@@ -2,7 +2,8 @@
 
 import { Fragment, useEffect, useState, useCallback } from 'react';
 import Link from 'next/link';
-import { ArrowLeft, FileText, ShoppingCart, Plus, X, Check, ChevronDown, ChevronRight } from 'lucide-react';
+import { ArrowLeft, FileText, ShoppingCart, Plus, X, Check, ChevronDown, ChevronRight, Eye } from 'lucide-react';
+import PdfPreviewPanel from '../../../../../src/components/hubbell/PdfPreviewPanel';
 
 type AttachedDoc = {
   document_id: string;
@@ -77,6 +78,7 @@ export default function JobDetailClient({ soId }: { soId: string }) {
   const [expandedSos, setExpandedSos] = useState<Set<number>>(new Set());
   const [attachSel, setAttachSel] = useState<Record<string, string>>({});
   const [manualEntry, setManualEntry] = useState<Record<string, string>>({});
+  const [previewDoc, setPreviewDoc] = useState<{ id: string; number: string } | null>(null);
 
   const load = useCallback(() => {
     setLoading(true);
@@ -176,7 +178,7 @@ export default function JobDetailClient({ soId }: { soId: string }) {
   const { jobsite, sales_orders, documents } = data;
 
   return (
-    <div className="p-4 sm:p-6 max-w-6xl mx-auto">
+    <div className={`p-4 sm:p-6 max-w-6xl mx-auto transition-[padding] ${previewDoc ? 'sm:pr-[55vw] lg:pr-[50vw] xl:pr-[45vw]' : ''}`}>
       <div className="mb-4">
         <Link href="/admin/hubbell/jobs" className="text-sm text-slate-400 hover:text-slate-200 flex items-center gap-1">
           <ArrowLeft className="w-4 h-4" /> All jobs
@@ -186,12 +188,13 @@ export default function JobDetailClient({ soId }: { soId: string }) {
       {/* Header */}
       <div className="mb-6">
         <h1 className="text-2xl font-semibold">
-          {jobsite.cust_names || '—'}
-          {jobsite.cust_codes && <span className="text-slate-500 text-base ml-2 font-mono">({jobsite.cust_codes})</span>}
+          {jobsite.shipto_address_1 ?? '—'}
         </h1>
         <div className="text-sm text-slate-400 mt-1">
-          {jobsite.shipto_address_1}
-          {jobsite.shipto_city && <> · {jobsite.shipto_city}, {jobsite.shipto_state} {jobsite.shipto_zip}</>}
+          {jobsite.shipto_city && <>{jobsite.shipto_city}, {jobsite.shipto_state} {jobsite.shipto_zip}</>}
+          {jobsite.cust_codes && (
+            <span className="text-slate-500 ml-2 font-mono">· {jobsite.cust_codes}</span>
+          )}
         </div>
         {(jobsite.dev_code || jobsite.dev_name) && (
           <div className="text-xs text-slate-500 mt-1">
@@ -274,9 +277,13 @@ export default function JobDetailClient({ soId }: { soId: string }) {
                             <div className="flex flex-wrap gap-2">
                               {s.attached_docs.map((d) => (
                                 <span key={d.document_id} className="inline-flex items-center gap-1 px-2 py-1 bg-slate-800/60 border border-slate-700 rounded text-xs">
-                                  <Link href={`/admin/hubbell/${d.document_id}`} className="text-cyan-400 hover:underline font-mono">
+                                  <button
+                                    type="button"
+                                    onClick={() => setPreviewDoc({ id: d.document_id, number: d.doc_number })}
+                                    className="text-cyan-400 hover:underline font-mono"
+                                  >
                                     {d.doc_number}
-                                  </Link>
+                                  </button>
                                   <span className="text-slate-500 uppercase">{d.doc_type}</span>
                                   {d.posted_to_agility_at && (
                                     <Check className="w-3 h-3 text-emerald-400" />
@@ -323,9 +330,24 @@ export default function JobDetailClient({ soId }: { soId: string }) {
                   return (
                     <tr key={d.id} className="border-t border-slate-800 align-top">
                       <td className="px-3 py-2">
-                        <Link href={`/admin/hubbell/${d.id}`} className="text-cyan-400 hover:underline font-mono">
-                          {d.doc_number}
-                        </Link>
+                        <div className="inline-flex items-center gap-2">
+                          <button
+                            type="button"
+                            onClick={() => setPreviewDoc({ id: d.id, number: d.doc_number })}
+                            className="text-cyan-400 hover:underline font-mono inline-flex items-center gap-1"
+                            title="Preview PDF"
+                          >
+                            <Eye className="w-3 h-3" />
+                            {d.doc_number}
+                          </button>
+                          <Link
+                            href={`/admin/hubbell/${d.id}`}
+                            className="text-slate-500 hover:text-slate-300 text-[10px]"
+                            title="Open detail page"
+                          >
+                            detail
+                          </Link>
+                        </div>
                       </td>
                       <td className="px-3 py-2 uppercase text-xs">{d.doc_type}</td>
                       <td className="px-3 py-2 text-xs">{d.match_status}</td>
@@ -415,6 +437,12 @@ export default function JobDetailClient({ soId }: { soId: string }) {
           </div>
         )}
       </section>
+
+      <PdfPreviewPanel
+        documentId={previewDoc?.id ?? null}
+        docNumber={previewDoc?.number ?? null}
+        onClose={() => setPreviewDoc(null)}
+      />
     </div>
   );
 }
