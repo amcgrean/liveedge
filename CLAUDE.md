@@ -787,6 +787,47 @@ The `/management/forecast` page now has UOM-correct $ and clickable drill-throug
 - **Item scorecard "Inbound POs" section** (2026-05-13): on `/scorecard/product/item/[itemCode]`, query open POs containing this item via `agility_po_lines.item_ptr → agility_po_header WHERE po_status NOT IN ('CLOSED','CANCELED','COMPLETE','RECEIVED') AND canceled = false`. Helpful for slow-mover review.
 - **Vendor scorecard fact table** (2026-05-13, deferred): only build if `/scorecard/vendor/[supplierKey]` 3-year query is slow (>2s) at scale. Would need a sync-worker matview keyed `(supplier_key, ship_from_seq, system_id, year, month)` with pre-aggregated spend/lines/receipts/on-time-count. Don't start LiveEdge work without the matview landing first.
 
+## Open Branches Audit (2026-05-20)
+
+Snapshot of unmerged `claude/*` and `codex/*` branches with a hint about whether they're active work, deferred, stale, or likely superseded by something already in `main`. **Verify before reusing or deleting** — squash merges leave branches looking "ahead of main" even after their changes landed.
+
+### Needs vetting / has open feedback
+- **`codex/continue-work-on-security-upgrade-plan`** (1 commit, 5h old) — "Harden admin permission updates with concurrency and governance controls." Touches `app/api/admin/users/[id]/permissions/route.ts` (+97 net). Codex review on PR #341 flagged two unresolved issues in this code (visible because PR #341's branch had been merged off the same security work):
+  - **P1** — optimistic-lock version is `new Date(...).toISOString()` (ms precision) but compared against `timestamptz` (µs precision). Will throw spurious `stale_write_conflict` on most saves. Fix before merging.
+  - **P2** — last-admin self-lockout check is read-then-update without `SELECT FOR UPDATE` / txn. Two concurrent self-edits can both pass and zero out admins.
+- **`claude/fix-permissions-update-error-yizvY`** (1 commit, 11h old) — "Fix 500 on permissions PUT: cast roles to json, not text[]." Touches the same route file. **Likely conflicts with `codex/continue-work-on-security-upgrade-plan`** — coordinate before merging either. If the codex branch lands first, re-check whether the cast fix is still needed.
+- **`codex/continue-work-on-security-remediation`** (1 commit, 5h old) — adds `docs/security-remediation-pr-status-2026-05-19.md`. Status note only — safe to merge or delete after the upgrade-plan branch is resolved.
+
+### Active feature work (likely safe, owner-driven)
+- **`claude/eager-cerf-b5b272`** (2 commits, 28h) — "docs: geocoding pipeline consolidated on the Pi (handoff for next agent)." 195-line CLAUDE.md refactor + cron tweak + handoff doc. **Conflicts with this file** — anyone merging needs to reconcile the Open Branches Audit section.
+- **`claude/hubbell-docs-update`** (3 files, 5h) — Hubbell docs refresh + follow-up agent prompts. Possibly subsumed by PR #335 ("docs: refresh Hubbell section + add follow-up agent prompts") which is already in main. Diff before merging.
+- **`claude/loving-chatelet-e3363c`** (3 files, 5h) — "Address Codex review on jobsite work surface." Follow-up on the PR #338/#340 Hubbell jobsite rebuild. Check whether the Codex comments it addresses are still open.
+- **`claude/hubbell-jobs-pdf-preview`** (4h) — "expand doc rows to show PDF line items + job context." Likely follow-on to PR #340. Verify against current main before merging.
+- **`claude/hubbell-doc-context`** (5 files, 22h) — `system_id` scope on candidate order_total LATERAL subqueries. Real branch-leak fix; check whether the same scoping was already applied in another merged PR.
+- **`claude/hubbell-payments-import`** (7 files, 11h) — "Mark docs unpaid when import has no payment row for them." Touches the payments-import route.
+- **`claude/hubbell-payment-autolink`** (8h) — "Auto-link orphan payments + fix linked-count reporting." **Likely already merged via PR #333** ("Auto-link orphan payments + fix linked-count reporting"). Confirm before deleting.
+- **`claude/hubbell-job-detail-address-match`** (3 files, 8h) — "Expand street-type abbreviations in Hubbell address normalize." **Likely already merged via PR #332** ("Claude/hubbell job detail address match"). Confirm before deleting.
+- **`claude/hubbell-jobs-address-only`** / **`claude/hubbell-jobs-source-from-agility`** (21h) — earlier iterations of the jobs-page rewrite that landed as PR #338. Almost certainly superseded.
+
+### Deferred / pending per existing Pending Actions list
+- **`claude/dallas-county-loader`** (47 commits, 2w) — Dallas County IA parcel loader. See Pending Action #7. Real outstanding work, not stale.
+
+### Probable squash-merged duplicates (safe to delete after confirming)
+- **`claude/lucid-thompson-d7f94e`** — merged via PR #339.
+- **`claude/merge-admin-permissions-prs-nJDm6`** — last-touched by PR #341 (docs commit). Underlying security work also merged.
+- **`claude/purchasing-suggested-buys-rules`** (1 file, 5d) — branch-scope for suggested-buys LATERALs. Per CLAUDE.md the fix landed via PR #299 / #296 — almost certainly superseded.
+- **`claude/docs-purchasing-supplier-rules-followup`** (1 file, 5d) — same area as above.
+- **`claude/hardcore-dirac-8d92f4`** (1 file, 7d) — `active_flag=true` filter in suggested-buys detail. Spot-check whether this exact line landed via #296/#299/#306.
+- **`claude/keen-mcnulty-c72043`** (3 files, 5d, 1110+/737-) — forecast UI port. Forecast dashboard landed via PRs #306-#312; verify whether this branch was the source or a parallel attempt.
+
+### Stale base / investigate before touching
+- **`claude/fix-gps-job-loading-IAYiF`** (654 commits ahead of main, 3w) — the commit count means the branch base is way out of date; the actual fix is small but a rebase will be painful. Check if the same fix is already in main before rebasing.
+
+### General hygiene for the next agent
+- **Never** force-push or rebase any of the codex/* branches without coordinating — they're owned by another agent.
+- Before deleting a "merged" branch, search `git log origin/main` for the commit subject — squash merges rewrite the SHA, so `git branch --merged` won't find them.
+- If you reconcile this list (e.g. delete superseded branches), update this section in the same commit — leaving a stale audit is worse than no audit.
+
 ## Pending Actions
 1. **Apply page_visits migration**: Run `db/migrations/0004_page_visits.sql` in Supabase SQL editor to enable Quick Access tracking on homepage
 2. **Extend page tracking to module clients**: Add `POST /api/track-visit` call to each module's main client component (or extract a shared `usePageTracking` hook in `src/hooks/`) so Quick Access fills with real data
