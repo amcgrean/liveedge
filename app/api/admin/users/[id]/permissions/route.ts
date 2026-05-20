@@ -155,52 +155,77 @@ export async function PUT(req: NextRequest, context: RouteContext) {
     const normalizedGranted = granted.filter((c) => !roleDefaultSet.has(c as never));
     const normalizedRevoked = revoked.filter((c) => roleDefaultSet.has(c as never));
 
-    // Break-glass: prevent last-admin self lockout (admin.users.manage capability)
+    // The last-admin precheck and the UPDATE must share a snapshot, otherwise
+    // two concurrent self-edits can both pass the precheck and both commit,
+    // zeroing out the admin set. Wrap in a transaction and lock the rows the
+    // precheck reads.
+    //
+    // The optimistic-lock comparison truncates `updated_at` to millisecond
+    // precision because the client receives `new Date(updated_at).toISOString()`
+    // (ms precision) but the column itself is `timestamptz` (µs precision) —
+    // without `date_trunc` the WHERE never matches and every save returns 409.
+    // TODO: a dedicated `permissions_version bigint` column would be cleaner
+    // long-term, but date_trunc is the minimal-blast-radius fix.
     const actorId = parseInt(session.user.id ?? '0', 10);
-    if (!isNaN(actorId) && actorId > 0 && actorId === userId) {
-      const activeUsers = await sql<Pick<AppUserRow, 'id' | 'roles' | 'granted_capabilities' | 'revoked_capabilities'>[]>`
-        SELECT id, roles, granted_capabilities, revoked_capabilities
-        FROM app_users
-        WHERE is_active = true
-      `;
-      let adminsAfter = 0;
-      for (const row of activeUsers) {
-        const rowRoles = Array.isArray(row.roles) ? row.roles : [];
-        const rowGranted = Array.isArray(row.granted_capabilities) ? row.granted_capabilities : [];
-        const rowRevoked = Array.isArray(row.revoked_capabilities) ? row.revoked_capabilities : [];
-        const effective = row.id === userId
-          ? effectiveCapabilities(newRoles, normalizedGranted, normalizedRevoked)
-          : effectiveCapabilities(rowRoles, rowGranted, rowRevoked);
-        if (effective.has('admin.users.manage')) adminsAfter += 1;
+    const isSelfEdit = !isNaN(actorId) && actorId > 0 && actorId === userId;
+
+    const txResult = await sql.begin(async (tx) => {
+      if (isSelfEdit) {
+        const activeUsers = await tx<Pick<AppUserRow, 'id' | 'roles' | 'granted_capabilities' | 'revoked_capabilities'>[]>`
+          SELECT id, roles, granted_capabilities, revoked_capabilities
+          FROM app_users
+          WHERE is_active = true
+          FOR UPDATE
+        `;
+        let adminsAfter = 0;
+        for (const row of activeUsers) {
+          const rowRoles = Array.isArray(row.roles) ? row.roles : [];
+          const rowGranted = Array.isArray(row.granted_capabilities) ? row.granted_capabilities : [];
+          const rowRevoked = Array.isArray(row.revoked_capabilities) ? row.revoked_capabilities : [];
+          const effective = row.id === userId
+            ? effectiveCapabilities(newRoles, normalizedGranted, normalizedRevoked)
+            : effectiveCapabilities(rowRoles, rowGranted, rowRevoked);
+          if (effective.has('admin.users.manage')) adminsAfter += 1;
+        }
+        if (adminsAfter < 1) {
+          return { lockout: true as const };
+        }
       }
-      if (adminsAfter < 1) {
-        return NextResponse.json({
-          error: 'Blocked: cannot remove the last active admin capability from your own account',
-          code: 'last_admin_lockout',
-        }, { status: 409 });
-      }
+
+      // Apply update — `roles` is a json column (see /api/admin/users/[id]/route.ts);
+      // granted/revoked_capabilities are text[] (migration 0015_user_capabilities.sql).
+      const updateRows = roles !== undefined
+        ? await tx<Pick<AppUserRow, 'updated_at'>[]>`
+            UPDATE app_users
+            SET roles = ${JSON.stringify(newRoles)}::json,
+                granted_capabilities = ${tx.array(normalizedGranted)}::text[],
+                revoked_capabilities = ${tx.array(normalizedRevoked)}::text[],
+                updated_at = NOW()
+            WHERE id = ${userId}
+              AND date_trunc('milliseconds', updated_at) = ${ifMatchVersion}::timestamptz
+            RETURNING updated_at
+          `
+        : await tx<Pick<AppUserRow, 'updated_at'>[]>`
+            UPDATE app_users
+            SET granted_capabilities = ${tx.array(normalizedGranted)}::text[],
+                revoked_capabilities = ${tx.array(normalizedRevoked)}::text[],
+                updated_at = NOW()
+            WHERE id = ${userId}
+              AND date_trunc('milliseconds', updated_at) = ${ifMatchVersion}::timestamptz
+            RETURNING updated_at
+          `;
+
+      return { lockout: false as const, updateRows };
+    });
+
+    if (txResult.lockout) {
+      return NextResponse.json({
+        error: 'Blocked: cannot remove the last active admin capability from your own account',
+        code: 'last_admin_lockout',
+      }, { status: 409 });
     }
 
-    // Apply update — `roles` is a json column (see /api/admin/users/[id]/route.ts);
-    // granted/revoked_capabilities are text[] (migration 0015_user_capabilities.sql).
-    const updateRows = roles !== undefined
-      ? await sql<Pick<AppUserRow, 'updated_at'>[]>`
-          UPDATE app_users
-          SET roles = ${JSON.stringify(newRoles)}::json,
-              granted_capabilities = ${sql.array(normalizedGranted)}::text[],
-              revoked_capabilities = ${sql.array(normalizedRevoked)}::text[],
-              updated_at = NOW()
-          WHERE id = ${userId} AND updated_at = ${ifMatchVersion}::timestamptz
-          RETURNING updated_at
-        `
-      : await sql<Pick<AppUserRow, 'updated_at'>[]>`
-          UPDATE app_users
-          SET granted_capabilities = ${sql.array(normalizedGranted)}::text[],
-              revoked_capabilities = ${sql.array(normalizedRevoked)}::text[],
-              updated_at = NOW()
-          WHERE id = ${userId} AND updated_at = ${ifMatchVersion}::timestamptz
-          RETURNING updated_at
-        `;
+    const updateRows = txResult.updateRows;
 
     if (updateRows.length === 0) {
       const fresh = await sql<Pick<AppUserRow, 'updated_at'>[]>`SELECT updated_at FROM app_users WHERE id = ${userId} LIMIT 1`;
