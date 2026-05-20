@@ -103,6 +103,19 @@ export const CAPABILITIES_METADATA: readonly CapabilityMetadata[] = (
   Object.entries(CAPABILITIES_METADATA_BY_CODE) as [Capability, Omit<CapabilityMetadata, 'code'>][]
 ).map(([code, metadata]) => ({ code, ...metadata }));
 
+export type CapabilityCategory = CapabilityMetadata['category'];
+
+export const CAPABILITY_CATEGORY_LABELS: Record<CapabilityCategory, string> = {
+  operations: 'Operations',
+  dispatch: 'Dispatch',
+  sales: 'Sales',
+  estimating: 'Estimating',
+  purchasing: 'Purchasing',
+  accounting: 'Accounting',
+  admin: 'Admin',
+  'cross-cutting': 'Cross-cutting',
+};
+
 /** Every defined capability code, as a Set, for O(1) validation. */
 export const ALL_CAPABILITIES: ReadonlySet<Capability> = new Set(
   Object.values(CAPABILITIES) as Capability[]

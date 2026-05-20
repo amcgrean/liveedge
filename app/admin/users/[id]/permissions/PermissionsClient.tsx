@@ -4,10 +4,12 @@ import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { useParams } from 'next/navigation';
 import { ArrowLeft, Save, Shield, Check, X } from 'lucide-react';
 import Link from 'next/link';
+import { CAPABILITY_CATEGORY_LABELS } from '@/lib/access-control-shared';
 // ─── Tab definitions ──────────────────────────────────────────────────────────
 // Capability codes are string literals here — do NOT import from access-control.ts
 // in this client component; that module re-exports auth.ts which pulls in
 // the postgres package (Node-only), breaking the browser bundle.
+// access-control-shared.ts has no Node-only imports and is safe.
 
 interface CapabilityDef {
   code: string;
@@ -16,17 +18,6 @@ interface CapabilityDef {
   category: string;
   risk: string;
 }
-
-const CATEGORY_LABELS: Record<string, string> = {
-  operations: 'Operations',
-  dispatch: 'Dispatch',
-  sales: 'Sales',
-  estimating: 'Estimating',
-  purchasing: 'Purchasing',
-  accounting: 'Accounting',
-  admin: 'Admin',
-  'cross-cutting': 'Cross-cutting',
-};
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -168,7 +159,11 @@ export default function PermissionsClient() {
         (acc[cap.category] ||= []).push(cap);
         return acc;
       }, {})
-    ).map(([id, caps]) => ({ id, label: CATEGORY_LABELS[id] ?? id, caps })),
+    ).map(([id, caps]) => ({
+      id,
+      label: CAPABILITY_CATEGORY_LABELS[id as keyof typeof CAPABILITY_CATEGORY_LABELS] ?? id,
+      caps,
+    })),
     [capabilities]
   );
 
