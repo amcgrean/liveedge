@@ -599,99 +599,133 @@ Adds **Recharts** (`recharts@^2.15`) and a small set of opinionated dark-theme c
 - KPI sparklines on tiles — would need monthly history aggregation we don't expose yet
 - SVG download button on `<ChartCard>`
 
-#### Geocoding Pipeline (2026-04-30 → 2026-05-01) — IN PROGRESS
+#### Geocoding Pipeline (2026-04-30 → 2026-05-20) — CONSOLIDATED ON PI
 
-Customer ship-to addresses (`public.agility_customers.address_1/city/state/zip`)
-get matched against `public.geocode_index` to populate `lat`/`lon` for
-dispatch/routing. Nightly cron at `/api/cron/geocode-nightly` walks unmatched
-rows in batches; fixes today brought total geocoded customers from **76,538 →
-~89,000+**.
+**TL;DR: LiveEdge no longer geocodes.** All matching now happens on the Pi
+(`agility-api-sync.service` → `agility_api/geocoder_sqlite.py` against a
+local SQLite parcel index at `/home/api/geocode.db`). The Vercel cron and
+Supabase `geocode_index` table were removed 2026-05-18 (LiveEdge PR #319/#321;
+beisser-api PR #35 — matcher fix, PR #36 — chmod fix). Reason: the index
+ballooned to 666 MB / 1.66M rows on Supabase, and running two matchers against
+the same `agility_customers` rows produced dueling writes + row-lock contention.
 
-**How it fits together:**
-- `src/lib/geocode.ts` — shared `normalizeAddress()` + junk-address detection
-  used by BOTH the loader (writes `geocode_index`) and the runner (matches
-  customers). Loader/matcher MUST agree on normalization or matches miss.
-- `src/lib/geocode-runner.ts` — `runGeocodeBatch()` (3-tier match: city → zip →
-  state-unique) + `loadOpenAddresses()` (the OpenAddresses IA statewide
-  refresh).
-- `app/api/cron/geocode-nightly/route.ts` — orchestrates: refresh OA index if
-  empty / >28 days old, then loop `runGeocodeBatch` until no progress for 5
-  consecutive batches OR queue empty OR 60s budget exhausted.
-- `geocode_index` columns: `(number_norm, street_norm, city_norm, state_norm,
-  postcode, lat, lon, source, source_hash)`. Unique partial index on
-  `(source, source_hash) WHERE source IS NOT NULL AND source_hash IS NOT NULL`
-  for idempotent re-loads.
+**Current data flow:**
+1. Pi has a local SQLite DB at `/home/api/geocode.db` (~9.9 GB, 74M rows:
+   73.8M TIGER + 172K Polk County atlas + 28K Dallas County parcels).
+2. `beisser_sync.py` syncs customer ship-tos from Agility SQL Server into
+   Supabase `public.agility_customers`.
+3. `SqliteGeocoder.geocode()` runs 3-tier match (`sqlite_city` → `sqlite_zip`
+   → `sqlite_state_fuzzy`) and writes `lat`/`lon`/`geocode_source` back to
+   Supabase via the same sync worker.
+4. LiveEdge reads `agility_customers.lat/lon` directly for dispatch/maps.
 
-**Source tag convention:** `<provider>_<state>_<dataset>` —
-`openaddresses_us_ia_statewide_<jobid>`, `polk_county_ia_atlas`,
-`dallas_county_ia_parcels` (tbd), etc. The runner reports tier names
-(`openaddresses_city/zip/state_unique`) on `agility_customers.geocode_source`,
-NOT the upstream data source — to find which loader provided a match,
-join on lat/lon (within ~0.0001°).
+**The 2026-05-18 incident (root cause of the move):**
+- Vercel-side `runGeocodeBatch` tier-3 (`openaddresses_state_unique`)
+  accepted any `(number_norm, street_norm)` that was unique in IA, ignoring
+  city/zip. Numbered streets ("52nd St") match many IA towns; customers
+  ended up placed 9–141 mi off. 1,338 rows poisoned.
+- Pi-side `SqliteGeocoder` tier-3 had the same bug (closest house number
+  on `street_norm + state_norm`, no city/zip check). 77 rows poisoned as
+  `sqlite_state_fuzzy`.
+- Both matchers tightened to require zip-3 prefix OR city corroboration
+  before a state-fuzzy match fires. See LiveEdge PR #319 for the algorithm.
+- 1,415 poisoned rows reset via `db/migrations/0016_reset_unsafe_geocode_matches.sql`.
 
-**Recent fixes (PRs):**
-- **#204** — `runGeocodeBatch` was stuck on the first 500 IDs forever because
-  unmatched rows kept their `geocode_source = 'failed'` status and
-  re-appeared. Fix: order candidates by `geocoded_at ASC NULLS FIRST, id`
-  and bump `geocoded_at` on attempted rows. Also normalize `STREET_TYPE
-  DIRECTION` patterns at second-to-last position (`"DRIVE SE" → "DR SE"`).
-- **#205** — first fix only bumped `geocoded_at` on rows that passed
-  `normalizeAddress()`; non-parseable rows (e.g. `"Highway 80 Lot 5"`)
-  kept old timestamps and choked the queue. Now bumps every candidate.
-- **#211** — re-normalize the existing 74,580 OA index rows in-place to
-  match the new `STREET_TYPE DIRECTION` collapse rules. Per-street-type
-  UPDATEs (one combined CTE timed out at 60s on 74K rows). Migration:
-  `db/migrations/0015_geocode_index_renormalize.sql`. Already applied.
-- **#217** — Polk County IA atlas loader. Pulls
-  `https://atlas.polkcountyiowa.gov/server/Attribute_Query/FeatureServer`
-  layers 0/3/4 (Tax Parcel Points / Tax Parcels / ParcelTaxAttributes),
-  joins on `parcel_number`, normalizes via `normalizeAddress()`, inserts
-  ~172K rows. **Already loaded to prod.** Polk fields exposed via
-  `PrimarySitus` JSON: `StreetNumber, PreDirection, Name, Type,
-  PostDirection, CityName, StateName, PostalCode, Unit`.
+**The 2026-05-19/20 follow-up (Polk + Dallas data on Pi):**
+- Polk County atlas (~172K parcels) and Dallas County (~28K parcels) loaded
+  into the Pi's local SQLite via Python loaders (beisser-api repo,
+  `scripts/load_polk_county_into_index.py` + `load_dallas_county_into_index.py`).
+- Added `(street_norm, state_norm)` index on the SQLite — without it, tier-3
+  queries were full-scanning all 74M rows on every fall-through (60 rows/hr).
+  After index: 21 rows/sec. 38-min one-time build cost.
+- Bulk rematch against the 6,966 reset Polk + Dallas customers placed **1,929
+  newly matched** (50.4% match rate); 1,898 still failed — direction-prefix
+  mismatches and addresses genuinely missing from any source.
 
-**Loader scripts (in `scripts/`):**
-- `snapshot-polk-county-atlas.ts` — pulls Polk REST → NDJSON locally.
-- `load-polk-county-into-index.ts` — NDJSON → DB via postgres-js (direct).
-- `build-polk-load-sql.ts` — NDJSON → batched INSERT SQL (no DB conn).
-- `inspect-dallas-shp.ts` — schema discovery for shapefiles (Dallas, future
-  county-shapefile-only sources). Uses `shapefile` npm package.
-- (Pending) `load-dallas-into-index.ts` — Dallas County shapefile loader.
-  Branch: `claude/dallas-county-loader`. Field mapping TBD pending
-  inspector output.
+**Source-tag legend on `agility_customers.geocode_source`:**
+| Tag | Writer | Confidence |
+|---|---|---|
+| `local_geojson_exact` | Pi `ShipToGeocoder` (main `beisser_sync.py`) | High |
+| `local_geojson_fuzzy_zip` | Pi `ShipToGeocoder` | High |
+| `local_geojson_fuzzy_city` | Pi `ShipToGeocoder` | Medium |
+| `sqlite_city` | Pi `SqliteGeocoder` | High |
+| `sqlite_zip` | Pi `SqliteGeocoder` | High |
+| `sqlite_state_fuzzy` | Pi `SqliteGeocoder` (post-fix) | Medium — zip3/city-gated |
+| `nominatim` | Pi fallback | Variable |
+| `openaddresses_*` | **Vercel (deprecated, never write new)** | n/a — table dropped |
+| `failed` | Either matcher attempted, no hit | — |
 
-**`CRON_SECRET` env var:** set on Vercel; cron route accepts EITHER
-`Authorization: Bearer $CRON_SECRET` OR Vercel's auto-injected
-`x-vercel-cron` header. If `CRON_SECRET` is set in env but a deploy
-hasn't picked it up, the scheduled cron will return 401 (mismatch).
-Manual curl with the bearer token works. Reset the value via Vercel
-Settings → Environment Variables, then redeploy.
-
-**Top still-unmatched IA cities** (after Polk load, ~12,700 remaining):
-Waukee 1,077, Ankeny 804, Grimes 740, Des Moines 411, West Des Moines
-353, Norwalk 325, Clive 311, Fort Dodge 276, Johnston 265, Adel 247.
-Waukee + Adel = Dallas County (next loader). Norwalk = Warren County
-(Beacon-only, no public REST). Fort Dodge = Webster (Beacon-only).
-Iowa City / Coralville / North Liberty / Tiffin = Johnson County
-(REST endpoint at `gis.johnsoncountyiowa.gov/arcgis/rest/services/`,
-LandRecords/Land_Records MapServer has `Parcels` + `House Numbers`
-layers — pending loader).
-
-**Useful MCP query for unmatched-customer triage** (3-bucket classification:
-real-OA-gap / fuzzy-candidate / bad-data):
-```sql
--- See db/migrations/0015 + docs/geocode-unmatched-2026-05-01/README.md
--- for the full classification recipe + Excel export.
+**Pi geocode.db schema** (different from the dropped Supabase version):
+```
+CREATE TABLE geocode_index (
+    number_norm TEXT NOT NULL, street_norm TEXT NOT NULL,
+    city_norm TEXT, state_norm TEXT, postcode TEXT,
+    lat REAL NOT NULL, lon REAL NOT NULL, source TEXT NOT NULL,
+    source_hash TEXT  -- added 2026-05-19, used by ON CONFLICT for idempotent loaders
+)
+-- indexes: (source, source_hash) UNIQUE WHERE source_hash NOT NULL,
+--          (number_norm, street_norm, city_norm), (number_norm, street_norm, postcode),
+--          (street_norm, state_norm)  ← added 2026-05-19 for tier-3
 ```
 
-**Out of scope this round:**
-- 4th-tier fuzzy matcher (drop trailing direction, Levenshtein on street
-  name) — would recover ~1,500-2,500 rows that have minor typos.
-- Automated nightly refresh of county loaders — currently manual. Once
-  Dallas + Johnson land, add to cron.
-- Out-of-state customer cleanup — small pile of NE/IL/MN/MO addresses
-  tagged `state='IA'` in customer records. Data-quality issue at the
-  ERP source, not a matcher problem.
+**Files (still in LiveEdge repo, currently inert):**
+- `src/lib/geocode.ts` / `src/lib/geocode-runner.ts` — matcher logic kept
+  as reference for the algorithm. Not called by anything anymore.
+- `app/api/cron/geocode-nightly/route.ts` — short-circuited to a no-op
+  200 response. Re-enable steps in route header.
+- `db/migrations/0014_geocode_index.sql` / `0015_*` / `0016_*` — applied.
+  `geocode_index` table itself has been dropped from Supabase.
+- `scripts/snapshot-polk-county-atlas.ts` / `load-polk-county-into-index.ts`
+  / `load-dallas-into-index.ts` / `inspect-dallas-shp.ts` — TS loaders that
+  wrote to Supabase. **Not used post-consolidation.** Reference only.
+- `scripts/reset-geocode-attempts.ts` — chunked utility to push specific
+  cities back to the front of the matcher queue (writes NULL `geocoded_at`
+  in 200-row chunks to dodge Supabase's 60s statement timeout). Still useful
+  if you need to force a Pi rematch of a specific city set.
+
+**Pi-side files (in `C:\Users\amcgrean\python\api`, beisser-api repo):**
+- `agility_api/geocoder.py` — main `ShipToGeocoder` (in-memory GeoJSON,
+  4-tier with Nominatim fallback). Used by `beisser_sync.py`.
+- `agility_api/geocoder_sqlite.py` — `SqliteGeocoder` (3-tier, parcel
+  index). Tier-3 fix landed in beisser-api PR #35 (2026-05-18).
+- `scripts/run_geocoding_bulk.py` — bulk rematch worker. Filters
+  `WHERE geocoded_at IS NULL`, so to reprocess a city, reset those rows
+  to NULL first (see LiveEdge `scripts/reset-geocode-attempts.ts`).
+- `scripts/load_polk_county_into_index.py` — Polk County loader (Python).
+  Reads NDJSON snapshots from `/home/api/geocode-snapshots/polk/`.
+- `scripts/load_dallas_county_into_index.py` — Dallas County loader.
+  Reads shapefile + CSV from `/home/api/geocode-snapshots/dallas/`. Needs
+  `pyproj` + `pyshp` (`pyproj` installed on Pi venv 2026-05-19).
+
+**Unmatched ship-tos by county (2026-05-20 snapshot):**
+~10K IA customers still without `lat`/`lon`. Top remaining (after Polk + Dallas
+land):
+| County | Approx unmatched | Public data | Action |
+|---|---:|---|---|
+| Webster | ~1,700 | Beacon-only | Deferred (needs scraping) |
+| Polk (direction-prefix mismatches) | ~3,300 | Atlas loaded — fuzzy match needed | 4th-tier fuzzy work |
+| Johnson | ~560 | REST endpoint identified | Build Pi loader |
+| Warren / Story / Madison / Marion / others | ~2,500 combined | Mostly Beacon | Deferred |
+
+Public data-source availability per county:
+- **REST endpoints:** Polk (loaded), Johnson (pending Python loader)
+- **Shapefile only:** Dallas (loaded)
+- **Beacon-only (no public data):** Webster, Warren, Story, many others —
+  would require Beacon scraping work; out of scope until a need surfaces.
+
+**Known data-quality wall:** direction-prefix mismatches. Customer record
+says `"613 Grimes Street"` but the Polk atlas has `"613 E Grimes St"`.
+`_split` keeps directionals as part of the street core, so these miss
+tier-1/2. A 4th-tier fuzzy matcher (strip directionals, Levenshtein on
+street name) would recover an estimated 1,500–2,500 of the still-failed
+rows. Highest-leverage follow-up.
+
+**Pi storage state (2026-05-20):**
+- `/home/api/geocode.db` — 9.9 GB
+- Pi SD card — 29 GB total, ~21 GB used (74%), ~8 GB free
+- Plans: migrate to Pi 5 + USB SSD (existing 500 GB/1 TB SSD on-hand) for
+  IOPS + write endurance. Current SD card has ~2-3 year write-cycle clock
+  under sustained sync writes. SSD migration is separate cutover.
 
 #### Scorecard Drill-Downs (2026-05-13) — COMPLETE
 
@@ -835,9 +869,8 @@ Snapshot of unmerged `claude/*` and `codex/*` branches with a hint about whether
 4. **Purchasing workflow gaps**: Before building, verify tables exist: `SELECT table_name FROM information_schema.tables WHERE table_schema='public' AND table_name IN ('purchasing_tasks','purchasing_approvals','purchasing_notes','purchasing_exceptions')` — if found, build PO notes API, exceptions view, approval workflow
 5. **Suggested Buys**: `app_purchasing_queue` confirmed missing. Check `agility_suggested_po_header` + `agility_suggested_po_lines` before building `/purchasing/suggested-buys`
 6. **Flask sunset**: DNS cutover + archive `C:\Users\amcgrean\python\wh-tracker-fly\WH-Tracker` after user testing confirms parity
-7. **Dallas County loader**: shapefile extracted to user's `./tmp/dallas`, inspector script committed to `claude/dallas-county-loader` branch. Need to (a) run inspector to discover dbf field names, (b) write `scripts/load-dallas-into-index.ts` based on Polk template + shapefile reading + `proj4` reprojection (Iowa State Plane → WGS84), (c) load to prod, (d) re-run cron. Expected uplift ~1,400 customers (Waukee + Adel). See section "Geocoding Pipeline" above for context.
-8. **Johnson County loader**: REST endpoint confirmed at `https://gis.johnsoncountyiowa.gov/arcgis/rest/services/LandRecords/Land_Records/MapServer` — layers 4 (House Numbers, Point) + 9 (Parcels, Polygon). Same template as Polk loader. Expected uplift ~360 customers (Iowa City / Coralville / North Liberty / Tiffin).
-9. **Generic county-data nightly refresh**: once Dallas + Johnson land, add `/api/cron/county-data-refresh` that re-runs all REST-based county loaders weekly (or monthly). `ON CONFLICT (source, source_hash) DO NOTHING` makes re-runs no-ops for unchanged parcels; new construction picked up automatically.
+7. **County parcel loaders — MOVED TO PI (2026-05-20)**: Polk + Dallas now loaded on the Pi (see "Geocoding Pipeline" section above). Remaining: **Johnson County** loader — REST at `https://gis.johnsoncountyiowa.gov/arcgis/rest/services/LandRecords/Land_Records/MapServer` (layers 4 + 9), same template as Polk. Expected uplift ~560 customers. Owner: **Pi agent** (`C:\Users\amcgrean\python\api`). The TS loaders in `scripts/load-*.ts` are inert reference only; build the Python version in beisser-api's `scripts/`.
+8. **4th-tier fuzzy matcher (highest single-uplift remaining)**: Add a fuzzy fallback to `agility_api/geocoder_sqlite.py` that strips leading/trailing directionals from `street_norm` and retries the city/zip lookup. Tag as `sqlite_fuzzy_dir` so the relaxation is visible in `geocode_source`. Keep it gated on city OR zip-3 corroboration to avoid re-introducing the wild-misplacement bug. Expected uplift: ~1,500–2,500 rows currently blocked on direction-prefix mismatches (e.g. customer "613 Grimes St" vs atlas "613 E Grimes St").
 10. **Audit other `qty_ordered * price` usages and swap to `extended_price`** (2026-05-14): `/management/forecast` is fixed but the same UOM bug affects every other place that aggregates SO line $. Known offenders to grep + fix:
     - `app/api/sales/orders/[so_number]/route.ts` — Ext column on the order detail page (user-confirmed broken: SO 1480288 line 3 shows $15,960 vs Agility's $85.11)
     - `app/api/dispatch/orders/[so_number]/lines/route.ts` — same shape
