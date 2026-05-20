@@ -318,6 +318,7 @@ Full WH-Tracker (Python/Flask) migration into LiveEdge. All modules ported:
 - **Picker Detail** (`/warehouse/pickers/[id]`): recent pick history + stats per picker
 - **Work Orders** (`/work-orders`): open WO board, barcode SO search, assignments with Mark Complete. API: `/api/work-orders/open`, `/api/work-orders/search`, `/api/work-orders/assignments`, `/api/work-orders/assignments/[id]`
 - **Dispatch Board** (`/dispatch`): delivery stops from ERP, route planning CRUD, Samsara GPS proxy. API: `/api/dispatch/deliveries`, `/api/dispatch/routes`, `/api/dispatch/routes/[id]/stops`, `/api/dispatch/vehicles`
+- **Driver Availability** (`/dispatch/drivers`): toggle driver availability for routing. Uses dedicated `POST /api/dispatch/drivers/toggle` endpoint (PR #339, 2026-05-19) — split out from the generic upsert to avoid an `ON CONFLICT` constraint mismatch on `driver_availability`.
 - **Delivery Tracker** (`/delivery`): today + overdue K/P/S statuses, status label logic, fleet GPS panel. API: `/api/delivery/tracker`
 - **Fleet Map** (`/delivery/map`): live vehicle cards with GPS, speed, address. API: `/api/delivery/locations` (proxies dispatch/vehicles)
 - **Sales Hub** (`/sales`): KPI dashboard + order status table. API: `/api/sales/metrics`, `/api/sales/orders`
