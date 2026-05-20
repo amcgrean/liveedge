@@ -7,8 +7,11 @@ export default defineConfig({
     environment: 'node',
   },
   resolve: {
-    alias: {
-      '@': path.resolve(__dirname, 'src'),
-    },
+    // Mirror tsconfig.json paths. Order matters: longer-prefix aliases must
+    // come first so `@/db/...` doesn't get rewritten by the `@/` rule.
+    alias: [
+      { find: /^@\/db\/(.*)$/, replacement: path.resolve(__dirname, 'db') + '/$1' },
+      { find: /^@\/(.*)$/, replacement: path.resolve(__dirname, 'src') + '/$1' },
+    ],
   },
 });
