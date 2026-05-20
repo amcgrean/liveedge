@@ -56,8 +56,10 @@ export default function PdfPreviewPanel({
 
   if (!documentId) return null;
 
+  // Site TopNav is sticky at top-2 + h-[52px] + z-50. Anchor below it so our
+  // header (with the close button) doesn't get covered.
   return (
-    <div className="fixed inset-y-0 right-0 z-40 w-full sm:w-[55vw] lg:w-[50vw] xl:w-[45vw] bg-slate-950 border-l border-slate-800 shadow-2xl flex flex-col">
+    <div className="fixed right-0 z-50 w-full sm:w-[55vw] lg:w-[50vw] xl:w-[45vw] bg-slate-950 border-l border-slate-800 shadow-2xl flex flex-col" style={{ top: 64, bottom: 0 }}>
       <div className="flex items-center justify-between px-4 py-2 border-b border-slate-800 bg-slate-900/60">
         <div className="text-sm">
           <span className="text-slate-500">PDF:</span>{' '}
@@ -103,7 +105,9 @@ export default function PdfPreviewPanel({
         {url && (
           <iframe
             key={url}
-            src={url}
+            // #toolbar=0&navpanes=0&view=FitH tells Chrome's built-in PDF
+            // viewer to hide its toolbar + sidebar and fit width by default.
+            src={`${url}#toolbar=0&navpanes=0&view=FitH`}
             title="PDF preview"
             className="w-full h-full border-0 bg-white"
           />
