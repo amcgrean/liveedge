@@ -126,7 +126,13 @@ export async function GET(req: NextRequest) {
         SUM(amount)   AS ar_amount_total
       FROM agility_ar_open
       WHERE is_deleted = false
-        AND regexp_replace(ref_num, '^0*(\d+).*$', '\1')::bigint = soh.so_id
+        -- ref_num is the invoice # zero-padded + a "-NNN" shipment suffix
+        -- ("0001458813-001"). Strip both to match agility_so_header.so_id.
+        -- NB: this lives inside a JS tagged template literal — \d and \1
+        -- are invalid escape sequences in template literals, which set the
+        -- cooked value to undefined and break postgres.js parameter
+        -- substitution. Use split_part + TRIM(LEADING '0') instead of regex.
+        AND TRIM(LEADING '0' FROM split_part(ref_num, '-', 1))::bigint = soh.so_id
     ) ar ON true
     WHERE soh.is_deleted = false
       AND UPPER(TRIM(soh.cust_code)) LIKE 'HUBB%'
