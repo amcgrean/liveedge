@@ -21,7 +21,8 @@ type SoRow = {
   so_status: string | null;
   sale_type: string | null;
   created_date: string | null;
-  order_total: string | null;
+  ar_open_total: string | null;
+  ar_amount_total: string | null;
 };
 
 type AttachedRow = {
@@ -100,7 +101,11 @@ export async function GET(req: NextRequest) {
   const state = seed.shipto_state;
   const zip = seed.shipto_zip;
 
-  // All open HUBB% SOs at this jobsite, with UOM-correct unshipped $ total.
+  // ALL HUBB% SOs at this jobsite — no so_status filter. Buyers want to see
+  // open + invoiced + cancelled in one view, matching Agility's AR Open and
+  // Paid Inquiry. The dollar figure is AR Open (not unshipped order $) —
+  // mirrors agility_ar_open.open_amt summed per SO. ref_num in agility_ar_open
+  // is zero-padded with a "-NNN" shipment suffix; strip both to match so_id.
   const salesOrders = await sql<SoRow[]>`
     SELECT
       soh.so_id::int        AS so_id,
@@ -112,15 +117,18 @@ export async function GET(req: NextRequest) {
       soh.so_status,
       soh.sale_type,
       soh.created_date::text AS created_date,
-      ot.order_total::text  AS order_total
+      ar.ar_open_total::text   AS ar_open_total,
+      ar.ar_amount_total::text AS ar_amount_total
     FROM agility_so_header soh
     LEFT JOIN LATERAL (
-      SELECT SUM(unshipped_extended_price) AS order_total
-      FROM agility_so_lines
-      WHERE so_id = soh.so_id AND is_deleted = false
-    ) ot ON true
+      SELECT
+        SUM(open_amt) AS ar_open_total,
+        SUM(amount)   AS ar_amount_total
+      FROM agility_ar_open
+      WHERE is_deleted = false
+        AND regexp_replace(ref_num, '^0*(\d+).*$', '\1')::bigint = soh.so_id
+    ) ar ON true
     WHERE soh.is_deleted = false
-      AND UPPER(COALESCE(soh.so_status, '')) NOT IN ('I', 'C', 'X')
       AND UPPER(TRIM(soh.cust_code)) LIKE 'HUBB%'
       AND bids.hubbell_normalize_address(soh.shipto_address_1)
           = bids.hubbell_normalize_address(${addr})
@@ -218,8 +226,8 @@ export async function GET(req: NextRequest) {
   );
   const devDoc = documents.find((d) => d.dev_code || d.dev_name);
 
-  const soOpenValue = salesOrders.reduce(
-    (acc, s) => acc + (s.order_total ? parseFloat(s.order_total) || 0 : 0),
+  const arOpenValue = salesOrders.reduce(
+    (acc, s) => acc + (s.ar_open_total ? parseFloat(s.ar_open_total) || 0 : 0),
     0
   );
   const hubbellTotal = documents.reduce(
@@ -242,7 +250,7 @@ export async function GET(req: NextRequest) {
       dev_code: devDoc?.dev_code ?? null,
       dev_name: devDoc?.dev_name ?? null,
       so_count: salesOrders.length,
-      so_open_value: soOpenValue,
+      ar_open_value: arOpenValue,
       doc_count: documents.length,
       hubbell_total: hubbellTotal,
       paid_total: paidTotal,

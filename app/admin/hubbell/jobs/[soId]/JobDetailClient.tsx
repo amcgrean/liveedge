@@ -23,7 +23,8 @@ type SalesOrder = {
   so_status: string | null;
   sale_type: string | null;
   created_date: string | null;
-  order_total: string | null;
+  ar_open_total: string | null;
+  ar_amount_total: string | null;
   attached_docs: AttachedDoc[];
 };
 
@@ -68,7 +69,7 @@ type Bundle = {
     dev_code: string | null;
     dev_name: string | null;
     so_count: number;
-    so_open_value: number;
+    ar_open_value: number;
     doc_count: number;
     hubbell_total: number;
     paid_total: number;
@@ -238,7 +239,7 @@ export default function JobDetailClient({ soId }: { soId: string }) {
             <span className="text-slate-500">SOs:</span> <span className="text-slate-200 font-mono">{jobsite.so_count}</span>
           </span>
           <span className="px-3 py-2 bg-slate-900/40 border border-slate-800 rounded">
-            <span className="text-slate-500">Open $:</span> <span className="text-slate-200 font-mono">{fmtMoney(jobsite.so_open_value)}</span>
+            <span className="text-slate-500">AR Open $:</span> <span className="text-slate-200 font-mono">{fmtMoney(jobsite.ar_open_value)}</span>
           </span>
           <span className="px-3 py-2 bg-slate-900/40 border border-slate-800 rounded">
             <span className="text-slate-500">Docs:</span> <span className="text-slate-200 font-mono">{jobsite.doc_count}</span>
@@ -271,7 +272,7 @@ export default function JobDetailClient({ soId }: { soId: string }) {
                   <th className="px-3 py-2 text-left">Cust PO</th>
                   <th className="px-3 py-2 text-left">Expect</th>
                   <th className="px-3 py-2 text-left">Status</th>
-                  <th className="px-3 py-2 text-right">Open $</th>
+                  <th className="px-3 py-2 text-right">AR Open $</th>
                   <th className="px-3 py-2 text-center">Docs</th>
                 </tr>
               </thead>
@@ -298,7 +299,7 @@ export default function JobDetailClient({ soId }: { soId: string }) {
                         <td className="px-3 py-1 font-mono text-xs">{s.po_number ?? '—'}</td>
                         <td className="px-3 py-1 text-xs">{s.expect_date ?? '—'}</td>
                         <td className="px-3 py-1 text-xs">{s.so_status ?? '—'}</td>
-                        <td className="px-3 py-1 text-right tabular-nums font-mono">{fmtMoney(s.order_total)}</td>
+                        <td className="px-3 py-1 text-right tabular-nums font-mono">{fmtMoney(s.ar_open_total)}</td>
                         <td className="px-3 py-1 text-center text-xs">{s.attached_docs.length}</td>
                       </tr>
                       {open && s.attached_docs.length > 0 && (
