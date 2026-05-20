@@ -159,7 +159,7 @@ export async function POST(req: NextRequest) {
       extractedState: metadata.state ?? null,
       extractedZip: metadata.zip ?? null,
       extractedTotal: parseNumberToString(metadata.total),
-      extractedNeedBy: parseDateOrNull(metadata.need_by ?? null) as unknown as string | null,
+      extractedNeedBy: parseDateOrNull(metadata.need_by ?? null),
       lineItems: normalizeLineItems(metadata.line_items) as unknown as object | null,
       scrapeCustCode,
       scrapeSeqNum,
