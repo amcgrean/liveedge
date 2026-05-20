@@ -1,5 +1,27 @@
 # Security Remediation Handoff — PR5 complete (2026-05-19)
 
+## Status update — 2026-05-20
+
+Two live bugs introduced by PR5 in `app/api/admin/users/[id]/permissions/route.ts`
+are now fixed on `claude/security-remediation-handoff-aQu3b`:
+
+- **P1 — optimistic lock**: the `if_match_version` round-trip was passing the
+  stored `updated_at` through `new Date(...).toISOString()` (ms precision),
+  but the UPDATE compared against `timestamptz` (µs precision). Every save
+  returned 409. Fixed by truncating both sides to milliseconds via
+  `date_trunc('milliseconds', updated_at)` in the WHERE clause.
+- **P2 — last-admin race**: the precheck (read all active admins, compute
+  `adminsAfter`) was unsynchronized with the UPDATE. Two concurrent admin
+  self-edits could both pass and commit, leaving zero admins. Fixed by
+  wrapping the precheck + UPDATE in a `sql.begin(...)` transaction with
+  `SELECT ... FOR UPDATE` on the active-users read so concurrent writers
+  serialize.
+
+Verification path (manual):
+1. Sign in as admin, save any permission toggle on `/admin/users/[id]/permissions` — should succeed (previously always 409'd).
+2. Two-tab concurrency: tab A saves, tab B (now stale) saves; B returns 409 `stale_write_conflict`.
+3. Self-edit removing the last `admin.users.manage` returns 409 `last_admin_lockout`.
+
 ## What was completed
 - Added optimistic concurrency to admin permission updates using `if_match_version` bound to `app_users.updated_at`.
   - `GET /api/admin/users/:id/permissions` now returns `permissions_version`.
