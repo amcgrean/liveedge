@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import Link from 'next/link';
 import { TopNav } from '../../../src/components/nav/TopNav';
-import { ChevronDown, ChevronRight, RefreshCw, Search, AlertTriangle, ExternalLink } from 'lucide-react';
+import { ChevronDown, ChevronRight, RefreshCw, Search, AlertTriangle, ExternalLink, Download, Ban } from 'lucide-react';
 import { usePageTracking } from '@/hooks/usePageTracking';
 
 const BRANCHES = ['10FD', '20GR', '25BW', '40CV'];
@@ -18,6 +18,10 @@ interface SuggestedBuy {
   ppo_status: string | null;
   line_count: number;
   total_qty: number | null;
+  estimated_value: number | null;
+  max_lead_time_days: number | null;
+  has_blocking_min_violation: boolean;
+  has_primary_mismatch: boolean;
 }
 
 interface SuggestedLine {
@@ -67,6 +71,8 @@ export default function SuggestedBuysClient({ isAdmin, userBranch, userName, use
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [detailLines, setDetailLines] = useState<SuggestedLine[]>([]);
   const [loadingDetail, setLoadingDetail] = useState(false);
+  const [onlyMismatch, setOnlyMismatch] = useState(false);
+  const [onlyBlock, setOnlyBlock] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -103,12 +109,53 @@ export default function SuggestedBuysClient({ isAdmin, userBranch, userName, use
     } finally { setLoadingDetail(false); }
   };
 
+  // Apply rollup-flag filters before grouping
+  const filtered = suggestions.filter((s) => {
+    if (onlyMismatch && !s.has_primary_mismatch) return false;
+    if (onlyBlock && !s.has_blocking_min_violation) return false;
+    return true;
+  });
+
   // Group by supplier
-  const grouped = suggestions.reduce<Record<string, SuggestedBuy[]>>((acc, s) => {
+  const grouped = filtered.reduce<Record<string, SuggestedBuy[]>>((acc, s) => {
     const key = s.supplier_name || s.supplier_code;
     (acc[key] ??= []).push(s);
     return acc;
   }, {});
+
+  const flagCounts = {
+    mismatch: suggestions.filter((s) => s.has_primary_mismatch).length,
+    block:    suggestions.filter((s) => s.has_blocking_min_violation).length,
+  };
+
+  function exportCsv() {
+    const headers = [
+      'PPO #', 'Branch', 'Supplier Code', 'Supplier Name', 'Status',
+      'Expected', 'Lines', 'Total Qty', 'Estimated $', 'Max Lead (days)',
+      'Has Block Violation', 'Has Primary Mismatch',
+    ];
+    const escape = (v: unknown) => {
+      const s = v == null ? '' : String(v);
+      return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+    };
+    const lines = filtered.map((s) => [
+      s.ppo_id, s.system_id, s.supplier_code, s.supplier_name ?? '',
+      s.ppo_status ?? '',
+      s.expect_date ?? '', s.line_count, s.total_qty ?? '',
+      s.estimated_value != null ? Number(s.estimated_value).toFixed(2) : '',
+      s.max_lead_time_days ?? '',
+      s.has_blocking_min_violation ? 'Y' : '',
+      s.has_primary_mismatch ? 'Y' : '',
+    ].map(escape).join(','));
+    const csv = [headers.join(','), ...lines].join('\n');
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `suggested-buys-${new Date().toISOString().slice(0, 10)}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+  }
 
   // The supplier_code of the currently-expanded PPO — used to flag lines
   // where the item's primary supplier differs from the suggested supplier.
@@ -136,11 +183,64 @@ export default function SuggestedBuysClient({ isAdmin, userBranch, userName, use
                 {BRANCHES.map((b) => <option key={b} value={b}>{b}</option>)}
               </select>
             )}
+            <button
+              onClick={exportCsv}
+              disabled={filtered.length === 0}
+              title="Export visible rows as CSV"
+              className="flex items-center gap-1.5 px-3 py-1.5 bg-gray-800 hover:bg-gray-700 rounded transition text-sm disabled:opacity-40 disabled:cursor-not-allowed"
+            >
+              <Download className="w-4 h-4" />
+              CSV
+            </button>
             <button onClick={load} disabled={loading} className="p-2 bg-gray-800 hover:bg-gray-700 rounded transition disabled:opacity-50">
               <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
             </button>
           </div>
         </div>
+
+        {/* Filter chips for the per-PPO rollup flags */}
+        {suggestions.length > 0 && (
+          <div className="flex flex-wrap gap-2 items-center text-xs">
+            <span className="text-gray-500 mr-1">Filters:</span>
+            <button
+              onClick={() => setOnlyMismatch((v) => !v)}
+              className={`inline-flex items-center gap-1 px-2 py-1 rounded border transition-colors ${
+                onlyMismatch
+                  ? 'bg-amber-500/20 text-amber-300 border-amber-500/40'
+                  : 'bg-gray-900 text-gray-400 border-gray-700 hover:border-gray-500'
+              }`}
+              title="Show only PPOs where at least one item's primary supplier differs from the suggested supplier"
+            >
+              <AlertTriangle className="w-3 h-3" />
+              Primary mismatch
+              <span className="text-gray-500">({flagCounts.mismatch})</span>
+            </button>
+            <button
+              onClick={() => setOnlyBlock((v) => !v)}
+              className={`inline-flex items-center gap-1 px-2 py-1 rounded border transition-colors ${
+                onlyBlock
+                  ? 'bg-amber-500/20 text-amber-300 border-amber-500/40'
+                  : 'bg-gray-900 text-gray-400 border-gray-700 hover:border-gray-500'
+              }`}
+              title="Show only PPOs with at least one Block-level min-order violation"
+            >
+              <Ban className="w-3 h-3" />
+              Block violation
+              <span className="text-gray-500">({flagCounts.block})</span>
+            </button>
+            {(onlyMismatch || onlyBlock) && (
+              <button
+                onClick={() => { setOnlyMismatch(false); setOnlyBlock(false); }}
+                className="text-gray-500 hover:text-gray-300 underline"
+              >
+                Clear
+              </button>
+            )}
+            <span className="text-gray-600 ml-auto">
+              {filtered.length} of {suggestions.length} shown
+            </span>
+          </div>
+        )}
 
         {/* KPI strip */}
         {suggestions.length > 0 && (
@@ -194,7 +294,10 @@ export default function SuggestedBuysClient({ isAdmin, userBranch, userName, use
                   <th className="px-4 py-2 text-left font-medium">Status</th>
                   <th className="px-4 py-2 text-left font-medium">Expected</th>
                   <th className="px-4 py-2 text-left font-medium">Lines</th>
-                  <th className="px-4 py-2 text-left font-medium">Total Qty</th>
+                  <th className="px-4 py-2 text-right font-medium">Total Qty</th>
+                  <th className="px-4 py-2 text-right font-medium" title="Max tier-1 lead time across lines (days)">Lead</th>
+                  <th className="px-4 py-2 text-right font-medium" title="Sum of qty × cost across lines (rough estimate)">Est $</th>
+                  <th className="px-4 py-2 text-left font-medium" title="Per-PPO warning chips: primary-supplier mismatch and/or Block min-order violation">Flags</th>
                 </tr>
               </thead>
               <tbody>
@@ -221,13 +324,45 @@ export default function SuggestedBuysClient({ isAdmin, userBranch, userName, use
                       {s.expect_date ? new Date(s.expect_date + 'T00:00:00').toLocaleDateString() : '—'}
                     </td>
                     <td className="px-4 py-2.5 text-xs text-gray-400">{s.line_count}</td>
-                    <td className="px-4 py-2.5 text-xs text-gray-400">
+                    <td className="px-4 py-2.5 text-xs text-gray-400 text-right">
                       {s.total_qty != null ? Number(s.total_qty).toLocaleString() : '—'}
+                    </td>
+                    <td className="px-4 py-2.5 text-xs text-gray-400 text-right">
+                      {s.max_lead_time_days != null
+                        ? <>{s.max_lead_time_days}<span className="text-gray-600">d</span></>
+                        : '—'}
+                    </td>
+                    <td className="px-4 py-2.5 text-xs text-gray-300 text-right">
+                      {s.estimated_value != null && Number(s.estimated_value) > 0
+                        ? `$${Number(s.estimated_value).toLocaleString(undefined, { maximumFractionDigits: 0 })}`
+                        : '—'}
+                    </td>
+                    <td className="px-4 py-2.5">
+                      <div className="flex gap-1 flex-wrap" onClick={(e) => e.stopPropagation()}>
+                        {s.has_primary_mismatch && (
+                          <span
+                            className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-300 text-[10px] font-medium"
+                            title="At least one line's primary supplier differs from the suggested supplier"
+                          >
+                            <AlertTriangle className="w-3 h-3" />
+                            Mismatch
+                          </span>
+                        )}
+                        {s.has_blocking_min_violation && (
+                          <span
+                            className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-300 text-[10px] font-medium"
+                            title="At least one line has a Block-level min-order violation"
+                          >
+                            <Ban className="w-3 h-3" />
+                            Block
+                          </span>
+                        )}
+                      </div>
                     </td>
                   </tr>
                   {expandedId === s.ppo_id && (
                     <tr key={`${s.ppo_id}-detail`} className="border-b border-gray-800 bg-gray-800/30">
-                      <td colSpan={isAdmin ? 7 : 6} className="px-4 py-3">
+                      <td colSpan={isAdmin ? 10 : 9} className="px-4 py-3">
                         {loadingDetail ? (
                           <div className="text-xs text-gray-500">Loading lines…</div>
                         ) : detailLines.length === 0 ? (
