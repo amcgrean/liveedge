@@ -171,12 +171,15 @@ export async function PUT(req: NextRequest, context: RouteContext) {
 
     const txResult = await sql.begin(async (tx) => {
       if (isSelfEdit) {
-        const activeUsers = await tx<Pick<AppUserRow, 'id' | 'roles' | 'granted_capabilities' | 'revoked_capabilities'>[]>`
+        // postgres.js `TransactionSql` doesn't expose the generic-on-template-tag
+        // overload that the outer `Sql` does, so we cast the result row type
+        // rather than passing it as a type argument to the tag call.
+        const activeUsers = (await tx`
           SELECT id, roles, granted_capabilities, revoked_capabilities
           FROM app_users
           WHERE is_active = true
           FOR UPDATE
-        `;
+        `) as Pick<AppUserRow, 'id' | 'roles' | 'granted_capabilities' | 'revoked_capabilities'>[];
         let adminsAfter = 0;
         for (const row of activeUsers) {
           const rowRoles = Array.isArray(row.roles) ? row.roles : [];
@@ -194,8 +197,8 @@ export async function PUT(req: NextRequest, context: RouteContext) {
 
       // Apply update — `roles` is a json column (see /api/admin/users/[id]/route.ts);
       // granted/revoked_capabilities are text[] (migration 0015_user_capabilities.sql).
-      const updateRows = roles !== undefined
-        ? await tx<Pick<AppUserRow, 'updated_at'>[]>`
+      const updateRows = (roles !== undefined
+        ? await tx`
             UPDATE app_users
             SET roles = ${JSON.stringify(newRoles)}::json,
                 granted_capabilities = ${tx.array(normalizedGranted)}::text[],
@@ -205,7 +208,7 @@ export async function PUT(req: NextRequest, context: RouteContext) {
               AND date_trunc('milliseconds', updated_at) = ${ifMatchVersion}::timestamptz
             RETURNING updated_at
           `
-        : await tx<Pick<AppUserRow, 'updated_at'>[]>`
+        : await tx`
             UPDATE app_users
             SET granted_capabilities = ${tx.array(normalizedGranted)}::text[],
                 revoked_capabilities = ${tx.array(normalizedRevoked)}::text[],
@@ -213,7 +216,7 @@ export async function PUT(req: NextRequest, context: RouteContext) {
             WHERE id = ${userId}
               AND date_trunc('milliseconds', updated_at) = ${ifMatchVersion}::timestamptz
             RETURNING updated_at
-          `;
+          `) as Pick<AppUserRow, 'updated_at'>[];
 
       return { lockout: false as const, updateRows };
     });
