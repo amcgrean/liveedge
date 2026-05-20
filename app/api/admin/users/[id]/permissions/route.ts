@@ -11,6 +11,33 @@ import { legacyGeneralAudit } from '../../../../../../db/schema-legacy';
 
 type RouteContext = { params: Promise<{ id: string }> };
 
+type PermissionEvent =
+  | 'validation_error'
+  | 'user_not_found'
+  | 'stale_write_conflict'
+  | 'last_admin_lockout'
+  | 'success'
+  | 'internal_error';
+
+/**
+ * Structured log emit for permission-update outcomes. One line per terminal
+ * branch so failure rates are countable from logs without parsing prose.
+ *
+ * Log shape: { evt: 'permissions_update', outcome, actorId, targetUserId, ... }
+ */
+function logPermissionEvent(
+  outcome: PermissionEvent,
+  fields: Record<string, unknown>
+): void {
+  const payload = { evt: 'permissions_update', outcome, ...fields };
+  // Errors (4xx caused-by-caller or 5xx) → stderr; successes → stdout.
+  if (outcome === 'internal_error') {
+    console.error(JSON.stringify(payload));
+  } else {
+    console.log(JSON.stringify(payload));
+  }
+}
+
 type AppUserRow = {
   id: number;
   display_name: string | null;
@@ -83,7 +110,11 @@ export async function PUT(req: NextRequest, context: RouteContext) {
 
   const { id } = await context.params;
   const userId = parseInt(id, 10);
-  if (isNaN(userId)) return NextResponse.json({ error: 'Invalid ID' }, { status: 400 });
+  const actorIdEarly = parseInt(session.user.id ?? '0', 10);
+  if (isNaN(userId)) {
+    logPermissionEvent('validation_error', { actorId: actorIdEarly, reason: 'invalid_target_id', rawId: id });
+    return NextResponse.json({ error: 'Invalid ID' }, { status: 400 });
+  }
 
   let body: {
     roles?: string[];
@@ -93,7 +124,10 @@ export async function PUT(req: NextRequest, context: RouteContext) {
     change_reason?: string;
     ticket_ref?: string;
   };
-  try { body = await req.json(); } catch { return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 }); }
+  try { body = await req.json(); } catch {
+    logPermissionEvent('validation_error', { actorId: actorIdEarly, targetUserId: userId, reason: 'invalid_json' });
+    return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 });
+  }
 
   const roles = Array.isArray(body.roles) ? body.roles : undefined;
   const granted = Array.isArray(body.granted_capabilities) ? body.granted_capabilities : [];
@@ -103,9 +137,11 @@ export async function PUT(req: NextRequest, context: RouteContext) {
   const ticketRef = typeof body.ticket_ref === 'string' ? body.ticket_ref.trim() : '';
 
   if (!ifMatchVersion) {
+    logPermissionEvent('validation_error', { actorId: actorIdEarly, targetUserId: userId, reason: 'missing_if_match_version' });
     return NextResponse.json({ error: 'if_match_version is required' }, { status: 400 });
   }
   if (!changeReason) {
+    logPermissionEvent('validation_error', { actorId: actorIdEarly, targetUserId: userId, reason: 'missing_change_reason' });
     return NextResponse.json({ error: 'change_reason is required for permission updates' }, { status: 400 });
   }
 
@@ -113,6 +149,12 @@ export async function PUT(req: NextRequest, context: RouteContext) {
   const unknownGranted = granted.filter((c) => !ALL_CAPABILITIES.has(c as never));
   const unknownRevoked = revoked.filter((c) => !ALL_CAPABILITIES.has(c as never));
   if (unknownGranted.length || unknownRevoked.length) {
+    logPermissionEvent('validation_error', {
+      actorId: actorIdEarly,
+      targetUserId: userId,
+      reason: 'unknown_capability',
+      unknown: [...unknownGranted, ...unknownRevoked],
+    });
     return NextResponse.json(
       { error: `Unknown capabilities: ${[...unknownGranted, ...unknownRevoked].join(', ')}` },
       { status: 400 }
@@ -130,7 +172,10 @@ export async function PUT(req: NextRequest, context: RouteContext) {
       WHERE id = ${userId}
       LIMIT 1
     `;
-    if (current.length === 0) return NextResponse.json({ error: 'User not found' }, { status: 404 });
+    if (current.length === 0) {
+      logPermissionEvent('user_not_found', { actorId: actorIdEarly, targetUserId: userId });
+      return NextResponse.json({ error: 'User not found' }, { status: 404 });
+    }
     const prev = current[0];
 
     const prevRoles: string[] = Array.isArray(prev.roles) ? prev.roles : [];
@@ -139,6 +184,13 @@ export async function PUT(req: NextRequest, context: RouteContext) {
     const prevVersion = prev.updated_at ? new Date(prev.updated_at).toISOString() : null;
 
     if (!prevVersion || prevVersion !== ifMatchVersion) {
+      logPermissionEvent('stale_write_conflict', {
+        actorId: actorIdEarly,
+        targetUserId: userId,
+        detected_at: 'precheck',
+        client_version: ifMatchVersion,
+        current_version: prevVersion,
+      });
       return NextResponse.json({
         error: 'Permission record changed since last read',
         code: 'stale_write_conflict',
@@ -166,7 +218,7 @@ export async function PUT(req: NextRequest, context: RouteContext) {
     // without `date_trunc` the WHERE never matches and every save returns 409.
     // TODO: a dedicated `permissions_version bigint` column would be cleaner
     // long-term, but date_trunc is the minimal-blast-radius fix.
-    const actorId = parseInt(session.user.id ?? '0', 10);
+    const actorId = actorIdEarly;
     const isSelfEdit = !isNaN(actorId) && actorId > 0 && actorId === userId;
 
     const txResult = await sql.begin(async (txRaw) => {
@@ -223,6 +275,7 @@ export async function PUT(req: NextRequest, context: RouteContext) {
     });
 
     if (txResult.lockout) {
+      logPermissionEvent('last_admin_lockout', { actorId: actorIdEarly, targetUserId: userId });
       return NextResponse.json({
         error: 'Blocked: cannot remove the last active admin capability from your own account',
         code: 'last_admin_lockout',
@@ -234,6 +287,13 @@ export async function PUT(req: NextRequest, context: RouteContext) {
     if (updateRows.length === 0) {
       const fresh = await sql<Pick<AppUserRow, 'updated_at'>[]>`SELECT updated_at FROM app_users WHERE id = ${userId} LIMIT 1`;
       const currentVersion = fresh[0]?.updated_at ? new Date(fresh[0].updated_at).toISOString() : null;
+      logPermissionEvent('stale_write_conflict', {
+        actorId: actorIdEarly,
+        targetUserId: userId,
+        detected_at: 'update',
+        client_version: ifMatchVersion,
+        current_version: currentVersion,
+      });
       return NextResponse.json({
         error: 'Permission record changed since last read',
         code: 'stale_write_conflict',
@@ -278,6 +338,14 @@ export async function PUT(req: NextRequest, context: RouteContext) {
     }
 
     const newEffective = Array.from(effectiveCapabilities(newRoles, normalizedGranted, normalizedRevoked));
+    logPermissionEvent('success', {
+      actorId: actorIdEarly,
+      targetUserId: userId,
+      isSelfEdit,
+      roles_changed: JSON.stringify(newRoles.sort()) !== JSON.stringify(prevRoles.sort()),
+      granted_changed: JSON.stringify(normalizedGranted.sort()) !== JSON.stringify(prevGranted.sort()),
+      revoked_changed: JSON.stringify(normalizedRevoked.sort()) !== JSON.stringify(prevRevoked.sort()),
+    });
     return NextResponse.json({
       success: true,
       roles: newRoles,
@@ -287,6 +355,11 @@ export async function PUT(req: NextRequest, context: RouteContext) {
       permissions_version: permissionsVersion,
     });
   } catch (err) {
+    logPermissionEvent('internal_error', {
+      actorId: actorIdEarly,
+      targetUserId: userId,
+      message: err instanceof Error ? err.message : String(err),
+    });
     console.error('[permissions PUT]', err);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
