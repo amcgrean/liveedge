@@ -476,19 +476,28 @@ The matcher runs at ingest time AND on document-detail page open. Doc-page candi
 **Pages:**
 - `/admin/hubbell` — `DocumentsClient.tsx`. Tabbed inbox (Unmatched/Auto-matched/Confirmed/Rejected/All), search, type filter. Columns include payment status badge (paid/partial $X/unpaid).
 - `/admin/hubbell/[id]` — `DocumentDetailClient.tsx`. View-PDF button, extracted address with local-agent match chip, **Job context card** (dev_code, house_number, block_lot, model_elevation), Totals + payment block, line items, attached SOs, candidate SOs, manual attach by SO#, Reject.
-- `/admin/hubbell/jobs/[soId]` — `JobDetailClient.tsx`. **Currently still SO-anchored** (SO header + attached docs + sibling SOs + unattached docs at this address). Full job-site rebuild prompt in `docs/agent-prompts/hubbell-job-page-rebuild.md`.
+- `/admin/hubbell/jobs/[soId]` — `JobDetailClient.tsx`. **Jobsite-anchored** (the `soId` is just a lookup key; everything keys on `(shipto_address_1 normalized, city, state, zip)`). Sections: jobsite header with rollups, SOs at this address (expandable to attached docs), docs at this address (expandable per-doc to show line items + dev/house/block-lot/model). Inline attach/detach with slide-out PDF preview panel (`src/components/hubbell/PdfPreviewPanel.tsx`).
 - `/admin/hubbell/status` — last_document_at, 24h counts, status totals.
 
 **API routes:**
-- `POST /api/admin/hubbell/upload` — service-token Bearer auth (`HUBBELL_UPLOAD_TOKEN`). Idempotent via sha256. Auto-links orphan payments matching this doc's `(doc_type, doc_number)`.
+- `POST /api/admin/hubbell/upload` — service-token Bearer auth (`HUBBELL_UPLOAD_TOKEN`). Idempotent via sha256. Auto-links orphan payments matching this doc's `(doc_type, doc_number)`. Normalizes `line_items` via `src/lib/hubbell/metadata-normalize.ts` (accepts aliases like `description/unit/ext_price` and maps to canonical `desc/uom/ext`).
 - `GET /api/admin/hubbell/documents` / `[id]` — list + detail (matcher re-runs live).
 - `POST /api/admin/hubbell/documents/[id]/attach` — junction insert; optional Agility writeback (see Phase 2 below).
 - `POST /api/admin/hubbell/documents/[id]/detach` / `/reject` / `GET .../pdf`.
+- `GET /api/admin/hubbell/job?so_id=N` — jobsite bundle (replaces older `/jobs/[soId]`): returns `{jobsite, sales_orders, documents}` keyed on normalized address+city+state+zip5.
 - `GET /api/admin/hubbell/jobs` — paginated jobs list.
-- `GET /api/admin/hubbell/jobs/[soId]` — per-job detail.
+- `POST /api/admin/hubbell/documents/metadata-bulk` — service-token. **Backfill endpoint.** Body `{items: [{doc_type, doc_number, metadata}, ...]}` (up to 500/req). Looks up each doc by `(doc_type, doc_number)`, partial-updates only fields present in metadata, normalizes `line_items`, recomputes `payment_status` rollup when `total` changes. Use for re-running improved extractors against existing docs without re-uploading PDFs.
+- `GET /api/admin/hubbell/documents/needs-extraction` — service-token. Lists docs with empty `line_items` and returns 1-hour R2 presigned URLs so a backfill agent can pull PDFs without re-auth. `?limit=200&offset=0&type=po|wo`.
+- `POST /api/admin/hubbell/documents/rematch` — service-token. Re-runs the SO matcher on a batch of docs (default: `match_status='unmatched'`) and auto-attaches new `po_number_split` matches. Use after a metadata backfill that may have improved `extracted_address` for previously-unmatched docs. Body: `{limit?, offset?, only_unmatched?, doc_ids?[]}`. Idempotent (skips junction rows already present).
 - `POST /api/admin/hubbell/payments/import` — service-token. Bulk-imports payments per `(doc_type, doc_number, check_number)`. Empty `payments:[]` body triggers rollup refresh only (sets `payment_status='unpaid'` on docs with `extracted_total>0` and no payment rows).
 - `GET /api/admin/hubbell/status` — health dashboard.
 - `GET /api/cron/hubbell-stale-check` — daily 14:00 UTC.
+
+**Canonical `line_items` JSON shape** (per row, stored on `bids.hubbell_documents.line_items`):
+```jsonc
+{ "sku": "...", "desc": "...", "qty": 1, "uom": "EA", "unit_price": 12.50, "ext": 12.50 }
+```
+`normalizeLineItems()` in `src/lib/hubbell/metadata-normalize.ts` accepts aliases `description/unit/u_m/ext_price/extension/amount/price/product_code/code/quantity` and maps them to canonical. The UI in `JobDetailClient.tsx` reads canonical only.
 
 **Local scraper:**
 - Pi: `/home/api/hubbell/` (systemd `hubbell-daily.timer` at 06:00 EDT). `hubbell_daily_fetch.py` + `uploader.py` + Playwright + Chromium ARM64.
@@ -507,9 +516,13 @@ The matcher runs at ingest time AND on document-detail page open. Doc-page candi
 - `posted_to_agility_at` is set when ReturnCode == 0; NULL on failure so re-attach re-attempts.
 - **Per DMSi docs, blank/null character fields MAY be cleared depending on the method's internal business rules. The minimal-payload approach assumes omitted fields are no-change — REQUIRES validation in test against AGILITY_API_TEST_URL before flipping to prod.** Test procedure at `docs/agent-prompts/hubbell-agility-writeback-test.md`. If test wipes other fields, fall back to read-modify-write (read current header values, echo all back plus the new CustomerPurchaseOrder).
 
-**Backfill state (as of 2026-05-19):**
-- 1,044 docs from Pi daily scrape (uploaded 2026-05-18 bulk + ongoing daily runs) — dev_code/dev_name backfilled from manifest; house_number/block_lot/model_elevation NULL on most (daily-fetch PDF format doesn't carry that band).
-- ~5,664 docs from PC historical monthly-recon backfill (hubbell-test agent's run, in flight 2026-05-19) — fully populated job context.
+**Backfill state (as of 2026-05-20):**
+- 6,714 total docs in `bids.hubbell_documents`.
+- **6,020 (89.7%) have non-empty `line_items`** — after the hubbell-test agent rewrote `parse_line_items()` in `hubbell_daily_fetch.py` to use pdfplumber + per-doc-type parsers (PO uses `Product Code | Description | U/M | Quantity | Price | Extension` table; WO uses the cost-code / option-code layout). First-pass backfill via `/metadata-bulk` covered the 4,652 docs with local PDFs on PC.
+- **6,040 (90.0%) have house_number / block_lot / model_elevation** populated from the same rewrite.
+- **6,713 (99.99%) have dev_code.**
+- The remaining ~700-doc gap is Pi-only docs (PDF in R2, not on PC). Closed via `/needs-extraction` + new R2-driven backfill in `backfill_from_r2.py`.
+- `parseDateOrNull` returns `YYYY-MM-DD` string (not `Date`) so Drizzle's pg `date` column accepts it — fixes silent failures on `extracted_need_by`.
 - ~4,879 payment rows imported from the agent's recon workbook; auto-link in upload route (PR #333) closes the loop as PDFs land.
 - Forward-going: every Pi daily run + every monthly-recon payment push are now self-healing.
 
