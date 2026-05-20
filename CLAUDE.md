@@ -816,13 +816,11 @@ The `/management/forecast` page now has UOM-correct $ and clickable drill-throug
 - **Empty buckets**: disabled (opacity-50, cursor-not-allowed) so users can't open empty modals.
 
 #### Still Missing / Deferred
-- **RMA Credits thumbnails**: email pipeline, doc counts, address-based matching, and nested email support are all live. Next: add `GET /api/credits/[id]/images` presigned URL route + thumbnail previews in CreditsClient so users can view uploaded docs inline without leaving the page.
 - **WH-Tracker kiosk/TV/smart scan**: not appropriate for LiveEdge web app pattern — intentionally deferred
 - **Purchasing workflow** (tasks, approvals, exceptions, PO notes): verify `purchasing_tasks`, `purchasing_approvals`, etc. exist in `public` schema first
 - **Dispatch enrichment** (driver/truck mgmt, order timeline per stop): WH-Tracker had these; LiveEdge dispatch shows basic stops only. **AR balance intentionally excluded from dispatch** — see AR Data Policy in the Agility Live API section.
 - **Sales delivery board** (`/sales/tracker`, `/sales/deliveries`): WH-Tracker had sales-rep-facing delivery views not yet ported
 - **Generic file management**: WH-Tracker's `files` + `file_versions` system not ported to LiveEdge
-- **Page tracking rollout**: `POST /api/track-visit` exists but not yet wired into module client components — Quick Access strip on homepage stays empty until called
 - **UOM-aware open-order $ on `agility_so_lines`** (2026-05-14): beisser-api PR #32 added three pre-computed columns + a rebuilt `v_open_order_value` view to fix 10–100× $ overstatement on lumber lines (the previous naive `qty_ordered * price` math ignored that `price` is denominated in a UOM identified by `price_uom_ptr` — e.g. per-MBF — with no conversion factor in Supabase). New columns:
   - **`agility_so_lines.disp_price_conv`** numeric — UOM conversion factor (1.0 for Each, 1000 for BF→MBF, 187.51 for 1x4-16' Pine, etc.)
   - **`agility_so_lines.extended_price`** numeric — `qty_ordered * price / disp_price_conv` (with NULL/0 fallback to naive math)
@@ -878,11 +876,11 @@ Snapshot of unmerged `claude/*` and `codex/*` branches with a hint about whether
 - If you reconcile this list (e.g. delete superseded branches), update this section in the same commit — leaving a stale audit is worse than no audit.
 
 ## Pending Actions
-1. **Apply page_visits migration**: Run `db/migrations/0004_page_visits.sql` in Supabase SQL editor to enable Quick Access tracking on homepage
-2. **Extend page tracking to module clients**: Add `POST /api/track-visit` call to each module's main client component (or extract a shared `usePageTracking` hook in `src/hooks/`) so Quick Access fills with real data
-3. **RMA Credits thumbnails**: Email pipeline, doc counts, address-based RMA matching, and nested `.eml` parsing are live. Next: add `GET /api/credits/[id]/images` presigned URL route + thumbnail previews in CreditsClient so users can view docs inline.
+1. ~~**Apply page_visits migration**~~ — DONE. `bids.page_visits` is live; homepage Quick Access reads from it.
+2. ~~**Extend page tracking to module clients**~~ — DONE (PR #359, 2026-05-20). `usePageTracking` hook in `src/hooks/usePageTracking.ts` is called from all 49 top-level module clients. HomeClient's pre-existing inline `track-visit` effect was replaced by the hook in the same PR to avoid double-tracking.
+3. ~~**RMA Credits thumbnails**~~ — DONE. `GET /api/credits/[id]/images` exists, `CreditsClient.tsx` has an inline expandable `ImagesPanel` with upload + presigned-URL viewing per CM.
 4. **Purchasing workflow gaps**: Before building, verify tables exist: `SELECT table_name FROM information_schema.tables WHERE table_schema='public' AND table_name IN ('purchasing_tasks','purchasing_approvals','purchasing_notes','purchasing_exceptions')` — if found, build PO notes API, exceptions view, approval workflow
-5. **Suggested Buys**: `app_purchasing_queue` confirmed missing. Check `agility_suggested_po_header` + `agility_suggested_po_lines` before building `/purchasing/suggested-buys`
+5. **Suggested Buys** — base page LIVE; rollup chips + filters + CSV export landed in PR #360 (2026-05-20). Per-PPO `has_blocking_min_violation` / `has_primary_mismatch` / `max_lead_time_days` / `estimated_value` rollups now drive warning chips on the unexpanded row, plus "Primary mismatch" / "Block violation" filter toggles and a CSV export of the filtered set. Still deferred (waiting on Agility write-back for `agility_suggested_po_lines.supplier_code`): inline supplier-override dropdown. Also unbuilt: persisted reviewed/skipped state — would need a new `bids.suggested_po_review` table; don't build speculatively.
 6. **Flask sunset**: DNS cutover + archive `C:\Users\amcgrean\python\wh-tracker-fly\WH-Tracker` after user testing confirms parity
 7. **County parcel loaders — MOVED TO PI (2026-05-20)**: Polk + Dallas now loaded on the Pi (see "Geocoding Pipeline" section above). Remaining: **Johnson County** loader — REST at `https://gis.johnsoncountyiowa.gov/arcgis/rest/services/LandRecords/Land_Records/MapServer` (layers 4 + 9), same template as Polk. Expected uplift ~560 customers. Owner: **Pi agent** (`C:\Users\amcgrean\python\api`). The TS loaders in `scripts/load-*.ts` are inert reference only; build the Python version in beisser-api's `scripts/`.
 8. **4th-tier fuzzy matcher (highest single-uplift remaining)**: Add a fuzzy fallback to `agility_api/geocoder_sqlite.py` that strips leading/trailing directionals from `street_norm` and retries the city/zip lookup. Tag as `sqlite_fuzzy_dir` so the relaxation is visible in `geocode_source`. Keep it gated on city OR zip-3 corroboration to avoid re-introducing the wild-misplacement bug. Expected uplift: ~1,500–2,500 rows currently blocked on direction-prefix mismatches (e.g. customer "613 Grimes St" vs atlas "613 E Grimes St").
