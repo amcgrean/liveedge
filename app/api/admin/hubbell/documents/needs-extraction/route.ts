@@ -67,12 +67,15 @@ export async function GET(req: NextRequest) {
     ? dsql`(line_items IS NULL OR jsonb_array_length(line_items) = 0) AND doc_type = ${docType}`
     : dsql`(line_items IS NULL OR jsonb_array_length(line_items) = 0)`;
 
-  const totalRows = await db.execute<{ total: string | number }>(
+  // NB: db.execute() with postgres-js returns the rows array directly,
+  // not a {rows: [...]} wrapper. The .rows access pattern (from node-pg)
+  // silently returns undefined → fallbacks make this look like 0 rows.
+  const totalRows = (await db.execute<{ total: number }>(
     dsql`SELECT COUNT(*)::int AS total FROM bids.hubbell_documents WHERE ${where}`
-  );
-  const total = Number((totalRows as unknown as { rows: { total: number }[] }).rows?.[0]?.total ?? 0);
+  )) as unknown as { total: number }[];
+  const total = Number(totalRows?.[0]?.total ?? 0);
 
-  const rowsResult = await db.execute<Row>(dsql`
+  const rows = (await db.execute<Row>(dsql`
     SELECT
       id::text         AS id,
       doc_type,
@@ -83,8 +86,7 @@ export async function GET(req: NextRequest) {
     WHERE ${where}
     ORDER BY received_at DESC, id
     LIMIT ${limit} OFFSET ${offset}
-  `);
-  const rows = (rowsResult as unknown as { rows: Row[] }).rows ?? [];
+  `)) as unknown as Row[];
 
   // 1-hour presigned URLs. With limit=200 that's 200 R2 sign calls per
   // request — fast (no network) but still bounded by maxDuration.

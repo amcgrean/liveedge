@@ -79,7 +79,8 @@ export async function POST(req: NextRequest) {
   // exact po_number_split matches using doc_number alone (Signal A), so docs
   // without an extracted address still benefit from a rematch when SO
   // po_number values change.
-  const rowsResult = docIds && docIds.length > 0
+  // NB: db.execute() with postgres-js returns rows directly, not { rows }.
+  const rows = (docIds && docIds.length > 0
     ? await db.execute<DocRow>(dsql`
         SELECT id::text AS id, doc_number, extracted_address, extracted_city,
                extracted_state, extracted_zip, scrape_cust_code, scrape_seq_num,
@@ -95,8 +96,7 @@ export async function POST(req: NextRequest) {
         WHERE ${onlyUnmatched ? dsql`match_status = 'unmatched'` : dsql`TRUE`}
         ORDER BY received_at DESC, id
         LIMIT ${limit} OFFSET ${offset}
-      `);
-  const rows = (rowsResult as unknown as { rows: DocRow[] }).rows ?? [];
+      `)) as unknown as DocRow[];
 
   let processed = 0;
   let newlyAttached = 0;
