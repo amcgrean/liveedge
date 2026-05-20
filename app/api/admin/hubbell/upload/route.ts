@@ -59,6 +59,47 @@ function parseNumber(v: unknown): string | null {
   return n.toFixed(2);
 }
 
+// Canonical line item shape consumed by LiveEdge UI:
+//   { sku, desc, qty, uom, unit_price, ext }
+// The Pi scraper historically emitted slightly different names
+// (description / unit / ext_price). Normalize on inbound so old + new Pi
+// versions both produce displayable data.
+type CanonicalLineItem = {
+  sku?: string;
+  desc?: string;
+  qty?: number;
+  uom?: string;
+  unit_price?: number;
+  ext?: number;
+};
+function normalizeLineItems(raw: unknown): CanonicalLineItem[] | null {
+  if (!Array.isArray(raw)) return null;
+  const out: CanonicalLineItem[] = [];
+  for (const r of raw) {
+    if (!r || typeof r !== 'object') continue;
+    const o = r as Record<string, unknown>;
+    const numOrUndef = (v: unknown): number | undefined => {
+      if (v === undefined || v === null || v === '') return undefined;
+      const n = typeof v === 'number' ? v : Number(v);
+      return Number.isFinite(n) ? n : undefined;
+    };
+    const strOrUndef = (v: unknown): string | undefined => {
+      if (v === undefined || v === null) return undefined;
+      const s = String(v).trim();
+      return s.length > 0 ? s : undefined;
+    };
+    out.push({
+      sku:        strOrUndef(o.sku ?? o.product_code ?? o.code),
+      desc:       strOrUndef(o.desc ?? o.description),
+      qty:        numOrUndef(o.qty ?? o.quantity),
+      uom:        strOrUndef(o.uom ?? o.unit ?? o.u_m),
+      unit_price: numOrUndef(o.unit_price ?? o.price),
+      ext:        numOrUndef(o.ext ?? o.ext_price ?? o.extension ?? o.amount),
+    });
+  }
+  return out;
+}
+
 export async function POST(req: NextRequest) {
   const denied = verifyHubbellUploadToken(req);
   if (denied) return denied;
@@ -171,7 +212,7 @@ export async function POST(req: NextRequest) {
       extractedZip: metadata.zip ?? null,
       extractedTotal: parseNumber(metadata.total),
       extractedNeedBy: parseDate(metadata.need_by ?? null) as unknown as string | null,
-      lineItems: (metadata.line_items as object) ?? null,
+      lineItems: normalizeLineItems(metadata.line_items) as unknown as object | null,
       scrapeCustCode,
       scrapeSeqNum,
       scrapeMatchRatio,
