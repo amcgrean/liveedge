@@ -27,11 +27,21 @@ type SalesOrder = {
   attached_docs: AttachedDoc[];
 };
 
+type LineItem = {
+  sku?: string;
+  desc?: string;
+  qty?: number | string;
+  uom?: string;
+  unit_price?: number | string;
+  ext?: number | string;
+};
+
 type Doc = {
   id: string;
   doc_type: string;
   doc_number: string;
   extracted_total: string | null;
+  extracted_need_by: string | null;
   payment_status: 'paid' | 'partial' | 'unpaid' | null;
   paid_amount_total: string | null;
   last_check_number: string | null;
@@ -40,6 +50,10 @@ type Doc = {
   received_at: string;
   dev_code: string | null;
   dev_name: string | null;
+  house_number: string | null;
+  block_lot: string | null;
+  model_elevation: string | null;
+  line_items: LineItem[] | null;
   attached_so_ids: number[];
 };
 
@@ -79,6 +93,7 @@ export default function JobDetailClient({ soId }: { soId: string }) {
   const [attachSel, setAttachSel] = useState<Record<string, string>>({});
   const [manualEntry, setManualEntry] = useState<Record<string, string>>({});
   const [previewDoc, setPreviewDoc] = useState<{ id: string; number: string } | null>(null);
+  const [expandedDocs, setExpandedDocs] = useState<Set<string>>(new Set());
 
   const load = useCallback(() => {
     setLoading(true);
@@ -105,6 +120,22 @@ export default function JobDetailClient({ soId }: { soId: string }) {
       else next.add(id);
       return next;
     });
+  }
+
+  function toggleDoc(id: string) {
+    setExpandedDocs((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
+  function fmtNum(v: number | string | undefined): string {
+    if (v === undefined || v === null || v === '') return '';
+    const n = typeof v === 'string' ? parseFloat(v) : v;
+    if (!Number.isFinite(n)) return String(v);
+    return n.toLocaleString(undefined, { maximumFractionDigits: 2 });
   }
 
   async function attach(documentId: string, targetSoId: number) {
@@ -315,8 +346,10 @@ export default function JobDetailClient({ soId }: { soId: string }) {
             <table className="w-full text-sm">
               <thead className="text-xs uppercase text-slate-500 bg-slate-900/40">
                 <tr>
+                  <th className="px-3 py-2 w-6"></th>
                   <th className="px-3 py-2 text-left">Doc #</th>
                   <th className="px-3 py-2 text-left">Type</th>
+                  <th className="px-3 py-2 text-left">Need by</th>
                   <th className="px-3 py-2 text-left">Status</th>
                   <th className="px-3 py-2 text-right">Total</th>
                   <th className="px-3 py-2 text-left">Payment</th>
@@ -327,8 +360,24 @@ export default function JobDetailClient({ soId }: { soId: string }) {
               <tbody>
                 {documents.map((d) => {
                   const isAttached = d.attached_so_ids.length > 0;
+                  const docOpen = expandedDocs.has(d.id);
+                  const hasLineData = (d.line_items?.length ?? 0) > 0
+                    || !!(d.dev_code || d.dev_name || d.house_number || d.block_lot || d.model_elevation);
                   return (
-                    <tr key={d.id} className="border-t border-slate-800 align-top">
+                    <Fragment key={d.id}>
+                    <tr className="border-t border-slate-800 align-top">
+                      <td className="px-2 py-2 align-top">
+                        {hasLineData && (
+                          <button
+                            type="button"
+                            onClick={() => toggleDoc(d.id)}
+                            className="text-slate-500 hover:text-slate-200"
+                            title={docOpen ? 'Hide line items' : 'Show line items'}
+                          >
+                            {docOpen ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
+                          </button>
+                        )}
+                      </td>
                       <td className="px-3 py-2">
                         <div className="inline-flex items-center gap-2">
                           <button
@@ -350,6 +399,7 @@ export default function JobDetailClient({ soId }: { soId: string }) {
                         </div>
                       </td>
                       <td className="px-3 py-2 uppercase text-xs">{d.doc_type}</td>
+                      <td className="px-3 py-2 text-xs">{d.extracted_need_by ?? '—'}</td>
                       <td className="px-3 py-2 text-xs">{d.match_status}</td>
                       <td className="px-3 py-2 text-right tabular-nums font-mono">{fmtMoney(d.extracted_total)}</td>
                       <td className="px-3 py-2 text-xs">
@@ -430,6 +480,52 @@ export default function JobDetailClient({ soId }: { soId: string }) {
                         </div>
                       </td>
                     </tr>
+                    {docOpen && (
+                      <tr className="bg-slate-900/30">
+                        <td></td>
+                        <td colSpan={8} className="px-3 py-3">
+                          {(d.dev_code || d.dev_name || d.house_number || d.block_lot || d.model_elevation) && (
+                            <div className="mb-2 flex flex-wrap gap-x-4 gap-y-1 text-xs text-slate-400">
+                              {d.dev_name && <span><span className="text-slate-500">Dev:</span> {d.dev_name}{d.dev_code && <span className="font-mono ml-1">({d.dev_code})</span>}</span>}
+                              {d.house_number && <span><span className="text-slate-500">House #:</span> <span className="font-mono">{d.house_number}</span></span>}
+                              {d.block_lot && <span><span className="text-slate-500">Block/Lot:</span> <span className="font-mono">{d.block_lot}</span></span>}
+                              {d.model_elevation && <span><span className="text-slate-500">Model:</span> {d.model_elevation}</span>}
+                            </div>
+                          )}
+                          {d.line_items && d.line_items.length > 0 ? (
+                            <div className="overflow-x-auto rounded border border-slate-800">
+                              <table className="w-full text-xs">
+                                <thead className="text-[10px] uppercase text-slate-500 bg-slate-900/60">
+                                  <tr>
+                                    <th className="px-2 py-1 text-left">SKU</th>
+                                    <th className="px-2 py-1 text-left">Description</th>
+                                    <th className="px-2 py-1 text-right">Qty</th>
+                                    <th className="px-2 py-1 text-left">UOM</th>
+                                    <th className="px-2 py-1 text-right">Unit $</th>
+                                    <th className="px-2 py-1 text-right">Ext $</th>
+                                  </tr>
+                                </thead>
+                                <tbody>
+                                  {d.line_items.map((li, i) => (
+                                    <tr key={i} className="border-t border-slate-800">
+                                      <td className="px-2 py-1 font-mono">{li.sku ?? '—'}</td>
+                                      <td className="px-2 py-1">{li.desc ?? '—'}</td>
+                                      <td className="px-2 py-1 text-right tabular-nums">{fmtNum(li.qty)}</td>
+                                      <td className="px-2 py-1">{li.uom ?? ''}</td>
+                                      <td className="px-2 py-1 text-right tabular-nums">{fmtNum(li.unit_price)}</td>
+                                      <td className="px-2 py-1 text-right tabular-nums">{fmtNum(li.ext)}</td>
+                                    </tr>
+                                  ))}
+                                </tbody>
+                              </table>
+                            </div>
+                          ) : (
+                            <div className="text-xs text-slate-500 italic">No line item data extracted from this PDF.</div>
+                          )}
+                        </td>
+                      </tr>
+                    )}
+                    </Fragment>
                   );
                 })}
               </tbody>

@@ -33,11 +33,21 @@ type AttachedRow = {
   posted_to_agility_at: string | null;
 };
 
+type LineItem = {
+  sku?: string;
+  desc?: string;
+  qty?: number | string;
+  uom?: string;
+  unit_price?: number | string;
+  ext?: number | string;
+};
+
 type DocRow = {
   id: string;
   doc_type: string;
   doc_number: string;
   extracted_total: string | null;
+  extracted_need_by: string | null;
   payment_status: 'paid' | 'partial' | 'unpaid' | null;
   paid_amount_total: string | null;
   last_check_number: string | null;
@@ -46,6 +56,10 @@ type DocRow = {
   received_at: string;
   dev_code: string | null;
   dev_name: string | null;
+  house_number: string | null;
+  block_lot: string | null;
+  model_elevation: string | null;
+  line_items: LineItem[] | null;
 };
 
 export async function GET(req: NextRequest) {
@@ -125,6 +139,7 @@ export async function GET(req: NextRequest) {
       d.doc_type,
       d.doc_number,
       d.extracted_total::text AS extracted_total,
+      d.extracted_need_by::text AS extracted_need_by,
       d.payment_status,
       d.paid_amount_total::text AS paid_amount_total,
       d.last_check_number,
@@ -132,7 +147,11 @@ export async function GET(req: NextRequest) {
       d.match_status,
       d.received_at::text     AS received_at,
       d.dev_code,
-      d.dev_name
+      d.dev_name,
+      d.house_number,
+      d.block_lot,
+      d.model_elevation,
+      d.line_items
     FROM bids.hubbell_documents d
     WHERE d.match_status <> 'rejected'
       AND d.extracted_address IS NOT NULL
