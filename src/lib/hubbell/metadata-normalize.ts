@@ -52,8 +52,18 @@ export function parseNumberToString(v: unknown): string | null {
   return n.toFixed(2);
 }
 
-export function parseDateOrNull(s: string | null | undefined): Date | null {
+// Returns a YYYY-MM-DD string (the format Drizzle's `date` column expects)
+// or null. Accepts any string Date() can parse — ISO timestamps, MM/DD/YYYY,
+// MM-DD-YYYY, etc.
+export function parseDateOrNull(s: string | null | undefined): string | null {
   if (!s) return null;
-  const d = new Date(s);
-  return Number.isFinite(d.getTime()) ? d : null;
+  const trimmed = String(s).trim();
+  if (!trimmed) return null;
+  const d = new Date(trimmed);
+  if (!Number.isFinite(d.getTime())) return null;
+  // Use UTC to avoid the date shifting one day due to local TZ offset.
+  const yyyy = d.getUTCFullYear();
+  const mm = String(d.getUTCMonth() + 1).padStart(2, '0');
+  const dd = String(d.getUTCDate()).padStart(2, '0');
+  return `${yyyy}-${mm}-${dd}`;
 }
