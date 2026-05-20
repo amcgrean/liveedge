@@ -9,7 +9,7 @@ Full API and page route inventory: **`docs/routes.md`** (last audited 2026-05-13
 ## Access Control — COMPLETE
 Capability-based access control is fully rolled out (all 5 phases). See **`docs/access-control-plan.md`** for the full design, 28-capability vocabulary, and role-defaults table.
 
-**Security remediation master plan** (`docs/security-remediation-master-plan-2026-05-14.md`) — PR1–PR5 merged, PR6 not started. **PR5 (#337) shipped two live bugs** in `app/api/admin/users/[id]/permissions/route.ts` (broken optimistic lock + racy last-admin check). Finish-handoff for the next agent: **`docs/security-remediation-handoff-2026-05-20-finish.md`** — read this before touching the permissions route or the open `codex/continue-work-on-security-upgrade-plan` branch.
+**Security remediation master plan** (`docs/security-remediation-master-plan-2026-05-14.md`) — **fully resolved 2026-05-20.** PR1–PR6 merged (PR5 follow-up fix in #349, PR6 in #351). The four open product/security decisions also closed (`docs/security-decisions-closed-2026-05-20.md`): scorecard stays bundled with `sales.view`, no step-up auth, indefinite audit retention, static Bearer tokens for service routes. **Don't reopen any of those without a concrete trigger.** Runbook for operating the permissions route lives at `docs/security-runbook.md`.
 
 **Key files:**
 - `src/lib/access-control.ts` — `CAPABILITIES`, `ROLE_DEFAULTS`, `effectiveCapabilities()`, `requireCapability()` (API routes), `requirePageAccess()` (server pages), `hasCapability()` (inline checks)
