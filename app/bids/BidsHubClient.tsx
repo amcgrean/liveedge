@@ -11,6 +11,7 @@ import CompletedBidsClient from '../legacy-bids/completed/CompletedBidsClient';
 import AllBidsClient from '../all-bids/AllBidsClient';
 import BidsListClient from './BidsListClient';
 import BidCalendarClient from './BidCalendarClient';
+import { usePageTracking } from '../../src/hooks/usePageTracking';
 
 type Tab = 'open' | 'completed' | 'all' | 'projects' | 'calendar';
 
@@ -32,6 +33,7 @@ interface Props {
 }
 
 export default function BidsHubClient({ session, initialTab = 'open' }: Props) {
+  usePageTracking();
   const router = useRouter();
   const searchParams = useSearchParams();
   const [tab, setTab] = useState<Tab>(initialTab);

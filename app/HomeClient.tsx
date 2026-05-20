@@ -12,6 +12,7 @@ import {
 import type { HomeData } from './api/home/route';
 import { hasCapability } from '../src/lib/access-control-shared';
 import type { Capability } from '../src/lib/access-control-shared';
+import { usePageTracking } from '../src/hooks/usePageTracking';
 
 const SO_STATUS: Record<string, { label: string; cls: string }> = {
   O: { label: 'Open',      cls: 'chip chip-open'    },
@@ -161,6 +162,7 @@ function Sparkline({ data, color = '#1f8a4f', height = 22 }: { data: number[]; c
 }
 
 export default function HomeClient({ userName, userRole, userBranch }: Props) {
+  usePageTracking();
   const pathname = usePathname();
   const { data: session } = useSession();
   const [data, setData] = useState<HomeData | null>(null);
