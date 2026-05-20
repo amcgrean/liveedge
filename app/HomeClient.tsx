@@ -2,7 +2,6 @@
 
 import { useState, useEffect, useCallback, useMemo, type ReactNode } from 'react';
 import Link from 'next/link';
-import { usePathname } from 'next/navigation';
 import { useSession } from 'next-auth/react';
 import {
   Truck, ShoppingCart, FileText, Ruler, Wrench,
@@ -163,7 +162,6 @@ function Sparkline({ data, color = '#1f8a4f', height = 22 }: { data: number[]; c
 
 export default function HomeClient({ userName, userRole, userBranch }: Props) {
   usePageTracking();
-  const pathname = usePathname();
   const { data: session } = useSession();
   const [data, setData] = useState<HomeData | null>(null);
   const [loading, setLoading] = useState(true);
@@ -180,14 +178,6 @@ export default function HomeClient({ userName, userRole, userBranch }: Props) {
 
   useEffect(() => { load(); }, [load]);
   useEffect(() => { setMounted(true); }, []);
-
-  useEffect(() => {
-    fetch('/api/track-visit', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ path: pathname }),
-    }).catch(() => {});
-  }, [pathname]);
 
   const visibleCards = MODULE_CARDS.filter(
     (m) => !m.requiresCap || hasCapability(session, ...m.requiresCap)
