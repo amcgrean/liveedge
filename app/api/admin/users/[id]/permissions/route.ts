@@ -169,11 +169,12 @@ export async function PUT(req: NextRequest, context: RouteContext) {
     const actorId = parseInt(session.user.id ?? '0', 10);
     const isSelfEdit = !isNaN(actorId) && actorId > 0 && actorId === userId;
 
-    const txResult = await sql.begin(async (tx) => {
+    const txResult = await sql.begin(async (txRaw) => {
+      // postgres.js types `TransactionSql` without the template-tag call
+      // signature its outer `Sql` exposes, so we re-cast to `typeof sql` for
+      // type-level callability. Runtime behavior is unchanged.
+      const tx = txRaw as unknown as typeof sql;
       if (isSelfEdit) {
-        // postgres.js `TransactionSql` doesn't expose the generic-on-template-tag
-        // overload that the outer `Sql` does, so we cast the result row type
-        // rather than passing it as a type argument to the tag call.
         const activeUsers = (await tx`
           SELECT id, roles, granted_capabilities, revoked_capabilities
           FROM app_users
