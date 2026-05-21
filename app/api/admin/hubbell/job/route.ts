@@ -132,7 +132,9 @@ export async function GET(req: NextRequest) {
         -- backslash escapes (esp. backslash-d and backslash-digit) — they
         -- are deprecated escape sequences that set the cooked value to
         -- undefined and break postgres.js param substitution. See PR #362.
-        AND TRIM(LEADING '0' FROM split_part(ref_num, '-', 1))::bigint = soh.so_id
+        -- soh.so_id is character varying in agility_so_header, so compare
+        -- as text on both sides (no bigint cast needed or possible).
+        AND TRIM(LEADING '0' FROM split_part(ref_num, '-', 1)) = TRIM(LEADING '0' FROM soh.so_id)
     ) ar ON true
     WHERE soh.is_deleted = false
       AND UPPER(TRIM(soh.cust_code)) LIKE 'HUBB%'
