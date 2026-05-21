@@ -123,6 +123,13 @@ export async function GET(req: NextRequest) {
     // baked into the query so we don't N+1. Use parameterized IN with explicit
     // uuid casts (postgres.js doesn't always handle ANY(array) bindings cleanly
     // when the cast target is uuid).
+    //
+    // Resolver semantic: aggregate matching docs into one row per line.
+    // Multiple hubbell_documents rows can share the same (doc_type, doc_number)
+    // — different uploads of the same Hubbell PO/WO. A plain LEFT JOIN
+    // multiplies the line into N rows; the doc_resolver subquery collapses
+    // them: doc_attached_so_ids unions SOs across all matching docs, and
+    // document_id picks the most recent matching doc as a reference handle.
     const checkIds = checks.map((c) => c.id);
     const idList = dsql.join(
       checkIds.map((id) => dsql`${id}::uuid`),
@@ -139,12 +146,8 @@ export async function GET(req: NextRequest) {
         l.gross_amount::text       AS gross_amount,
         l.memo,
         l.line_seq,
-        d.id                       AS document_id,
-        (
-          SELECT COALESCE(ARRAY_AGG(s.so_id ORDER BY s.so_id), ARRAY[]::int[])
-            FROM bids.hubbell_document_sos s
-           WHERE s.document_id = d.id
-        )                          AS doc_attached_so_ids,
+        doc_resolver.document_id   AS document_id,
+        doc_resolver.attached_so_ids AS doc_attached_so_ids,
         CASE
           WHEN l.doc_type = 'inv'
                AND l.doc_number ~ '^[0-9]+$'
@@ -161,12 +164,22 @@ export async function GET(req: NextRequest) {
           ELSE NULL
         END                        AS inv_so_id
       FROM bids.hubbell_check_lines l
-      LEFT JOIN bids.hubbell_documents d
-        ON l.doc_type IN ('po','wo')
-       AND d.doc_type   = l.doc_type
-       AND d.doc_number = l.doc_number
+      LEFT JOIN LATERAL (
+        SELECT
+          (SELECT id FROM bids.hubbell_documents d
+            WHERE d.doc_type   = l.doc_type
+              AND d.doc_number = l.doc_number
+            ORDER BY d.received_at DESC NULLS LAST, d.id ASC
+            LIMIT 1)                                                AS document_id,
+          (SELECT COALESCE(ARRAY_AGG(DISTINCT s.so_id ORDER BY s.so_id), ARRAY[]::int[])
+             FROM bids.hubbell_documents d
+             JOIN bids.hubbell_document_sos s ON s.document_id = d.id
+            WHERE d.doc_type   = l.doc_type
+              AND d.doc_number = l.doc_number)                      AS attached_so_ids
+        WHERE l.doc_type IN ('po','wo')
+      ) doc_resolver ON true
       WHERE l.check_id IN (${idList})
-      ORDER BY l.check_id, l.line_seq
+      ORDER BY l.check_id, l.line_seq, l.id
     `);
     const lines: LineRow[] = Array.isArray(linesResultRaw)
       ? (linesResultRaw as unknown as LineRow[])
