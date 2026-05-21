@@ -528,6 +528,18 @@ The matcher runs at ingest time AND on document-detail page open. Doc-page candi
 
 **Hubbell-test agent handoff:** [`C:\Users\amcgrean\python\hubbell test\LIVEEDGE_BACKFILL_REQUEST_2026-05-19.md`](file:///C:/Users/amcgrean/python/hubbell%20test/LIVEEDGE_BACKFILL_REQUEST_2026-05-19.md) — complete brief for the PC-side agent covering PDF backfill, payment data push, and the eventual read endpoint for monthly recon consumption.
 
+**Proposed Phase 3 — Daily check ingest (handoff 2026-05-20, NOT YET STARTED):** Full brief at `docs/agent-prompts/hubbell-daily-check-ingest-2026-05-20.md`. Goal: fold paid-check data into the daily Pi run so month-end recon (currently a 90-min PC portal scrape of ~4,600 paid-check PDFs two days before EOM) collapses to a report-gen step. Pieces:
+
+1. **New tables** (migration `0026_hubbell_checks.sql` — keep in `bids` schema for now but design schema-portable, no FKs into bids/takeoff tables):
+   - `bids.hubbell_checks` — one row per Hubbell check. Keys: `check_number` UNIQUE, `source_hash` UNIQUE (sha256 of normalized lines for idempotent re-POST), `check_date`, `total_amount`, `payment_count`, `first_seen_at`, `last_seen_at`, `source_run_id`.
+   - `bids.hubbell_check_lines` — one row per check line. FK `check_id` → `hubbell_checks(id) ON DELETE CASCADE`. Columns: `doc_type` (`'po'`|`'wo'`|`'inv'`), `doc_number`, `invoice_date`, `payment_amount` (numeric, can be negative for credits), `gross_amount`, `memo` (e.g. `WT00006070`), `line_seq`. Indexes: `(doc_type, doc_number)` for joining to `hubbell_documents`, `(memo)` for house-code reverse lookup.
+   - Optional view `bids.hubbell_check_application` joining checks → lines → docs → `hubbell_document_sos` for the recon read endpoint.
+2. **`POST /api/admin/hubbell/checks/upload`** — Bearer `HUBBELL_UPLOAD_TOKEN`. Body `{check_number, source_run_id, check_date, lines:[...]}`. Atomic check+lines write. Server computes `source_hash` and returns `{status:'inserted'|'updated'|'unchanged', id, line_count, added_lines?}`. Safe to re-POST same check daily.
+3. **Pi-side scraper** — new `hubbell_daily_checks.py` invoked from the same systemd service after the PO/WO scrape. Hits `https://hub.ihmsweb.com/cgi-bin/ihmsweb.exe?pgm=marwbvo`, reuses `parse_checks_from_marwbvo()` + per-check detail parser from `hubbell_checks_to_pdfs_po_and_wo.py` / `export_portal_invoice_table_v8_full.py`. Default `--max_checks 6` (≈1 month); `--max_checks 0` for one-time historical backfill. Shares ECI session + dev-list cache with the PO/WO scrape.
+4. **Read endpoints** (later, once data is flowing): `GET /api/hubbell/docs?since=YYYY-MM-DD` and `GET /api/hubbell/checks?since=YYYY-MM-DD` — both Bearer-protected. PC's `hubbell_reconciliation_v1.py` gets a `--mode liveedge` flag that pulls from these instead of scraping; the existing scrape path stays as fallback. Once a few months validate, the 90-min portal-scrape step in `hubbell_run.py` is dropped.
+
+**Schema hygiene note for new Hubbell work:** Hubbell ingest is logically its own domain (no relation to bids/takeoffs beyond sharing Supabase). All new Hubbell tables should be designed for an eventual `ALTER TABLE bids.hubbell_* SET SCHEMA hubbell` cutover — no FKs into bids' actual bid/takeoff tables, no views mixing Hubbell + bids data. Mention the eventual schema move in any new migration's header comment.
+
 **AR balance query pattern** — `agility_ar_open.cust_key` is NOT the same as `agility_so_header.cust_code`. Always resolve via `agility_customers` first:
 ```sql
 LEFT JOIN LATERAL (
@@ -888,6 +900,7 @@ Snapshot of unmerged `claude/*` and `codex/*` branches with a hint about whether
     - `app/api/warehouse/orders/[so_number]/route.ts` — same shape
     - Any Sales hub / Purchasing dashboard that sums open SO line $
     - Pattern: replace `qty_ordered * price` with `extended_price`, and `(qty_ordered - COALESCE(qty_shipped,0)) * price` with `unshipped_extended_price`. Both columns are already on the table; no schema work needed.
+11. **Hubbell daily check ingest** (proposed 2026-05-20, NOT STARTED): Full brief at `docs/agent-prompts/hubbell-daily-check-ingest-2026-05-20.md`. Adds `bids.hubbell_checks` + `bids.hubbell_check_lines` (migration 0026), `POST /api/admin/hubbell/checks/upload` (idempotent via `source_hash`), and a Pi sibling script `hubbell_daily_checks.py` that scrapes the Payment History page (`marwbvo`) daily after the PO/WO run. Later phase: `GET /api/hubbell/docs` + `GET /api/hubbell/checks` read endpoints so the PC's monthly recon stops scraping (collapses a 90-min portal scrape of ~4,600 PDFs into a fetch). Design new tables schema-portable for an eventual cutover to a dedicated `hubbell` schema.
 
 ## Takeoff Debugging (in progress, 2026-04-14)
 
