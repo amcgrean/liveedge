@@ -475,28 +475,54 @@ export const hubbellDocuments = bidsSchema.table(
   ]
 );
 
-// One row per (doc + check_number). Populated by the monthly recon agent via
-// POST /api/admin/hubbell/payments/import. The hubbell_documents table carries
-// denormalized rollups (paid_amount_total, last_payment_date, last_check_number,
-// payment_status) refreshed after each import batch.
-export const hubbellDocumentPayments = bidsSchema.table(
-  'hubbell_document_payments',
+// One row per Hubbell check ever scraped. Replaces hubbell_document_payments
+// (dropped in migration 0026). Source of truth for payment facts; the
+// hubbell_documents rollup columns refresh from hubbell_check_lines below.
+//
+// Keys: check_number UNIQUE (HUBB1xxx codes are Beisser-side AR accounts for
+// work type, not separate Hubbell payer entities — all checks come from one
+// vendor stream with sequential numbering). source_hash UNIQUE makes re-POSTs
+// of identical data no-ops.
+export const hubbellChecks = bidsSchema.table(
+  'hubbell_checks',
   {
     id:             uuid('id').primaryKey().defaultRandom(),
-    docType:        varchar('doc_type', { length: 10 }).notNull(),
-    docNumber:      varchar('doc_number', { length: 100 }).notNull(),
     checkNumber:    varchar('check_number', { length: 50 }).notNull(),
-    paidAmount:     numeric('paid_amount', { precision: 12, scale: 2 }).notNull(),
-    paymentDate:    date('payment_date'),
-    documentId:     uuid('document_id'),    // FK → hubbell_documents.id; nullable for unlinked rows
+    checkDate:      date('check_date'),
+    totalAmount:    numeric('total_amount', { precision: 14, scale: 2 }),
+    paymentCount:   integer('payment_count'),
+    sourceHash:     varchar('source_hash', { length: 64 }).notNull(),
     sourceRunId:    varchar('source_run_id', { length: 100 }),
-    createdAt:      timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
-    updatedAt:      timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+    firstSeenAt:    timestamp('first_seen_at', { withTimezone: true }).notNull().defaultNow(),
+    lastSeenAt:     timestamp('last_seen_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => [
-    uniqueIndex('hubbell_document_payments_uq').on(table.docType, table.docNumber, table.checkNumber),
-    index('hubbell_document_payments_document_id_idx').on(table.documentId),
-    index('hubbell_document_payments_doc_number_idx').on(table.docNumber),
+    uniqueIndex('hubbell_checks_check_number_uq').on(table.checkNumber),
+    uniqueIndex('hubbell_checks_source_hash_uq').on(table.sourceHash),
+    index('hubbell_checks_check_date_idx').on(table.checkDate),
+  ]
+);
+
+// One row per line on a Hubbell check. doc_type 'po'|'wo' joins to
+// hubbell_documents on (doc_type, doc_number); doc_type 'inv' references
+// agility_so_header via ref_num directly (no FK — public schema, owned by
+// sync worker). payment_amount can be negative for credits.
+export const hubbellCheckLines = bidsSchema.table(
+  'hubbell_check_lines',
+  {
+    id:             uuid('id').primaryKey().defaultRandom(),
+    checkId:        uuid('check_id').notNull(),    // FK → hubbell_checks.id ON DELETE CASCADE
+    docType:        varchar('doc_type', { length: 10 }).notNull(),
+    docNumber:      varchar('doc_number', { length: 100 }).notNull(),
+    invoiceDate:    date('invoice_date'),
+    paymentAmount:  numeric('payment_amount', { precision: 14, scale: 2 }).notNull(),
+    grossAmount:    numeric('gross_amount', { precision: 14, scale: 2 }),
+    memo:           text('memo'),
+    lineSeq:        integer('line_seq').notNull(),
+  },
+  (table) => [
+    index('hubbell_check_lines_check_id_idx').on(table.checkId),
+    index('hubbell_check_lines_doc_idx').on(table.docType, table.docNumber),
   ]
 );
 

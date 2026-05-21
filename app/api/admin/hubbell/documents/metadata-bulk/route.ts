@@ -39,6 +39,7 @@ import { getDb, schema } from '../../../../../../db/index';
 import { verifyHubbellUploadToken } from '../../../../../../src/lib/service-auth';
 import { normalizeDocNumber } from '../../../../../../src/lib/hubbell/po-number-parser';
 import { normalizeLineItems, parseNumberToString, parseDateOrNull } from '../../../../../../src/lib/hubbell/metadata-normalize';
+import { refreshPaymentRollupForDoc } from '../../../../../../src/lib/hubbell/payment-rollup';
 
 export const runtime = 'nodejs';
 export const maxDuration = 30;
@@ -158,33 +159,7 @@ export async function POST(req: NextRequest) {
         // post-insert rollup. Failure is logged but doesn't fail the item.
         if ('extractedTotal' in updates) {
           try {
-            await db.execute(dsql`
-              WITH agg AS (
-                SELECT
-                  SUM(p.paid_amount)                                   AS paid_total,
-                  MAX(p.payment_date)                                  AS last_date,
-                  (ARRAY_AGG(p.check_number ORDER BY p.payment_date DESC NULLS LAST))[1]
-                                                                       AS last_check
-                FROM bids.hubbell_document_payments p
-                WHERE p.document_id = ${result[0].id}::uuid
-              )
-              UPDATE bids.hubbell_documents d
-                 SET paid_amount_total = a.paid_total,
-                     last_payment_date = a.last_date,
-                     last_check_number = a.last_check,
-                     payment_status = CASE
-                       WHEN d.extracted_total IS NULL OR d.extracted_total = 0
-                            THEN NULL
-                       WHEN COALESCE(a.paid_total, 0) >= d.extracted_total
-                            THEN 'paid'
-                       WHEN COALESCE(a.paid_total, 0) > 0
-                            THEN 'partial'
-                       ELSE 'unpaid'
-                     END,
-                     updated_at = now()
-                FROM agg a
-               WHERE d.id = ${result[0].id}::uuid
-            `);
+            await refreshPaymentRollupForDoc(db, result[0].id);
           } catch (err) {
             console.error(
               '[hubbell metadata-bulk] payment rollup refresh failed',

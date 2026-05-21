@@ -19,6 +19,7 @@ import { verifyHubbellUploadToken } from '../../../../../src/lib/service-auth';
 import { buildHubbellKey, putHubbellPdf } from '../../../../../src/lib/hubbell/r2';
 import { matchDocumentToSos } from '../../../../../src/lib/hubbell/document-matcher';
 import { normalizeDocNumber } from '../../../../../src/lib/hubbell/po-number-parser';
+import { refreshPaymentRollupForDoc } from '../../../../../src/lib/hubbell/payment-rollup';
 import { normalizeLineItems, parseNumberToString, parseDateOrNull } from '../../../../../src/lib/hubbell/metadata-normalize';
 
 export const runtime = 'nodejs';
@@ -196,52 +197,14 @@ export async function POST(req: NextRequest) {
   }
   const doc = inserted[0];
 
-  // Claim any orphan payment rows that landed before this doc. Payments-
-  // import can run before the PDF is uploaded; those rows sit with
-  // document_id = NULL waiting for their doc to arrive. Linking here
-  // closes the loop without requiring a re-run of payments-import.
+  // Refresh this doc's payment rollups from any existing check_lines that
+  // match (doc_type, doc_number). Check lines can land before the PDF (via
+  // the daily check ingest) and just sit until the doc arrives. No explicit
+  // link step needed — the rollup query joins on (doc_type, doc_number).
   try {
-    await db.execute(dsql`
-      UPDATE bids.hubbell_document_payments AS p
-         SET document_id = ${doc.id}::uuid,
-             updated_at = now()
-       WHERE p.document_id IS NULL
-         AND p.doc_type   = ${docType}
-         AND p.doc_number = ${docNumber}
-    `);
-
-    // Refresh this doc's payment rollups from any newly-claimed payments.
-    await db.execute(dsql`
-      WITH agg AS (
-        SELECT
-          SUM(p.paid_amount)                                   AS paid_total,
-          MAX(p.payment_date)                                  AS last_date,
-          (ARRAY_AGG(p.check_number ORDER BY p.payment_date DESC NULLS LAST))[1]
-                                                               AS last_check
-        FROM bids.hubbell_document_payments p
-        WHERE p.document_id = ${doc.id}::uuid
-      )
-      UPDATE bids.hubbell_documents d
-         SET paid_amount_total = a.paid_total,
-             last_payment_date = a.last_date,
-             last_check_number = a.last_check,
-             payment_status = CASE
-               WHEN d.extracted_total IS NULL OR d.extracted_total = 0
-                    THEN NULL
-               WHEN COALESCE(a.paid_total, 0) >= d.extracted_total
-                    THEN 'paid'
-               WHEN COALESCE(a.paid_total, 0) > 0
-                    THEN 'partial'
-               ELSE 'unpaid'
-             END,
-             updated_at = now()
-        FROM agg a
-       WHERE d.id = ${doc.id}::uuid
-         AND d.extracted_total IS NOT NULL
-         AND d.extracted_total > 0
-    `);
+    await refreshPaymentRollupForDoc(db, doc.id);
   } catch (err) {
-    console.error('[hubbell upload] payment link/rollup failed', err);
+    console.error('[hubbell upload] payment rollup refresh failed', err);
   }
 
   // Run the matcher.
