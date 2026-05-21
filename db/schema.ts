@@ -491,7 +491,7 @@ export const hubbellChecks = bidsSchema.table(
     checkDate:      date('check_date'),
     totalAmount:    numeric('total_amount', { precision: 14, scale: 2 }),
     paymentCount:   integer('payment_count'),
-    sourceHash:     varchar('source_hash', { length: 64 }).notNull(),
+    sourceHash:     varchar('source_hash', { length: 128 }).notNull(),
     sourceRunId:    varchar('source_run_id', { length: 100 }),
     firstSeenAt:    timestamp('first_seen_at', { withTimezone: true }).notNull().defaultNow(),
     lastSeenAt:     timestamp('last_seen_at', { withTimezone: true }).notNull().defaultNow(),
