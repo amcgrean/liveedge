@@ -149,9 +149,13 @@ export async function GET(req: NextRequest) {
           WHEN l.doc_type = 'inv'
                AND l.doc_number ~ '^[0-9]+$'
           THEN (
-            SELECT so_id
+            -- agility_so_header.so_id is varchar in the source table even
+            -- though it's aliased as ::int elsewhere in the codebase. Compare
+            -- via leading-zero-stripped strings (same pattern as the AR-open
+            -- join in /api/admin/hubbell/job/route.ts).
+            SELECT so_id::int
               FROM public.agility_so_header
-             WHERE so_id = l.doc_number::int
+             WHERE TRIM(LEADING '0' FROM so_id) = TRIM(LEADING '0' FROM l.doc_number)
              LIMIT 1
           )
           ELSE NULL
