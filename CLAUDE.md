@@ -838,12 +838,10 @@ The `/management/forecast` page now has UOM-correct $ and clickable drill-throug
 
 Snapshot of unmerged `claude/*` and `codex/*` branches with a hint about whether they're active work, deferred, stale, or likely superseded by something already in `main`. **Verify before reusing or deleting** — squash merges leave branches looking "ahead of main" even after their changes landed.
 
-### Needs vetting / has open feedback
-- **`codex/continue-work-on-security-upgrade-plan`** (1 commit, 5h old) — "Harden admin permission updates with concurrency and governance controls." Touches `app/api/admin/users/[id]/permissions/route.ts` (+97 net). Codex review on PR #341 flagged two unresolved issues in this code (visible because PR #341's branch had been merged off the same security work):
-  - **P1** — optimistic-lock version is `new Date(...).toISOString()` (ms precision) but compared against `timestamptz` (µs precision). Will throw spurious `stale_write_conflict` on most saves. Fix before merging.
-  - **P2** — last-admin self-lockout check is read-then-update without `SELECT FOR UPDATE` / txn. Two concurrent self-edits can both pass and zero out admins.
-- **`claude/fix-permissions-update-error-yizvY`** (1 commit, 11h old) — "Fix 500 on permissions PUT: cast roles to json, not text[]." Touches the same route file. **Likely conflicts with `codex/continue-work-on-security-upgrade-plan`** — coordinate before merging either. If the codex branch lands first, re-check whether the cast fix is still needed.
-- **`codex/continue-work-on-security-remediation`** (1 commit, 5h old) — adds `docs/security-remediation-pr-status-2026-05-19.md`. Status note only — safe to merge or delete after the upgrade-plan branch is resolved.
+### Superseded — needs GitHub-UI deletion (harness git creds can't delete refs)
+- **`codex/continue-work-on-security-upgrade-plan`** — Codex's P1/P2 fix attempt with its own follow-up issues. Both bugs were fixed in `main` via PR #349.
+- **`claude/fix-permissions-update-error-yizvY`** — roles-cast fix; already addressed in `main`.
+- **`codex/continue-work-on-security-remediation`** — status doc only, no longer needed (CLAUDE.md + `docs/security-decisions-closed-2026-05-20.md` are the live references).
 
 ### Active feature work (likely safe, owner-driven)
 - **`claude/eager-cerf-b5b272`** (2 commits, 28h) — "docs: geocoding pipeline consolidated on the Pi (handoff for next agent)." 195-line CLAUDE.md refactor + cron tweak + handoff doc. **Conflicts with this file** — anyone merging needs to reconcile the Open Branches Audit section.
