@@ -1,5 +1,13 @@
 # Security Remediation — Finish Handoff (2026-05-20)
 
+> **STATUS: COMPLETE (2026-05-20/21).** Everything below is historical.
+> The master plan is fully resolved — PR1–PR6 merged, PR5 bugs fixed in
+> #349, PR6 in #351, PR4 parity test in #358, Vitest wired into CI in
+> #363, and the four open product/security decisions closed in
+> `docs/security-decisions-closed-2026-05-20.md`. Do **not** restart any
+> of the priorities below without a concrete trigger. The runbook at
+> `docs/security-runbook.md` is the operational reference going forward.
+
 Prompt for the next Claude agent. Picks up where the master plan
 (`docs/security-remediation-master-plan-2026-05-14.md`) and the PR5 handoff
 (`docs/security-remediation-handoff-2026-05-19-pr5.md`) left off.
