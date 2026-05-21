@@ -16,15 +16,19 @@
 --     with sequential numbering.
 --   * source_hash is a canonical sha256 (cents-int + fixed key order +
 --     line-sorted) so re-POSTs of identical data are no-ops. Backfilled
---     rows synthesize a synthetic source_hash from check_number alone; the
---     next legitimate daily POST will compute the real canonical hash and
---     trigger the wipe-and-replace path naturally.
+--     rows synthesize a "backfill:<sha256>" tag so they're visually
+--     identifiable; column is sized varchar(128) to fit the prefix
+--     (canonical hashes are 64 hex chars; with the 9-char prefix that's 73).
 --   * Schema-portable for an eventual ALTER SCHEMA bids.hubbell_*
 --     SET SCHEMA hubbell rename (Phase 3e). No FKs cross into bids' actual
 --     bid/takeoff tables.
 --
--- Apply manually in Supabase SQL editor. Steps run inside an implicit
--- transaction (Supabase wraps); no CONCURRENTLY indexes.
+-- Apply manually in Supabase SQL editor. If a previous attempt left partial
+-- state, drop the new tables first:
+--   DROP TABLE IF EXISTS bids.hubbell_check_lines, bids.hubbell_checks CASCADE;
+-- Then re-run this file. The DROP of hubbell_document_payments at the end
+-- is the point of no return — once that's done the new tables must be in
+-- place or the rest of the app breaks.
 -- ----------------------------------------------------------------------------
 
 -- 1. hubbell_checks: one row per Hubbell check ever scraped.
@@ -34,11 +38,16 @@ CREATE TABLE IF NOT EXISTS bids.hubbell_checks (
   check_date      date,
   total_amount    numeric(14, 2),
   payment_count   integer,
-  source_hash     varchar(64) NOT NULL,
+  source_hash     varchar(128) NOT NULL,
   source_run_id   varchar(100),
   first_seen_at   timestamptz NOT NULL DEFAULT now(),
   last_seen_at    timestamptz NOT NULL DEFAULT now()
 );
+
+-- In case a prior partial-apply already created the table with the older
+-- varchar(64) column, widen it. Safe to re-run.
+ALTER TABLE bids.hubbell_checks
+  ALTER COLUMN source_hash TYPE varchar(128);
 
 CREATE UNIQUE INDEX IF NOT EXISTS hubbell_checks_check_number_uq
   ON bids.hubbell_checks (check_number);
