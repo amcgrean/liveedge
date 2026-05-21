@@ -43,41 +43,27 @@ can be invoked once with `--backfill_months 6`.
 
 ---
 
-## 2. `(payer_entity, check_number)` UNIQUE — **agreed, with derivation rule**
+## 2. `check_number` UNIQUE alone — **walked back from `(payer_entity, check_number)`**
 
-Add `payer_entity` column on `hubbell_checks`. Constraint becomes
-`UNIQUE (payer_entity, check_number)`.
+Original review raised the concern that HUBB1000 / HUBB1200 / HUBB1400 /
+HUBB1700 might be separate AP entities issuing overlapping check numbers.
+**That premise was wrong.**
 
-**Derivation:** the scraper currently doesn't track this (Payment History
-at `pgm=marwbvo` is segregated by `vendornumber=000658`, which is Beisser
-— the payee — not the payer entity). Two options:
+The HUBB1xxx codes are **Beisser-side AR accounts** for tracking work
+type (main construction / warranty / trim) — not separate Hubbell payer
+entities. All checks come from the same Hubbell payer through the same
+vendor relationship (`vendornumber=000658`). Evidence:
 
-**Option A (preferred — infer from line content):** for each check, look
-at the doc_numbers on its lines and join back to `hubbell_documents`. The
-dominant `dev_code` → entity mapping gets the check's `payer_entity`.
-Most Hubbell checks pay one entity's POs at a time, so the
-dominant-entity heuristic is unambiguous in ~99% of cases. For mixed
-checks, pick the entity holding the largest dollar share.
+- Every check scraped over 17+ months (~50 checks) has a unique number
+- Numbers are sequential (015763, 015800, etc.) — one issuance stream
+- Portal Payment History shows them all in one feed, not segregated by
+  entity
 
-The `dev_code → entity` mapping is small and stable:
-- `AP/BE/BN/CR/DC/etc.` (most subdivisions) → `HUBB1200` (Hubbell Homes LC)
-- Warranty-related dev codes → `HUBB1400`
-- Construction services → `HUBB1000`
-- Trim/millwork → `HUBB1700`
+So `UNIQUE (check_number)` alone is correct. **No `payer_entity` column,
+no `hubbell_payer_entity_lookup` table, no `dev_code` mapping needed.**
 
-Build this as a lookup table `bids.hubbell_payer_entity_lookup` keyed by
-`dev_code`. Populate from the 47-development list.
-
-**Option B (fallback):** if Payment History eventually starts showing the
-payer entity, parse it directly. Not available today.
-
-Initial backfill of `payer_entity` for the 4,879 existing rows: run
-Option A retroactively across the existing `hubbell_document_payments` →
-`hubbell_documents.dev_code` join.
-
-If derivation is ambiguous (no docs on the check map to any dev_code, or
-mixed), set `payer_entity = 'UNKNOWN'` and flag in the admin UI for human
-resolution. Don't block ingest.
+Keep this note in the addendum so future readers don't repeat the
+mistake.
 
 ---
 
@@ -89,7 +75,6 @@ Replace `sha256(JSON.stringify(...))` with this exact canonicalization
 ```typescript
 function canonicalCheckHash(check: {
   check_number: string,
-  payer_entity: string,
   lines: Array<{
     doc_type: string,
     doc_number: string,
@@ -121,7 +106,6 @@ function canonicalCheckHash(check: {
   // 3. Build canonical string — keys in fixed order, no whitespace
   const canonical = JSON.stringify({
     check_number: check.check_number,
-    payer_entity: check.payer_entity,
     lines: normLines,
   });
 
@@ -144,9 +128,7 @@ async function upsertCheck(req) {
   return await db.transaction(async tx => {
     const newHash = canonicalCheckHash(req);
     const existing = await tx.select(...).from(hubbell_checks).where(
-      eq(hubbell_checks.payer_entity, req.payer_entity).and(
-        eq(hubbell_checks.check_number, req.check_number)
-      )
+      eq(hubbell_checks.check_number, req.check_number)
     ).limit(1);
 
     if (existing.length === 0) {
@@ -265,27 +247,17 @@ of 0026. Add later if ad-hoc accounting queries surface the need.
 ```sql
 CREATE TABLE bids.hubbell_checks (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  payer_entity text NOT NULL,                    -- NEW (§2)
-  check_number text NOT NULL,
+  check_number text NOT NULL UNIQUE,             -- §2 (no payer_entity)
   check_date date,
   total_amount numeric(14,2),
   payment_count int,
-  source_hash text NOT NULL,                     -- canonical (§3)
+  source_hash text NOT NULL UNIQUE,              -- canonical (§3)
   source_run_id text,
   first_seen_at timestamptz NOT NULL DEFAULT now(),
-  last_seen_at timestamptz NOT NULL DEFAULT now(),
-  UNIQUE (payer_entity, check_number),           -- CHANGED (§2)
-  UNIQUE (source_hash)
+  last_seen_at timestamptz NOT NULL DEFAULT now()
 );
 
 -- hubbell_check_lines: unchanged from original brief
-
-CREATE TABLE bids.hubbell_payer_entity_lookup (  -- NEW (§2)
-  dev_code text PRIMARY KEY,
-  payer_entity text NOT NULL
-);
-INSERT INTO bids.hubbell_payer_entity_lookup VALUES
-  ('AP', 'HUBB1200'), ('BE', 'HUBB1200'), …;     -- full mapping TBD
 
 -- DROP hubbell_document_payments — §1 (after backfill + rollup rewrite)
 ```
@@ -296,15 +268,7 @@ resolver (§5), and pagination (§6).
 
 ---
 
-## Outstanding question for the user
+## No outstanding asks
 
-`dev_code → payer_entity` mapping source. The 47-development list is in
-`/home/api/hubbell/hubbell_inbox/_dev_list_cache.html` on the Pi but
-doesn't carry entity info. Options:
-
-1. User provides the mapping manually (~5 min — they know which sub
-   belongs to which Hubbell entity). **Recommended.**
-2. Infer from `cust_shipto` joined to existing `hubbell_documents`
-   (probably works for most, may have gaps).
-3. Default everything to `HUBB1200` and fix exceptions as accounting
-   flags them.
+Migration 0026 can ship as soon as the LiveEdge agent is ready. No
+mapping table needed (see §2).
