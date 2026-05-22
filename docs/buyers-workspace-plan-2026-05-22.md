@@ -82,7 +82,9 @@ INDEX (category) WHERE category IS NOT NULL
 INDEX (is_critical) WHERE is_critical = true
 ```
 
-Migration: `db/migrations/0027_item_planning.sql`. Drizzle definition in `db/schema.ts`. Lives in `bids` schema.
+Migration: `db/migrations/0028_item_planning.sql` (0027 is `report_subscriptions`). Drizzle definition in `db/schema.ts`. Lives in `bids` schema.
+
+Also adds `bids.branch_planning_defaults` (one row per `system_id`) carrying the branch-level `usage_window_days`, `safety_stock_days`, and an optional 12-month `seasonality_profile` array — the engine falls back to these when an item doesn't override them.
 
 ### Algorithm (single function, called from both views)
 
@@ -206,14 +208,19 @@ Estimate band: **~120-180 hrs total** depending on how much CSV-import/admin pol
 
 ---
 
-## 6. Open Design Questions (need user input before Phase 1)
+## 6. Design Decisions (resolved 2026-05-22)
 
-1. **Usage window default** — 90 days? 60? Should it be branch-configurable, item-configurable, or global with per-item override?
-2. **Millwork seed strategy** — Do you already have a spreadsheet of Millwork items + their real min/max somewhere we can import, or do we build the admin UI first and have someone enter ~50-200 items manually?
-3. **Open PO horizon** — When computing `effective_on_hand`, should we count inbound POs only if `expect_date` is within `usage_window_days`? Or always? (Too generous = under-suggesting; too tight = over-suggesting.)
-4. **Branch behavior** — A buyer at 20GR almost always orders for 20GR. But Millwork transfers between branches happen. Do we suggest at branch grain only, or also surface "company-level OOS risk where another branch has surplus"?
-5. **Severity thresholds** — Are the proposed thresholds (lead-time / +safety / +14d) the right buckets, or do you want different windows (e.g. red = OOS in 7d regardless of lead time)?
-6. **Workspace tiles** — Of the six tiles in Section 4, which two matter most? We can ship a 2-tile MVP and grow it.
+1. **Usage window** — Branch-configurable, default **90 days**, with seasonality baked in. Schema carries `branch_planning_defaults.usage_window_days` + `seasonality_profile` (jsonb 12-month multipliers). Items can override either via `item_planning.usage_window_days` and `item_planning.seasonality_profile` / `seasonality_factor`.
+2. **Millwork seed strategy** — No existing spreadsheet. Plan ships in two steps: (a) downloadable CSV template the buyer fills out, (b) `POST /api/admin/item-planning/import` accepts the file. After seed, items are managed via admin UI; engine emits "suggested override" diagnostics for buyers/admins to review (e.g. "this item has 30 days of usage history but no min_on_hand set"). Future-phase: an admin review queue for those suggestions.
+3. **Open PO horizon** — Inbound POs counted into `effective_on_hand` only when `expect_date` is within `lead_time_days` of today (per-item, from `agility_item_supplier.lead_time_1`). POs further out don't help today's decision. Receivings already landed are netted out of `qty_ordered` via `agility_receiving_lines`.
+4. **Branch behavior** — Default view is the user's branch (`session.user.branch`). Admins and "main buyer" capability holders get an **all-branches** mode that aggregates across branches so they can pool a single PO that ships to multiple yards. A future phase will write multi-branch POs back to Agility — schema carries `system_id` on every row so the cross-branch query is just a `GROUP BY item_code` over the engine output.
+5. **Severity thresholds** — Lead-time-driven:
+   - **red** = `coverage_days <= lead_time_1` (will go OOS before any new PO can land)
+   - **amber** = `coverage_days <= lead_time_1 + safety_stock_days`
+   - **yellow** = `coverage_days <= lead_time_1 + safety_stock_days + 14`
+   - **green** = otherwise
+   This makes 4-6 week lead-time suppliers (some Millwork) behave correctly — items needed in 30 days are red, not amber.
+6. **Workspace tiles** — Deferred to a Claude Design pass when the engine + APIs are stable. Engine and data first; dashboard composition second.
 
 ---
 

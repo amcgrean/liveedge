@@ -628,6 +628,65 @@ export const reportSubscriptionLog = bidsSchema.table(
 );
 
 // ============================================================
+// ITEM PLANNING (replenishment policy overrides)
+// ============================================================
+// LiveEdge-managed planning overrides that power the rebuilt
+// /purchasing/suggested-buys and /purchasing/outages views. The engine
+// reads these on top of Agility's stock/demand/supply data — Agility's
+// own min/max/safety-stock fields are not reliable for Beisser's mix
+// (especially Millwork), so LiveEdge owns the policy here.
+// See docs/buyers-workspace-plan-2026-05-22.md.
+export const branchPlanningDefaults = bidsSchema.table('branch_planning_defaults', {
+  systemId:           text('system_id').primaryKey(),
+  usageWindowDays:    integer('usage_window_days').notNull().default(90),
+  safetyStockDays:    integer('safety_stock_days').notNull().default(7),
+  // Optional 12-element jsonb array of monthly multipliers.
+  seasonalityProfile: jsonb('seasonality_profile'),
+  updatedBy:          text('updated_by'),
+  updatedAt:          timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  createdAt:          timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+});
+
+export const itemPlanning = bidsSchema.table(
+  'item_planning',
+  {
+    id:                 uuid('id').primaryKey().defaultRandom(),
+    systemId:           text('system_id').notNull(),
+    itemCode:           text('item_code').notNull(),
+
+    // Reorder policy — all nullable so a row can carry just one override.
+    minOnHand:          numeric('min_on_hand'),
+    targetOnHand:       numeric('target_on_hand'),
+    safetyStockDays:    integer('safety_stock_days'),
+    usageWindowDays:    integer('usage_window_days'),
+
+    // Seasonality — constant factor and/or 12-month profile.
+    seasonalityFactor:  numeric('seasonality_factor'),
+    seasonalityProfile: jsonb('seasonality_profile'),
+
+    packQty:            numeric('pack_qty'),
+    preferredSupplier:  text('preferred_supplier'),
+
+    isCritical:         boolean('is_critical').notNull().default(false),
+    category:           text('category'),
+    isPaused:           boolean('is_paused').notNull().default(false),
+
+    notes:              text('notes'),
+    // 'manual' | 'csv_import' | 'admin_suggestion'
+    source:             text('source').notNull().default('manual'),
+    updatedBy:          text('updated_by'),
+    updatedAt:          timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+    createdAt:          timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    uniqueIndex('item_planning_system_item_idx').on(table.systemId, table.itemCode),
+    index('item_planning_category_idx').on(table.systemId, table.category),
+    index('item_planning_critical_idx').on(table.systemId),
+    index('item_planning_paused_idx').on(table.systemId),
+  ],
+);
+
+// ============================================================
 // RELATIONS
 // ============================================================
 export const bidsRelations = relations(bids, ({ one, many }) => ({
@@ -761,3 +820,7 @@ export type NewGraphSubscription = typeof graphSubscriptions.$inferInsert;
 export type ReportSubscription = typeof reportSubscriptions.$inferSelect;
 export type NewReportSubscription = typeof reportSubscriptions.$inferInsert;
 export type ReportSubscriptionLog = typeof reportSubscriptionLog.$inferSelect;
+export type BranchPlanningDefaults = typeof branchPlanningDefaults.$inferSelect;
+export type NewBranchPlanningDefaults = typeof branchPlanningDefaults.$inferInsert;
+export type ItemPlanning = typeof itemPlanning.$inferSelect;
+export type NewItemPlanning = typeof itemPlanning.$inferInsert;
