@@ -914,7 +914,7 @@ Snapshot of unmerged `claude/*` and `codex/*` branches with a hint about whether
     - Any Sales hub / Purchasing dashboard that sums open SO line $
     - Pattern: replace `qty_ordered * price` with `extended_price`, and `(qty_ordered - COALESCE(qty_shipped,0)) * price` with `unshipped_extended_price`. Both columns are already on the table; no schema work needed.
 11. **Hubbell daily check ingest** (Phase 3a/b/d LIVE 2026-05-21): Migration 0026 applied. Server-side write endpoints (`POST /api/admin/hubbell/checks/upload`, rewritten `/payments/import`) and read endpoints (`GET /api/hubbell/docs`, `GET /api/hubbell/checks`) all live. Phase 3c (Pi `hubbell_daily_checks.py` scraper) is owned by the PC/test agent — needs to be built and deployed to `/home/api/hubbell/` on the Pi. Phase 3e (`ALTER SCHEMA bids.hubbell_* → hubbell`) deferred until PC scripts retire. See the Hubbell PO/WO Daily Ingest section above for full detail.
-12. **Apply 0027_report_subscriptions migration** (2026-05-22): Apply `db/migrations/0027_report_subscriptions.sql` in the Supabase SQL editor. Creates `bids.report_subscriptions` + `bids.report_subscription_log`. Required before the hourly `/api/cron/report-subscriptions` cron has any work to do.
+12. ~~**Apply 0027_report_subscriptions migration**~~ — DONE (2026-05-22). `bids.report_subscriptions` + `bids.report_subscription_log` are live. Hourly `/api/cron/report-subscriptions` cron is now sweeping. See "Report Email Subscriptions" section below.
 
 ## Report Email Subscriptions (2026-05-22)
 
