@@ -220,7 +220,7 @@ Estimate band: **~120-180 hrs total** depending on how much CSV-import/admin pol
    - **yellow** = `coverage_days <= lead_time_1 + safety_stock_days + 14`
    - **green** = otherwise
    This makes 4-6 week lead-time suppliers (some Millwork) behave correctly — items needed in 30 days are red, not amber.
-6. **Workspace tiles** — Deferred to a Claude Design pass when the engine + APIs are stable. Engine and data first; dashboard composition second.
+6. **Workspace tiles** — Deferred to a Claude Design pass when the engine + APIs are stable. Engine and data first; dashboard composition second. Prompt drafted at `docs/agent-prompts/buyer-workspace-dashboard-design.md` — fire after Phases 3-5 ship.
 
 ---
 
