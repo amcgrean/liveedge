@@ -393,6 +393,7 @@ function getDomains(tvBranch: string): Domain[] {
         p.startsWith('/purchasing/workspace') ||
         p.startsWith('/purchasing/open-pos') ||
         p.startsWith('/purchasing/suggested-buys') ||
+        p.startsWith('/purchasing/outages') ||
         p.startsWith('/purchasing/exceptions') ||
         p.startsWith('/purchasing/manage') ||
         p.startsWith('/purchasing/pos') ||
@@ -402,6 +403,7 @@ function getDomains(tvBranch: string): Domain[] {
         { href: '/purchasing/workspace',      label: 'Buyer Workspace', requiresCap: ['purchasing.view'] },
         { href: '/purchasing/open-pos',       label: 'Open POs',        requiresCap: ['purchasing.view'] },
         { href: '/purchasing/suggested-buys', label: 'Suggested Buys',  requiresCap: ['purchasing.view'] },
+        { href: '/purchasing/outages',        label: 'Potential Outages', requiresCap: ['purchasing.view'] },
         { href: '/purchasing/exceptions',     label: 'Exceptions',      requiresCap: ['purchasing.view'] },
         { href: '/purchasing/manage',         label: 'Command Center',  requiresCap: ['purchasing.view'] },
         { href: '/purchasing',        label: 'PO Check-In',  sectionBefore: 'Receiving', requiresCap: ['purchasing.receive'] },
