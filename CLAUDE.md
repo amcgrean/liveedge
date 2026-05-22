@@ -914,6 +914,49 @@ Snapshot of unmerged `claude/*` and `codex/*` branches with a hint about whether
     - Any Sales hub / Purchasing dashboard that sums open SO line $
     - Pattern: replace `qty_ordered * price` with `extended_price`, and `(qty_ordered - COALESCE(qty_shipped,0)) * price` with `unshipped_extended_price`. Both columns are already on the table; no schema work needed.
 11. **Hubbell daily check ingest** (Phase 3a/b/d LIVE 2026-05-21): Migration 0026 applied. Server-side write endpoints (`POST /api/admin/hubbell/checks/upload`, rewritten `/payments/import`) and read endpoints (`GET /api/hubbell/docs`, `GET /api/hubbell/checks`) all live. Phase 3c (Pi `hubbell_daily_checks.py` scraper) is owned by the PC/test agent — needs to be built and deployed to `/home/api/hubbell/` on the Pi. Phase 3e (`ALTER SCHEMA bids.hubbell_* → hubbell`) deferred until PC scripts retire. See the Hubbell PO/WO Daily Ingest section above for full detail.
+12. **Apply 0027_report_subscriptions migration** (2026-05-22): Apply `db/migrations/0027_report_subscriptions.sql` in the Supabase SQL editor. Creates `bids.report_subscriptions` + `bids.report_subscription_log`. Required before the hourly `/api/cron/report-subscriptions` cron has any work to do.
+
+## Report Email Subscriptions (2026-05-22)
+
+Users can subscribe to three reports for email delivery (daily / weekly / monthly, PDF or Excel). All sends go through Resend. Self-service only — each user manages their own subscriptions.
+
+**Subscribable reports (the registry is the source of truth — `src/lib/reports/registry.ts`):**
+- `sales-reports` (`/sales/reports`) — KPIs · daily series · top customers · sale-type & status breakdowns
+- `delivery-reports` (`/ops/delivery-reporting`) — KPIs · daily series · per-branch breakdown · by-ship-via · detail (Excel only)
+- `scorecard-overview` (`/scorecard/overview`) — 3-year comparison · KPIs · branch breakdown (skips product-mix/sale-type drill tables intentionally — interactive-only)
+
+**Architecture:**
+- `bids.report_subscriptions` — one row per (user, report, params, cadence). `next_run_at` indexed for the cron sweep.
+- `bids.report_subscription_log` — one row per send attempt (status, error, resend_message_id, duration_ms).
+- Hourly Vercel cron at `/api/cron/report-subscriptions` (in `vercel.json`) picks active subscriptions where `next_run_at <= now()`, renders, sends, advances. `BATCH_LIMIT=100` per tick. Per-subscription failures are isolated (Promise.allSettled).
+- Schedule math in `src/lib/reports/schedule.ts` is timezone-aware (Intl.DateTimeFormat-driven offset lookup; correctly handles DST transitions). `computeNextRunAt()` is the only place that decides "when next".
+- PDF render uses **jspdf + jspdf-autotable** — banner header, KPI tiles, simple bar chart, jspdf-autotable tables. No headless browser. Helpers in `src/lib/reports/pdf.ts`.
+- Excel render uses **exceljs** — one "Summary" sheet + one sheet per breakdown. No charts in v1 (raw tables only). Helpers in `src/lib/reports/excel.ts`.
+- Email send wraps the raw-fetch Resend pattern at `src/lib/email/send-report.ts`. Standard branded HTML body via `buildReportEmailHtml()`. From-address: `LiveEdge Reports <noreply@app.beisser.cloud>` (overridable via `REPORTS_EMAIL_FROM`).
+- Data fetch is **shared with the live API routes** — `src/lib/sales/reports-query.ts` and `src/lib/ops/delivery-reporting-query.ts` were extracted from their respective `route.ts` files; both the route and the digest call the same function. Scorecard digests reuse the existing `fetchAggregateKpis` / `fetchAggregateThreeYear` / `fetchBranchSummaries` helpers from `src/lib/scorecard/queries.ts`.
+
+**Key files:**
+- `src/lib/reports/registry.ts` — `REPORT_KEYS`, per-report zod param schemas, descriptors with capability + page path. **Add new reports here.**
+- `src/lib/reports/dispatch.ts` — `renderDigest(key, params, format, generatedAt)` — central switch. New digest = add a case here.
+- `src/lib/reports/digests/{sales-reports,delivery-reports,scorecard-overview}.ts` — per-report digest renderers (fetch + render PDF/Excel).
+- `app/api/report-subscriptions/route.ts` + `[id]/route.ts` — CRUD (self-scoped; can't see or edit other users' subs).
+- `app/api/cron/report-subscriptions/route.ts` — the hourly sweep. Auth via `verifyCronSignature()`.
+- `src/components/reports/SubscribeButton.tsx` + `SubscriptionModal.tsx` — UI dropped into the three report pages. Pass `reportKey`, `reportLabel`, current `params`, and a `paramsSummary` string.
+- `app/account/subscriptions/` — manage-all page (pause / edit / delete, linked from the user dropdown in `TopNav.tsx`).
+
+**Adding a new subscribable report:**
+1. Add the key to `REPORT_KEYS` + a descriptor (with param schema + capability) to `REPORTS` in `registry.ts`.
+2. Create `src/lib/reports/digests/<key>.ts` exporting a `render*Digest({ params, format, generatedAt })` function that returns `{ buffer, filename, mimeType, highlights, rangeLabel, isEmpty }`.
+3. Add a case to `renderDigest()` in `dispatch.ts`.
+4. Drop `<SubscribeButton reportKey="..." reportLabel="..." paramsSummary="..." params={...} />` into the report page client.
+
+**Env vars added:**
+- `REPORTS_EMAIL_FROM` (optional, defaults to `LiveEdge Reports <noreply@app.beisser.cloud>`)
+- `REPORTS_EMAIL_CONSOLE` (optional, dev only; `true` prints sends to server console instead of failing on missing `RESEND_API_KEY`)
+- Reuses existing `RESEND_API_KEY` + `CRON_SECRET` + `NEXT_PUBLIC_APP_URL`.
+
+**Intentionally NOT subscribable in v1** (per plan — interactive-only drill-downs):
+- Branch / customer / rep / product / vendor scorecard pages. Revisit only when a real user asks.
 
 ## Takeoff Debugging (in progress, 2026-04-14)
 

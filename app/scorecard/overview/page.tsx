@@ -16,6 +16,7 @@ import AggregateFilterBar from '../_components/AggregateFilterBar';
 import ScorecardTabs from '../_components/ScorecardTabs';
 import { BranchBreakdownTable } from '../_components/AggregateTables';
 import Breadcrumb from '@/components/Breadcrumb';
+import SubscribeButton from '@/components/reports/SubscribeButton';
 import {
   ThreeYearChart,
   BranchContributionPareto,
@@ -149,14 +150,25 @@ export default async function OverviewPage({
         </div>
       )}
 
-      <div className="space-y-0.5">
-        <h1 className="text-2xl font-bold text-white">Company Overview</h1>
-        <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-slate-400">
-          <span>{branchIds.length === 0 ? 'All Branches' : branchIds.map((b) => BRANCH_LABELS[b] ?? b).join(', ')}</span>
-          <span className="text-slate-600">·</span>
-          <span>{baseYear} vs {compareYear}</span>
-          <span className="text-slate-600">·</span>
-          <span>{periodLabel}</span>
+      <div className="flex items-start justify-between flex-wrap gap-3">
+        <div className="space-y-0.5">
+          <h1 className="text-2xl font-bold text-white">Company Overview</h1>
+          <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-slate-400">
+            <span>{branchIds.length === 0 ? 'All Branches' : branchIds.map((b) => BRANCH_LABELS[b] ?? b).join(', ')}</span>
+            <span className="text-slate-600">·</span>
+            <span>{baseYear} vs {compareYear}</span>
+            <span className="text-slate-600">·</span>
+            <span>{periodLabel}</span>
+          </div>
+        </div>
+
+        <div className="print:hidden">
+          <SubscribeButton
+            reportKey="scorecard-overview"
+            reportLabel="Scorecard Overview"
+            paramsSummary={`${branchIds.length === 0 ? 'All Branches' : branchIds.join(', ')} · ${period}`}
+            params={{ branchIds, baseYear: null, compareYear: null, period }}
+          />
         </div>
       </div>
 
