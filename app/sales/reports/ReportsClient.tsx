@@ -6,6 +6,7 @@ import { BarChart2, RefreshCw, TrendingUp, Users, Truck, Activity, ChevronLeft }
 import { usePageTracking } from '@/hooks/usePageTracking';
 import HouseLoader from '@/components/scorecard/HouseLoader';
 import ExportTableButton from '@/components/shared/ExportTableButton';
+import SubscribeButton from '@/components/reports/SubscribeButton';
 import {
   TimeSeriesChart,
   MixDonut,
@@ -258,6 +259,13 @@ export default function ReportsClient({ isAdmin, userBranch }: Props) {
           >
             <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
           </button>
+
+          <SubscribeButton
+            reportKey="sales-reports"
+            reportLabel="Sales Reports"
+            paramsSummary={`${branchLabel} · Last ${period} days`}
+            params={{ period, branch }}
+          />
         </div>
       </div>
 

@@ -6,7 +6,7 @@ import { usePathname, useRouter } from 'next/navigation';
 import { signOut, useSession } from 'next-auth/react';
 import {
   LogOut, ChevronDown, Menu, X, Settings,
-  Search, Wrench, HelpCircle, User, Bell,
+  Search, Wrench, HelpCircle, User, Bell, Mail,
 } from 'lucide-react';
 import { cn } from '../../lib/utils';
 import { hasCapability } from '../../lib/access-control-shared';
@@ -693,6 +693,14 @@ export function TopNav({ userName, userRole }: Props) {
                     <HelpCircle className="w-4 h-4 flex-shrink-0" />
                     Help &amp; Docs
                   </Link>
+                  <Link
+                    href="/account/subscriptions"
+                    onClick={() => setOpenMenu(null)}
+                    className="flex items-center gap-2.5 px-4 py-2.5 text-sm text-slate-300 hover:bg-slate-800 hover:text-white transition"
+                  >
+                    <Mail className="w-4 h-4 flex-shrink-0" />
+                    Email Subscriptions
+                  </Link>
                   <div className="border-t border-slate-700/50 my-1" />
                   <button
                     onClick={() => signOut({ callbackUrl: signOutUrl })}
@@ -920,6 +928,13 @@ export function TopNav({ userName, userRole }: Props) {
                 >
                   <HelpCircle className="w-4 h-4" />
                   Help &amp; Docs
+                </Link>
+                <Link
+                  href="/account/subscriptions"
+                  className="flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm text-slate-300 hover:text-white hover:bg-slate-800 transition"
+                >
+                  <Mail className="w-4 h-4" />
+                  Email Subscriptions
                 </Link>
                 <button
                   onClick={() => signOut({ callbackUrl: signOutUrl })}

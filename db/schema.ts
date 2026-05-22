@@ -576,6 +576,58 @@ export const graphSubscriptions = bidsSchema.table(
 );
 
 // ============================================================
+// REPORT SUBSCRIPTIONS
+// ============================================================
+// User-driven email subscriptions to reports (sales, delivery, scorecard
+// overview). Cron sweeps next_run_at and emails PDF or Excel attachments
+// via Resend. See src/lib/reports/registry.ts for the report_key vocabulary
+// and per-key params shape.
+export const reportSubscriptions = bidsSchema.table(
+  'report_subscriptions',
+  {
+    id:           uuid('id').primaryKey().defaultRandom(),
+    // public.app_users.id (integer). No cross-schema FK.
+    userId:       integer('user_id').notNull(),
+    email:        text('email').notNull(),
+    reportKey:    text('report_key').notNull(),
+    params:       jsonb('params').notNull().default({}),
+    cadence:      text('cadence').notNull(), // 'daily'|'weekly'|'monthly'
+    sendDow:      integer('send_dow'),       // 1..7 (weekly)
+    sendDom:      integer('send_dom'),       // 1..28 (monthly)
+    sendHour:     integer('send_hour').notNull().default(7),
+    timezone:     text('timezone').notNull().default('America/Chicago'),
+    format:       text('format').notNull(),  // 'pdf'|'excel'
+    isActive:     boolean('is_active').notNull().default(true),
+    lastSentAt:   timestamp('last_sent_at',  { withTimezone: true }),
+    nextRunAt:    timestamp('next_run_at',   { withTimezone: true }).notNull(),
+    createdAt:    timestamp('created_at',    { withTimezone: true }).notNull().defaultNow(),
+    updatedAt:    timestamp('updated_at',    { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    index('report_subscriptions_due_idx').on(table.nextRunAt),
+    index('report_subscriptions_user_idx').on(table.userId),
+    index('report_subscriptions_report_idx').on(table.reportKey),
+  ]
+);
+
+export const reportSubscriptionLog = bidsSchema.table(
+  'report_subscription_log',
+  {
+    id:               uuid('id').primaryKey().defaultRandom(),
+    subscriptionId:   uuid('subscription_id').notNull()
+      .references(() => reportSubscriptions.id, { onDelete: 'cascade' }),
+    sentAt:           timestamp('sent_at', { withTimezone: true }).notNull().defaultNow(),
+    status:           text('status').notNull(), // 'sent'|'failed'|'skipped'
+    errorMessage:     text('error_message'),
+    resendMessageId:  text('resend_message_id'),
+    durationMs:       integer('duration_ms'),
+  },
+  (table) => [
+    index('report_subscription_log_sub_idx').on(table.subscriptionId, table.sentAt),
+  ]
+);
+
+// ============================================================
 // RELATIONS
 // ============================================================
 export const bidsRelations = relations(bids, ({ one, many }) => ({
@@ -706,3 +758,6 @@ export type PoSubmission = typeof poSubmissions.$inferSelect;
 export type NewPoSubmission = typeof poSubmissions.$inferInsert;
 export type GraphSubscription = typeof graphSubscriptions.$inferSelect;
 export type NewGraphSubscription = typeof graphSubscriptions.$inferInsert;
+export type ReportSubscription = typeof reportSubscriptions.$inferSelect;
+export type NewReportSubscription = typeof reportSubscriptions.$inferInsert;
+export type ReportSubscriptionLog = typeof reportSubscriptionLog.$inferSelect;
