@@ -27,6 +27,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { eq, sql as dsql, and } from 'drizzle-orm';
 import { verifyHubbellUploadToken } from '../../../../../../src/lib/service-auth';
+import { requireCapability } from '../../../../../../src/lib/access-control';
 import { getDb, schema } from '../../../../../../db/index';
 import { matchDocumentToSos } from '../../../../../../src/lib/hubbell/document-matcher';
 
@@ -47,8 +48,17 @@ type Doc = {
 };
 
 export async function POST(req: NextRequest) {
-  const denied = verifyHubbellUploadToken(req);
-  if (denied) return denied;
+  // Two auth paths: service-token (used by CLI/cron) OR user session with
+  // hubbell.review (used by the "Run batch" button on the admin UI). Try the
+  // bearer first; on miss, fall back to user session.
+  const hasBearer = req.headers.get('authorization')?.startsWith('Bearer ');
+  if (hasBearer) {
+    const denied = verifyHubbellUploadToken(req);
+    if (denied) return denied;
+  } else {
+    const auth = await requireCapability('hubbell.review');
+    if (auth instanceof NextResponse) return auth;
+  }
 
   let body: {
     limit?: unknown;

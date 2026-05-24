@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
-import { Check, X, ExternalLink, ChevronLeft, ChevronRight, RefreshCw } from 'lucide-react';
+import { Check, X, ExternalLink, ChevronLeft, ChevronRight, RefreshCw, Play } from 'lucide-react';
 
 type Status = 'pending' | 'accepted' | 'rejected' | 'all';
 
@@ -53,6 +53,19 @@ type ApiResponse = {
   count: number;
 };
 
+type StatusResponse = {
+  unmatched_docs: number;
+  never_suggested: number;
+};
+
+type RunResponse = {
+  run_id: string;
+  processed: number;
+  candidates_inserted: number;
+  candidates_skipped_existing: number;
+  errors?: Array<{ doc_id: string; error: string }>;
+};
+
 const STATUSES: { key: Status; label: string }[] = [
   { key: 'pending', label: 'Pending' },
   { key: 'accepted', label: 'Accepted' },
@@ -81,6 +94,9 @@ export default function SuggestionsClient() {
   const [loading, setLoading] = useState(true);
   const [actingId, setActingId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [runStatus, setRunStatus] = useState<StatusResponse | null>(null);
+  const [running, setRunning] = useState(false);
+  const [lastRun, setLastRun] = useState<RunResponse | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -107,6 +123,42 @@ export default function SuggestionsClient() {
   }, [status, minConfidence, docType, limit, offset]);
 
   useEffect(() => { load(); }, [load]);
+
+  const loadStatus = useCallback(async () => {
+    try {
+      const res = await fetch('/api/admin/hubbell/documents/suggest-matches/status');
+      if (!res.ok) return;
+      setRunStatus(await res.json());
+    } catch {
+      // ignore — status is informational
+    }
+  }, []);
+
+  useEffect(() => { loadStatus(); }, [loadStatus]);
+
+  async function runBatch() {
+    setRunning(true);
+    setError(null);
+    try {
+      const res = await fetch('/api/admin/hubbell/documents/suggest-matches', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ limit: 200, only_unmatched: true, min_confidence: 30 }),
+      });
+      if (!res.ok) {
+        const txt = await res.text();
+        throw new Error(txt || `HTTP ${res.status}`);
+      }
+      const json: RunResponse = await res.json();
+      setLastRun(json);
+      // Refresh the suggestions list + status counts
+      await Promise.all([load(), loadStatus()]);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setRunning(false);
+    }
+  }
 
   async function review(id: string, action: 'accept' | 'reject') {
     setActingId(id);
@@ -144,13 +196,49 @@ export default function SuggestionsClient() {
             Pre-computed Hubbell-doc → Agility-SO match candidates. Accept to attach; reject to suppress.
           </p>
         </div>
-        <button
-          onClick={() => load()}
-          className="flex items-center gap-2 rounded border border-slate-700 bg-slate-800 px-3 py-1.5 text-sm text-slate-200 hover:bg-slate-700"
-        >
-          <RefreshCw className="h-3.5 w-3.5" /> Refresh
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={runBatch}
+            disabled={running}
+            className="flex items-center gap-2 rounded bg-emerald-700 px-3 py-1.5 text-sm font-medium text-white hover:bg-emerald-600 disabled:opacity-50"
+          >
+            <Play className="h-3.5 w-3.5" />
+            {running ? 'Running…' : 'Run batch (200)'}
+          </button>
+          <button
+            onClick={() => { load(); loadStatus(); }}
+            className="flex items-center gap-2 rounded border border-slate-700 bg-slate-800 px-3 py-1.5 text-sm text-slate-200 hover:bg-slate-700"
+          >
+            <RefreshCw className="h-3.5 w-3.5" /> Refresh
+          </button>
+        </div>
       </div>
+
+      {(runStatus || lastRun) && (
+        <div className="mb-4 rounded border border-slate-700 bg-slate-800/40 px-3 py-2 text-sm text-slate-300">
+          {runStatus && (
+            <div>
+              <span className="text-slate-400">Unmatched docs:</span>{' '}
+              <span className="font-mono text-slate-100">{runStatus.unmatched_docs.toLocaleString()}</span>
+              {' · '}
+              <span className="text-slate-400">Never suggested:</span>{' '}
+              <span className="font-mono text-slate-100">{runStatus.never_suggested.toLocaleString()}</span>
+            </div>
+          )}
+          {lastRun && (
+            <div className="mt-1 text-xs text-slate-400">
+              Last run: processed <span className="font-mono text-slate-200">{lastRun.processed}</span> docs,
+              inserted <span className="font-mono text-emerald-300">{lastRun.candidates_inserted}</span> new candidates
+              {lastRun.candidates_skipped_existing > 0 && (
+                <>, skipped <span className="font-mono">{lastRun.candidates_skipped_existing}</span> already-reviewed</>
+              )}
+              {lastRun.errors && lastRun.errors.length > 0 && (
+                <>, <span className="text-red-300">{lastRun.errors.length} errors</span></>
+              )}
+            </div>
+          )}
+        </div>
+      )}
 
       <div className="mb-4 flex flex-wrap items-center gap-2">
         <div className="flex rounded border border-slate-700 bg-slate-800/40">
