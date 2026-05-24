@@ -552,6 +552,36 @@ export const hubbellDocumentSos = bidsSchema.table(
   ]
 );
 
+// Pre-computed Hubbell-doc → Agility-SO match candidates awaiting human review.
+// Populated in batch by POST /api/admin/hubbell/documents/suggest-matches; the
+// /admin/hubbell/suggestions page renders pending rows for accept/reject. On
+// accept, a row is copied into hubbellDocumentSos (above) and this row's
+// status flips to 'accepted'.
+export const hubbellDocumentSuggestions = bidsSchema.table(
+  'hubbell_document_suggestions',
+  {
+    id:             uuid('id').primaryKey().defaultRandom(),
+    documentId:     uuid('document_id').notNull(),
+    soId:           integer('so_id').notNull(),
+    custCode:       varchar('cust_code', { length: 50 }),
+    matchSource:    varchar('match_source', { length: 30 }).notNull(),
+    confidence:     integer('confidence').notNull().default(0),
+    matchReasons:   text('match_reasons').array().notNull().default([]),
+    // 'pending' | 'accepted' | 'rejected'
+    status:         varchar('status', { length: 20 }).notNull().default('pending'),
+    suggestedAt:    timestamp('suggested_at', { withTimezone: true }).notNull().defaultNow(),
+    reviewedBy:     varchar('reviewed_by', { length: 100 }),
+    reviewedAt:     timestamp('reviewed_at', { withTimezone: true }),
+    sourceRunId:    varchar('source_run_id', { length: 100 }),
+  },
+  (table) => [
+    uniqueIndex('hubbell_document_suggestions_doc_so_uq').on(table.documentId, table.soId),
+    index('hubbell_document_suggestions_status_conf_idx').on(table.status, table.confidence),
+    index('hubbell_document_suggestions_doc_idx').on(table.documentId),
+    index('hubbell_document_suggestions_so_idx').on(table.soId),
+  ]
+);
+
 // ============================================================
 // MICROSOFT GRAPH SUBSCRIPTIONS
 // ============================================================
