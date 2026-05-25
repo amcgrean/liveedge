@@ -44,6 +44,11 @@ async function _fetchHomeErpKpis(branchScope: string | null): Promise<HomeErpKpi
   const branchFilter = branchScope ? erpSql`AND soh.system_id = ${branchScope}` : erpSql``;
   const branchFilterNoAlias = branchScope ? erpSql`AND system_id = ${branchScope}` : erpSql``;
 
+  // Important: do NOT catch individual query failures here. Promise.all
+  // throwing means erpCache() never stores the result, so a transient
+  // failure isn't poisoned into the cache for the full 5-min TTL. The
+  // route handler at /api/home wraps this call in its own .catch() to
+  // surface zeros for one request while the next request retries.
   const [picksRes, woRes, openOrdersRes, invoicedRes, recentOrdersRes] = await Promise.all([
     // Open picks
     erpSql<{ cnt: number }[]>`
@@ -69,7 +74,7 @@ async function _fetchHomeErpKpis(branchScope: string | null): Promise<HomeErpKpi
         AND UPPER(COALESCE(soh.sale_type, '')) NOT IN ('DIRECT', 'WILLCALL', 'XINSTALL', 'HOLD')
         AND soh.system_id NOT IN ('', 'SYSTEM')
         ${branchFilter}
-    `.catch(() => [{ cnt: 0 }]),
+    `,
 
     // Open work orders
     erpSql<{ cnt: number }[]>`
@@ -81,7 +86,7 @@ async function _fetchHomeErpKpis(branchScope: string | null): Promise<HomeErpKpi
         AND UPPER(COALESCE(wh.wo_status, '')) NOT IN ('COMPLETED', 'CANCELED', 'C')
         AND COALESCE(soh.system_id, '') NOT IN ('', 'SYSTEM')
         ${branchFilter}
-    `.catch(() => [{ cnt: 0 }]),
+    `,
 
     // Open orders (status 'O')
     erpSql<{ cnt: number }[]>`
@@ -90,7 +95,7 @@ async function _fetchHomeErpKpis(branchScope: string | null): Promise<HomeErpKpi
       WHERE is_deleted = false
         AND UPPER(COALESCE(so_status, '')) = 'O'
         ${branchFilterNoAlias}
-    `.catch(() => [{ cnt: 0 }]),
+    `,
 
     // Invoiced in last 30 days
     erpSql<{ cnt: number }[]>`
@@ -100,7 +105,7 @@ async function _fetchHomeErpKpis(branchScope: string | null): Promise<HomeErpKpi
         AND UPPER(COALESCE(so_status, '')) = 'I'
         AND created_date >= CURRENT_DATE - INTERVAL '30 days'
         ${branchFilterNoAlias}
-    `.catch(() => [{ cnt: 0 }]),
+    `,
 
     // Recent orders (last 15, newest first, active statuses)
     erpSql<RecentOrder[]>`
@@ -121,7 +126,7 @@ async function _fetchHomeErpKpis(branchScope: string | null): Promise<HomeErpKpi
         ${branchFilterNoAlias}
       ORDER BY created_date DESC NULLS LAST, so_id DESC
       LIMIT 15
-    `.catch(() => [] as RecentOrder[]),
+    `,
   ]);
 
   return {
