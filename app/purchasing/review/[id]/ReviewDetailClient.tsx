@@ -149,7 +149,13 @@ export default function ReviewDetailClient({ id }: Props) {
                 className="aspect-square rounded-lg overflow-hidden bg-slate-800 border border-white/10 hover:border-cyan-500/50 transition"
               >
                 {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img src={url} alt={`Photo ${i + 1}`} className="w-full h-full object-cover" />
+                <img
+                  src={url}
+                  alt={`Photo ${i + 1}`}
+                  loading="lazy"
+                  decoding="async"
+                  className="w-full h-full object-cover"
+                />
               </button>
             ))}
           </div>
