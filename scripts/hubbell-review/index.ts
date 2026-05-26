@@ -122,7 +122,9 @@ async function cmdPull(args: Record<string, string | true>): Promise<void> {
   // (the agility_so_header lookup at large IN-list sizes — no functional
   // index on so_id::int on the ERP side). Cap absolute request at 200.
   const fetchLimit = Math.min(200, Math.max(20, limit * 2));
-  const url = `/api/admin/hubbell/suggestions?status=pending&min_confidence=${minConfidence}&limit=${fetchLimit}`;
+  const source = typeof args.source === 'string' ? args.source : undefined;
+  const sourceParam = source ? `&match_source=${encodeURIComponent(source)}` : '';
+  const url = `/api/admin/hubbell/suggestions?status=pending&min_confidence=${minConfidence}&limit=${fetchLimit}${sourceParam}`;
   console.log(`Fetching pending suggestions from ${BASE_URL}${url} …`);
   const res = await api(url);
   if (!res.ok) {

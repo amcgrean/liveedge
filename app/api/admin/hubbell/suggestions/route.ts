@@ -96,6 +96,10 @@ export async function GET(req: NextRequest) {
     const limit = Math.min(Math.max(1, Number(url.searchParams.get('limit') ?? 50) || 50), 200);
     const offset = Math.max(0, Number(url.searchParams.get('offset') ?? 0) || 0);
     const docTypeFilter = url.searchParams.get('doc_type');
+    // Filter to one specific matcher's output (e.g. ?match_source=jobsite_reconcile
+    // to review only the within-jobsite reconciler's candidates and skip older
+    // address_scrape / po_number_split queues).
+    const matchSourceFilter = url.searchParams.get('match_source');
 
     const validStatus = ['pending', 'accepted', 'rejected', 'all'].includes(status)
       ? status
@@ -109,6 +113,9 @@ export async function GET(req: NextRequest) {
     const docTypePred = (docTypeFilter === 'po' || docTypeFilter === 'wo')
       ? dsql`AND d.doc_type = ${docTypeFilter}`
       : dsql``;
+    const matchSourcePred = matchSourceFilter
+      ? dsql`AND s.match_source = ${matchSourceFilter}`
+      : dsql``;
 
     // Total count for the same filter (no limit/offset).
     const countResultRaw = await db.execute(dsql`
@@ -118,6 +125,7 @@ export async function GET(req: NextRequest) {
       WHERE s.confidence >= ${minConfidence}
       ${statusPred}
       ${docTypePred}
+      ${matchSourcePred}
     `);
     const totalRow = Array.isArray(countResultRaw)
       ? (countResultRaw[0] as { total?: number } | undefined)
@@ -173,6 +181,7 @@ export async function GET(req: NextRequest) {
       WHERE s.confidence >= ${minConfidence}
       ${statusPred}
       ${docTypePred}
+      ${matchSourcePred}
       ORDER BY s.confidence DESC, s.suggested_at DESC, s.id
       LIMIT ${limit} OFFSET ${offset}
     `);

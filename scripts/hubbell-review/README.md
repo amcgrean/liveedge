@@ -45,6 +45,9 @@ npx tsx scripts/hubbell-review pull [options]
   --limit <n>        Max docs to pull (default 10)
   --dir <path>       Work directory (default ./hubbell-queue)
   --min-confidence <n>  Drop suggestions below this (default 30)
+  --source <name>    Filter by match_source (e.g. jobsite_reconcile,
+                     address_scrape, address, po_number_split). Omit to
+                     pull from all matchers.
 ```
 
 For each unique document with pending suggestions, writes:
