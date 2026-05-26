@@ -195,7 +195,10 @@ export async function fetchJobsiteData(normAddr: string): Promise<{ docs: DocRow
       AND NOT EXISTS (
         SELECT 1 FROM bids.hubbell_documents d2
         WHERE d2.r2_key = d.r2_key
-          AND d2.received_at > d.received_at
+          -- Compare (received_at, id) so a batch insert that gives two
+          -- rows the same now()-stable timestamp doesn't leave both
+          -- treated as "current". Tie-break is arbitrary but deterministic.
+          AND (d2.received_at, d2.id) > (d.received_at, d.id)
           AND d2.source_hash IS DISTINCT FROM d.source_hash
       )
   `;
@@ -406,11 +409,13 @@ export async function listJobsiteQueue(params: { limit: number; offset: number }
         )
         -- Skip docs whose R2 file has been overwritten by a later upload
         -- with different content (Hubbell reused the doc_number). See
-        -- comment in fetchJobsiteData() for the data shape.
+        -- comment in fetchJobsiteData() for the data shape. (received_at,
+        -- id) tuple comparison gives a stable order even when a batch
+        -- insert produces equal timestamps.
         AND NOT EXISTS (
           SELECT 1 FROM bids.hubbell_documents d2
           WHERE d2.r2_key = d.r2_key
-            AND d2.received_at > d.received_at
+            AND (d2.received_at, d2.id) > (d.received_at, d.id)
             AND d2.source_hash IS DISTINCT FROM d.source_hash
         )
       GROUP BY 1
