@@ -171,7 +171,24 @@ export async function POST(req: NextRequest) {
         )})`
       : dsql``;
 
-  const rowsRaw = await db.execute(dsql`
+  // Two-phase fetch — see /api/admin/hubbell/suggestions/route.ts for rationale.
+  // Joining hubbell_document_suggestions to agility_so_header with so_id::int
+  // strips the index off the ERP table; pull bids data first, then look up SO
+  // headers in a second query keyed on the small unique so_id set.
+  type SuggestionPart = Omit<
+    Suggestion,
+    | 'so_cust_code'
+    | 'so_cust_name'
+    | 'so_reference'
+    | 'so_po_number'
+    | 'so_shipto_address'
+    | 'so_shipto_city'
+    | 'so_shipto_state'
+    | 'so_shipto_zip'
+    | 'so_status'
+    | 'so_expect_date'
+  >;
+  const bidsRaw = await db.execute(dsql`
     SELECT
       s.id::text                       AS id,
       s.document_id::text              AS document_id,
@@ -190,29 +207,76 @@ export async function POST(req: NextRequest) {
       d.extracted_total::text          AS extracted_total,
       d.dev_code,
       d.house_number,
-      d.block_lot,
-      TRIM(soh.cust_code)              AS so_cust_code,
-      soh.cust_name                    AS so_cust_name,
-      soh.reference                    AS so_reference,
-      soh.po_number                    AS so_po_number,
-      soh.shipto_address_1             AS so_shipto_address,
-      soh.shipto_city                  AS so_shipto_city,
-      soh.shipto_state                 AS so_shipto_state,
-      soh.shipto_zip                   AS so_shipto_zip,
-      soh.so_status                    AS so_status,
-      soh.expect_date::text            AS so_expect_date
+      d.block_lot
     FROM bids.hubbell_document_suggestions s
     JOIN bids.hubbell_documents d ON d.id = s.document_id
-    LEFT JOIN public.agility_so_header soh
-      ON soh.so_id::int = s.so_id AND soh.is_deleted = false
     WHERE s.status = 'pending'
     ${docFilter}
     ORDER BY s.document_id, s.confidence DESC, s.suggested_at DESC
   `);
+  const bidsRows: SuggestionPart[] = Array.isArray(bidsRaw)
+    ? (bidsRaw as unknown as SuggestionPart[])
+    : ((bidsRaw as { rows?: SuggestionPart[] }).rows ?? []);
 
-  const rows: Suggestion[] = Array.isArray(rowsRaw)
-    ? (rowsRaw as unknown as Suggestion[])
-    : ((rowsRaw as { rows?: Suggestion[] }).rows ?? []);
+  type SoRow = {
+    so_id: number;
+    so_cust_code: string | null;
+    so_cust_name: string | null;
+    so_reference: string | null;
+    so_po_number: string | null;
+    so_shipto_address: string | null;
+    so_shipto_city: string | null;
+    so_shipto_state: string | null;
+    so_shipto_zip: string | null;
+    so_status: string | null;
+    so_expect_date: string | null;
+  };
+  const uniqueSoIds = Array.from(new Set(bidsRows.map((r) => r.so_id)));
+  let soById = new Map<number, SoRow>();
+  if (uniqueSoIds.length > 0) {
+    const soIdsLit = dsql.join(
+      uniqueSoIds.map((id) => dsql`${id}::int`),
+      dsql`, `,
+    );
+    const soRowsRaw = await db.execute(dsql`
+      SELECT
+        soh.so_id::int          AS so_id,
+        TRIM(soh.cust_code)     AS so_cust_code,
+        soh.cust_name           AS so_cust_name,
+        soh.reference           AS so_reference,
+        soh.po_number           AS so_po_number,
+        soh.shipto_address_1    AS so_shipto_address,
+        soh.shipto_city         AS so_shipto_city,
+        soh.shipto_state        AS so_shipto_state,
+        soh.shipto_zip          AS so_shipto_zip,
+        soh.so_status           AS so_status,
+        soh.expect_date::text   AS so_expect_date
+      FROM public.agility_so_header soh
+      WHERE soh.so_id::int IN (${soIdsLit})
+        AND soh.is_deleted = false
+    `);
+    const soRows: SoRow[] = Array.isArray(soRowsRaw)
+      ? (soRowsRaw as unknown as SoRow[])
+      : ((soRowsRaw as { rows?: SoRow[] }).rows ?? []);
+    soById = new Map(soRows.map((r) => [r.so_id, r]));
+  }
+
+  const rows: Suggestion[] = bidsRows.map((s) => {
+    const so = soById.get(s.so_id);
+    return {
+      ...s,
+      so_cust_code: so?.so_cust_code ?? null,
+      so_cust_name: so?.so_cust_name ?? null,
+      so_reference: so?.so_reference ?? null,
+      so_po_number: so?.so_po_number ?? null,
+      so_shipto_address: so?.so_shipto_address ?? null,
+      so_shipto_city: so?.so_shipto_city ?? null,
+      so_shipto_state: so?.so_shipto_state ?? null,
+      so_shipto_zip: so?.so_shipto_zip ?? null,
+      so_status: so?.so_status ?? null,
+      so_expect_date: so?.so_expect_date ?? null,
+    } as Suggestion;
+  });
 
   // Group by document_id, keep only first `limit` distinct docs
   const byDoc = new Map<string, Suggestion[]>();
