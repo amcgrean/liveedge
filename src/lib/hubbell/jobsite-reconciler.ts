@@ -255,21 +255,44 @@ export function pairDocsToSos(
       // Signals S/T/D only fire when A didn't (A is authoritative)
       if (confidence < SIGNAL_A_CONFIDENCE) {
         // Signal S — scope keyword overlap on SO.reference.
-        // Broad keywords (frame/lumber) score at half weight unless they
-        // appear alongside at least one non-broad keyword in the overlap.
+        // Two-stage demotion for broad keywords (frame/lumber):
+        //   (a) If the doc *itself* carries any specific keyword (joist,
+        //       door, window, …), a broad-only overlap with the SO
+        //       contributes 0. Reason: the doc is about something specific
+        //       the SO doesn't share, so "frame ↔ frame" is just incidental
+        //       (Roof Framing SO vs floor-joist WO false positive).
+        //   (b) Else, if the overlap contains no specific keyword (broad-
+        //       only), each broad keyword counts at half weight. Avoids
+        //       suppressing legitimate framing-pkg ↔ framing-pkg matches
+        //       where neither side has a more specific token.
+        //   (c) Specific keywords always score at full weight.
         const refScope = extractScopeTokens(so.reference);
         const overlap = scopeOverlap(docScope, refScope);
         const hasSpecificOverlap = overlap.some((k) => !BROAD_SCOPE_KEYWORDS.has(k));
+        const docHasSpecific = Array.from(docScope).some((k) => !BROAD_SCOPE_KEYWORDS.has(k));
         if (overlap.length > 0) {
           let scopeBoost = 0;
           for (const k of overlap) {
-            scopeBoost += BROAD_SCOPE_KEYWORDS.has(k) && !hasSpecificOverlap
-              ? SIGNAL_S_PER_BROAD_KEYWORD
-              : SIGNAL_S_PER_KEYWORD;
+            const isBroad = BROAD_SCOPE_KEYWORDS.has(k);
+            if (!isBroad) {
+              scopeBoost += SIGNAL_S_PER_KEYWORD;
+            } else if (hasSpecificOverlap) {
+              // Broad alongside a specific overlap — keep full weight.
+              scopeBoost += SIGNAL_S_PER_KEYWORD;
+            } else if (docHasSpecific) {
+              // Doc has a specific keyword but the SO doesn't share it —
+              // this broad match is incidental. Contribute 0.
+              scopeBoost += 0;
+            } else {
+              // Doc is broad-only (e.g. framing pkg) and SO matches.
+              scopeBoost += SIGNAL_S_PER_BROAD_KEYWORD;
+            }
           }
           scopeBoost = Math.min(scopeBoost, SIGNAL_S_CAP);
-          confidence += scopeBoost;
-          reasons.push(`scope:${overlap.join('+')}`);
+          if (scopeBoost > 0) {
+            confidence += scopeBoost;
+            reasons.push(`scope:${overlap.join('+')}`);
+          }
         }
 
         // Signal T — amount proximity
