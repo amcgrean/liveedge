@@ -815,7 +815,13 @@ function DetailPanel({ stop, routeStop, onClose }: { stop: DeliveryStop; routeSt
                   title={photo.filename}
                 >
                   {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img src={photo.url} alt={photo.filename} className="w-full h-full object-cover" />
+                  <img
+                    src={photo.url}
+                    alt={photo.filename}
+                    loading="lazy"
+                    decoding="async"
+                    className="w-full h-full object-cover"
+                  />
                 </button>
               ))}
             </div>

@@ -62,7 +62,11 @@ export default function MapClient({ isAdmin, userBranch }: Props) {
 
   useEffect(() => {
     load(branch);
-    const iv = setInterval(() => load(branch), 30_000);
+    const iv = setInterval(() => {
+      if (typeof document === 'undefined' || document.visibilityState === 'visible') {
+        load(branch);
+      }
+    }, 30_000);
     return () => clearInterval(iv);
   }, [load, branch]);
 

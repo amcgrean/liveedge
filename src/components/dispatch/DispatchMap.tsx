@@ -349,7 +349,13 @@ export function DispatchMap({
   useEffect(() => {
     // Initial fetch after map is ready
     const t = setTimeout(fetchVehicles, 500);
-    vehicleTimerRef.current = setInterval(fetchVehicles, VEHICLE_POLL_MS);
+    // Skip polls when the tab is hidden — at 15 s cadence the background
+    // requests add up fast across many open dispatch tabs.
+    vehicleTimerRef.current = setInterval(() => {
+      if (typeof document === 'undefined' || document.visibilityState === 'visible') {
+        fetchVehicles();
+      }
+    }, VEHICLE_POLL_MS);
     return () => {
       clearTimeout(t);
       if (vehicleTimerRef.current) clearInterval(vehicleTimerRef.current);
