@@ -30,11 +30,19 @@ import { parsePoNumberField, normalizeDocNumber } from './po-number-parser';
 const HUBBELL_CUST_PREFIX = 'HUBB%';
 const SIGNAL_A_CONFIDENCE = 100;
 const SIGNAL_S_PER_KEYWORD = 30;
+const SIGNAL_S_PER_BROAD_KEYWORD = 15;
 const SIGNAL_S_CAP = 80;
 const SIGNAL_T_BONUS = 15;
 const SIGNAL_D_BONUS = 10;
 const TOTAL_TOLERANCE_PCT = 0.10;
 const DATE_TOLERANCE_DAYS = 90;
+// SOs whose reference is a partial backout, replacement, VPO, or add-on
+// almost always rejected on scope-only matches in the first Codex review
+// batch (`Trim Credit`, `Deck Credit`, `framing credit`, `REplacement Trim
+// VPO`, `added trim`). Suppress these unless the doc's total also matches
+// (i.e. the document really is for the small partial-scope amount).
+const NEGATIVE_REF_PENALTY = 30;
+const NEGATIVE_REF_PATTERN = /\b(credit|cred|replacement|repl|vpo|added)\b/i;
 
 const SCOPE_KEYWORDS = [
   'door',
@@ -59,6 +67,13 @@ const SCOPE_KEYWORDS = [
   'subfloor',
   'sheathing',
 ] as const;
+
+// "Broad" keywords appear in lots of unrelated docs and the SO reference
+// uses them generically — Codex's first review pass flagged `frame/framing`
+// as a frequent scope-only false positive. Demote these to half weight; they
+// only count at full weight when paired with another keyword or another
+// signal.
+const BROAD_SCOPE_KEYWORDS = new Set<string>(['frame', 'lumber']);
 
 // Stem any scope keyword to its singular root for comparison
 //   "doors" → "door", "windows" → "window", "framing" → "frame"
@@ -239,21 +254,32 @@ export function pairDocsToSos(
 
       // Signals S/T/D only fire when A didn't (A is authoritative)
       if (confidence < SIGNAL_A_CONFIDENCE) {
-        // Signal S — scope keyword overlap on SO.reference
+        // Signal S — scope keyword overlap on SO.reference.
+        // Broad keywords (frame/lumber) score at half weight unless they
+        // appear alongside at least one non-broad keyword in the overlap.
         const refScope = extractScopeTokens(so.reference);
         const overlap = scopeOverlap(docScope, refScope);
+        const hasSpecificOverlap = overlap.some((k) => !BROAD_SCOPE_KEYWORDS.has(k));
         if (overlap.length > 0) {
-          const scopeBoost = Math.min(overlap.length * SIGNAL_S_PER_KEYWORD, SIGNAL_S_CAP);
+          let scopeBoost = 0;
+          for (const k of overlap) {
+            scopeBoost += BROAD_SCOPE_KEYWORDS.has(k) && !hasSpecificOverlap
+              ? SIGNAL_S_PER_BROAD_KEYWORD
+              : SIGNAL_S_PER_KEYWORD;
+          }
+          scopeBoost = Math.min(scopeBoost, SIGNAL_S_CAP);
           confidence += scopeBoost;
           reasons.push(`scope:${overlap.join('+')}`);
         }
 
         // Signal T — amount proximity
+        let totalMatched = false;
         if (docTotal !== null && so.order_total !== null) {
           const soTotal = Number(so.order_total);
           if (Number.isFinite(soTotal) && withinPercent(docTotal, soTotal, TOTAL_TOLERANCE_PCT)) {
             confidence += SIGNAL_T_BONUS;
             reasons.push('total~10%');
+            totalMatched = true;
           }
         }
 
@@ -264,6 +290,16 @@ export function pairDocsToSos(
             confidence += SIGNAL_D_BONUS;
             reasons.push(`date<=${DATE_TOLERANCE_DAYS}d`);
           }
+        }
+
+        // Negative reference penalty — refs like "Trim Credit", "VPO",
+        // "REplacement Trim", "added trim" are partial-scope SOs that
+        // almost never match a full doc on scope-only matching. Penalize
+        // unless the doc's total corroborates (i.e. the doc really is for
+        // the small partial-scope amount).
+        if (so.reference && NEGATIVE_REF_PATTERN.test(so.reference) && !totalMatched) {
+          confidence -= NEGATIVE_REF_PENALTY;
+          reasons.push('neg_ref');
         }
       }
 
