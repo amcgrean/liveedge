@@ -71,10 +71,7 @@ export default function OrderDetailClient({ soNumber }: Props) {
     ? (SO_STATUS[(h.so_status).toUpperCase()] ?? { label: h.so_status, color: 'bg-gray-800/80 text-gray-400 border-gray-600' })
     : null;
 
-  const lineTotal = (detail?.lines ?? []).reduce((sum, l: WarehouseOrderLine) => {
-    if (l.unit_price != null && l.qty_ordered != null) return sum + l.unit_price * l.qty_ordered;
-    return sum;
-  }, 0);
+  const lineTotal = (detail?.lines ?? []).reduce((sum, l: WarehouseOrderLine) => sum + (l.extended_price ?? 0), 0);
 
   return (
     <div className="min-h-screen bg-gray-950 text-white p-6">

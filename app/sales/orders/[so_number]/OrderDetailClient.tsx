@@ -14,6 +14,7 @@ interface OrderLine {
   bo: number | null;
   price: number | null;
   uom: string | null;
+  extended_price: number | null;
 }
 
 interface OrderDetail {
@@ -280,11 +281,7 @@ export default function OrderDetailClient({ soNumber, from, fromLabel }: Props) 
     ? (SO_STATUS[order.so_status?.toUpperCase()] ?? { label: order.so_status || '—', color: 'bg-gray-800/80 text-gray-400 border-gray-600' })
     : null;
 
-  // Compute line totals
-  const lineTotal = order?.lines.reduce((sum, l) => {
-    if (l.price != null && l.qty_ordered != null) return sum + l.price * l.qty_ordered;
-    return sum;
-  }, 0) ?? 0;
+  const lineTotal = order?.lines.reduce((sum, l) => sum + (l.extended_price ?? 0), 0) ?? 0;
 
   return (
     <div className="min-h-screen bg-gray-950 text-white p-6">
@@ -521,9 +518,7 @@ export default function OrderDetailClient({ soNumber, from, fromLabel }: Props) 
                     </thead>
                     <tbody>
                       {order.lines.map((line) => {
-                        const ext = line.price != null && line.qty_ordered != null
-                          ? line.price * line.qty_ordered
-                          : null;
+                        const ext = line.extended_price;
                         return (
                           <tr key={line.sequence} className="border-b border-gray-800 hover:bg-gray-800/40 transition-colors">
                             <td className="px-4 py-2.5 text-xs text-gray-500">{line.sequence}</td>
