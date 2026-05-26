@@ -96,6 +96,10 @@ export async function GET(req: NextRequest) {
     const limit = Math.min(Math.max(1, Number(url.searchParams.get('limit') ?? 50) || 50), 200);
     const offset = Math.max(0, Number(url.searchParams.get('offset') ?? 0) || 0);
     const docTypeFilter = url.searchParams.get('doc_type');
+    // Filter to one specific matcher's output (e.g. ?match_source=jobsite_reconcile
+    // to review only the within-jobsite reconciler's candidates and skip older
+    // address_scrape / po_number_split queues).
+    const matchSourceFilter = url.searchParams.get('match_source');
 
     const validStatus = ['pending', 'accepted', 'rejected', 'all'].includes(status)
       ? status
@@ -109,6 +113,9 @@ export async function GET(req: NextRequest) {
     const docTypePred = (docTypeFilter === 'po' || docTypeFilter === 'wo')
       ? dsql`AND d.doc_type = ${docTypeFilter}`
       : dsql``;
+    const matchSourcePred = matchSourceFilter
+      ? dsql`AND s.match_source = ${matchSourceFilter}`
+      : dsql``;
 
     // Total count for the same filter (no limit/offset).
     const countResultRaw = await db.execute(dsql`
@@ -118,6 +125,7 @@ export async function GET(req: NextRequest) {
       WHERE s.confidence >= ${minConfidence}
       ${statusPred}
       ${docTypePred}
+      ${matchSourcePred}
     `);
     const totalRow = Array.isArray(countResultRaw)
       ? (countResultRaw[0] as { total?: number } | undefined)
@@ -173,6 +181,7 @@ export async function GET(req: NextRequest) {
       WHERE s.confidence >= ${minConfidence}
       ${statusPred}
       ${docTypePred}
+      ${matchSourcePred}
       ORDER BY s.confidence DESC, s.suggested_at DESC, s.id
       LIMIT ${limit} OFFSET ${offset}
     `);
@@ -200,8 +209,14 @@ export async function GET(req: NextRequest) {
     const uniqueSoIds = Array.from(new Set(suggestionRows.map((r) => r.so_id)));
     let soById = new Map<number, SoRow>();
     if (uniqueSoIds.length > 0) {
+      // agility_so_header.so_id is varchar. Match the column type on both
+      // sides of the IN — casting `soh.so_id::int` strips the b-tree index
+      // and forces a 1M-row Seq Scan per request, which times out the
+      // serverless function on /admin/hubbell/suggestions?status=accepted.
+      // (Same root cause noted on the prior split-into-two-queries fix
+      // for the bids-side lookup.)
       const soIdsLit = dsql.join(
-        uniqueSoIds.map((id) => dsql`${id}::int`),
+        uniqueSoIds.map((id) => dsql`${String(id)}`),
         dsql`, `,
       );
       const soRowsRaw = await db.execute(dsql`
@@ -223,7 +238,7 @@ export async function GET(req: NextRequest) {
             WHERE l.so_id = soh.so_id AND l.system_id = soh.system_id AND l.is_deleted = false
           )                              AS so_order_total
         FROM public.agility_so_header soh
-        WHERE soh.so_id::int IN (${soIdsLit})
+        WHERE soh.so_id IN (${soIdsLit})
           AND soh.is_deleted = false
       `);
       const soRows: SoRow[] = Array.isArray(soRowsRaw)
