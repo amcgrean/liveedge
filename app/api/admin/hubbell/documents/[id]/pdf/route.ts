@@ -4,17 +4,25 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { eq } from 'drizzle-orm';
 import { requireCapability } from '../../../../../../../src/lib/access-control';
+import { verifyHubbellUploadToken } from '../../../../../../../src/lib/service-auth';
 import { getDb, schema } from '../../../../../../../db/index';
 import { getPresignedUrl } from '../../../../../../../src/lib/r2';
 
 export const runtime = 'nodejs';
 
 export async function GET(
-  _req: NextRequest,
+  req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const authResult = await requireCapability('hubbell.review');
-  if (authResult instanceof NextResponse) return authResult;
+  // Dual auth: bearer for local review CLI / scripts, user session for UI.
+  const hasBearer = req.headers.get('authorization')?.startsWith('Bearer ');
+  if (hasBearer) {
+    const denied = verifyHubbellUploadToken(req);
+    if (denied) return denied;
+  } else {
+    const authResult = await requireCapability('hubbell.review');
+    if (authResult instanceof NextResponse) return authResult;
+  }
 
   const { id } = await params;
   const db = getDb();

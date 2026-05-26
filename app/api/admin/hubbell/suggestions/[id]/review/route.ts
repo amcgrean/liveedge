@@ -18,6 +18,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { eq, and, sql as dsql } from 'drizzle-orm';
 import { requireCapability } from '../../../../../../../src/lib/access-control';
+import { verifyHubbellUploadToken } from '../../../../../../../src/lib/service-auth';
 import { getDb, schema } from '../../../../../../../db/index';
 
 export const runtime = 'nodejs';
@@ -29,9 +30,19 @@ export async function POST(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> },
 ) {
-  const auth = await requireCapability('hubbell.review');
-  if (auth instanceof NextResponse) return auth;
-  const session = auth;
+  // Dual auth: bearer for local review CLI, user session for UI.
+  const hasBearer = req.headers.get('authorization')?.startsWith('Bearer ');
+  let reviewer: string;
+  if (hasBearer) {
+    const denied = verifyHubbellUploadToken(req);
+    if (denied) return denied;
+    // Reviewer identity: caller may pass X-Reviewer header (e.g. "codex" / "claude-code")
+    reviewer = req.headers.get('x-reviewer') || 'service:hubbell-review-cli';
+  } else {
+    const auth = await requireCapability('hubbell.review');
+    if (auth instanceof NextResponse) return auth;
+    reviewer = auth.user?.name ?? auth.user?.email ?? 'unknown';
+  }
 
   const { id } = await params;
   if (!/^[0-9a-f-]{36}$/i.test(id)) {
@@ -48,8 +59,6 @@ export async function POST(
   if (action !== 'accept' && action !== 'reject') {
     return NextResponse.json({ error: 'action must be accept|reject' }, { status: 400 });
   }
-
-  const reviewer = session.user?.name ?? session.user?.email ?? 'unknown';
 
   const db = getDb();
 
