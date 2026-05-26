@@ -1,6 +1,35 @@
-# Buyer Workspace — State + Plan (2026-05-22)
+# Buyer Workspace — State + Plan (2026-05-22 → COMPLETE 2026-05-26)
 
-Branch: `claude/buyers-workspace-planning-1ZMmm`. Planning only — no code in this PR.
+Branch: `claude/buyers-workspace-planning-1ZMmm` (planning) → built across 7 PRs through 2026-05-26.
+
+## Status (2026-05-26)
+
+All seven planned phases are LIVE.
+
+| Phase | Deliverable | PR | Status |
+|---|---|---|---|
+| 1 | `bids.item_planning` + `branch_planning_defaults` schema (migration 0028) | #379 | LIVE |
+| 2 | `/admin/item-planning` CRUD + CSV template + import + branch defaults | #380 | LIVE |
+| 3 | Replenishment engine + `/api/purchasing/replenishment` + perf indexes (migration 0029) | #382 | LIVE |
+| 4 | `/purchasing/outages` page | #383 | LIVE |
+| 5 | `/purchasing/suggested-buys` rebuilt on the engine; old Agility-PPO routes removed | #384 | LIVE |
+| 6 | Buyer Workspace redesign (Claude Design handoff) + Recent Movement + `bids.movement_notes` (migration 0030) | #391 | LIVE |
+| 7 | Item scorecard "Replenishment" card + inline override editor | ? | LIVE |
+
+**Current CLAUDE.md section: "Buyer Workspace & Replenishment Engine (2026-05-22 → 2026-05-26)"** — that's the canonical state-of-the-codebase reference for this feature set.
+
+**Follow-ups deferred** (none blocking; all flagged in the CLAUDE.md section as "intentional gaps"):
+- Daily engine-output snapshot table → unlocks sparklines + delta-since-yesterday on hero tiles
+- Per-row unit cost on engine output → `estimatedValue` on Buy Now tile + supplier $ rollup
+- Invoice-vs-PO cost diff feed → price-variance exception count
+- Per-line submission data → real `total_lines` / `with_discrepancy` on Pending Check-Ins
+- `qty_on_hand` sync health investigation (the engine is correct; the input data is sparse)
+
+---
+
+The rest of this document is preserved as the historical design record (audit, engine spec, severity bucket definitions, etc.).
+
+---
 
 ## TL;DR
 - The Workspace itself is currently a near-empty shell: 3 quick-action tiles + "Upcoming POs" + "Recent Check-Ins". No surfacing of *what a buyer should do today.*

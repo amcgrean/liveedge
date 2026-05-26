@@ -964,6 +964,98 @@ Snapshot of unmerged `claude/*` and `codex/*` branches with a hint about whether
 15. **Perf — `revalidateTag` taxonomy**: split the single `'erp'` tag into per-domain tags (`erp:scorecard`, `erp:home`, `erp:sales-hub`, etc.) once a real "stale dashboard after my own write" complaint surfaces. Currently three invalidation call sites, all in `app/management/rebates/actions.ts`. Adding finer tags lets bid/design/service mutations invalidate just the affected cache instead of nuking everything. Don't build speculatively.
 16. **Perf — UOM `$` audit (consolidates with item 10)**: PR #386 didn't touch the `qty_ordered * price` math; item 10 still tracks. Specific files confirmed as still using the broken math: `/api/sales/orders/[so_number]/route.ts`, `/api/dispatch/orders/[so_number]/lines/route.ts`, `/api/warehouse/orders/[so_number]/route.ts`. Pattern: swap to `extended_price` / `unshipped_extended_price` on `agility_so_lines` (columns already exist). Spot-check the order-detail page against Agility's "Ext" column to confirm parity.
 
+## Buyer Workspace & Replenishment Engine (2026-05-22 → 2026-05-26)
+
+LiveEdge-owned replenishment policy + a SQL engine that drives Suggested Buys, Potential Outages, and the rebuilt Buyer Workspace dashboard. The whole plan and the resolved design decisions live at **`docs/buyers-workspace-plan-2026-05-22.md`**.
+
+**Why this exists:** Agility's `agility_suggested_po_*` (Suggested POs) and per-item min/max fields don't produce actionable suggestions for Beisser's mix — especially Millwork. LiveEdge owns the planning policy (`bids.item_planning`) and uses Agility purely as the source of truth for stock, demand, supply, lead times, and minimums.
+
+### Schema
+
+- **`bids.item_planning`** (migration 0028) — sparse per-`(system_id, item_code)` override row. All policy fields nullable so a row can carry just one override. Columns: `min_on_hand`, `target_on_hand`, `safety_stock_days`, `usage_window_days`, `seasonality_factor`, `seasonality_profile` (jsonb 12-month multipliers), `pack_qty`, `preferred_supplier`, `is_critical`, `category` (`millwork|lumber|siding|shingles|trim|decking|windows|doors|other`), `is_paused`, `notes`, `source` (`manual|csv_import|admin_suggestion`).
+- **`bids.branch_planning_defaults`** (migration 0028) — one row per `system_id` with `usage_window_days` (default 90), `safety_stock_days` (default 7), optional `seasonality_profile`. Engine falls back here when an item has no override, then to hardcoded defaults.
+- **`bids.movement_notes`** (migration 0030) — one row per `(system_id, item_code, week_starting)` for buyer-written annotations on velocity-changing SKUs (e.g. "Spring framing rush"). Surfaces in `/purchasing/movement` and the workspace's Recent Movement tile.
+
+### Engine
+
+`src/lib/purchasing/replenishment.ts` — one CTE-based query reads on-hand, usage, open demand, open supply, lead times, and overrides, then emits per-item severity + suggested qty. **Severity thresholds (lead-time-driven)**:
+
+- **red** = `coverage_days <= lead_time_1` (will OOS before next PO can land)
+- **amber** = `coverage_days <= lead_time_1 + safety_stock_days`
+- **yellow** = `coverage_days <= lead_time_1 + safety_stock_days + 14`
+- **green** = otherwise (items breaching `min_on_hand` without usage history go amber)
+
+`suggested_qty = max(min_ord_qty, ceil(gap / pack_qty) * pack_qty)` where gap = `target_on_hand` (if set) − effective on hand, else `(lead+safety+14) days of demand` − effective on hand.
+
+**Perf — single-branch query ~270ms with the two indexes in migration 0029:**
+- `idx_csf_branch_item_date` — drives the per-item usage LATERAL subquery (index-only scan with `qty_shipped` INCLUDE).
+- `idx_agility_suppliers_trimmed_key` — expression index `(TRIM(supplier_key), ship_from_seq)` so the supplier-name join in the outer SELECT uses an index lookup.
+
+Before optimization the same query ran 18s — beware of pulling the supplier-name join back into `supplier_rules`, the optimizer can't push the `system_id`/`item_ptr`/`is_primary` predicates through it.
+
+### Movement engine
+
+`src/lib/purchasing/movement.ts` — 7-day vs trailing-30-day `qty_shipped` per `(branch_id, item_number)` from `customer_scorecard_fact`. Filters items where prior daily ≥ 0.25 (avoids enormous % from near-zero baselines) and `|pct change| >= min_pct` (default 25). Joins `bids.movement_notes` for the latest annotation per item.
+
+### API surface
+
+```
+GET  /api/purchasing/replenishment              ?view=suggested|outages|all &branch &category &supplier &critical &q &limit
+GET  /api/purchasing/workspace                  six-feed aggregator for /purchasing/workspace
+GET  /api/purchasing/movement                   ?direction=up|down|all &min_pct &branch
+GET  /api/purchasing/movement/notes             list (filter by branch and/or item)
+POST /api/purchasing/movement/notes             upsert by (sys, item, week)
+DELETE /api/purchasing/movement/notes?id=…      delete
+
+GET    /api/admin/item-planning                 list with filters
+POST   /api/admin/item-planning                 create override
+GET    /api/admin/item-planning/[id]
+PATCH  /api/admin/item-planning/[id]            partial update
+DELETE /api/admin/item-planning/[id]
+GET    /api/admin/item-planning/template        CSV download
+POST   /api/admin/item-planning/import          CSV upsert by (sys, item)
+GET    /api/admin/branch-planning-defaults      all branches with synthesized defaults
+PUT    /api/admin/branch-planning-defaults      upsert by systemId
+```
+
+Branch resolution: `purchasing.view` users without `branch.all` get pinned to `session.user.branch`. `branch.all` users may pass `?branch=ALL` (or omit) for company-wide aggregation.
+
+### Pages
+
+- **`/purchasing/workspace`** — full redesign matching the Claude Design handoff (bundle at `docs/agent-prompts/buyer-workspace-dashboard-design.md`). Six tiles: Buy Now (hero green) · Outage Risk (hero red) · Overdue POs · Pending Check-Ins · PO Exceptions · Recent Movement. Quick Actions strip below. Sticky branch selector + live as-of indicator. One fetch to `/api/purchasing/workspace`.
+- **`/purchasing/suggested-buys`** — rebuilt on the engine. Grouped by supplier so a buyer can assemble one PO per vendor. CSV export.
+- **`/purchasing/outages`** — sorted by days-to-zero, critical items called out. Per-branch breakdown card for `branch.all` users.
+- **`/purchasing/movement`** — table of velocity-changing items with inline modal note editor.
+- **`/admin/item-planning`** — full CRUD for overrides + CSV template download + import. Branch Defaults modal.
+- **`/scorecard/product/item/[itemCode]`** — gained a "Replenishment" card (PR ?, 2026-05-26) showing per-branch override state for the item. Inline edit modal opens for users with `admin.config.manage`; others get a read-only view + deep link to `/admin/item-planning?q=<item>`.
+
+### Pages NOT updated and intentional gaps
+
+- **Sparklines on the workspace hero tiles** — design accommodates them but they need a daily snapshot of the engine output (a 14-day trend table). Code paths render only when `spark[]` is non-empty, so dropping a snapshot table later wires them in automatically. Same for `deltaYesterday` / `deltaWeek` on every tile — currently always 0.
+- **`estimatedValue` on Buy Now + `value` on supplier rollup** — the engine doesn't track per-row unit cost. Wire-up requires joining unit-cost data per item into the engine row (one new LATERAL or pre-aggregated view). Returns 0 today; UI conditionally hides the dollar columns.
+- **Price-variance exceptions** — `byKind.priceVariance` returns 0 because PO-cost vs invoice-cost diff isn't derivable from mirror tables. Would need an invoice-vs-PO-cost feed.
+- **Pending Check-Ins `total_lines` / `with_discrepancy`** — `bids.po_submissions` carries no per-line data. `total_lines` returns 0; `with_discrepancy` uses `priority='high'` as a proxy. Real per-line tracking is a separate scope.
+- **Quick Actions: New PO** is disabled with a "coming soon" hint. SKU lookup routes to `/sales/products`. Receive shipment was removed from the strip — `/purchasing` (PO Check-In) covers that path.
+
+### Data quality flag (not a bug in this code)
+
+On 20GR, only **16 of 1366 stocked-active items** had positive `qty_on_hand` at the time the engine was built. The engine is correct given that input; most items will surface as red/amber until the QOH sync is healthier. Investigate the ERP→`agility_item_branch.qty_on_hand` sync separately if the volume of red rows feels wrong.
+
+### Capability matrix
+
+| Capability | Effect |
+|---|---|
+| `purchasing.view` | Read `/purchasing/workspace`, `/suggested-buys`, `/outages`, `/movement`, all replenishment + movement APIs |
+| `branch.all` | Cross-branch view in all of the above (admin / lead buyer) |
+| `admin.config.manage` | Write item planning overrides + branch defaults via `/admin/item-planning` or the inline editor on the item scorecard |
+| `sales.view` | Read item scorecard (which surfaces the Replenishment card) — no editing |
+
+### Where to look next
+
+- `docs/buyers-workspace-plan-2026-05-22.md` — the original plan + resolved design decisions
+- `docs/agent-prompts/buyer-workspace-dashboard-design.md` — the brief that produced the Claude Design handoff
+- `docs/agent-prompts/replenishment-handoff-2026-05-26.md` — most recent handoff with state + immediate follow-ups
+
 ## Report Email Subscriptions (2026-05-22)
 
 Users can subscribe to three reports for email delivery (daily / weekly / monthly, PDF or Excel). All sends go through Resend. Self-service only — each user manages their own subscriptions.
