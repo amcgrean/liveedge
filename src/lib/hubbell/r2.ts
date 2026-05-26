@@ -34,9 +34,27 @@ export function buildHubbellKey(params: {
   docType: 'po' | 'wo';
   docNumber: string;
   receivedAt?: Date;
+  // Append a short prefix of the document's source_hash so re-uploads of a
+  // different PDF under the same (doc_type, doc_number) — Hubbell occasionally
+  // reuses doc numbers for a new job — land on a distinct R2 object instead
+  // of silently overwriting the prior one. Without this, the older
+  // hubbell_documents row keeps its (now-stale) extracted_* metadata but its
+  // r2_key resolves to a different PDF, causing reviewer mismatch.
+  // See PR #405 for the supersession skip that gates against the same root
+  // cause on the reconciler side, and PR #406 (this PR) for the fix at the
+  // write path.
+  // Pre-2026-05-27 uploads used the un-hashed key shape and are still
+  // readable (their R2 objects exist on the old keys) — only NEW uploads
+  // adopt the hashed shape.
+  sourceHash?: string;
 }): string {
   const yyyy = (params.receivedAt ?? new Date()).getUTCFullYear();
-  return `hubbell/${yyyy}/${params.docType}/${safeSegment(params.docNumber)}.pdf`;
+  const num = safeSegment(params.docNumber);
+  const hashSuffix =
+    params.sourceHash && /^[0-9a-f]+$/i.test(params.sourceHash)
+      ? `-${params.sourceHash.slice(0, 12)}`
+      : '';
+  return `hubbell/${yyyy}/${params.docType}/${num}${hashSuffix}.pdf`;
 }
 
 export async function putHubbellPdf(key: string, data: Buffer | Uint8Array): Promise<void> {
