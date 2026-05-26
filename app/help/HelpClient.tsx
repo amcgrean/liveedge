@@ -40,7 +40,13 @@ function topicMatches(t: Topic, q: string): boolean {
   return hay.includes(q.toLowerCase());
 }
 
-function ArticleBody({ topic, q }: { topic: Topic; q: string }) {
+function normalizePath(input: string): string {
+  const clean = input.split('?')[0]?.split('#')[0] ?? '';
+  if (!clean) return '/';
+  return clean.startsWith('/') ? clean : `/${clean}`;
+}
+
+function ArticleBody({ topic, q, onSelectTopic }: { topic: Topic; q: string; onSelectTopic: (id: string) => void }) {
   const paragraphs: string[] = topic.body.split(/\n\n+/);
   return (
     <article className="prose prose-invert max-w-none">
@@ -72,6 +78,28 @@ function ArticleBody({ topic, q }: { topic: Topic; q: string }) {
           </p>
         ))}
       </div>
+
+      {topic.related && topic.related.length > 0 && (
+        <div className="mt-6 rounded-xl border border-white/10 bg-slate-900/50 p-5">
+          <div className="text-xs text-slate-500 uppercase tracking-widest mb-3">Related guides</div>
+          <div className="flex flex-wrap gap-2">
+            {topic.related.map((id) => {
+              const related = TOPICS.find((t) => t.id === id);
+              if (!related) return null;
+              return (
+                <button
+                  key={id}
+                  onClick={() => onSelectTopic(id)}
+                  className="px-3 py-1.5 rounded-lg text-xs bg-slate-800 text-cyan-300 hover:bg-slate-700"
+                >
+                  {related.title}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
       {topic.steps && topic.steps.length > 0 && (
         <div className="mt-6 rounded-xl border border-white/10 bg-slate-900/60 p-5">
           <div className="text-xs text-slate-500 uppercase tracking-widest mb-3">Steps</div>
@@ -93,10 +121,37 @@ function ArticleBody({ topic, q }: { topic: Topic; q: string }) {
 
 type Props = { initialTopicId?: string };
 
+/** Pick the most specific TOPIC whose `path` matches the given route.
+ *  Topic paths use Next.js dynamic segment syntax (`/tv/[branch]`, `/sales/orders/[so_number]`)
+ *  while `?from=` carries the concrete pathname from `usePathname()` (`/tv/20GR`,
+ *  `/sales/orders/1170210`), so we match segment-by-segment and treat any `[param]`
+ *  as a wildcard. Longest path wins so deeper routes beat shallower ones. */
+function resolveTopicFromPath(fromPath: string | null): string | undefined {
+  if (!fromPath) return undefined;
+  const fromSegs = fromPath.replace(/\/+$/, '').split('/').filter(Boolean);
+  let best: { id: string; len: number } | null = null;
+  for (const t of TOPICS) {
+    if (!t.path) continue;
+    const topicSegs = t.path.replace(/\/+$/, '').split('/').filter(Boolean);
+    if (topicSegs.length > fromSegs.length) continue;
+    let match = true;
+    for (let i = 0; i < topicSegs.length; i++) {
+      const ts = topicSegs[i];
+      if (ts.startsWith('[') && ts.endsWith(']')) continue; // wildcard segment
+      if (ts !== fromSegs[i]) { match = false; break; }
+    }
+    if (!match) continue;
+    if (!best || topicSegs.length > best.len) best = { id: t.id, len: topicSegs.length };
+  }
+  return best?.id;
+}
+
 export default function HelpClient({ initialTopicId }: Props) {
   const searchParams = useSearchParams();
   const router = useRouter();
-  const urlTopic = searchParams.get('topic') || initialTopicId || TOPICS[0].id;
+  const fromPath = searchParams.get('from');
+  const inferredTopic = resolveTopicFromPath(fromPath);
+  const urlTopic = searchParams.get('topic') || inferredTopic || initialTopicId || TOPICS[0].id;
 
   const [q, setQ] = React.useState('');
   const [openGroups, setOpenGroups] = React.useState<Record<string, boolean>>(() =>
@@ -289,7 +344,7 @@ export default function HelpClient({ initialTopicId }: Props) {
             </div>
           </div>
 
-          <ArticleBody topic={activeTopic} q={q} />
+          <ArticleBody topic={activeTopic} q={q} onSelectTopic={selectTopic} />
 
           {/* Footer CTA */}
           <div className="mt-12 rounded-xl border border-cyan-500/20 bg-cyan-500/5 p-5 flex flex-col sm:flex-row items-start sm:items-center gap-4">

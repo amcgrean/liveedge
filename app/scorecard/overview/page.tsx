@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import { Suspense } from 'react';
 import {
   fetchAggregateKpis,
   fetchAggregateThreeYear,
@@ -15,6 +16,8 @@ import BottomMetrics from '../[customerId]/components/BottomMetrics';
 import AggregateFilterBar from '../_components/AggregateFilterBar';
 import ScorecardTabs from '../_components/ScorecardTabs';
 import { BranchBreakdownTable } from '../_components/AggregateTables';
+import Breadcrumb from '@/components/Breadcrumb';
+import SubscribeButton from '@/components/reports/SubscribeButton';
 import {
   ThreeYearChart,
   BranchContributionPareto,
@@ -44,34 +47,29 @@ const NO_DTP = { base: null, compare: null };
 
 export const maxDuration = 60;
 
-export default async function OverviewPage({
-  searchParams,
-}: {
-  searchParams: Promise<Record<string, string | string[]>>;
+function OverviewSkeleton() {
+  // Mirrors the structure of OverviewContent so layout doesn't shift when
+  // the real content swaps in. Pure CSS skeleton — no client JS.
+  return (
+    <div className="space-y-5">
+      <div className="h-64 bg-slate-800/40 border border-slate-700 rounded-lg animate-pulse" />
+      <div className="h-40 bg-slate-800/40 border border-slate-700 rounded-lg animate-pulse" />
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
+        {Array.from({ length: 5 }).map((_, i) => (
+          <div key={i} className="h-24 bg-slate-800/40 border border-slate-700 rounded-lg animate-pulse" />
+        ))}
+      </div>
+      <div className="h-48 bg-slate-800/40 border border-slate-700 rounded-lg animate-pulse" />
+      <div className="h-64 bg-slate-800/40 border border-slate-700 rounded-lg animate-pulse" />
+    </div>
+  );
+}
+
+async function OverviewContent({ params, fakeCustomerParams }: {
+  params: AggregateParams;
+  fakeCustomerParams: ScorecardParams;
 }) {
-  const sp = await searchParams;
-  const today = new Date().toISOString().slice(0, 10);
-  const currentYear = new Date().getFullYear();
-
-  const baseYear = parseInt(String(sp.baseYear ?? currentYear), 10);
-  const compareYear = parseInt(String(sp.compareYear ?? baseYear - 1), 10);
-  const period = (String(sp.period ?? 'YTD')) as AggregateParams['period'];
-  const cutoffDate = String(sp.cutoffDate ?? today);
-  const branchIds = sp.branch
-    ? Array.isArray(sp.branch) ? sp.branch : [sp.branch]
-    : [];
-
-  const params: AggregateParams = { branchIds, baseYear, compareYear, period, cutoffDate };
-
-  // Fake ScorecardParams for components that still need it (ProductMajorTable)
-  const fakeCustomerParams: ScorecardParams = {
-    customerId: '',
-    branchIds,
-    baseYear,
-    compareYear,
-    period,
-    cutoffDate,
-  };
+  const { branchIds, baseYear, compareYear, period, cutoffDate } = params;
 
   const emptyKpis: KpiComparison = {
     base: { sales: null, gp: null, vaSales: null, nsSales: null, nsGp: null,
@@ -108,8 +106,6 @@ export default async function OverviewPage({
   const saleTypes = saleTypesRes.status === 'fulfilled' ? saleTypesRes.value : [];
   const branchSummaries = branchSummariesRes.status === 'fulfilled' ? branchSummariesRes.value : [];
 
-  const periodLabel = period === 'YTD' ? `YTD thru ${cutoffDate}` : 'Full Year';
-
   const vaPctBase = kpis.base.sales && kpis.base.vaSales !== null ? kpis.base.vaSales / kpis.base.sales : null;
   const vaPctCompare = kpis.compare.sales && kpis.compare.vaSales !== null ? kpis.compare.vaSales / kpis.compare.sales : null;
   const nsPctBase = kpis.base.sales && kpis.base.nsSales !== null ? kpis.base.nsSales / kpis.base.sales : null;
@@ -118,48 +114,12 @@ export default async function OverviewPage({
   const gmPctCompare = kpis.compare.sales && kpis.compare.gp !== null ? kpis.compare.gp / kpis.compare.sales : null;
 
   return (
-    <div className="p-4 md:p-6 space-y-5 max-w-7xl mx-auto">
-      <style>{`
-        @media print {
-          body { background: white !important; color: black !important; }
-          .print\\:hidden { display: none !important; }
-          nav, header { display: none !important; }
-        }
-      `}</style>
-
-      <ScorecardTabs />
-
-      <div className="print:hidden">
-        <Link href="/management" className="text-sm text-cyan-400 hover:underline">
-          ← Management
-        </Link>
-      </div>
-
+    <>
       {failures.length > 0 && (
         <div className="p-3 bg-amber-900/30 border border-amber-700/60 rounded-lg text-amber-200 text-sm print:hidden">
           Some sections failed to load: {failures.join(', ')}. Showing available data.
         </div>
       )}
-
-      <div className="space-y-0.5">
-        <h1 className="text-2xl font-bold text-white">Company Overview</h1>
-        <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-slate-400">
-          <span>{branchIds.length === 0 ? 'All Branches' : branchIds.map((b) => BRANCH_LABELS[b] ?? b).join(', ')}</span>
-          <span className="text-slate-600">·</span>
-          <span>{baseYear} vs {compareYear}</span>
-          <span className="text-slate-600">·</span>
-          <span>{periodLabel}</span>
-        </div>
-      </div>
-
-      <AggregateFilterBar
-        basePath="/scorecard/overview"
-        baseYear={baseYear}
-        compareYear={compareYear}
-        period={period}
-        cutoffDate={cutoffDate}
-        branchIds={branchIds}
-      />
 
       <ThreeYearChart entries={threeYear} />
 
@@ -199,6 +159,7 @@ export default async function OverviewPage({
           minorsApiPath="/api/scorecard/aggregate"
           orderFrom="/scorecard/overview"
           orderFromLabel="Company Overview"
+          productFromHint="product-overview"
         />
       </Section>
 
@@ -211,6 +172,105 @@ export default async function OverviewPage({
       <Section title="Detail Metrics">
         <BottomMetrics kpis={kpis} daysToPay={NO_DTP} baseYear={baseYear} compareYear={compareYear} />
       </Section>
-    </div>
+    </>
+  );
+}
+
+export default async function OverviewPage({
+  searchParams,
+}: {
+  searchParams: Promise<Record<string, string | string[]>>;
+}) {
+  const sp = await searchParams;
+  const today = new Date().toISOString().slice(0, 10);
+  const currentYear = new Date().getFullYear();
+
+  const baseYear = parseInt(String(sp.baseYear ?? currentYear), 10);
+  const compareYear = parseInt(String(sp.compareYear ?? baseYear - 1), 10);
+  const period = (String(sp.period ?? 'YTD')) as AggregateParams['period'];
+  const cutoffDate = String(sp.cutoffDate ?? today);
+  const branchIds = sp.branch
+    ? Array.isArray(sp.branch) ? sp.branch : [sp.branch]
+    : [];
+
+  const params: AggregateParams = { branchIds, baseYear, compareYear, period, cutoffDate };
+
+  // Fake ScorecardParams for components that still need it (ProductMajorTable)
+  const fakeCustomerParams: ScorecardParams = {
+    customerId: '',
+    branchIds,
+    baseYear,
+    compareYear,
+    period,
+    cutoffDate,
+  };
+
+  const periodLabel = period === 'YTD' ? `YTD thru ${cutoffDate}` : 'Full Year';
+
+  // Header bits and the filter bar render synchronously from URL params.
+  // The data-dependent body is suspended so the page paints immediately
+  // and the user sees the skeleton instead of a blank screen while the
+  // five Promise.allSettled aggregates resolve (~1-3s on cold cache).
+  return (
+    <>
+      <Breadcrumb
+        items={[
+          { href: '/management', label: 'Management' },
+          { label: 'Scorecard Overview' },
+        ]}
+      />
+      <div className="p-4 md:p-6 space-y-5 max-w-7xl mx-auto">
+        <style>{`
+          @media print {
+            body { background: white !important; color: black !important; }
+            .print\\:hidden { display: none !important; }
+            nav, header { display: none !important; }
+          }
+        `}</style>
+
+        <ScorecardTabs />
+
+      <div className="print:hidden">
+        <Link href="/management" className="text-sm text-cyan-400 hover:underline">
+          ← Management
+        </Link>
+      </div>
+
+      <div className="flex items-start justify-between flex-wrap gap-3">
+        <div className="space-y-0.5">
+          <h1 className="text-2xl font-bold text-white">Company Overview</h1>
+          <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-slate-400">
+            <span>{branchIds.length === 0 ? 'All Branches' : branchIds.map((b) => BRANCH_LABELS[b] ?? b).join(', ')}</span>
+            <span className="text-slate-600">·</span>
+            <span>{baseYear} vs {compareYear}</span>
+            <span className="text-slate-600">·</span>
+            <span>{periodLabel}</span>
+          </div>
+        </div>
+
+        <div className="print:hidden">
+          <SubscribeButton
+            reportKey="scorecard-overview"
+            reportLabel="Scorecard Overview"
+            paramsSummary={`${branchIds.length === 0 ? 'All Branches' : branchIds.join(', ')} · ${period}`}
+            params={{ branchIds, baseYear: null, compareYear: null, period }}
+          />
+        </div>
+      </div>
+
+      <AggregateFilterBar
+        basePath="/scorecard/overview"
+        baseYear={baseYear}
+        compareYear={compareYear}
+        period={period}
+        cutoffDate={cutoffDate}
+        branchIds={branchIds}
+      />
+
+      <Suspense fallback={<OverviewSkeleton />}>
+        <OverviewContent params={params} fakeCustomerParams={fakeCustomerParams} />
+      </Suspense>
+      </div>
+    </>
   );
 }

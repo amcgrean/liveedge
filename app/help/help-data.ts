@@ -11,6 +11,7 @@ export type Topic = {
   keywords?: string[];
   body: string;
   steps?: string[];
+  related?: string[];
 };
 
 export type Group = {
@@ -354,7 +355,55 @@ export const TOPICS: Topic[] = [
     path: '/management',
     keywords: ['executive', 'leadership', 'overview'],
     body:
-      `The Management Hub is the entry point for management-level reporting. Quick links to all scorecards, KPI summaries, and report exports. Branch context applies — switch to "All Branches" for company-wide totals.`,
+      `The Management Hub is the command center for leadership reporting. It centralizes KPIs, branch rollups, scorecards, and links into deeper drill-down screens. Use this page first when doing weekly leadership review, month-end scorecard checks, or branch-to-branch performance comparisons.
+
+Recommended cadence: (1) set branch scope, (2) confirm period toggle (YTD vs Full Year), (3) scan KPI trend, (4) drill to root cause pages. Use the scorecard breadcrumbs to return to prior levels without losing your filter context.`,
+    related: ['management-drilldown-playbook','scorecard-metrics-glossary','scorecard-overview','scorecard-branch','scorecard-rep','scorecard-product','customer-scorecard','sales-reports'],
+  },
+  {
+    id: 'management-drilldown-playbook',
+    title: 'Management Drill-Down Playbook',
+    group: 'management',
+    path: '/management',
+    keywords: ['drill down', 'workflow', 'playbook', 'root cause'],
+    body:
+      `Use this standard drill-down flow for weekly and month-end reviews to keep leadership analysis consistent:
+
+1) Start at Company Overview for total direction (Sales $, GM%, Orders).
+2) Move to Branch if a variance appears company-wide.
+3) Move to Rep or Customer to identify ownership of change.
+4) Move to Product (Major -> Minor -> Item) to confirm mix/pricing drivers.
+5) Move to order-level detail for action items.
+
+Root-cause matrix (quick reference):
+• Sales down + Orders flat -> likely ticket size / mix shift.
+• Sales flat + GM% down -> pricing or cost pressure.
+• Sales up + GM$ flat -> margin-rate compression.
+• One branch down + company up -> localized execution or customer concentration.`,
+    related: ['management-hub','scorecard-overview','scorecard-branch','scorecard-rep','scorecard-product','customer-scorecard'],
+  },
+  {
+    id: 'scorecard-metrics-glossary',
+    title: 'Scorecard Metrics Glossary',
+    group: 'management',
+    path: '/scorecard/overview',
+    keywords: ['kpi definitions', 'gm', 'margin', 'aov', 'ytd', 'full year'],
+    body:
+      `Metric definitions used across scorecards:
+
+• Sales $: invoiced revenue in scope.
+• Gross Margin $: Sales minus Cost.
+• Gross Margin %: Gross Margin $ / Sales $.
+• Orders: distinct order count in scope period.
+• Avg Order Value (AOV): Sales $ / Orders.
+• Mix %: category Sales $ divided by total Sales $ for the same slice.
+
+Period controls:
+• YTD compares each year through the same cutoff date.
+• Full Year compares complete calendar/fiscal years in selected range.
+
+Interpretation caution: evaluate Sales $, GM%, and Mix together. Any single KPI viewed alone can be misleading.`,
+    related: ['scorecard-overview','scorecard-branch','scorecard-product','customer-scorecard','sales-reports'],
   },
   {
     id: 'scorecard-overview',
@@ -363,7 +412,10 @@ export const TOPICS: Topic[] = [
     path: '/scorecard/overview',
     keywords: ['scorecard', 'company', 'totals'],
     body:
-      `Company-wide scorecard: revenue, gross margin, order counts, and trend over time. Drill in by clicking a metric to see the supporting detail.`,
+      `Company-wide scorecard combines all branches and shows 3-year comparisons for core metrics: Sales $, Gross Margin $, Gross Margin %, Orders, Avg Order Value, and product/sale-type mix.
+
+How to read it: start with the KPI strip at the top, then compare trend lines by year, then open breakdown tables. A quick health pattern is: Sales up + GM% stable/up + concentration risk stable/down. If Sales rise but GM% falls, drill into product major and sale type mix first.`,
+    related: ['management-hub','scorecard-branch','scorecard-product','customer-scorecard'],
   },
   {
     id: 'scorecard-branch',
@@ -372,7 +424,10 @@ export const TOPICS: Topic[] = [
     path: '/scorecard/branch/[branch]',
     keywords: ['scorecard', 'location', 'branch'],
     body:
-      `Per-branch scorecard. Pick a branch to see its individual revenue, margin, and activity metrics. Useful for comparing locations side by side.`,
+      `Branch scorecard shows a single branch with identical KPI definitions used in Company Overview so comparisons stay apples-to-apples. Core blocks are KPI cards, trend chart, top customers, and product/sale-type breakdowns.
+
+Use drill-down links on customer and product rows to open detail scorecards already filtered to the same period. This is the fastest way to isolate whether branch variance is customer concentration, product mix, pricing discipline, or order volume.`,
+    related: ['scorecard-overview','customer-scorecard','sales-reports'],
   },
   {
     id: 'scorecard-rep',
@@ -381,7 +436,10 @@ export const TOPICS: Topic[] = [
     path: '/scorecard/rep',
     keywords: ['rep', 'salesperson', 'commission'],
     body:
-      `Per-sales-rep scorecard — total bookings, gross margin, customer count, and order count. Used for sales reviews and commission discussion.`,
+      `Rep scorecard compares assigned-book performance and written-up sales by rep. It highlights Sales $, GM $, GM%, Active Customers, Orders, and mix by product/sale type.
+
+During one-on-ones: review trend first, then open customer drill-downs for wins/losses, and finally inspect order-level details for unusual margin swings. Keep branch + period fixed when comparing reps.`,
+    related: ['scorecard-overview','customer-scorecard','sales-reports'],
   },
   {
     id: 'scorecard-product',
@@ -390,7 +448,10 @@ export const TOPICS: Topic[] = [
     path: '/scorecard/product',
     keywords: ['product', 'category', 'group'],
     body:
-      `Performance by product group. Identify which categories drive the most revenue and which are underperforming. Filter by branch and date range.`,
+      `Product scorecard is the mix and concentration view. It shows majors/minors/items with Sales, GM, GM%, share-of-sales, and YoY movement. Visuals (treemap/pareto where available) help identify dependency on a few categories or SKUs.
+
+Suggested workflow: Major -> Minor -> Item drill path. At each level, sort by Sales and then GM% to spot high-dollar/low-margin pockets. Use backlinks to return to the previous slice without resetting filters.`,
+    related: ['scorecard-overview','scorecard-branch','customer-scorecard'],
   },
   {
     id: 'customer-scorecard',
@@ -399,7 +460,10 @@ export const TOPICS: Topic[] = [
     path: '/scorecard',
     keywords: ['customer scorecard', 'top customers'],
     body:
-      `Per-customer ranking and detail. Use for top-customer reviews and to spot accounts that have slowed or grown. Click a customer to see the full profile.`,
+      `Customer scorecard starts with ranked customers and opens into full customer detail pages. Detail includes KPI comparison, product-major table, sale-type table, days-to-pay, and order drill-downs.
+
+Standard account review flow: (1) confirm Base vs Compare year, (2) check Sales and GM deltas, (3) inspect product-major shifts, (4) inspect sale-type shifts, (5) drill to orders/items causing change. Use ship-to and item drill-downs for branch-level execution follow-up.`,
+    related: ['scorecard-overview','scorecard-branch','scorecard-product','sales-reports'],
   },
   {
     id: 'sales-reports',
@@ -408,7 +472,10 @@ export const TOPICS: Topic[] = [
     path: '/sales/reports',
     keywords: ['report', 'top customers', 'export'],
     body:
-      `Daily orders chart, top customers, breakdown by sale type and ship-via, and status breakdowns. Exportable for further analysis.`,
+      `Sales Reports provide operational reporting views (daily order trend, top customers, sale type mix, ship-via, status). These complement scorecards by emphasizing daily execution instead of only strategic KPIs.
+
+Best practice: export only after filters are finalized (branch, date range, salesperson). Name exports using YYYY-MM-DD and scope so downstream users know exactly what slice was shared.`,
+    related: ['management-hub','scorecard-overview','scorecard-branch','scorecard-rep'],
   },
 
   // ─── Services (Estimating & Design) ──────────────────────────────
@@ -680,9 +747,9 @@ export const TOPICS: Topic[] = [
     group: 'admin',
     path: '/admin/hubbell',
     roles: ['admin'],
-    keywords: ['hubbell', 'email', 'reconcile', 'po confirmation'],
+    keywords: ['hubbell', 'reconcile', 'po confirmation', 'wo'],
     body:
-      `Reconcile inbound Hubbell supply-house emails (PO confirmations, WO acknowledgements) against LiveEdge sales orders. Tabs: Pending · Matched · Confirmed · No Match · Rejected. Open an email to see the extracted data, candidate matches sorted by confidence, and Confirm / Reject / Reset actions.\n\nThe Jobs view aggregates confirmed emails by job site (customer + address) so you can see all the Hubbell traffic for one project at a glance.`,
+      `Reconcile Hubbell supply-house POs and WO acknowledgements against LiveEdge sales orders. Records are scraped from the Hubbell portal locally (same workflow as AR recon) and uploaded into the inbox — email ingest was retired 2026-05-13. Tabs: Pending · Matched · Confirmed · No Match · Rejected. Open a record to see the extracted data, candidate matches sorted by confidence, and Confirm / Reject / Reset actions.\n\nThe Jobs view aggregates confirmed records by job site (customer + address) so you can see all the Hubbell traffic for one project at a glance.`,
   },
   {
     id: 'admin-audit',
@@ -794,16 +861,17 @@ export const TOPICS: Topic[] = [
   },
   {
     id: 'workflow-hubbell',
-    title: 'Reconcile a Hubbell email to a sales order',
+    title: 'Reconcile a Hubbell PO to a sales order',
     group: 'workflows',
     keywords: ['hubbell', 'reconcile', 'workflow'],
     body:
-      `Match an inbound Hubbell PO confirmation to the right SO.`,
+      `Match a Hubbell PO confirmation (uploaded from the local portal scrape) to the right SO.`,
     steps: [
+      'Run the local Hubbell-portal scraper and upload the batch into LiveEdge.',
       'Admin → Hubbell, open the Pending tab.',
-      'Click an email. Review the extracted PO #, SO #, and customer.',
+      'Click a record. Review the extracted PO #, SO #, and customer.',
       'Pick the best candidate from the suggested matches.',
-      'Click Confirm to lock the match. The email moves to the Confirmed tab.',
+      'Click Confirm to lock the match. The record moves to the Confirmed tab.',
       'Use Jobs view to see all confirmed Hubbell traffic for a single job site.',
     ],
   },

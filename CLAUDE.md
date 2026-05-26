@@ -4,10 +4,12 @@
 Beisser Lumber Co. internal estimating app (Next.js 15, TypeScript, Tailwind, Drizzle ORM, Supabase Postgres, NextAuth v5). Used by sales staff/estimators at four Iowa lumberyard locations.
 
 ## Route Reference
-Full API and page route inventory: **`docs/routes.md`** (last audited 2026-04-17, 147 API routes / 77 pages).
+Full API and page route inventory: **`docs/routes.md`** (last audited 2026-05-13; Hubbell email-ingest routes removed).
 
 ## Access Control — COMPLETE
 Capability-based access control is fully rolled out (all 5 phases). See **`docs/access-control-plan.md`** for the full design, 28-capability vocabulary, and role-defaults table.
+
+**Security remediation master plan** (`docs/security-remediation-master-plan-2026-05-14.md`) — **fully resolved 2026-05-20.** PR1–PR6 merged (PR5 follow-up fix in #349, PR6 in #351). The four open product/security decisions also closed (`docs/security-decisions-closed-2026-05-20.md`): scorecard stays bundled with `sales.view`, no step-up auth, indefinite audit retention, static Bearer tokens for service routes. **Don't reopen any of those without a concrete trigger.** Runbook for operating the permissions route lives at `docs/security-runbook.md`.
 
 **Key files:**
 - `src/lib/access-control.ts` — `CAPABILITIES`, `ROLE_DEFAULTS`, `effectiveCapabilities()`, `requireCapability()` (API routes), `requirePageAccess()` (server pages), `hasCapability()` (inline checks)
@@ -51,7 +53,7 @@ All LiveEdge API routes now query the optimized `agility_*` tables instead of th
 | agility_ table | Replaces | Key differences |
 |----------------|----------|-----------------|
 | `agility_so_header` | `erp_mirror_so_header` | Has `cust_name`, `cust_code`, `shipto_*` denormalized — no JOIN to customers/shipto needed. Missing `invoice_date`/`ship_date`/`terms` (now in `agility_shipments`). Date column is `created_date` (NOT `order_date`). Credit memos: `sale_type = 'Credit'`, open status = `'B'` (blank). |
-| `agility_so_lines` | `erp_mirror_so_detail` | Has `item_code`, `handling_code` inline — no JOIN to items needed for most queries |
+| `agility_so_lines` | `erp_mirror_so_detail` | Has `item_code`, `handling_code` inline. **For $ aggregates use `extended_price` / `unshipped_extended_price` — never `qty_ordered * price`** (price is per-UOM, conversion lives in `disp_price_conv`). See "UOM-aware open-order $" note below. |
 | `agility_customers` | `erp_mirror_cust` + `erp_mirror_cust_shipto` | One row per ship-to address (seq_num≥1). Use `GROUP BY cust_code` or `DISTINCT ON` to get one row per customer. **`rep_1` is NOT a column here** — it lives on `agility_so_header`. |
 | `agility_items` | `erp_mirror_item` + `erp_mirror_item_branch` | Item master — one row per item. Has `product_major_code`, `product_major`, `product_minor_code`, `product_minor`. Branch-specific stock data (qty_on_hand, default_location, handling_code, active_flag, stock, system_id) is in `agility_item_branch` — join on `agility_item_branch.item_code = agility_items.item`. **Do NOT filter by branch on `agility_items`** — use `agility_item_branch.system_id`. `agility_items.system_id` = company code ('00CO'), not branch. |
 | `agility_shipments` | `erp_mirror_shipments_header` | Same fields. Source for `invoice_date`, `ship_date` per SO |
@@ -65,6 +67,7 @@ All LiveEdge API routes now query the optimized `agility_*` tables instead of th
 | `agility_receiving_header` | `erp_mirror_receiving_header` | Same structure |
 | `agility_receiving_lines` | `erp_mirror_receiving_detail` | Same structure |
 | `agility_ar_open` | (new) | AR open items — `cust_key`, `ref_num`, `open_amt`, `open_flag`. **`cust_key` ≠ `cust_code`** — must resolve via `agility_customers` LATERAL join first (see AR query pattern below) |
+| `agility_item_supplier` | (new, 2026-05-13) | Item × supplier × ship-from purchasing rules. One row per `(system_id, supplier_key, item_ptr, ship_from_seq_num)`. **`is_primary` flags the primary supplier per item.** Carries `lead_time_1..5`, `lead_time_flag`, `min_ord_qty`/`min_pak` + their `*_disp_uom` + `min_*_violation` rules (`Allow` / `Allow - Question` / `Block`), `supp_uom`, `use_uom_for_{po_entry,printed_po,po_check_in,receiving}`. Join to items via `item_ptr` (NOT `item`), to suppliers via `(supplier_key, ship_from_seq → ship_from_seq_num)`. **Always include `system_id` in the join predicate** — branch leak otherwise; items sold across branches resolve to the wrong rule. Trim `supplier_key` — source pads with leading spaces. |
 
 App views backed by agility_ tables (via the old erp_mirror_ as of 2026-04-04 — will be updated to point at agility_ tables):
 - `app_po_search` → `app_po_header` (matview) — enriched PO list for purchasing routes
@@ -317,6 +320,7 @@ Full WH-Tracker (Python/Flask) migration into LiveEdge. All modules ported:
 - **Picker Detail** (`/warehouse/pickers/[id]`): recent pick history + stats per picker
 - **Work Orders** (`/work-orders`): open WO board, barcode SO search, assignments with Mark Complete. API: `/api/work-orders/open`, `/api/work-orders/search`, `/api/work-orders/assignments`, `/api/work-orders/assignments/[id]`
 - **Dispatch Board** (`/dispatch`): delivery stops from ERP, route planning CRUD, Samsara GPS proxy. API: `/api/dispatch/deliveries`, `/api/dispatch/routes`, `/api/dispatch/routes/[id]/stops`, `/api/dispatch/vehicles`
+- **Driver Availability** (`/dispatch/drivers`): toggle driver availability for routing. Uses dedicated `POST /api/dispatch/drivers/toggle` endpoint (PR #339, 2026-05-19) — split out from the generic upsert to avoid an `ON CONFLICT` constraint mismatch on `driver_availability`.
 - **Delivery Tracker** (`/delivery`): today + overdue K/P/S statuses, status label logic, fleet GPS panel. API: `/api/delivery/tracker`
 - **Fleet Map** (`/delivery/map`): live vehicle cards with GPS, speed, address. API: `/api/delivery/locations` (proxies dispatch/vehicles)
 - **Sales Hub** (`/sales`): KPI dashboard + order status table. API: `/api/sales/metrics`, `/api/sales/orders`
@@ -344,7 +348,7 @@ Full WH-Tracker (Python/Flask) migration into LiveEdge. All modules ported:
 
 #### Purchasing Sub-Pages (2026-04-02) — COMPLETE
 - **Open POs** (`/purchasing/open-pos`): open PO list with overdue highlight. API: `/api/purchasing/pos/open` (uses `app_po_search` view)
-- **Buyer Workspace** (`/purchasing/workspace`): quick-action cards + upcoming POs + recent check-ins
+- **Buyer Workspace** (`/purchasing/workspace`): quick-action cards + upcoming POs + recent check-ins. **Rebuilt 2026-05-26 as a six-tile dashboard backed by the replenishment engine — see "Buyer Workspace & Replenishment Engine (2026-05-22 → 2026-05-26)" section below for the current shape.**
 - **Command Center** (`/purchasing/manage`): KPI cards, POs by branch, overdue list, recent submissions
 
 #### RMA Credits (2026-04-02, rewritten 2026-04-22, extended 2026-05-01) — LIVE (ERP-driven, email pipeline active)
@@ -370,7 +374,7 @@ Full WH-Tracker (Python/Flask) migration into LiveEdge. All modules ported:
 
 **Inbound email webhook** (`POST /api/inbound/credits`):
 - Receives Resend `email.received` events for `credits@beisser.cloud` and `*@rma.beisser.cloud` (both accepted)
-- TO address guard: skips events not addressed to either address (prevents credits emails from appearing in Hubbell module)
+- TO address guard: skips events not addressed to either address
 - **Attachment capture**: fetches bytes via `GET /emails/receiving/{emailId}/attachments/{id}` → `download_url` (Resend no longer sends `content` inline)
 - **Inline skip logic**: only skips parts with BOTH `content_id` AND `content_disposition: inline` AND `size < 20000` — Outlook sets `content_id` on real forwarded attachments so the old `if (content_id) skip` was too aggressive
 - **Nested email support**: `message/rfc822` attachments (forwarded `.eml` files) are parsed by `extractPartsFromRawEmail()` — zero-dependency recursive MIME walker that handles `multipart/*` boundaries, base64/binary encoding, skips parts < 5 KB
@@ -380,9 +384,7 @@ Full WH-Tracker (Python/Flask) migration into LiveEdge. All modules ported:
 - Env var: `RESEND_WEBHOOK_SECRET` (Svix signature secret from Resend dashboard)
 - Webhook URL must be set to `https://app.beisser.cloud/api/inbound/credits` (not the Vercel preview URL — Resend does not follow redirects)
 
-**Hubbell webhook** (`POST /api/inbound/hubbell`):
-- Has TO address guard: only processes emails to `hubbell@beisser.cloud`
-- Env var: `RESEND_HUBBELL_WEBHOOK_SECRET`
+**Hubbell email ingest — REMOVED (2026-05-13). Daily portal scrape + LiveEdge upload — LIVE (2026-05-18).** Email ingest (Resend webhook, Graph dispatch, reprocess cron) was killed in May 2026; the rewrite is now complete. See **Hubbell PO/WO Daily Ingest** below for the live architecture. The legacy `bids.hubbell_emails` / `hubbell_email_candidates` / `hubbell_address_cache` tables were dropped in migration `0021_hubbell_documents.sql` (no email-era data retained — the schema-clarity gain outweighed losing the address-cache learning).
 
 #### Nav Restructuring (2026-04-02) — COMPLETE, EXTENDED 2026-04-03
 - TopNav completely rewritten 2026-04-03 — 8 domain dropdowns replacing flat links + 4 domain dropdowns
@@ -392,7 +394,7 @@ Full WH-Tracker (Python/Flask) migration into LiveEdge. All modules ported:
 - **Estimating ▾**: Estimating App (`/estimating`), PDF Takeoff, Bids, EWP, Projects
 - **Design** (direct link → `/designs`)
 - **Service** (direct link → `/it-issues`)
-- **Purchasing ▾**: Buyer Workspace, Open POs, Command Center
+- **Purchasing ▾**: Buyer Workspace, Open POs, Command Center *(historical snapshot — see "## Navigation Structure" near the bottom of this file for the current dropdown contents, which now include Suggested Buys, Potential Outages, Recent Movement, and Exceptions)*
 - **Receiving ▾**: PO Check-In, Review Queue
 - **Admin ▾** (admin role only): all admin pages + delivery report + picker admin
 
@@ -428,23 +430,135 @@ Branch: `claude/auth-unification-FelEf` (merged to `main`)
 3. Backfilled `password_hash` in `app_users` via `UPDATE public.app_users SET password_hash = u.password FROM bids."user" u WHERE estimating_user_id = u.id` (69/70 — `po-test` is OTP-only, no estimating user)
 4. `password_hash` column is now inert — auth no longer reads it
 
-#### Hubbell Email Reconciliation (2026-04-22) — COMPLETE
+#### Hubbell PO/WO Daily Ingest (2026-05-18 → 2026-05-19) — LIVE
 
-Admin tool for reconciling Hubbell supply-house emails (PO confirmations / WO acknowledgements) against LiveEdge sales orders.
+Daily PO/WO scrape from Hubbell's `hub.ihmsweb.com` portal → LiveEdge inbox → reviewer matches docs to Agility SOs → optional Agility writeback. Replaces the unreliable email-ingest pipeline that was removed 2026-05-13.
+
+**Architecture:**
+```
+Pi (agility-api, /home/api/hubbell, systemd 06:00 daily)
+  hubbell_daily_fetch.py  →  PDF parse  →  uploader.py
+                                              │
+                                              ▼ POST multipart, Bearer auth
+LiveEdge: POST /api/admin/hubbell/upload  →  R2 (PDF)
+                                          →  bids.hubbell_documents (insert)
+                                          →  matcher (3 signals)
+                                          →  bids.hubbell_document_sos (junction)
+                                          →  auto-link orphan payments by doc#
+```
+
+Monthly reconciliation (payment matching, AR cross-check) stays on the PC at `C:\Users\amcgrean\python\hubbell test\`.
+
+**Tables (apply migrations 0021/0022/0023/0024/0025 in Supabase SQL editor):**
+- `bids.hubbell_documents` — one row per PO/WO PDF. `source_hash` (sha256 of bytes) for idempotent re-upload. Columns include `doc_type / doc_number / r2_key`, extracted `address/city/state/zip/total/need_by/line_items`, scrape hints (`scrape_cust_code / scrape_seq_num / scrape_match_ratio`, migration 0022), job context (`dev_code / dev_name / house_number / block_lot / model_elevation`, migration 0023), payment rollups (`paid_amount_total / last_payment_date / last_check_number / payment_status`, migration 0024), `match_status` ('unmatched'|'auto_matched'|'confirmed'|'rejected').
+- `bids.hubbell_document_sos` — junction (one document × one Agility SO). `match_source` ('po_number_split'|'address'|'address_scrape'|'manual'), `confidence`, `match_reasons`, `confirmed_by`, `posted_to_agility_at` (set when the writeback succeeds).
+- `bids.hubbell_document_payments` — one row per `(doc_type, doc_number, check_number)`. Payments can land before docs and get linked when the matching doc arrives via the `/upload` route's auto-link.
+- `bids.hubbell_normalize_address(text)` — IMMUTABLE SQL helper (migration 0025). Lowercases, expands street-type abbreviations (ave→avenue, st→street, dr→drive, etc.), strips non-alphanumerics. Use it everywhere an SO's `shipto_address_1` is compared to a doc's `extracted_address`. `1000 Featherstone Ave NE` matches `1000 Featherstone Avenue NE`.
+
+**Many-to-many:** one Hubbell doc → N Agility SOs; one Agility SO → N Hubbell docs. Sales types Hubbell PO/WO numbers into Agility's customer-PO field by hand, **comma-separated** when multiple apply. `parsePoNumberField()` splits on `[,;|/\s]+`.
+
+**Matcher (`src/lib/hubbell/document-matcher.ts`):**
+All three signals are scoped to `cust_code LIKE 'HUBB%'` to keep non-Hubbell SOs out of candidates.
+1. **Signal A — `po_number_split`** (confidence 100, auto-attach, exclusive return when hit): split open SOs' `po_number`, look for the Hubbell doc number. Authoritative — buyer typed it in.
+2. **Signal A' — `address_scrape`** (confidence = scrape_match_ratio × 100): local agent's `best_job_match` already resolved the PDF address to a `(cust_code, shipto_seq_num)` pre-upload. When that hint resolves to an open SO at the exact ERP shipto, return as candidate (not auto-attach — a single shipto can host concurrent SOs).
+3. **Signal B — `address`** (server-side fuzzy, confidence 0-100): zip+city+street tokenized scoring. Signals A' and B union by `so_id` keeping highest confidence — so HUBB1200 main + HUBB1700 trim at the same physical address both surface.
+
+The matcher runs at ingest time AND on document-detail page open. Doc-page candidate table columns: SO# / Customer / Reference / Cust PO / Address / Expect / Order $ (UOM-aware `SUM(extended_price)`, system_id scoped) / Status / Attach. **No Reasons column** — confused the UX since the candidates table reads as a related-orders list.
+
+**Jobs page (`/admin/hubbell/jobs`):**
+- One row per physical jobsite, keyed `(shipto_address_1, shipto_city, shipto_state, shipto_zip)`.
+- Restricted to `cust_code IN ('HUBB1200','HUBB1700')` — the operational pair. HUBB1000/HUBB1400/legacy excluded.
+- HUBB1200 main and HUBB1700 trim at the same physical address collapse to one row; customer cell shows both codes (`STRING_AGG(DISTINCT cust_code)`) and names slash-joined.
+- Columns: Customer · Address · SOs · Open $ · Docs · Hubbell $.
+- Sourced from `agility_so_header` directly — a jobsite appears whether or not it has docs attached yet.
+- Docs map to jobsites by **normalized address** (`bids.hubbell_normalize_address`), NOT via the SO junction — docs land on their job as soon as the address matches, regardless of attach status.
 
 **Pages:**
-- `/admin/hubbell` — Email inbox: all ingested Hubbell emails, tabbed by match status (Pending / Matched / Confirmed / No Match / Rejected), paginated at 50/page, search by subject/sender/PO#/SO#
-- `/admin/hubbell/[id]` — Email detail: extracted data, match candidates sorted by confidence, confirm/reject/reset actions
-- `/admin/hubbell/jobs` — Jobs index: one row per job site (customer + address), aggregates all confirmed emails; paginated at 50/page; click row to view orders
-- `/admin/hubbell/jobs/[soId]` — Job detail: SO header, reconciliation table (all SOs at same address vs emails received), unmatched email warnings
+- `/admin/hubbell` — `DocumentsClient.tsx`. Tabbed inbox (Unmatched/Auto-matched/Confirmed/Rejected/All), search, type filter. Columns include payment status badge (paid/partial $X/unpaid).
+- `/admin/hubbell/[id]` — `DocumentDetailClient.tsx`. View-PDF button, extracted address with local-agent match chip, **Job context card** (dev_code, house_number, block_lot, model_elevation), Totals + payment block, line items, attached SOs, candidate SOs, manual attach by SO#, Reject.
+- `/admin/hubbell/jobs/[soId]` — `JobDetailClient.tsx`. **Jobsite-anchored** (the `soId` is just a lookup key; everything keys on `(shipto_address_1 normalized, city, state, zip)`). Sections: jobsite header with rollups, SOs at this address (expandable to attached docs), docs at this address (expandable per-doc to show line items + dev/house/block-lot/model). Inline attach/detach with slide-out PDF preview panel (`src/components/hubbell/PdfPreviewPanel.tsx`).
+- `/admin/hubbell/status` — last_document_at, 24h counts, status totals.
 
 **API routes:**
-- `GET /api/admin/hubbell/emails` — paginated inbox with status/search filtering
-- `GET/POST /api/admin/hubbell/emails/[id]` — detail + confirm/reject/reset actions
-- `GET /api/admin/hubbell/jobs` — aggregated jobs list
-- `GET /api/admin/hubbell/jobs/[soId]` — per-SO detail with related SOs and emails
+- `POST /api/admin/hubbell/upload` — service-token Bearer auth (`HUBBELL_UPLOAD_TOKEN`). Idempotent via sha256. Auto-links orphan payments matching this doc's `(doc_type, doc_number)`. Normalizes `line_items` via `src/lib/hubbell/metadata-normalize.ts` (accepts aliases like `description/unit/ext_price` and maps to canonical `desc/uom/ext`).
+- `GET /api/admin/hubbell/documents` / `[id]` — list + detail (matcher re-runs live).
+- `POST /api/admin/hubbell/documents/[id]/attach` — junction insert; optional Agility writeback (see Phase 2 below).
+- `POST /api/admin/hubbell/documents/[id]/detach` / `/reject` / `GET .../pdf`.
+- `GET /api/admin/hubbell/job?so_id=N` — jobsite bundle (replaces older `/jobs/[soId]`): returns `{jobsite, sales_orders, documents}` keyed on normalized address+city+state+zip5.
+- `GET /api/admin/hubbell/jobs` — paginated jobs list.
+- `POST /api/admin/hubbell/documents/metadata-bulk` — service-token. **Backfill endpoint.** Body `{items: [{doc_type, doc_number, metadata}, ...]}` (up to 500/req). Looks up each doc by `(doc_type, doc_number)`, partial-updates only fields present in metadata, normalizes `line_items`, recomputes `payment_status` rollup when `total` changes. Use for re-running improved extractors against existing docs without re-uploading PDFs.
+- `GET /api/admin/hubbell/documents/needs-extraction` — service-token. Lists docs with empty `line_items` and returns 1-hour R2 presigned URLs so a backfill agent can pull PDFs without re-auth. `?limit=200&offset=0&type=po|wo`.
+- `POST /api/admin/hubbell/documents/rematch` — service-token. Re-runs the SO matcher on a batch of docs (default: `match_status='unmatched'`) and auto-attaches new `po_number_split` matches. Use after a metadata backfill that may have improved `extracted_address` for previously-unmatched docs. Body: `{limit?, offset?, only_unmatched?, doc_ids?[]}`. Idempotent (skips junction rows already present).
+- `POST /api/admin/hubbell/documents/suggest-matches` — service-token (migration `0027_hubbell_document_suggestions.sql`). Walks unmatched docs in batches, runs `matchDocumentToSos()`, and persists every candidate into `bids.hubbell_document_suggestions` (a review queue, NOT a direct attach). Body: `{limit?, offset?, only_unmatched?, min_confidence?, doc_ids?[]}`. Default limit 200 (max 500), default `min_confidence=30`, default `only_unmatched=true`. Returns `{run_id, processed, candidates_inserted, candidates_skipped_existing}`. Idempotent — `(document_id, so_id)` UNIQUE preserves prior accept/reject decisions across re-runs. Use this (instead of `/rematch`) when the buyer-side `po_number` field is empty so `po_number_split` won't fire — surfaces address-based candidates for human review.
+- `GET /api/admin/hubbell/suggestions` — user-session (`hubbell.review`). Returns pending/accepted/rejected suggestions joined with doc + SO details. Query: `?status=pending|accepted|rejected|all&min_confidence=30&limit=50&offset=0&doc_type=po|wo`. Powers the `/admin/hubbell/suggestions` review page.
+- `POST /api/admin/hubbell/suggestions/[id]/review` — user-session (`hubbell.review`). Body `{action: 'accept'|'reject'}`. On accept, atomically inserts a `hubbell_document_sos` row (skipping if the pair already exists), marks the suggestion `'accepted'`, and bumps the doc's `match_status` from `unmatched|auto_matched` to `confirmed`. On reject, marks the suggestion `'rejected'` (the `(doc, so)` pair won't be re-suggested by future runs of the suggester). Refuses to flip already-terminal suggestions (409) so the audit trail is clean.
+- `POST /api/admin/hubbell/documents/ai-review` — user-session (`hubbell.review`) OR Bearer `HUBBELL_UPLOAD_TOKEN`. Batches pending suggestions by doc, fetches each PDF from R2, sends to Claude Opus 4.7 with the candidate SOs, parses per-candidate `{action: accept|reject|skip, confidence}` decisions, and writes them via the same junction-table semantics as the human-review endpoint (`matchSource` prefixed `ai_` and `confirmedBy='ai_review:<user>'` so AI-attached rows are distinguishable). Low-confidence accepts auto-degrade to skip (leaves pending for human follow-up). Body: `{limit?: 5, doc_ids?: string[]}` (default 5, max 20 — capped by 300s `maxDuration`). System prompt uses `cache_control: ephemeral` to cut per-call cost ~80% on subsequent runs. Requires `ANTHROPIC_API_KEY` env var; uses structured outputs via `output_config.format` so decisions are guaranteed-parseable JSON. Powers the "AI review" button on `/admin/hubbell/suggestions`.
+- **Local review CLI** at `scripts/hubbell-review/` (TypeScript, runs via `tsx`). For agents that run on the user's machine (Codex, Claude Code) under existing subscriptions — no Anthropic API tokens consumed. `npx tsx scripts/hubbell-review pull --limit 10 --dir ./hubbell-queue` pulls a batch of pending suggestions, downloads each PDF, and writes `packets/<doc_id>/{doc.pdf, packet.json, decisions.json}` to disk. The agent reads each packet (looking at `doc.pdf` and the candidate SOs in `packet.json`), fills in `decisions.json`, then `npx tsx scripts/hubbell-review apply --reviewer codex` POSTs each decision back via `/api/admin/hubbell/suggestions/[id]/review` (Bearer + `X-Reviewer` header sets `reviewed_by`). Processed packets move to `applied/`. Re-pulls of the same doc (when prior batch all-rejected and a re-run surfaces new candidates) land at `<uuid>__pass2/`. Requires `LIVEEDGE_HUBBELL_TOKEN` env var; full agent prompt in `scripts/hubbell-review/README.md`. **The PDF route (`/api/admin/hubbell/documents/[id]/pdf`), suggestions list, and review endpoint all accept the same Bearer token in addition to user session** to support this CLI.
 
-**DB table:** `bids.hubbell_emails` (Drizzle-managed, `db/schema.ts`)
+- **Address-fuzzy floor (Codex run, 2026-05-26)**: ~6,800 historical Hubbell PO/WO docs were uploaded before any matcher pass and had no SO links. Codex ran the suggester (2 passes, ~1,500 candidates inserted total) and reviewed 175 docs across 8 batches via the CLI. Final: **8 accepts, 510 rejects, ~1.5% accept rate.** Two zero-accept batches in a row signaled the floor. False-positive pattern was consistent across all batches: address-fuzzy clusters every SO at a development/neighborhood, but most are wrong street number or wrong scope (framing PO vs trim WO vs hardware WO at the same lot). The conservative reject rule — **accept only when address matches AND at least one corroborating signal (SO reference, dev_code+house_number, or scope/phase)** — held the false-positive rate at ~0. The 8 accepts all had a matching SO reference (e.g. "Doors #9717", "SP Windows") on top of the address. **Don't re-run this exercise** — the remaining ~6,800 unmatched docs need different signals: (a) Phase 3c daily check ingest going forward so buyers can type Hubbell doc numbers into Agility's customer-PO field, or (b) full PDF vision against the actual document content (not just extracted address). Address-fuzzy alone has exhausted what it can find.
+- `POST /api/admin/hubbell/payments/import` — service-token. Bulk-imports payments per `(doc_type, doc_number, check_number)`. Empty `payments:[]` body triggers rollup refresh only (sets `payment_status='unpaid'` on docs with `extracted_total>0` and no payment rows).
+- `GET /api/admin/hubbell/status` — health dashboard.
+- `GET /api/cron/hubbell-stale-check` — daily 14:00 UTC.
+
+**Canonical `line_items` JSON shape** (per row, stored on `bids.hubbell_documents.line_items`):
+```jsonc
+{ "sku": "...", "desc": "...", "qty": 1, "uom": "EA", "unit_price": 12.50, "ext": 12.50 }
+```
+`normalizeLineItems()` in `src/lib/hubbell/metadata-normalize.ts` accepts aliases `description/unit/u_m/ext_price/extension/amount/price/product_code/code/quantity` and maps them to canonical. The UI in `JobDetailClient.tsx` reads canonical only.
+
+**Local scraper:**
+- Pi: `/home/api/hubbell/` (systemd `hubbell-daily.timer` at 06:00 EDT). `hubbell_daily_fetch.py` + `uploader.py` + Playwright + Chromium ARM64.
+- PC: `C:\Users\amcgrean\python\hubbell test\` — monthly recon (AgilitySQL ODBC, stays here), historical PDF backfill via `backfill_local_pdfs.py` (extracts job context + scrape hints), payments push via `monthly_recon_*.py`.
+- Tooling on PC at `C:\Users\amcgrean\python\api\scripts\`: `hubbell_pi_*.py` (deploy, smoke test, status, redeploy, log tail, backfill, payment rollup refresh).
+
+**ECI auth — credential auto-login (2026-05-20):** `hubbell_checks_to_pdfs_po_and_wo.py` (deployed at `/home/api/hubbell/`) supports unattended re-auth. Three-tier flow in `open_authenticated_context()`: (1) try saved `eci_auth_state.json`, (2) if expired → `_try_credential_login()` reads `ECI_USERNAME` / `ECI_PASSWORD` from env and submits the login form (probes common selectors — `input[name="username"|"userid"|"user"]` / `input[type="password"]` / `button[type="submit"]`, first hit wins), (3) if creds missing or auto-login fails → `SystemExit` with a clear error (replaces the misleading `EOFError` from the old `input("Press ENTER...")` fallback under systemd). After successful auto-login the fresh session is saved back so subsequent runs reuse it. **Required on Pi `.env` and PC `.env`: `ECI_USERNAME`, `ECI_PASSWORD`.** Any deploy automation (`hubbell_pi_deploy.py`) must merge — not overwrite — `.env` so these aren't clobbered, and must keep `hubbell_checks_to_pdfs_po_and_wo.py` in sync with the PC source-of-truth copy. If ECI ever refreshes their login form, append new selectors to `user_selectors` / `pw_selectors` in `_try_credential_login()`. Sanity check on stale-cron alerts: "ECI auto-login failed → check `ECI_USERNAME`/`ECI_PASSWORD` in `/home/api/hubbell/.env`" (the old "session expired" case should no longer occur).
+
+**Env vars (Vercel):**
+- `HUBBELL_UPLOAD_TOKEN` — bearer for upload + payments-import endpoints. Mirrors `LIVEEDGE_HUBBELL_TOKEN` on PC + Pi `.env`.
+- `AGILITY_API_URL` — DMSi production base URL.
+- `AGILITY_API_TEST_URL` — DMSi non-prod URL (used by writeback when mode=test).
+- `HUBBELL_AGILITY_WRITEBACK_MODE` — `disabled` | `test` | `prod`. Default `disabled`. Gates the `Orders/SalesOrderHeaderUpdate` call on each attach.
+
+**Phase 2 — Agility write-back (code LIVE, flag-gated, NOT YET VALIDATED in test):**
+- `agilityApi.salesOrderHeaderUpdate(orderId, customerPo, { useTest })` in `src/lib/agility-api.ts` — minimal payload (only OrderID + CustomerPurchaseOrder, line-item arrays omitted).
+- Attach route reads current `agility_so_header.po_number`, parses via `parsePoNumberField()`, only writes when the Hubbell doc# isn't already a token. **Refuses to write if the mirror lookup fails** (`headerLookupOk` guard) so a stale/missing mirror can never clobber a real customer-PO value.
+- `posted_to_agility_at` is set when ReturnCode == 0; NULL on failure so re-attach re-attempts.
+- **Per DMSi docs, blank/null character fields MAY be cleared depending on the method's internal business rules. The minimal-payload approach assumes omitted fields are no-change — REQUIRES validation in test against AGILITY_API_TEST_URL before flipping to prod.** Test procedure at `docs/agent-prompts/hubbell-agility-writeback-test.md`. If test wipes other fields, fall back to read-modify-write (read current header values, echo all back plus the new CustomerPurchaseOrder).
+
+**Backfill state (as of 2026-05-20):**
+- 6,714 total docs in `bids.hubbell_documents`.
+- **6,020 (89.7%) have non-empty `line_items`** — after the hubbell-test agent rewrote `parse_line_items()` in `hubbell_daily_fetch.py` to use pdfplumber + per-doc-type parsers (PO uses `Product Code | Description | U/M | Quantity | Price | Extension` table; WO uses the cost-code / option-code layout). First-pass backfill via `/metadata-bulk` covered the 4,652 docs with local PDFs on PC.
+- **6,040 (90.0%) have house_number / block_lot / model_elevation** populated from the same rewrite.
+- **6,713 (99.99%) have dev_code.**
+- The remaining ~700-doc gap is Pi-only docs (PDF in R2, not on PC). Closed via `/needs-extraction` + new R2-driven backfill in `backfill_from_r2.py`.
+- `parseDateOrNull` returns `YYYY-MM-DD` string (not `Date`) so Drizzle's pg `date` column accepts it — fixes silent failures on `extracted_need_by`.
+- ~4,879 payment rows imported from the agent's recon workbook; auto-link in upload route (PR #333) closes the loop as PDFs land.
+- Forward-going: every Pi daily run + every monthly-recon payment push are now self-healing.
+
+**Hubbell-test agent handoff:** [`C:\Users\amcgrean\python\hubbell test\LIVEEDGE_BACKFILL_REQUEST_2026-05-19.md`](file:///C:/Users/amcgrean/python/hubbell%20test/LIVEEDGE_BACKFILL_REQUEST_2026-05-19.md) — complete brief for the PC-side agent covering PDF backfill, payment data push, and the eventual read endpoint for monthly recon consumption.
+
+**Phase 3 — Daily check ingest (Phase 3a/b/d LIVE 2026-05-21):** Original brief at `docs/agent-prompts/hubbell-daily-check-ingest-2026-05-20.md`, resolved decisions in `docs/agent-prompts/hubbell-daily-check-ingest-addendum-2026-05-20.md`. Migration 0026 applied; new tables + write + read endpoints live. Phase 3a/b shipped:
+
+1. **Migration `0026_hubbell_checks.sql`** — creates `bids.hubbell_checks` + `bids.hubbell_check_lines`, backfills both from the existing `hubbell_document_payments` (one check row per distinct check_number, one line row per payment, `memo`/`gross_amount`/`invoice_date` NULL until a future re-scrape populates them), refreshes `hubbell_documents` rollups, then DROPs `hubbell_document_payments`. Includes a `DO $$ … RAISE EXCEPTION` sanity check that fails the migration if backfill row count drifts from source. Backfilled checks get a synthetic `source_hash` (`'backfill:' || sha256(check_number)`) that the next canonical re-POST naturally supersedes.
+2. **Schema** (`db/schema.ts`): `hubbellChecks` + `hubbellCheckLines` added; `hubbellDocumentPayments` removed. Key shape:
+   - `bids.hubbell_checks` — `check_number` UNIQUE (HUBB1000/1200/1400/1700 are Beisser-side AR accounts for work type, NOT separate Hubbell payer entities — all checks come from one vendor stream via `vendornumber=000658`, sequential numbering confirms one issuance stream), `source_hash` UNIQUE for idempotent re-POST. **No `payer_entity` column.**
+   - `bids.hubbell_check_lines` — FK `check_id` → `hubbell_checks(id) ON DELETE CASCADE`. `doc_type` (`'po'`|`'wo'`|`'inv'`), `doc_number`, `invoice_date`, `payment_amount` (numeric, can be negative for credits), `gross_amount`, `memo`, `line_seq`. Index `(doc_type, doc_number)` for joining to `hubbell_documents`.
+3. **`POST /api/admin/hubbell/checks/upload`** — Bearer `HUBBELL_UPLOAD_TOKEN`. Body `{check_number, source_run_id, check_date, lines:[...]}`. Canonical `source_hash` via `src/lib/hubbell/check-hash.ts` (sort lines by `(doc_type, doc_number, line_seq)`, convert all $ to integer cents, fixed key order in `JSON.stringify`, then sha256 — immune to float drift + JSON key-ordering non-determinism). Wipe-and-replace inside a transaction when `source_hash` differs. Response: `{status: 'inserted' | 'unchanged' | 'replaced', id, lineCount}`. After insert/replace, refreshes `hubbell_documents` rollups for every `(doc_type, doc_number)` the check touched (po/wo only; `inv` lines reference `agility_so_header` directly).
+4. **`POST /api/admin/hubbell/payments/import`** — rewritten as a backward-compat wrapper. Same flat input shape the PC monthly recon agent already posts, but server-side it groups by `check_number` and upserts each via the same wipe-and-replace tx as `/checks/upload`. Empty `payments: []` still triggers a rollup-refresh sweep (flips docs with no payment lines from NULL → `'unpaid'`). Returns `{status, inserted, replaced, unchanged, rejected}`.
+5. **Rollup helpers** (`src/lib/hubbell/payment-rollup.ts`): `refreshPaymentRollupForDoc(db, docId)` (single doc), `refreshPaymentRollupForDocs(db, [{docType, docNumber}…])` (bulk, parameterized via `dsql.join`), `refreshPaymentRollupAll(db)` (sweep). All read from `hubbell_check_lines` + `hubbell_checks`. The orphan-link block in `/api/admin/hubbell/upload` is gone — check lines can land before docs and are picked up automatically by `(doc_type, doc_number)` join on rollup recompute. `/api/admin/hubbell/documents/metadata-bulk` also uses the new helper.
+
+**Read endpoints (Phase 3d, LIVE 2026-05-21):**
+- `GET /api/hubbell/docs?since=YYYY-MM-DD&cursor=<opaque>&limit=200` — Bearer-protected (reuses `HUBBELL_UPLOAD_TOKEN`). Returns `{docs[], next_cursor, count}` where each doc carries `attached_so_ids` (array of so_id from `hubbell_document_sos`), payment rollup fields, scrape hints, dev_code, match_status. Cursor encodes `(updated_at, id)`. `since` filters on `hubbell_documents.updated_at` (every rollup recompute bumps it — that's the "has this changed" signal).
+- `GET /api/hubbell/checks?since=YYYY-MM-DD&cursor=<opaque>&limit=200` — Bearer-protected. Returns `{checks[], next_cursor, count}` with lines nested under each check. **Two-path SO resolver** per line: po/wo lines join `hubbell_documents → hubbell_document_sos` (`resolution_path: 'document'`); inv lines resolve `doc_number::int` against `agility_so_header.so_id` (`resolution_path: 'ar_invoice'`); unmatched lines get `resolution_path: 'unmatched'` and empty `attached_so_ids`. Consumer (PC `hubbell_reconciliation_v1.py --mode liveedge`) never branches on `doc_type`.
+- Cursor helpers in `src/lib/hubbell/cursor.ts` (base64url-wrapped JSON; tests in `cursor.test.ts`).
+- `limit` defaults to 200, max 1000.
+
+**Still pending (Phase 3c, 3e):**
+
+6. **Pi-side scraper (Phase 3c)** — new `hubbell_daily_checks.py` invoked from the same systemd service after the PO/WO scrape. Hits `https://hub.ihmsweb.com/cgi-bin/ihmsweb.exe?pgm=marwbvo`, reuses `parse_checks_from_marwbvo()` + per-check detail parser from `hubbell_checks_to_pdfs_po_and_wo.py` / `export_portal_invoice_table_v8_full.py`. Default `--max_checks 6` (≈1 month); `--max_checks 0` for one-time historical backfill that populates `memo`/`gross_amount`/`invoice_date` on the existing backfilled rows. Shares ECI session + dev-list cache with the PO/WO scrape.
+7. **Schema-move sequencing (Phase 3e)**: `bids → hubbell` rename **deferred until after PC scripts retire**. Otherwise we do the Drizzle codebase rewrite twice. Compatibility view trick doesn't help Drizzle (targets a specific schema at codegen). Plan: `ALTER SCHEMA` + Drizzle codegen update in one focused PR with no external consumers left.
+
+**Schema hygiene note for new Hubbell work:** Hubbell ingest is logically its own domain (no relation to bids/takeoffs beyond sharing Supabase). All new Hubbell tables should be designed for an eventual `ALTER TABLE bids.hubbell_* SET SCHEMA hubbell` cutover — no FKs into bids' actual bid/takeoff tables, no views mixing Hubbell + bids data. Mention the eventual schema move in any new migration's header comment.
 
 **AR balance query pattern** — `agility_ar_open.cust_key` is NOT the same as `agility_so_header.cust_code`. Always resolve via `agility_customers` first:
 ```sql
@@ -532,122 +646,460 @@ Adds **Recharts** (`recharts@^2.15`) and a small set of opinionated dark-theme c
 - KPI sparklines on tiles — would need monthly history aggregation we don't expose yet
 - SVG download button on `<ChartCard>`
 
-#### Geocoding Pipeline (2026-04-30 → 2026-05-01) — IN PROGRESS
+#### Geocoding Pipeline (2026-04-30 → 2026-05-20) — CONSOLIDATED ON PI
 
-Customer ship-to addresses (`public.agility_customers.address_1/city/state/zip`)
-get matched against `public.geocode_index` to populate `lat`/`lon` for
-dispatch/routing. Nightly cron at `/api/cron/geocode-nightly` walks unmatched
-rows in batches; fixes today brought total geocoded customers from **76,538 →
-~89,000+**.
+**TL;DR: LiveEdge no longer geocodes.** All matching now happens on the Pi
+(`agility-api-sync.service` → `agility_api/geocoder_sqlite.py` against a
+local SQLite parcel index at `/home/api/geocode.db`). The Vercel cron and
+Supabase `geocode_index` table were removed 2026-05-18 (LiveEdge PR #319/#321;
+beisser-api PR #35 — matcher fix, PR #36 — chmod fix). Reason: the index
+ballooned to 666 MB / 1.66M rows on Supabase, and running two matchers against
+the same `agility_customers` rows produced dueling writes + row-lock contention.
 
-**How it fits together:**
-- `src/lib/geocode.ts` — shared `normalizeAddress()` + junk-address detection
-  used by BOTH the loader (writes `geocode_index`) and the runner (matches
-  customers). Loader/matcher MUST agree on normalization or matches miss.
-- `src/lib/geocode-runner.ts` — `runGeocodeBatch()` (3-tier match: city → zip →
-  state-unique) + `loadOpenAddresses()` (the OpenAddresses IA statewide
-  refresh).
-- `app/api/cron/geocode-nightly/route.ts` — orchestrates: refresh OA index if
-  empty / >28 days old, then loop `runGeocodeBatch` until no progress for 5
-  consecutive batches OR queue empty OR 60s budget exhausted.
-- `geocode_index` columns: `(number_norm, street_norm, city_norm, state_norm,
-  postcode, lat, lon, source, source_hash)`. Unique partial index on
-  `(source, source_hash) WHERE source IS NOT NULL AND source_hash IS NOT NULL`
-  for idempotent re-loads.
+**Current data flow:**
+1. Pi has a local SQLite DB at `/home/api/geocode.db` (~9.9 GB, 74M rows:
+   73.8M TIGER + 172K Polk County atlas + 28K Dallas County parcels).
+2. `beisser_sync.py` syncs customer ship-tos from Agility SQL Server into
+   Supabase `public.agility_customers`.
+3. `SqliteGeocoder.geocode()` runs 3-tier match (`sqlite_city` → `sqlite_zip`
+   → `sqlite_state_fuzzy`) and writes `lat`/`lon`/`geocode_source` back to
+   Supabase via the same sync worker.
+4. LiveEdge reads `agility_customers.lat/lon` directly for dispatch/maps.
 
-**Source tag convention:** `<provider>_<state>_<dataset>` —
-`openaddresses_us_ia_statewide_<jobid>`, `polk_county_ia_atlas`,
-`dallas_county_ia_parcels` (tbd), etc. The runner reports tier names
-(`openaddresses_city/zip/state_unique`) on `agility_customers.geocode_source`,
-NOT the upstream data source — to find which loader provided a match,
-join on lat/lon (within ~0.0001°).
+**The 2026-05-18 incident (root cause of the move):**
+- Vercel-side `runGeocodeBatch` tier-3 (`openaddresses_state_unique`)
+  accepted any `(number_norm, street_norm)` that was unique in IA, ignoring
+  city/zip. Numbered streets ("52nd St") match many IA towns; customers
+  ended up placed 9–141 mi off. 1,338 rows poisoned.
+- Pi-side `SqliteGeocoder` tier-3 had the same bug (closest house number
+  on `street_norm + state_norm`, no city/zip check). 77 rows poisoned as
+  `sqlite_state_fuzzy`.
+- Both matchers tightened to require zip-3 prefix OR city corroboration
+  before a state-fuzzy match fires. See LiveEdge PR #319 for the algorithm.
+- 1,415 poisoned rows reset via `db/migrations/0016_reset_unsafe_geocode_matches.sql`.
 
-**Recent fixes (PRs):**
-- **#204** — `runGeocodeBatch` was stuck on the first 500 IDs forever because
-  unmatched rows kept their `geocode_source = 'failed'` status and
-  re-appeared. Fix: order candidates by `geocoded_at ASC NULLS FIRST, id`
-  and bump `geocoded_at` on attempted rows. Also normalize `STREET_TYPE
-  DIRECTION` patterns at second-to-last position (`"DRIVE SE" → "DR SE"`).
-- **#205** — first fix only bumped `geocoded_at` on rows that passed
-  `normalizeAddress()`; non-parseable rows (e.g. `"Highway 80 Lot 5"`)
-  kept old timestamps and choked the queue. Now bumps every candidate.
-- **#211** — re-normalize the existing 74,580 OA index rows in-place to
-  match the new `STREET_TYPE DIRECTION` collapse rules. Per-street-type
-  UPDATEs (one combined CTE timed out at 60s on 74K rows). Migration:
-  `db/migrations/0015_geocode_index_renormalize.sql`. Already applied.
-- **#217** — Polk County IA atlas loader. Pulls
-  `https://atlas.polkcountyiowa.gov/server/Attribute_Query/FeatureServer`
-  layers 0/3/4 (Tax Parcel Points / Tax Parcels / ParcelTaxAttributes),
-  joins on `parcel_number`, normalizes via `normalizeAddress()`, inserts
-  ~172K rows. **Already loaded to prod.** Polk fields exposed via
-  `PrimarySitus` JSON: `StreetNumber, PreDirection, Name, Type,
-  PostDirection, CityName, StateName, PostalCode, Unit`.
+**The 2026-05-19/20 follow-up (Polk + Dallas data on Pi):**
+- Polk County atlas (~172K parcels) and Dallas County (~28K parcels) loaded
+  into the Pi's local SQLite via Python loaders (beisser-api repo,
+  `scripts/load_polk_county_into_index.py` + `load_dallas_county_into_index.py`).
+- Added `(street_norm, state_norm)` index on the SQLite — without it, tier-3
+  queries were full-scanning all 74M rows on every fall-through (60 rows/hr).
+  After index: 21 rows/sec. 38-min one-time build cost.
+- Bulk rematch against the 6,966 reset Polk + Dallas customers placed **1,929
+  newly matched** (50.4% match rate); 1,898 still failed — direction-prefix
+  mismatches and addresses genuinely missing from any source.
 
-**Loader scripts (in `scripts/`):**
-- `snapshot-polk-county-atlas.ts` — pulls Polk REST → NDJSON locally.
-- `load-polk-county-into-index.ts` — NDJSON → DB via postgres-js (direct).
-- `build-polk-load-sql.ts` — NDJSON → batched INSERT SQL (no DB conn).
-- `inspect-dallas-shp.ts` — schema discovery for shapefiles (Dallas, future
-  county-shapefile-only sources). Uses `shapefile` npm package.
-- (Pending) `load-dallas-into-index.ts` — Dallas County shapefile loader.
-  Branch: `claude/dallas-county-loader`. Field mapping TBD pending
-  inspector output.
+**Source-tag legend on `agility_customers.geocode_source`:**
+| Tag | Writer | Confidence |
+|---|---|---|
+| `local_geojson_exact` | Pi `ShipToGeocoder` (main `beisser_sync.py`) | High |
+| `local_geojson_fuzzy_zip` | Pi `ShipToGeocoder` | High |
+| `local_geojson_fuzzy_city` | Pi `ShipToGeocoder` | Medium |
+| `sqlite_city` | Pi `SqliteGeocoder` | High |
+| `sqlite_zip` | Pi `SqliteGeocoder` | High |
+| `sqlite_state_fuzzy` | Pi `SqliteGeocoder` (post-fix) | Medium — zip3/city-gated |
+| `nominatim` | Pi fallback | Variable |
+| `openaddresses_*` | **Vercel (deprecated, never write new)** | n/a — table dropped |
+| `failed` | Either matcher attempted, no hit | — |
 
-**`CRON_SECRET` env var:** set on Vercel; cron route accepts EITHER
-`Authorization: Bearer $CRON_SECRET` OR Vercel's auto-injected
-`x-vercel-cron` header. If `CRON_SECRET` is set in env but a deploy
-hasn't picked it up, the scheduled cron will return 401 (mismatch).
-Manual curl with the bearer token works. Reset the value via Vercel
-Settings → Environment Variables, then redeploy.
-
-**Top still-unmatched IA cities** (after Polk load, ~12,700 remaining):
-Waukee 1,077, Ankeny 804, Grimes 740, Des Moines 411, West Des Moines
-353, Norwalk 325, Clive 311, Fort Dodge 276, Johnston 265, Adel 247.
-Waukee + Adel = Dallas County (next loader). Norwalk = Warren County
-(Beacon-only, no public REST). Fort Dodge = Webster (Beacon-only).
-Iowa City / Coralville / North Liberty / Tiffin = Johnson County
-(REST endpoint at `gis.johnsoncountyiowa.gov/arcgis/rest/services/`,
-LandRecords/Land_Records MapServer has `Parcels` + `House Numbers`
-layers — pending loader).
-
-**Useful MCP query for unmatched-customer triage** (3-bucket classification:
-real-OA-gap / fuzzy-candidate / bad-data):
-```sql
--- See db/migrations/0015 + docs/geocode-unmatched-2026-05-01/README.md
--- for the full classification recipe + Excel export.
+**Pi geocode.db schema** (different from the dropped Supabase version):
+```
+CREATE TABLE geocode_index (
+    number_norm TEXT NOT NULL, street_norm TEXT NOT NULL,
+    city_norm TEXT, state_norm TEXT, postcode TEXT,
+    lat REAL NOT NULL, lon REAL NOT NULL, source TEXT NOT NULL,
+    source_hash TEXT  -- added 2026-05-19, used by ON CONFLICT for idempotent loaders
+)
+-- indexes: (source, source_hash) UNIQUE WHERE source_hash NOT NULL,
+--          (number_norm, street_norm, city_norm), (number_norm, street_norm, postcode),
+--          (street_norm, state_norm)  ← added 2026-05-19 for tier-3
 ```
 
-**Out of scope this round:**
-- 4th-tier fuzzy matcher (drop trailing direction, Levenshtein on street
-  name) — would recover ~1,500-2,500 rows that have minor typos.
-- Automated nightly refresh of county loaders — currently manual. Once
-  Dallas + Johnson land, add to cron.
-- Out-of-state customer cleanup — small pile of NE/IL/MN/MO addresses
-  tagged `state='IA'` in customer records. Data-quality issue at the
-  ERP source, not a matcher problem.
+**Files (still in LiveEdge repo, currently inert):**
+- `src/lib/geocode.ts` / `src/lib/geocode-runner.ts` — matcher logic kept
+  as reference for the algorithm. Not called by anything anymore.
+- `app/api/cron/geocode-nightly/route.ts` — short-circuited to a no-op
+  200 response. Re-enable steps in route header.
+- `db/migrations/0014_geocode_index.sql` / `0015_*` / `0016_*` — applied.
+  `geocode_index` table itself has been dropped from Supabase.
+- `scripts/snapshot-polk-county-atlas.ts` / `load-polk-county-into-index.ts`
+  / `load-dallas-into-index.ts` / `inspect-dallas-shp.ts` — TS loaders that
+  wrote to Supabase. **Not used post-consolidation.** Reference only.
+- `scripts/reset-geocode-attempts.ts` — chunked utility to push specific
+  cities back to the front of the matcher queue (writes NULL `geocoded_at`
+  in 200-row chunks to dodge Supabase's 60s statement timeout). Still useful
+  if you need to force a Pi rematch of a specific city set.
+
+**Pi-side files (in `C:\Users\amcgrean\python\api`, beisser-api repo):**
+- `agility_api/geocoder.py` — main `ShipToGeocoder` (in-memory GeoJSON,
+  4-tier with Nominatim fallback). Used by `beisser_sync.py`.
+- `agility_api/geocoder_sqlite.py` — `SqliteGeocoder` (3-tier, parcel
+  index). Tier-3 fix landed in beisser-api PR #35 (2026-05-18).
+- `scripts/run_geocoding_bulk.py` — bulk rematch worker. Filters
+  `WHERE geocoded_at IS NULL`, so to reprocess a city, reset those rows
+  to NULL first (see LiveEdge `scripts/reset-geocode-attempts.ts`).
+- `scripts/load_polk_county_into_index.py` — Polk County loader (Python).
+  Reads NDJSON snapshots from `/home/api/geocode-snapshots/polk/`.
+- `scripts/load_dallas_county_into_index.py` — Dallas County loader.
+  Reads shapefile + CSV from `/home/api/geocode-snapshots/dallas/`. Needs
+  `pyproj` + `pyshp` (`pyproj` installed on Pi venv 2026-05-19).
+
+**Unmatched ship-tos by county (2026-05-20 snapshot):**
+~10K IA customers still without `lat`/`lon`. Top remaining (after Polk + Dallas
+land):
+| County | Approx unmatched | Public data | Action |
+|---|---:|---|---|
+| Webster | ~1,700 | Beacon-only | Deferred (needs scraping) |
+| Polk (direction-prefix mismatches) | ~3,300 | Atlas loaded — fuzzy match needed | 4th-tier fuzzy work |
+| Johnson | ~560 | REST endpoint identified | Build Pi loader |
+| Warren / Story / Madison / Marion / others | ~2,500 combined | Mostly Beacon | Deferred |
+
+Public data-source availability per county:
+- **REST endpoints:** Polk (loaded), Johnson (pending Python loader)
+- **Shapefile only:** Dallas (loaded)
+- **Beacon-only (no public data):** Webster, Warren, Story, many others —
+  would require Beacon scraping work; out of scope until a need surfaces.
+
+**Known data-quality wall:** direction-prefix mismatches. Customer record
+says `"613 Grimes Street"` but the Polk atlas has `"613 E Grimes St"`.
+`_split` keeps directionals as part of the street core, so these miss
+tier-1/2. A 4th-tier fuzzy matcher (strip directionals, Levenshtein on
+street name) would recover an estimated 1,500–2,500 of the still-failed
+rows. Highest-leverage follow-up.
+
+**Pi storage state (2026-05-20):**
+- `/home/api/geocode.db` — 9.9 GB
+- Pi SD card — 29 GB total, ~21 GB used (74%), ~8 GB free
+- Plans: migrate to Pi 5 + USB SSD (existing 500 GB/1 TB SSD on-hand) for
+  IOPS + write endurance. Current SD card has ~2-3 year write-cycle clock
+  under sustained sync writes. SSD migration is separate cutover.
+
+#### Scorecard Drill-Downs (2026-05-13) — COMPLETE
+
+Expansion of the scorecard suite to add product (major/minor/item) and vendor drill-down pages with reciprocal cross-links and a back-stack hint so navigating between scorecards always returns to the originating page. PRs #263, #265, #266, #271.
+
+**New pages:**
+- `/scorecard/product/major/[majorCode]` · `/scorecard/product/minor/[majorCode]/[minorCode]` · `/scorecard/product/item/[itemCode]` — 3-Year chart, KPIs, top customers, branch mix, drill-down breakdown table, sale-type pareto, detail metrics. Item page also has a Primary Supplier card + full Suppliers section (lead times, min order/pak, violations, supplier UOM, UOM-step flags).
+- `/scorecard/vendor` + `/scorecard/vendor/[supplierKey]` — vendor list + standalone scorecard mirroring branch-scorecard layout (3-year receipts, KPIs, branch chart, product treemap, top items, rebate programs, risk flags).
+
+**Query layer:**
+- `src/lib/scorecard/product-drill-queries.ts` — `fetchProductHeader`, `fetchProductKpis`, `fetchProductThreeYear`, `fetchProductTopCustomers`, `fetchProductBranchMix`, `fetchProductSaleTypes`, `fetchItemPrimarySupplier`, `fetchItemSuppliers`. All cached via `erpCache()`. All read `customer_scorecard_fact` except the supplier ones which read `agility_item_supplier`.
+- `src/lib/vendor-scorecard/queries.ts` — extended with `fetchVendorThreeYear`, `fetchVendorTopItems`, `fetchVendorBranchSummary`, `computeDerivedRiskFlags` (pure helper). `fetchVendorList` now populates real `riskFlagCount` from derived signals.
+- `src/lib/scorecard/types.ts` — new `ProductFilter`, `ProductDrillParams`, `ProductHeader`, `ProductBranchMixRow`, `ProductTopCustomerRow`, `ItemPrimarySupplier`, `ItemSupplierRow` types.
+
+**Back-stack convention:** every cross-link passes `?from=<origin>` (e.g. `customer:1234`, `vendor:LMC1000`, `product-major:LBR`, `product-minor:LBR|2X6`, `product-item:ABC123`). `ScorecardBreadcrumb` (`src/components/scorecard/ScorecardBreadcrumb.tsx`) parses it and renders "← Back to {origin}" with a sane fallback when missing. Used in all new drill-down page headers.
+
+**Critical gotchas — read before touching scorecard code:**
+- `customer_scorecard_fact` SKU column is **`item_number`**, NOT `item_code`. Only `agility_items` has `item_code` (alias for `item`). Indexes / queries on the fact table use `item_number`.
+- `agility_receiving_header` has **no `supplier_key` column** — the supplier lives on the joined `agility_po_header`. Vendor scorecard queries always join through PO header for the supplier predicate.
+- **LMC1000 multi-ship-from routing**: the vendor scorecard namespaces those suppliers as `<supplier_key>::<ship_from_seq>`. `fetchVendorList` constructs the composite key, `fetchVendorDetail` parses it back via `indexOf('::')`. **Always use `buildVendorRouteKey()` in `product-drill-queries.ts`** when constructing a `/scorecard/vendor/[supplierKey]` link from `agility_item_supplier` data — passing the raw `supplier_key` drops the ship-from and routes to the wrong page.
+- `agility_item_supplier.supplier_key` is left-padded with spaces (e.g. `"     515"`). Always `TRIM()` it in joins and before exposing it on URLs.
+- `agility_items` may or may not have `primary_supplier` / `primary_supplier_key` columns depending on sync build. **Don't query them** — the source of truth is `agility_item_supplier.is_primary`. Migration 0020 dropped the obsolete indexes on those columns.
+
+**Indexes (apply manually in Supabase SQL editor):**
+- `db/migrations/0019_scorecard_drilldown_indexes.sql` — 8 indexes: `idx_csf_{item,major,major_minor,branch_item}_date` (note: **`item_number`** not `item_code`), `idx_agility_recv_header_{date,branch_date}`, `idx_agility_recv_lines_po`, `idx_agility_po_header_supplier_status`. The trailing `idx_agility_items_primary_supplier{,_key}` indexes are wrapped in a `DO/EXECUTE` block that no-ops when those columns don't exist on the target schema — they're also dropped by migration 0020, so they're effectively cruft. New work should rely on `agility_item_supplier` indexes (already created by the sync worker) instead.
+- `db/migrations/0020_drop_obsolete_primary_supplier_indexes.sql` — drops the now-unused `idx_agility_items_primary_supplier{,_key}` (DROP IF EXISTS, safe re-run). Both 0020 files (`_dispatch_driver_availability.sql` and `_drop_obsolete_primary_supplier_indexes.sql`) coexist on disk; the numbering is just a sort key, not a sequence.
+
+**Bug fixes from /purchasing/scorecard:**
+- Branch & Mix tab was rendering em-dashes — now hydrated from new `fetchVendorBranchSummary` (vendor count + spend YTD/PY + fill/OTD per branch).
+- Risk flag count was hard-coded to 0 — now computed from low-fill-rate (<90), low-OTD (<85), no-recent-receipts (>60d w/ open POs), missed-rebate-pacing.
+- Each leaderboard row gets an `ExternalLink` icon → standalone `/scorecard/vendor/[supplierKey]`.
+
+**Vendors tab in `ScorecardTabs`** added between Sales Reps and Product Groups (`app/scorecard/_components/ScorecardTabs.tsx`).
+
+#### Open POs + PO Detail supplier rules (2026-05-14) — COMPLETE
+PR [#278](https://github.com/amcgrean/liveedge/pull/278). Joined `agility_item_supplier` to PO queries so buyers see lead time, min-order-qty, and violation rule inline.
+
+- **`/purchasing/open-pos`** — added two PO-level columns via `LEFT JOIN LATERAL` aggregating across the PO's items:
+  - **Lead**: `MAX(ims.lead_time_1)` (conservative — surfaces the worst case)
+  - **Min**: amber **Block** chip when any line has `ims.min_ord_violation = 'Block'`
+- **`/purchasing/pos/[po]`** — added three per-line columns: Lead (`lead_time_1`), Min Ord (`min_ord_qty` + `min_ord_qty_disp_uom`, amber when violation = `'Block'`), Supp UOM (`supp_uom`).
+- Join predicate (mandatory `TRIM` on supplier_key — `agility_item_supplier.supplier_key` is left-padded; **branch scoping** added by PR [#299](https://github.com/amcgrean/liveedge/pull/299) — `agility_item_supplier` is keyed by `(system_id, supplier_key, item_ptr, ship_from_seq_num)`, and without the `system_id` predicate an item sold across branches can resolve to a rule row from the wrong branch):
+  ```sql
+  ON ims.item_ptr = pl.item_ptr
+  AND ims.system_id = pl.system_id        -- mandatory; without it, cross-branch leak
+  AND TRIM(ims.supplier_key) = TRIM(ph.supplier_key)
+  AND ims.ship_from_seq_num = ph.shipfrom_seq
+  AND ims.is_deleted = false
+  ```
+- `OpenPO` type in `src/lib/purchasing.ts` extended with `lead_time_max_days` and `has_blocking_min_violation`.
+- No new indexes — `idx_agility_item_supplier_supplier (supplier_key, ship_from_seq_num)` covers the lookup.
+
+#### Suggested Buys supplier rules + primary mismatch (2026-05-14) — SUPERSEDED 2026-05-26
+**This section describes the PPO-based viewer that was replaced by the replenishment engine in PR #384 (2026-05-26). The `/api/purchasing/suggested-buys` and `/[ppo_id]` routes referenced below were deleted in that PR. Kept for historical context only — the current page reads `/api/purchasing/replenishment?view=suggested`. See the "Buyer Workspace & Replenishment Engine" section.**
+
+PR [#296](https://github.com/amcgrean/liveedge/pull/296). The `/purchasing/suggested-buys` page already existed as a read-only viewer of `agility_suggested_po_header/lines`; this PR enriched the expanded-row detail with `agility_item_supplier` rules and a primary-supplier mismatch signal.
+
+- **API (`/api/purchasing/suggested-buys/[ppo_id]`)** — two LATERAL joins on the lines query:
+  - `ims_sup` — looks up the rule row for `(this item × the suggested PO's supplier)` by resolving the suggested `supplier_code` to a `supplier_key` via `agility_suppliers`. Returns `lead_time_1`, `min_ord_qty + display UOM`, `min_ord_violation`, `supp_uom`.
+  - `ims_primary` — looks up `is_primary = true` for the item independently, returns its `supplier_code` + name for client-side mismatch comparison.
+  - Both LATERALs use `LEFT JOIN … ON true` so lines without rules still render.
+- **UI** — 4 new columns on the expanded line table: Lead / Min Ord / Supp UOM / Primary. Amber background on Min Ord when violation = `'Block'`. Primary column shows an amber `AlertTriangle` chip when the item's primary supplier differs from the suggested PO's supplier. Item codes are now `Link`s to `/scorecard/product/item/[itemCode]?from=purchasing-suggested-buys`.
+- **`ScorecardBreadcrumb`** — added `'purchasing-suggested-buys'` origin kind → "Back to Suggested Buys".
+- **Override dropdown deferred**: the handoff prompt called for an inline dropdown to override the suggested supplier per line, but the page is a read-only ERP viewer (no Agility write-back wire-up yet), so a non-functional override control would be misleading. Surfacing the mismatch chip + linking out to the item scorecard accomplishes the same intent: a buyer can see at a glance that a non-primary supplier was suggested and click through to investigate before approving. Build the override dropdown only when an Agility write-back endpoint exists for `agility_suggested_po_lines.supplier_code` mutation.
+- **Branch scoping** (added in-PR after Codex P2 review): both LATERALs filter `ims.system_id = spl.system_id`. Without it, an item sold across multiple branches with branch-specific purchasing rules could resolve to the wrong row.
+- No new indexes — `(item_ptr)` and `(supplier_key, ship_from_seq_num)` already cover both LATERAL lookups.
+
+#### Forecast dashboard ($ + drill) (2026-05-14 → 2026-05-15) — COMPLETE
+The `/management/forecast` page now has UOM-correct $ and clickable drill-through on every KPI/horizon/branch tile. PRs #306, #310, #311, #312.
+
+- **API**: `app/api/management/forecast/route.ts` sums `extended_price` / `unshipped_extended_price` from `agility_so_lines` (UOM-aware — see "UOM-aware open-order $" note above). Returns `kpis`, `horizons` (7 buckets: overdue / next_7 / next_8_30 / next_31_90 / next_91_plus / far_future / unscheduled), `far_future_orders` (top 20), `overdue_orders` (top 5), per-day forecast with branch + ship_via breakdowns, and the coverage gate (`dollars_coverage_pct` + `dollars_ready`).
+- **Drill API**: `app/api/management/forecast/drill/route.ts` — `GET ?bucket=<b>&branch=<code>` where `bucket` is `'open'` | `'far_future_unscheduled'` | any `HorizonKey`. Returns top 200 SOs sorted by `unshipped_extended_price` DESC with cust_name/code/rep/expect/status/sale_type/$ — all derived from the same UOM-aware columns. 1-min cache + 5-min SWR.
+- **Client** (`app/management/forecast/ForecastClient.tsx`): hero KPI strip (open count + ordered $ + unshipped $ + no-date count), per-branch KPI mini-strip, 7-tile horizon row, far-future "Data Hygiene" drill table, sale-type × branch pivot with $ columns, daily forecast SVG chart with branch-stacked bars + count line overlay.
+- **Drill modal** (`DrillModal` in ForecastClient): triggered by any tile click. Filterable list (search by SO#, customer, code, rep), totals strip in header updates live, SO# links to `/sales/orders/[so_number]`, ESC + backdrop close, top-200 cap with truncation warning. Honors `dollarsReady` — hides $ columns + totals when coverage gate ever flips back on.
+- **Empty buckets**: disabled (opacity-50, cursor-not-allowed) so users can't open empty modals.
+
+#### App Performance Audit (2026-05-26) — PRs #386 + #387 MERGED
+
+Three-Explore-agent audit on `claude/app-performance-issues-Hgx9B`. Plan in `/root/.claude/plans/how-does-our-app-floating-hedgehog.md`. Three small fix PRs landed; PR 4 (virtualization + DispatchClient slice) was dropped on inspection (see "deferred" below).
+
+**Landed in PR #386:**
+- **ERP-read caching on the hot paths.** Two new modules wrap `agility_*` reads in `erpCache()`:
+  - `src/lib/home/queries.ts::fetchHomeErpKpis(branchScope)` — 5 queries (open picks, open WOs, open orders, invoiced-30d, recent-15-orders) used by `/api/home`. Bids-schema queries (open bids/designs/activity/page-visits) stay uncached because they read per-user mutable state.
+  - `src/lib/sales/hub-queries.ts::fetchHubErpData(rep, branch)` — 8 queries (my open orders, written orders, 3× will-call counts, branch POs, top customers, recent transactions) used by `/api/sales/hub`. Keyed on `(rep, branch)` so admin-vs-rep views never collide. Bids-schema quotes/designs/service queries stay uncached.
+  - **Pattern rule for new ERP-cached helpers:** do NOT use per-query `.catch(() => fallback)` inside the cached function. If any query throws, let `Promise.all` reject so `unstable_cache` doesn't store a partially-zeroed payload for 5 min (Codex P2 caught this on the home extraction — fix in same PR). Outer route handler applies the fallback so the failing request still returns; the next request retries from cache miss.
+- **`/api/dashboard` parallelized.** Not an ERP route — reads `bids` schema only. Four sequential `await db.select()` calls collapsed into one `Promise.all`. Bids-schema mutations (open bids, designs, etc.) shouldn't be cached, so the win here is just round-trip count.
+- **`usePageTracking` debounce.** `src/hooks/usePageTracking.ts` adds a 1 s `setTimeout` cleanup so rapid client-side nav coalesces to one `POST /api/track-visit` per destination. `page_visits` is an upsert, so coalescing is safe. Cuts request volume noticeably when a user hops between sibling tabs in `/bids`, scorecard, etc.
+- **Polling visibility gates.** `src/components/dispatch/DispatchMap.tsx:352` (15 s vehicle poll) and `app/delivery/map/MapClient.tsx:65` (30 s fleet poll) now check `document.visibilityState === 'visible'` before firing. Matches the established pattern in `SupervisorClient` / `SalesTrackerClient`. Background tabs no longer hit `/api/dispatch/vehicles`.
+- **`scorecard/overview` Suspense boundary.** `app/scorecard/overview/page.tsx` — extracted the data-dependent body into an inner async `OverviewContent` and wrapped with `<Suspense>` + a layout-matched skeleton. Header, breadcrumb, tabs, title block, and filter bar paint synchronously from URL params; the five `Promise.allSettled` aggregates suspend underneath. On cold cache the user sees the page shell + skeleton instead of a blank screen for 1–3 s.
+- **Lazy-load thumbnail images.** `app/dispatch/DispatchClient.tsx` POD-photo thumbnails and `app/purchasing/review/[id]/ReviewDetailClient.tsx` photo grid get `loading="lazy" decoding="async"` on the raw `<img>` tags. `next/image` was considered and skipped — R2 presigned URLs rotate query params and `next.config.js` has no `images.remotePatterns`; the lazy-load attrs get most of the user-visible defer-load benefit with zero config risk.
+
+**Landed in PR #387 (CI hardening, orthogonal):**
+- `.github/workflows/codeql.yml` — `security-and-quality` queries on `javascript-typescript`, runs on PR + push to main + Mondays at 06:27 UTC.
+- `.github/workflows/gitleaks.yml` — full-history scan on every PR + push to main.
+
+**Disconfirmed claims from the original audit (don't re-flag these):**
+- `/api/home` was NOT a sequential waterfall — `app/api/home/route.ts:241` already wraps both buckets (bids + ERP) in an outer `Promise.all`. The Explore agent was wrong; only caching was missing.
+- The Hubbell `needs-extraction` "N+1 R2 fetches" is `getPresignedUrl()` local SDK signing with no network round-trip, wrapped in `Promise.all`. Not a perf concern at any reasonable batch size.
+- `/api/credits` LATERAL + GROUP BY is real but already indexed by `db/migrations/0014_credits_performance_indexes.sql`. Don't touch unless `EXPLAIN ANALYZE` says otherwise.
+
+**Deferred / dropped (with rationale — don't reopen speculatively):**
+- **Virtualization on `JobsClient` + `TransactionsClient`** — DROPPED. Both already paginate server-side at 50 rows (`JobsClient.tsx:164`, `TransactionsClient.tsx:106`). 50 `<tr>` elements is well below where the DOM cost matters; `@tanstack/react-virtual` would have added bundle weight for no real-world win. Reopen only if page-size ever climbs above ~150.
+- **`DispatchClient.tsx` slice extraction** (2480 LOC, 7 chained `useEffect`s) — deferred. Behavior-preserving refactor across a god file with zero tests and no paired user-visible perf win that justifies the regression risk. Will need its own dedicated PR with manual smoke verification when tackled. Same logic applies to `ForecastClient.tsx` (1096), `TakeoffCanvas.tsx` (988 — has an active bug-fix branch already), `ManageBidClient.tsx` (972), `TopNav.tsx` (956).
+- **`<Suspense>` on `forecast` / `sales/reports` / `ops/delivery-reporting`** — NOT APPLICABLE. Each `page.tsx` just renders a `'use client'` component that manages its own loading state; there's no server-side fetch to suspend. The Explore agent's audit didn't distinguish between server-fetched and client-fetched routes.
+- **`next/image` migration** — deferred. Requires `images.remotePatterns` for the R2 host(s) in `next.config.js` and careful handling of presigned-URL query-string rotation (cache-key churn). Lazy-load attrs landed instead; revisit only if photo galleries grow much larger than the current 4–20 thumbnails per stop/submission.
+- **Per-domain `revalidateTag` taxonomy** — deferred. Only one tag (`'erp'`) and three invalidation sites (all in `app/management/rebates/actions.ts`). Splitting tags (e.g. `erp:scorecard`, `erp:sales-hub`, `erp:home`) would let bid/design/service mutations invalidate the hub cache surgically instead of waiting for the 5-min TTL. Build only when a real "stale dashboard after my own write" complaint surfaces.
+- **Composite index audit on `agility_so_header(system_id, so_status, sale_type)`** — deferred. The query patterns in `/api/home` + `/api/sales/hub` filter heavily on these three columns, but `0013_erp_performance_indexes.sql` and `0016_scorecard_management_indexes.sql` likely already cover. Don't add a migration speculatively — run `EXPLAIN ANALYZE` on the actual slow query first.
+
+**Pattern reminders for future ERP-route refactors:**
+- New `/api/*` routes that read `agility_*` for non-mutating dashboard purposes should default to wrapping the query function in `erpCache()` keyed on every input that affects the result (branch, rep, date range).
+- Always partition cache keys on per-user scoping inputs. Two reps hitting `/api/sales/hub` must NOT share a cached payload.
+- The Codex P2 lesson: never put `.catch(() => fallback)` inside an `erpCache`-wrapped function — let it throw, apply the fallback at the call site.
 
 #### Still Missing / Deferred
-- **Suggested Buys** (`/purchasing/suggested-buys`): `app_purchasing_queue` view confirmed missing. Check `agility_suggested_po_header` + `agility_suggested_po_lines` before building
-- **RMA Credits thumbnails**: email pipeline, doc counts, address-based matching, and nested email support are all live. Next: add `GET /api/credits/[id]/images` presigned URL route + thumbnail previews in CreditsClient so users can view uploaded docs inline without leaving the page.
 - **WH-Tracker kiosk/TV/smart scan**: not appropriate for LiveEdge web app pattern — intentionally deferred
 - **Purchasing workflow** (tasks, approvals, exceptions, PO notes): verify `purchasing_tasks`, `purchasing_approvals`, etc. exist in `public` schema first
 - **Dispatch enrichment** (driver/truck mgmt, order timeline per stop): WH-Tracker had these; LiveEdge dispatch shows basic stops only. **AR balance intentionally excluded from dispatch** — see AR Data Policy in the Agility Live API section.
 - **Sales delivery board** (`/sales/tracker`, `/sales/deliveries`): WH-Tracker had sales-rep-facing delivery views not yet ported
 - **Generic file management**: WH-Tracker's `files` + `file_versions` system not ported to LiveEdge
-- **Page tracking rollout**: `POST /api/track-visit` exists but not yet wired into module client components — Quick Access strip on homepage stays empty until called
-- **Open order value metrics** (2026-05-05): Sync worker PR #16 added `v_open_order_value` to Supabase — a view exposing `ordered_value` and `unshipped_value` per open order (`so_status = 'K'`), grouped by `(system_id, branch_code, so_id, ...)`. No LiveEdge UI consumes it yet. Best candidates: (1) Management/Forecast page — already groups by branch and sale type, adding value columns is natural; (2) Home KPI strip — could surface a company-wide open order dollar total; (3) Sales Hub KPI cards. Query with `SELECT branch_code, SUM(ordered_value), SUM(unshipped_value) FROM v_open_order_value WHERE system_id = 'AUS' GROUP BY branch_code`.
-- **`qty_shipped` now populated** (2026-05-05): Sync worker PR #16 also updated `dbo.vw_agility_so_lines` to aggregate `qty_shipped` from `dbo.shipments_detail`. The `agility_so_lines.qty_shipped` column already exists in Supabase and is already selected by `app/api/warehouse/orders/[so_number]/route.ts` and `app/api/dispatch/orders/[so_number]/lines/route.ts` — those screens will now show real shipped quantities automatically after a sync cycle. No LiveEdge code changes needed; noting here in case future features (e.g. backorder highlighting, unshipped value per line) want to build on it.
+- **UOM-aware open-order $ on `agility_so_lines`** (2026-05-14): beisser-api PR #32 added three pre-computed columns + a rebuilt `v_open_order_value` view to fix 10–100× $ overstatement on lumber lines (the previous naive `qty_ordered * price` math ignored that `price` is denominated in a UOM identified by `price_uom_ptr` — e.g. per-MBF — with no conversion factor in Supabase). New columns:
+  - **`agility_so_lines.disp_price_conv`** numeric — UOM conversion factor (1.0 for Each, 1000 for BF→MBF, 187.51 for 1x4-16' Pine, etc.)
+  - **`agility_so_lines.extended_price`** numeric — `qty_ordered * price / disp_price_conv` (with NULL/0 fallback to naive math)
+  - **`agility_so_lines.unshipped_extended_price`** numeric — same formula with `(qty_ordered - COALESCE(qty_shipped, 0))`
+  - **`agility_so_lines.qty_shipped`** numeric — now actually populated from `dbo.shipments_detail` via OUTER APPLY (the 2026-05-05 PR #16 had a broken column reference that left it 100% NULL until PR #32)
+  - **`agility_so_lines.item_code` / `description`** — now populate (the join to `dbo.item` was previously gated on `system_id` matching, but `dbo.item` is corporate `'00CO'` while line `system_id` is branch — gate removed in PR #32; ~361,832 of 362,131 lines resolve)
+  - **`v_open_order_value`** view rebuilt — exposes `(system_id, branch_code, so_id, so_status, sale_type, expect_date, ordered_value, unshipped_value, line_count)`. Filter is `so_status NOT IN ('I','C','X')` only; HOLD/XINSTALL still need to be excluded by the caller. Perf: per-SO join ~9 ms; cross-system aggregate without `system_id` filter is slow (~22 s) — always filter by `system_id` before aggregating.
+  - **First consumer** is `app/api/management/forecast/route.ts` which sums these columns directly. The route also runs a `COUNT(*) FILTER (WHERE extended_price IS NOT NULL) * 100 / COUNT(*)` coverage check in parallel and returns `dollars_coverage_pct` + `dollars_ready` so the client can auto-hide $ during any partial sync state. **Currently `DOLLARS_COVERAGE_THRESHOLD = -1` (always-on)** since coverage is steady-state ~95-96% and the remaining ~4% gap is structural (SO lines with NULL/0 price or qty that can never compute an `extended_price`). The check + flag are kept in code as an emergency lever — bump the threshold to e.g. 90 if a real sync outage materially distorts totals, and the banner/hide logic kicks in without further code work.
+  - **Rule for new $ aggregates anywhere in LiveEdge**: never use `qty_ordered * price` on `agility_so_lines`. Always `SUM(extended_price)` for ordered $ or `SUM(unshipped_extended_price)` for backlog. Spot-check against Agility ERP's "Ext" column on the same SO — should match to the cent.
+- **Vendor scorecard "Items I primarily supply"** (2026-05-13): add a section on `/scorecard/vendor/[supplierKey]` listing items where `is_primary = true` for this supplier. Parse `<key>::<seq>` first to preserve LMC1000 ship-from. Each row links to `/scorecard/product/item/[itemCode]?from=vendor:<supplierKey>`.
+- **Item scorecard "Inbound POs" section** (2026-05-13): on `/scorecard/product/item/[itemCode]`, query open POs containing this item via `agility_po_lines.item_ptr → agility_po_header WHERE po_status NOT IN ('CLOSED','CANCELED','COMPLETE','RECEIVED') AND canceled = false`. Helpful for slow-mover review.
+- **Vendor scorecard fact table** (2026-05-13, deferred): only build if `/scorecard/vendor/[supplierKey]` 3-year query is slow (>2s) at scale. Would need a sync-worker matview keyed `(supplier_key, ship_from_seq, system_id, year, month)` with pre-aggregated spend/lines/receipts/on-time-count. Don't start LiveEdge work without the matview landing first.
+
+## Open Branches Audit (2026-05-20)
+
+Snapshot of unmerged `claude/*` and `codex/*` branches with a hint about whether they're active work, deferred, stale, or likely superseded by something already in `main`. **Verify before reusing or deleting** — squash merges leave branches looking "ahead of main" even after their changes landed.
+
+### Superseded — needs GitHub-UI deletion (harness git creds can't delete refs)
+- **`codex/continue-work-on-security-upgrade-plan`** — Codex's P1/P2 fix attempt with its own follow-up issues. Both bugs were fixed in `main` via PR #349.
+- **`claude/fix-permissions-update-error-yizvY`** — roles-cast fix; already addressed in `main`.
+- **`codex/continue-work-on-security-remediation`** — status doc only, no longer needed (CLAUDE.md + `docs/security-decisions-closed-2026-05-20.md` are the live references).
+
+### Active feature work (likely safe, owner-driven)
+- **`claude/eager-cerf-b5b272`** (2 commits, 28h) — "docs: geocoding pipeline consolidated on the Pi (handoff for next agent)." 195-line CLAUDE.md refactor + cron tweak + handoff doc. **Conflicts with this file** — anyone merging needs to reconcile the Open Branches Audit section.
+- **`claude/hubbell-docs-update`** (3 files, 5h) — Hubbell docs refresh + follow-up agent prompts. Possibly subsumed by PR #335 ("docs: refresh Hubbell section + add follow-up agent prompts") which is already in main. Diff before merging.
+- **`claude/loving-chatelet-e3363c`** (3 files, 5h) — "Address Codex review on jobsite work surface." Follow-up on the PR #338/#340 Hubbell jobsite rebuild. Check whether the Codex comments it addresses are still open.
+- **`claude/hubbell-jobs-pdf-preview`** (4h) — "expand doc rows to show PDF line items + job context." Likely follow-on to PR #340. Verify against current main before merging.
+- **`claude/hubbell-doc-context`** (5 files, 22h) — `system_id` scope on candidate order_total LATERAL subqueries. Real branch-leak fix; check whether the same scoping was already applied in another merged PR.
+- **`claude/hubbell-payments-import`** (7 files, 11h) — "Mark docs unpaid when import has no payment row for them." Touches the payments-import route.
+- **`claude/hubbell-payment-autolink`** (8h) — "Auto-link orphan payments + fix linked-count reporting." **Likely already merged via PR #333** ("Auto-link orphan payments + fix linked-count reporting"). Confirm before deleting.
+- **`claude/hubbell-job-detail-address-match`** (3 files, 8h) — "Expand street-type abbreviations in Hubbell address normalize." **Likely already merged via PR #332** ("Claude/hubbell job detail address match"). Confirm before deleting.
+- **`claude/hubbell-jobs-address-only`** / **`claude/hubbell-jobs-source-from-agility`** (21h) — earlier iterations of the jobs-page rewrite that landed as PR #338. Almost certainly superseded.
+
+### Deferred / pending per existing Pending Actions list
+- **`claude/dallas-county-loader`** (47 commits, 2w) — Dallas County IA parcel loader. See Pending Action #7. Real outstanding work, not stale.
+
+### Probable squash-merged duplicates (safe to delete after confirming)
+- **`claude/lucid-thompson-d7f94e`** — merged via PR #339.
+- **`claude/merge-admin-permissions-prs-nJDm6`** — last-touched by PR #341 (docs commit). Underlying security work also merged.
+- **`claude/purchasing-suggested-buys-rules`** (1 file, 5d) — branch-scope for suggested-buys LATERALs. Per CLAUDE.md the fix landed via PR #299 / #296 — almost certainly superseded.
+- **`claude/docs-purchasing-supplier-rules-followup`** (1 file, 5d) — same area as above.
+- **`claude/hardcore-dirac-8d92f4`** (1 file, 7d) — `active_flag=true` filter in suggested-buys detail. Spot-check whether this exact line landed via #296/#299/#306.
+- **`claude/keen-mcnulty-c72043`** (3 files, 5d, 1110+/737-) — forecast UI port. Forecast dashboard landed via PRs #306-#312; verify whether this branch was the source or a parallel attempt.
+
+### Stale base / investigate before touching
+- **`claude/fix-gps-job-loading-IAYiF`** (654 commits ahead of main, 3w) — the commit count means the branch base is way out of date; the actual fix is small but a rebase will be painful. Check if the same fix is already in main before rebasing.
+
+### General hygiene for the next agent
+- **Never** force-push or rebase any of the codex/* branches without coordinating — they're owned by another agent.
+- Before deleting a "merged" branch, search `git log origin/main` for the commit subject — squash merges rewrite the SHA, so `git branch --merged` won't find them.
+- If you reconcile this list (e.g. delete superseded branches), update this section in the same commit — leaving a stale audit is worse than no audit.
 
 ## Pending Actions
-1. **Apply page_visits migration**: Run `db/migrations/0004_page_visits.sql` in Supabase SQL editor to enable Quick Access tracking on homepage
-2. **Extend page tracking to module clients**: Add `POST /api/track-visit` call to each module's main client component (or extract a shared `usePageTracking` hook in `src/hooks/`) so Quick Access fills with real data
-3. **RMA Credits thumbnails**: Email pipeline, doc counts, address-based RMA matching, and nested `.eml` parsing are live. Next: add `GET /api/credits/[id]/images` presigned URL route + thumbnail previews in CreditsClient so users can view docs inline.
+1. ~~**Apply page_visits migration**~~ — DONE. `bids.page_visits` is live; homepage Quick Access reads from it.
+2. ~~**Extend page tracking to module clients**~~ — DONE (PR #359, 2026-05-20). `usePageTracking` hook in `src/hooks/usePageTracking.ts` is called from all 49 top-level module clients. HomeClient's pre-existing inline `track-visit` effect was replaced by the hook in the same PR to avoid double-tracking.
+3. ~~**RMA Credits thumbnails**~~ — DONE. `GET /api/credits/[id]/images` exists, `CreditsClient.tsx` has an inline expandable `ImagesPanel` with upload + presigned-URL viewing per CM.
 4. **Purchasing workflow gaps**: Before building, verify tables exist: `SELECT table_name FROM information_schema.tables WHERE table_schema='public' AND table_name IN ('purchasing_tasks','purchasing_approvals','purchasing_notes','purchasing_exceptions')` — if found, build PO notes API, exceptions view, approval workflow
-5. **Suggested Buys**: `app_purchasing_queue` confirmed missing. Check `agility_suggested_po_header` + `agility_suggested_po_lines` before building `/purchasing/suggested-buys`
+5. ~~**Suggested Buys**~~ — REBUILT 2026-05-26 (PR #384). The original PPO-based viewer described here (rollup chips, primary-mismatch filter, etc. landed in PR #360) was entirely replaced by a new view over the LiveEdge replenishment engine. The Agility `agility_suggested_po_*` data was confirmed unactionable for Beisser's mix; LiveEdge now owns the planning policy via `bids.item_planning`. See the "Buyer Workspace & Replenishment Engine (2026-05-22 → 2026-05-26)" section for the current architecture. The old `/api/purchasing/suggested-buys` and `/api/purchasing/suggested-buys/[ppo_id]` routes were deleted in the same PR.
 6. **Flask sunset**: DNS cutover + archive `C:\Users\amcgrean\python\wh-tracker-fly\WH-Tracker` after user testing confirms parity
-7. **Dallas County loader**: shapefile extracted to user's `./tmp/dallas`, inspector script committed to `claude/dallas-county-loader` branch. Need to (a) run inspector to discover dbf field names, (b) write `scripts/load-dallas-into-index.ts` based on Polk template + shapefile reading + `proj4` reprojection (Iowa State Plane → WGS84), (c) load to prod, (d) re-run cron. Expected uplift ~1,400 customers (Waukee + Adel). See section "Geocoding Pipeline" above for context.
-8. **Johnson County loader**: REST endpoint confirmed at `https://gis.johnsoncountyiowa.gov/arcgis/rest/services/LandRecords/Land_Records/MapServer` — layers 4 (House Numbers, Point) + 9 (Parcels, Polygon). Same template as Polk loader. Expected uplift ~360 customers (Iowa City / Coralville / North Liberty / Tiffin).
-9. **Generic county-data nightly refresh**: once Dallas + Johnson land, add `/api/cron/county-data-refresh` that re-runs all REST-based county loaders weekly (or monthly). `ON CONFLICT (source, source_hash) DO NOTHING` makes re-runs no-ops for unchanged parcels; new construction picked up automatically.
+7. **County parcel loaders — MOVED TO PI (2026-05-20)**: Polk + Dallas now loaded on the Pi (see "Geocoding Pipeline" section above). Remaining: **Johnson County** loader — REST at `https://gis.johnsoncountyiowa.gov/arcgis/rest/services/LandRecords/Land_Records/MapServer` (layers 4 + 9), same template as Polk. Expected uplift ~560 customers. Owner: **Pi agent** (`C:\Users\amcgrean\python\api`). The TS loaders in `scripts/load-*.ts` are inert reference only; build the Python version in beisser-api's `scripts/`.
+8. **4th-tier fuzzy matcher (highest single-uplift remaining)**: Add a fuzzy fallback to `agility_api/geocoder_sqlite.py` that strips leading/trailing directionals from `street_norm` and retries the city/zip lookup. Tag as `sqlite_fuzzy_dir` so the relaxation is visible in `geocode_source`. Keep it gated on city OR zip-3 corroboration to avoid re-introducing the wild-misplacement bug. Expected uplift: ~1,500–2,500 rows currently blocked on direction-prefix mismatches (e.g. customer "613 Grimes St" vs atlas "613 E Grimes St").
+10. **Audit other `qty_ordered * price` usages and swap to `extended_price`** (2026-05-14): `/management/forecast` is fixed but the same UOM bug affects every other place that aggregates SO line $. Known offenders to grep + fix:
+    - `app/api/sales/orders/[so_number]/route.ts` — Ext column on the order detail page (user-confirmed broken: SO 1480288 line 3 shows $15,960 vs Agility's $85.11)
+    - `app/api/dispatch/orders/[so_number]/lines/route.ts` — same shape
+    - `app/api/warehouse/orders/[so_number]/route.ts` — same shape
+    - Any Sales hub / Purchasing dashboard that sums open SO line $
+    - Pattern: replace `qty_ordered * price` with `extended_price`, and `(qty_ordered - COALESCE(qty_shipped,0)) * price` with `unshipped_extended_price`. Both columns are already on the table; no schema work needed.
+11. **Hubbell daily check ingest** (Phase 3a/b/d LIVE 2026-05-21): Migration 0026 applied. Server-side write endpoints (`POST /api/admin/hubbell/checks/upload`, rewritten `/payments/import`) and read endpoints (`GET /api/hubbell/docs`, `GET /api/hubbell/checks`) all live. Phase 3c (Pi `hubbell_daily_checks.py` scraper) is owned by the PC/test agent — needs to be built and deployed to `/home/api/hubbell/` on the Pi. Phase 3e (`ALTER SCHEMA bids.hubbell_* → hubbell`) deferred until PC scripts retire. See the Hubbell PO/WO Daily Ingest section above for full detail.
+12. ~~**Apply 0027_report_subscriptions migration**~~ — DONE (2026-05-22). `bids.report_subscriptions` + `bids.report_subscription_log` are live. Hourly `/api/cron/report-subscriptions` cron is now sweeping. See "Report Email Subscriptions" section below.
+13. **Perf — god-file splits (deferred from PR #386)**: `DispatchClient.tsx` (2480 LOC, 7 chained `useEffect`s) is the highest-leverage refactor — extract `PodPhotoViewer` and `StopTimeline` into `app/dispatch/_components/`. Behavior-preserving, no perf-test cover available, so verify manually with a stop that has POD photos + timeline. `ForecastClient.tsx` (1096), `ManageBidClient.tsx` (972), `TopNav.tsx` (956) are lower priority — only touch if forced by a feature change. Skip `TakeoffCanvas.tsx` (988) — it has an active bug-fix branch (`claude/debug-taokeoff-errors-NngpH`).
+14. **Perf — cache audit on remaining ERP routes**: PR #386 only wrapped `/api/home` and `/api/sales/hub`. Other high-traffic ERP-read routes that should likely follow the same pattern (extract query into `src/lib/<domain>/queries.ts`, wrap with `erpCache()` keyed on every per-user input): scan all `app/api/**/route.ts` files that call `getErpSql()` / `getErpDb()` and aren't already using `erpCache`. Likely candidates: `/api/dispatch/*`, `/api/warehouse/*`, `/api/work-orders/*`, `/api/supervisor/*`. Don't blanket-cache mutation-adjacent endpoints — confirm read-only first.
+15. **Perf — `revalidateTag` taxonomy**: split the single `'erp'` tag into per-domain tags (`erp:scorecard`, `erp:home`, `erp:sales-hub`, etc.) once a real "stale dashboard after my own write" complaint surfaces. Currently three invalidation call sites, all in `app/management/rebates/actions.ts`. Adding finer tags lets bid/design/service mutations invalidate just the affected cache instead of nuking everything. Don't build speculatively.
+16. **Perf — UOM `$` audit (consolidates with item 10)**: PR #386 didn't touch the `qty_ordered * price` math; item 10 still tracks. Specific files confirmed as still using the broken math: `/api/sales/orders/[so_number]/route.ts`, `/api/dispatch/orders/[so_number]/lines/route.ts`, `/api/warehouse/orders/[so_number]/route.ts`. Pattern: swap to `extended_price` / `unshipped_extended_price` on `agility_so_lines` (columns already exist). Spot-check the order-detail page against Agility's "Ext" column to confirm parity.
+17. **Replenishment follow-ups** (2026-05-26): all 7 phases of the buyer-workspace plan shipped. Four follow-ups intentionally deferred and documented at `docs/agent-prompts/replenishment-handoff-2026-05-26.md` in leverage order: (a) daily engine-output snapshot table → unlocks sparklines + delta-since-yesterday on workspace hero tiles, (b) per-row unit cost on engine output → unlocks `estimatedValue` + supplier $ rollup on Buy Now tile, (c) `qty_on_hand` sync health investigation (operational, not code — 16/1366 stocked items at 20GR had positive QOH at build time), (d) item scorecard Replenishment card surfacing live engine output alongside override state. **Don't build speculatively** — wait for a real complaint after the user spends time with the live system.
+
+## Buyer Workspace & Replenishment Engine (2026-05-22 → 2026-05-26)
+
+LiveEdge-owned replenishment policy + a SQL engine that drives Suggested Buys, Potential Outages, and the rebuilt Buyer Workspace dashboard. The whole plan and the resolved design decisions live at **`docs/buyers-workspace-plan-2026-05-22.md`**.
+
+**Why this exists:** Agility's `agility_suggested_po_*` (Suggested POs) and per-item min/max fields don't produce actionable suggestions for Beisser's mix — especially Millwork. LiveEdge owns the planning policy (`bids.item_planning`) and uses Agility purely as the source of truth for stock, demand, supply, lead times, and minimums.
+
+### Schema
+
+- **`bids.item_planning`** (migration 0028) — sparse per-`(system_id, item_code)` override row. All policy fields nullable so a row can carry just one override. Columns: `min_on_hand`, `target_on_hand`, `safety_stock_days`, `usage_window_days`, `seasonality_factor`, `seasonality_profile` (jsonb 12-month multipliers), `pack_qty`, `preferred_supplier`, `is_critical`, `category` (`millwork|lumber|siding|shingles|trim|decking|windows|doors|other`), `is_paused`, `notes`, `source` (`manual|csv_import|admin_suggestion`).
+- **`bids.branch_planning_defaults`** (migration 0028) — one row per `system_id` with `usage_window_days` (default 90), `safety_stock_days` (default 7), optional `seasonality_profile`. Engine falls back here when an item has no override, then to hardcoded defaults.
+- **`bids.movement_notes`** (migration 0030) — one row per `(system_id, item_code, week_starting)` for buyer-written annotations on velocity-changing SKUs (e.g. "Spring framing rush"). Surfaces in `/purchasing/movement` and the workspace's Recent Movement tile.
+
+### Engine
+
+`src/lib/purchasing/replenishment.ts` — one CTE-based query reads on-hand, usage, open demand, open supply, lead times, and overrides, then emits per-item severity + suggested qty. **Severity thresholds (lead-time-driven)**:
+
+- **red** = `coverage_days <= lead_time_1` (will OOS before next PO can land)
+- **amber** = `coverage_days <= lead_time_1 + safety_stock_days`
+- **yellow** = `coverage_days <= lead_time_1 + safety_stock_days + 14`
+- **green** = otherwise (items breaching `min_on_hand` without usage history go amber)
+
+`suggested_qty = max(min_ord_qty, ceil(gap / pack_qty) * pack_qty)` where gap = `target_on_hand` (if set) − effective on hand, else `(lead+safety+14) days of demand` − effective on hand.
+
+**Perf — single-branch query ~270ms with the two indexes in migration 0029:**
+- `idx_csf_branch_item_date` — drives the per-item usage LATERAL subquery (index-only scan with `qty_shipped` INCLUDE).
+- `idx_agility_suppliers_trimmed_key` — expression index `(TRIM(supplier_key), ship_from_seq)` so the supplier-name join in the outer SELECT uses an index lookup.
+
+Before optimization the same query ran 18s — beware of pulling the supplier-name join back into `supplier_rules`, the optimizer can't push the `system_id`/`item_ptr`/`is_primary` predicates through it.
+
+### Movement engine
+
+`src/lib/purchasing/movement.ts` — 7-day vs trailing-30-day `qty_shipped` per `(branch_id, item_number)` from `customer_scorecard_fact`. Filters items where prior daily ≥ 0.25 (avoids enormous % from near-zero baselines) and `|pct change| >= min_pct` (default 25). Joins `bids.movement_notes` for the latest annotation per item.
+
+### API surface
+
+```
+GET  /api/purchasing/replenishment              ?view=suggested|outages|all &branch &category &supplier &critical &q &limit
+GET  /api/purchasing/workspace                  six-feed aggregator for /purchasing/workspace
+GET  /api/purchasing/movement                   ?direction=up|down|all &min_pct &branch
+GET  /api/purchasing/movement/notes             list (filter by branch and/or item)
+POST /api/purchasing/movement/notes             upsert by (sys, item, week)
+DELETE /api/purchasing/movement/notes?id=…      delete
+
+GET    /api/admin/item-planning                 list with filters
+POST   /api/admin/item-planning                 create override
+GET    /api/admin/item-planning/[id]
+PATCH  /api/admin/item-planning/[id]            partial update
+DELETE /api/admin/item-planning/[id]
+GET    /api/admin/item-planning/template        CSV download
+POST   /api/admin/item-planning/import          CSV upsert by (sys, item)
+GET    /api/admin/branch-planning-defaults      all branches with synthesized defaults
+PUT    /api/admin/branch-planning-defaults      upsert by systemId
+```
+
+Branch resolution: `purchasing.view` users without `branch.all` get pinned to `session.user.branch`. `branch.all` users may pass `?branch=ALL` (or omit) for company-wide aggregation.
+
+### Pages
+
+- **`/purchasing/workspace`** — full redesign matching the Claude Design handoff (bundle at `docs/agent-prompts/buyer-workspace-dashboard-design.md`). Six tiles: Buy Now (hero green) · Outage Risk (hero red) · Overdue POs · Pending Check-Ins · PO Exceptions · Recent Movement. Quick Actions strip below. Sticky branch selector + live as-of indicator. One fetch to `/api/purchasing/workspace`.
+- **`/purchasing/suggested-buys`** — rebuilt on the engine. Grouped by supplier so a buyer can assemble one PO per vendor. CSV export.
+- **`/purchasing/outages`** — sorted by days-to-zero, critical items called out. Per-branch breakdown card for `branch.all` users.
+- **`/purchasing/movement`** — table of velocity-changing items with inline modal note editor.
+- **`/admin/item-planning`** — full CRUD for overrides + CSV template download + import. Branch Defaults modal.
+- **`/scorecard/product/item/[itemCode]`** — gained a "Replenishment" card (PR #397, 2026-05-26) showing per-branch override state for the item. Inline edit modal opens for users with `admin.config.manage`; others get a read-only view + deep link to `/admin/item-planning?q=<item>`.
+
+### Pages NOT updated and intentional gaps
+
+- **Sparklines on the workspace hero tiles** — design accommodates them but they need a daily snapshot of the engine output (a 14-day trend table). Code paths render only when `spark[]` is non-empty, so dropping a snapshot table later wires them in automatically. Same for `deltaYesterday` / `deltaWeek` on every tile — currently always 0.
+- **`estimatedValue` on Buy Now + `value` on supplier rollup** — the engine doesn't track per-row unit cost. Wire-up requires joining unit-cost data per item into the engine row (one new LATERAL or pre-aggregated view). Returns 0 today; UI conditionally hides the dollar columns.
+- **Price-variance exceptions** — `byKind.priceVariance` returns 0 because PO-cost vs invoice-cost diff isn't derivable from mirror tables. Would need an invoice-vs-PO-cost feed.
+- **Pending Check-Ins `total_lines` / `with_discrepancy`** — `bids.po_submissions` carries no per-line data. `total_lines` returns 0; `with_discrepancy` uses `priority='high'` as a proxy. Real per-line tracking is a separate scope.
+- **Quick Actions: New PO** is disabled with a "coming soon" hint. SKU lookup routes to `/sales/products`. Receive shipment was removed from the strip — `/purchasing` (PO Check-In) covers that path.
+
+### Data quality flag (not a bug in this code)
+
+On 20GR, only **16 of 1366 stocked-active items** had positive `qty_on_hand` at the time the engine was built. The engine is correct given that input; most items will surface as red/amber until the QOH sync is healthier. Investigate the ERP→`agility_item_branch.qty_on_hand` sync separately if the volume of red rows feels wrong.
+
+### Capability matrix
+
+| Capability | Effect |
+|---|---|
+| `purchasing.view` | Read `/purchasing/workspace`, `/suggested-buys`, `/outages`, `/movement`, all replenishment + movement APIs |
+| `branch.all` | Cross-branch view in all of the above (admin / lead buyer) |
+| `admin.config.manage` | Write item planning overrides + branch defaults via `/admin/item-planning` or the inline editor on the item scorecard |
+| `sales.view` | Read item scorecard (which surfaces the Replenishment card) — no editing |
+
+### Where to look next
+
+- `docs/buyers-workspace-plan-2026-05-22.md` — the original plan + resolved design decisions
+- `docs/agent-prompts/buyer-workspace-dashboard-design.md` — the brief that produced the Claude Design handoff
+- `docs/agent-prompts/replenishment-handoff-2026-05-26.md` — most recent handoff with state + immediate follow-ups
+
+## Report Email Subscriptions (2026-05-22)
+
+Users can subscribe to three reports for email delivery (daily / weekly / monthly, PDF or Excel). All sends go through Resend. Self-service only — each user manages their own subscriptions.
+
+**Subscribable reports (the registry is the source of truth — `src/lib/reports/registry.ts`):**
+- `sales-reports` (`/sales/reports`) — KPIs · daily series · top customers · sale-type & status breakdowns
+- `delivery-reports` (`/ops/delivery-reporting`) — KPIs · daily series · per-branch breakdown · by-ship-via · detail (Excel only)
+- `scorecard-overview` (`/scorecard/overview`) — 3-year comparison · KPIs · branch breakdown (skips product-mix/sale-type drill tables intentionally — interactive-only)
+
+**Architecture:**
+- `bids.report_subscriptions` — one row per (user, report, params, cadence). `next_run_at` indexed for the cron sweep.
+- `bids.report_subscription_log` — one row per send attempt (status, error, resend_message_id, duration_ms).
+- Hourly Vercel cron at `/api/cron/report-subscriptions` (in `vercel.json`) picks active subscriptions where `next_run_at <= now()`, renders, sends, advances. `BATCH_LIMIT=100` per tick. Per-subscription failures are isolated (Promise.allSettled).
+- Schedule math in `src/lib/reports/schedule.ts` is timezone-aware (Intl.DateTimeFormat-driven offset lookup; correctly handles DST transitions). `computeNextRunAt()` is the only place that decides "when next".
+- PDF render uses **jspdf + jspdf-autotable** — banner header, KPI tiles, simple bar chart, jspdf-autotable tables. No headless browser. Helpers in `src/lib/reports/pdf.ts`.
+- Excel render uses **exceljs** — one "Summary" sheet + one sheet per breakdown. No charts in v1 (raw tables only). Helpers in `src/lib/reports/excel.ts`.
+- Email send wraps the raw-fetch Resend pattern at `src/lib/email/send-report.ts`. Standard branded HTML body via `buildReportEmailHtml()`. From-address: `LiveEdge Reports <noreply@app.beisser.cloud>` (overridable via `REPORTS_EMAIL_FROM`).
+- Data fetch is **shared with the live API routes** — `src/lib/sales/reports-query.ts` and `src/lib/ops/delivery-reporting-query.ts` were extracted from their respective `route.ts` files; both the route and the digest call the same function. Scorecard digests reuse the existing `fetchAggregateKpis` / `fetchAggregateThreeYear` / `fetchBranchSummaries` helpers from `src/lib/scorecard/queries.ts`.
+
+**Key files:**
+- `src/lib/reports/registry.ts` — `REPORT_KEYS`, per-report zod param schemas, descriptors with capability + page path. **Add new reports here.**
+- `src/lib/reports/dispatch.ts` — `renderDigest(key, params, format, generatedAt)` — central switch. New digest = add a case here.
+- `src/lib/reports/digests/{sales-reports,delivery-reports,scorecard-overview}.ts` — per-report digest renderers (fetch + render PDF/Excel).
+- `app/api/report-subscriptions/route.ts` + `[id]/route.ts` — CRUD (self-scoped; can't see or edit other users' subs).
+- `app/api/cron/report-subscriptions/route.ts` — the hourly sweep. Auth via `verifyCronSignature()`.
+- `src/components/reports/SubscribeButton.tsx` + `SubscriptionModal.tsx` — UI dropped into the three report pages. Pass `reportKey`, `reportLabel`, current `params`, and a `paramsSummary` string.
+- `app/account/subscriptions/` — manage-all page (pause / edit / delete, linked from the user dropdown in `TopNav.tsx`).
+
+**Adding a new subscribable report:**
+1. Add the key to `REPORT_KEYS` + a descriptor (with param schema + capability) to `REPORTS` in `registry.ts`.
+2. Create `src/lib/reports/digests/<key>.ts` exporting a `render*Digest({ params, format, generatedAt })` function that returns `{ buffer, filename, mimeType, highlights, rangeLabel, isEmpty }`.
+3. Add a case to `renderDigest()` in `dispatch.ts`.
+4. Drop `<SubscribeButton reportKey="..." reportLabel="..." paramsSummary="..." params={...} />` into the report page client.
+
+**Env vars added:**
+- `REPORTS_EMAIL_FROM` (optional, defaults to `LiveEdge Reports <noreply@app.beisser.cloud>`)
+- `REPORTS_EMAIL_CONSOLE` (optional, dev only; `true` prints sends to server console instead of failing on missing `RESEND_API_KEY`)
+- Reuses existing `RESEND_API_KEY` + `CRON_SECRET` + `NEXT_PUBLIC_APP_URL`.
+
+**Intentionally NOT subscribable in v1** (per plan — interactive-only drill-downs):
+- Branch / customer / rep / product / vendor scorecard pages. Revisit only when a real user asks.
 
 ## Takeoff Debugging (in progress, 2026-04-14)
 
@@ -802,6 +1254,9 @@ When the accounting AR view is built, add it under a dedicated route (e.g. `/acc
 - `SAMSARA_VEHICLE_BRANCH_MAP` — JSON map of Samsara vehicle ID → branch code (e.g. `{"281474997057684":"25BW",...}`)
 - `SAMSARA_CACHE_TTL` — Vehicle location cache TTL in seconds (default 30; set to 15 in Vercel)
 
+### Anthropic API (for AI-assisted Hubbell review)
+- `ANTHROPIC_API_KEY` — Required for `POST /api/admin/hubbell/documents/ai-review`. Without it the endpoint 500s with "ANTHROPIC_API_KEY not configured". Uses Claude Opus 4.7 with PDF vision.
+
 ### Email / OTP
 - `RESEND_API_KEY` — **Required.** Resend.com API key for sending sign-in codes. Without this nobody can log in.
 - `OTP_EMAIL_FROM` — Sender address for OTP emails (defaults to `noreply@beisserlumber.com`)
@@ -810,13 +1265,13 @@ When the accounting AR view is built, add it under a dedicated route (e.g. `/acc
 - `SESSION_COOKIE_SECURE` — Secure flag on session cookie (`true` in prod, `false` in dev)
 
 ## Navigation Structure
-Current structure as of 2026-04-24 (6 domain dropdowns + user dropdown; Design is inside Services):
+Current structure as of 2026-05-26 (6 domain dropdowns + user dropdown; Design is inside Services):
 - **Yard ▾**: Picks Board, Open Picks, Picker Stats, Work Orders, Supervisor (all `/warehouse/*` paths, label renamed from "Warehouse")
 - **Dispatch ▾**: Dispatch Board, Delivery Tracker, Fleet Map
 - **Sales ▾**: Sales Hub, Customers, Transactions, Purchase History, Products & Stock, Reports, RMA Credits
 - **Services ▾**: Estimating App (`/estimating`), PDF Takeoff, **Bids** (tabbed hub at `/bids`), EWP, Projects, Design (6 items; bid list entries consolidated 2026-04-24)
-- **Purchasing ▾**: Buyer Workspace, Open POs, Command Center, PO Check-In, Review Queue (Receiving merged in)
-- **Admin ▾** (admin role only): Customers, Products/SKUs, Formulas, Bid Fields, Users, Notifications, Audit Log, ERP Sync, Page Analytics, Delivery Report, Picker Admin
+- **Purchasing ▾**: Buyer Workspace, Open POs, Suggested Buys, Potential Outages, Recent Movement, Exceptions, Command Center, PO Check-In, Review Queue (Receiving merged in; the four bold entries land in the dropdown ordered as listed — see `src/components/nav/TopNav.tsx`)
+- **Admin ▾** (admin role only): Customers, Products/SKUs, Formulas, Bid Fields, Users, Notifications, Item Planning, Audit Log, ERP Sync, Page Analytics, Delivery Report, Picker Admin
 - **User dropdown** (under logged-in username + chevron): Report an Issue (`/it-issues`), Help & Docs (`/help`), Sign Out
 - Component: `src/components/nav/TopNav.tsx`
 - Single `openMenu: string | null` state + one `<nav>` ref for click-outside

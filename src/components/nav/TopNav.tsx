@@ -6,7 +6,7 @@ import { usePathname, useRouter } from 'next/navigation';
 import { signOut, useSession } from 'next-auth/react';
 import {
   LogOut, ChevronDown, Menu, X, Settings,
-  Search, Wrench, HelpCircle, User, Bell,
+  Search, Wrench, HelpCircle, User, Bell, Mail,
 } from 'lucide-react';
 import { cn } from '../../lib/utils';
 import { hasCapability } from '../../lib/access-control-shared';
@@ -377,7 +377,7 @@ function getDomains(tvBranch: string): Domain[] {
         p.startsWith('/designs'),
       links: [
         { href: '/estimating', label: 'Estimating App', requiresCap: ['bids.manage'] },
-        { href: '/takeoff',    label: 'PDF Takeoff',    requiresCap: ['bids.manage'] },
+        { href: '/takeoff',    label: 'PDF Takeoff',    requiresCap: ['branch.all'] },
         { href: '/bids',       label: 'Bids',           requiresCap: ['bids.manage'] },
         { href: '/ewp',        label: 'EWP',            requiresCap: ['ewp.manage'] },
         { href: '/projects',   label: 'Projects',       requiresCap: ['projects.manage'] },
@@ -393,6 +393,8 @@ function getDomains(tvBranch: string): Domain[] {
         p.startsWith('/purchasing/workspace') ||
         p.startsWith('/purchasing/open-pos') ||
         p.startsWith('/purchasing/suggested-buys') ||
+        p.startsWith('/purchasing/outages') ||
+        p.startsWith('/purchasing/movement') ||
         p.startsWith('/purchasing/exceptions') ||
         p.startsWith('/purchasing/manage') ||
         p.startsWith('/purchasing/pos') ||
@@ -402,6 +404,8 @@ function getDomains(tvBranch: string): Domain[] {
         { href: '/purchasing/workspace',      label: 'Buyer Workspace', requiresCap: ['purchasing.view'] },
         { href: '/purchasing/open-pos',       label: 'Open POs',        requiresCap: ['purchasing.view'] },
         { href: '/purchasing/suggested-buys', label: 'Suggested Buys',  requiresCap: ['purchasing.view'] },
+        { href: '/purchasing/outages',        label: 'Potential Outages', requiresCap: ['purchasing.view'] },
+        { href: '/purchasing/movement',       label: 'Recent Movement', requiresCap: ['purchasing.view'] },
         { href: '/purchasing/exceptions',     label: 'Exceptions',      requiresCap: ['purchasing.view'] },
         { href: '/purchasing/manage',         label: 'Command Center',  requiresCap: ['purchasing.view'] },
         { href: '/purchasing',        label: 'PO Check-In',  sectionBefore: 'Receiving', requiresCap: ['purchasing.receive'] },
@@ -443,6 +447,7 @@ interface Props {
 export function TopNav({ userName, userRole }: Props) {
   const { data: session } = useSession();
   const pathname = usePathname();
+  const helpHref = `/help?from=${encodeURIComponent(pathname || '/')}`;
   const [openMenu, setOpenMenu] = React.useState<string | null>(null);
   const [mobileOpen, setMobileOpen] = React.useState(false);
   const [mobileOpenSections, setMobileOpenSections] = React.useState<Set<string>>(new Set());
@@ -685,12 +690,20 @@ export function TopNav({ userName, userRole }: Props) {
                     Report an Issue
                   </Link>
                   <Link
-                    href="/help"
+                    href={helpHref}
                     onClick={() => setOpenMenu(null)}
                     className="flex items-center gap-2.5 px-4 py-2.5 text-sm text-slate-300 hover:bg-slate-800 hover:text-white transition"
                   >
                     <HelpCircle className="w-4 h-4 flex-shrink-0" />
                     Help &amp; Docs
+                  </Link>
+                  <Link
+                    href="/account/subscriptions"
+                    onClick={() => setOpenMenu(null)}
+                    className="flex items-center gap-2.5 px-4 py-2.5 text-sm text-slate-300 hover:bg-slate-800 hover:text-white transition"
+                  >
+                    <Mail className="w-4 h-4 flex-shrink-0" />
+                    Email Subscriptions
                   </Link>
                   <div className="border-t border-slate-700/50 my-1" />
                   <button
@@ -914,11 +927,18 @@ export function TopNav({ userName, userRole }: Props) {
                   Report an Issue
                 </Link>
                 <Link
-                  href="/help"
+                  href={helpHref}
                   className="flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm text-slate-300 hover:text-white hover:bg-slate-800 transition"
                 >
                   <HelpCircle className="w-4 h-4" />
                   Help &amp; Docs
+                </Link>
+                <Link
+                  href="/account/subscriptions"
+                  className="flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm text-slate-300 hover:text-white hover:bg-slate-800 transition"
+                >
+                  <Mail className="w-4 h-4" />
+                  Email Subscriptions
                 </Link>
                 <button
                   onClick={() => signOut({ callbackUrl: signOutUrl })}

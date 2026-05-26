@@ -191,3 +191,86 @@ export interface RepListRow {
   writtenSalesCompare: number;
   writtenGpBase: number;
 }
+
+// ---------------------------------------------------------------------------
+// Product drill-down (major / minor / item) — aggregates filtered by a single
+// product. Reused for the three new /scorecard/product/{major|minor|item}/*
+// pages so they can share the existing aggregate chart components.
+// ---------------------------------------------------------------------------
+
+export type ProductFilter =
+  | { level: 'major'; majorCode: string }
+  | { level: 'minor'; majorCode: string; minorCode: string }
+  | { level: 'item'; itemCode: string };
+
+export interface ProductDrillParams {
+  productFilter: ProductFilter;
+  branchIds: string[];
+  baseYear: number;
+  compareYear: number;
+  period: ScorecardPeriod;
+  cutoffDate: string;
+}
+
+export interface ProductHeader {
+  level: 'major' | 'minor' | 'item';
+  majorCode: string;
+  majorName: string;
+  minorCode: string | null;
+  minorName: string | null;
+  itemCode: string | null;
+  itemDescription: string | null;
+}
+
+export interface ProductBranchMixRow {
+  branchId: string;
+  salesBase: number;
+  salesCompare: number;
+  gpBase: number;
+  gpCompare: number;
+  customerCount: number;
+}
+
+export interface ProductTopCustomerRow {
+  customerId: string;
+  customerName: string;
+  salesBase: number;
+  salesCompare: number;
+  gpBase: number;
+  branchIds: string[];
+}
+
+export interface ItemPrimarySupplier {
+  /** Vendor key used by /scorecard/vendor/[supplierKey]; resolved from agility_suppliers. */
+  supplierKey: string;
+  supplierCode: string;
+  supplierName: string | null;
+}
+
+/**
+ * Single (item × supplier × ship-from) row from agility_item_supplier. Used by
+ * the item scorecard's Suppliers section to surface purchasing rules.
+ */
+export interface ItemSupplierRow {
+  supplierKey: string;
+  supplierCode: string;
+  supplierName: string | null;
+  shipFromSeqNum: number | null;
+  isPrimary: boolean;
+  /** Lead-time tiers 1..5 (days). Tier 1 is the default/lowest-volume bracket. */
+  leadTimes: Array<number | null>;
+  leadTimeFlag: boolean;
+  minOrderQty: number;
+  minPak: number;
+  minOrderQtyDispUom: string | null;
+  minPakDispUom: string | null;
+  /** e.g. "Allow", "Allow - Question", "Block" */
+  minOrderViolation: string | null;
+  minPakViolation: string | null;
+  supplierUom: string | null;
+  useUomForPoEntry: boolean;
+  useUomForPrintedPo: boolean;
+  useUomForPoCheckIn: boolean;
+  useUomForReceiving: boolean;
+  updateDate: string | null;
+}

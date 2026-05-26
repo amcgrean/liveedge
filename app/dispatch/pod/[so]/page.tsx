@@ -1,6 +1,7 @@
 import { auth } from '../../../../auth';
 import { redirect } from 'next/navigation';
 import PodCaptureClient from './PodCaptureClient';
+import { TopNav } from '@/components/nav/TopNav';
 
 interface PageProps {
   params: Promise<{ so: string }>;
@@ -19,7 +20,9 @@ export default async function PodCapturePage({ params, searchParams }: PageProps
   const customerName = Array.isArray(sp.customer)    ? sp.customer[0]    : (sp.customer ?? '');
 
   return (
-    <PodCaptureClient
+    <>
+      <TopNav userName={session.user.name} userRole={session.user.role} />
+      <PodCaptureClient
       soNumber={so}
       branchCode={branch}
       shipmentNum={parseInt(shipmentNum, 10) || 1}
@@ -27,5 +30,6 @@ export default async function PodCapturePage({ params, searchParams }: PageProps
       customerName={customerName}
       driverName={session.user.name ?? ''}
     />
+    </>
   );
 }

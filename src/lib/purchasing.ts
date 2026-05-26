@@ -15,6 +15,17 @@ export interface OpenPO {
   order_date: string | null;
   po_status: string | null;
   receipt_count: number | null;
+  /**
+   * Max lead-time tier 1 (days) across the items on this PO, sourced from
+   * `agility_item_supplier`. NULL when no item on the PO has a supplier rule
+   * configured. Using MAX so the displayed value is conservative.
+   */
+  lead_time_max_days: number | null;
+  /**
+   * True if any item on this PO has `min_ord_violation = 'Block'` for the
+   * PO's supplier — i.e. the line risks failing an Agility entry guard.
+   */
+  has_blocking_min_violation: boolean;
 }
 
 /**

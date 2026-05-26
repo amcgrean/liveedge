@@ -12,11 +12,11 @@
     "app/api/cron/geocode-nightly/route.ts": {
       "maxDuration": 300
     },
-    "app/api/cron/hubbell-reprocess/route.ts": {
-      "maxDuration": 300
-    },
     "app/api/admin/hubbell/jobs/route.ts": {
       "maxDuration": 30
+    },
+    "app/api/cron/report-subscriptions/route.ts": {
+      "maxDuration": 300
     }
   },
   "crons": [
@@ -25,12 +25,16 @@
       "schedule": "0 6 * * *"
     },
     {
-      "path": "/api/cron/geocode-nightly",
-      "schedule": "0 9 * * *"
+      "path": "/api/cron/graph-subscription-renew",
+      "schedule": "0 */12 * * *"
     },
     {
-      "path": "/api/cron/hubbell-reprocess",
-      "schedule": "*/5 * * * *"
+      "path": "/api/cron/hubbell-stale-check",
+      "schedule": "0 14 * * *"
+    },
+    {
+      "path": "/api/cron/report-subscriptions",
+      "schedule": "0 * * * *"
     }
   ]
 }

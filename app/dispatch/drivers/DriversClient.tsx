@@ -2,8 +2,9 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { TopNav } from '../../../src/components/nav/TopNav';
-import { RefreshCw, Pencil, Trash2, X, Check, AlertCircle, Truck, Zap, Info } from 'lucide-react';
+import { RefreshCw, Pencil, Trash2, X, Check, AlertCircle, Truck, Zap, Info, EyeOff, Eye } from 'lucide-react';
 import { usePageTracking } from '@/hooks/usePageTracking';
+import { useBranchFilter } from '@/hooks/useBranchFilter';
 import type { DriverRoute } from '../../api/dispatch/drivers/route';
 import type { SamsaraDriver } from '../../api/dispatch/samsara-drivers/route';
 
@@ -23,6 +24,7 @@ interface Props {
 export default function DriversClient({ isAdmin, userBranch, userName, userRole }: Props) {
   usePageTracking();
 
+  const [branch] = useBranchFilter(isAdmin, userBranch);
   const [routes, setRoutes] = useState<DriverRoute[]>([]);
   const [samsaraDrivers, setSamsaraDrivers] = useState<SamsaraDriver[]>([]);
   const [samsaraVehicles, setSamsaraVehicles] = useState<SamsaraVehicle[]>([]);
@@ -41,10 +43,12 @@ export default function DriversClient({ isAdmin, userBranch, userName, userRole 
   const [clearTarget, setClearTarget] = useState<DriverRoute | null>(null);
   const [clearing, setClearing] = useState(false);
 
+  // Filter state
+  const [showInactive, setShowInactive] = useState(false);
+
   const loadRoutes = useCallback(async () => {
     setLoading(true);
     try {
-      const branch = isAdmin ? '' : (userBranch ?? '');
       const params = branch ? `?branch=${branch}` : '';
       const res = await fetch(`/api/dispatch/drivers${params}`);
       if (res.ok) {
@@ -55,7 +59,7 @@ export default function DriversClient({ isAdmin, userBranch, userName, userRole 
     } finally {
       setLoading(false);
     }
-  }, [isAdmin, userBranch]);
+  }, [branch]);
 
   const loadSamsaraDrivers = useCallback(async () => {
     const res = await fetch('/api/dispatch/samsara-drivers');
@@ -74,7 +78,6 @@ export default function DriversClient({ isAdmin, userBranch, userName, userRole 
     if (samsaraVehicles.length) return; // already loaded
     setVehiclesLoading(true);
     try {
-      const branch = isAdmin ? '' : (userBranch ?? '');
       const params = branch ? `?branch=${branch}` : '';
       const res = await fetch(`/api/dispatch/vehicles${params}`);
       if (res.ok) {
@@ -162,6 +165,16 @@ export default function DriversClient({ isAdmin, userBranch, userName, userRole 
     }
   }
 
+  async function toggleActive(route: DriverRoute) {
+    const newActive = route.is_active === false; // false → true, null/true → false
+    await fetch('/api/dispatch/drivers/toggle', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ route_code: route.route_code, branch_code: route.branch_code, is_active: newActive }),
+    });
+    await loadRoutes();
+  }
+
   async function confirmClear() {
     if (!clearTarget?.id) return;
     setClearing(true);
@@ -174,8 +187,11 @@ export default function DriversClient({ isAdmin, userBranch, userName, userRole 
     }
   }
 
-  const assigned = routes.filter((r) => r.assigned_truck_id).length;
-  const unassigned = routes.length - assigned;
+  const activeRoutes = routes.filter((r) => r.is_active !== false);
+  const inactiveCount = routes.length - activeRoutes.length;
+  const visibleRoutes = showInactive ? routes : activeRoutes;
+  const assigned = activeRoutes.filter((r) => r.assigned_truck_id).length;
+  const unassigned = activeRoutes.length - assigned;
 
   return (
     <>
@@ -186,7 +202,10 @@ export default function DriversClient({ isAdmin, userBranch, userName, userRole 
           <div className="flex flex-wrap gap-3 items-center justify-between">
             <div>
               <h1 className="text-2xl font-bold text-cyan-400">Delivery Routes</h1>
-              <p className="text-sm text-gray-500 mt-0.5">ERP route codes and Samsara truck assignments</p>
+              <p className="text-sm text-gray-500 mt-0.5">
+                ERP route codes and Samsara truck assignments
+                {branch && <span className="ml-2 text-cyan-600 font-medium">· {branch}</span>}
+              </p>
             </div>
             <button onClick={() => { loadRoutes(); loadSamsaraDrivers(); setSamsaraVehicles([]); }}
               disabled={loading}
@@ -198,8 +217,8 @@ export default function DriversClient({ isAdmin, userBranch, userName, userRole 
           {/* Stat cards */}
           <div className="grid grid-cols-3 gap-3">
             <div className="bg-gray-900 border border-gray-700 rounded-xl px-4 py-3">
-              <div className="text-2xl font-bold">{routes.length}</div>
-              <div className="text-xs text-gray-500">Total Routes</div>
+              <div className="text-2xl font-bold">{activeRoutes.length}</div>
+              <div className="text-xs text-gray-500">Active Routes</div>
             </div>
             <div className="bg-gray-900 border border-gray-700 rounded-xl px-4 py-3">
               <div className="text-2xl font-bold text-green-300">{assigned}</div>
@@ -227,11 +246,21 @@ export default function DriversClient({ isAdmin, userBranch, userName, userRole 
 
           {/* Route table */}
           <div className="bg-gray-900 border border-gray-700 rounded-xl overflow-hidden">
-            <div className="px-4 py-2.5 border-b border-gray-700 text-sm text-gray-400">
-              {loading ? 'Loading…' : synced ? `${routes.length} routes from ERP` : 'Awaiting ERP sync'}
+            <div className="px-4 py-2.5 border-b border-gray-700 flex items-center justify-between">
+              <span className="text-sm text-gray-400">
+                {loading ? 'Loading…' : synced ? `${visibleRoutes.length} routes${branch ? ` · ${branch}` : ''}` : 'Awaiting ERP sync'}
+              </span>
+              {!loading && synced && inactiveCount > 0 && (
+                <button
+                  onClick={() => setShowInactive((v) => !v)}
+                  className={`flex items-center gap-1.5 text-xs px-2.5 py-1 rounded transition ${showInactive ? 'bg-gray-700 text-gray-200' : 'text-gray-500 hover:text-gray-300'}`}>
+                  {showInactive ? <Eye className="w-3.5 h-3.5" /> : <EyeOff className="w-3.5 h-3.5" />}
+                  {showInactive ? `Hide inactive` : `Show inactive (${inactiveCount})`}
+                </button>
+              )}
             </div>
 
-            {routes.length > 0 && (
+            {visibleRoutes.length > 0 && (
               <div className="overflow-x-auto">
                 <table className="w-full text-sm">
                   <thead>
@@ -245,14 +274,15 @@ export default function DriversClient({ isAdmin, userBranch, userName, userRole 
                     </tr>
                   </thead>
                   <tbody>
-                    {routes.map((r) => {
+                    {visibleRoutes.map((r) => {
                       const suggestion = getSamsaraSuggestion(r);
                       const hasTruck = !!r.assigned_truck_id;
                       const hasSuggestion = !hasTruck && !!suggestion?.staticVehicleId;
 
+                      const isInactive = r.is_active === false;
                       return (
                         <tr key={`${r.branch_code}-${r.route_code}`}
-                          className="border-b border-gray-800 hover:bg-gray-800/40 transition-colors">
+                          className={`border-b border-gray-800 hover:bg-gray-800/40 transition-colors ${isInactive ? 'opacity-40' : ''}`}>
 
                           {/* Route Code */}
                           <td className="px-4 py-2.5 font-mono text-xs text-gray-300">
@@ -309,12 +339,20 @@ export default function DriversClient({ isAdmin, userBranch, userName, userRole 
                             <td className="px-4 py-2.5">
                               <div className="flex gap-1 justify-end">
                                 <button
-                                  onClick={() => openAssign(r)}
-                                  className="p-1.5 hover:bg-gray-700 rounded text-gray-400 hover:text-white transition"
-                                  title={hasTruck ? 'Edit truck assignment' : 'Assign truck'}>
-                                  <Pencil className="w-3.5 h-3.5" />
+                                  onClick={() => toggleActive(r)}
+                                  className={`p-1.5 rounded transition ${isInactive ? 'text-amber-400 hover:bg-amber-900/30' : 'text-gray-500 hover:bg-gray-700 hover:text-gray-300'}`}
+                                  title={isInactive ? 'Mark active (include in generate)' : 'Mark inactive (exclude from generate)'}>
+                                  {isInactive ? <Eye className="w-3.5 h-3.5" /> : <EyeOff className="w-3.5 h-3.5" />}
                                 </button>
-                                {hasTruck && (
+                                {!isInactive && (
+                                  <button
+                                    onClick={() => openAssign(r)}
+                                    className="p-1.5 hover:bg-gray-700 rounded text-gray-400 hover:text-white transition"
+                                    title={hasTruck ? 'Edit truck assignment' : 'Assign truck'}>
+                                    <Pencil className="w-3.5 h-3.5" />
+                                  </button>
+                                )}
+                                {hasTruck && !isInactive && (
                                   <button
                                     onClick={() => setClearTarget(r)}
                                     className="p-1.5 hover:bg-red-900/40 rounded text-gray-500 hover:text-red-400 transition"
@@ -333,8 +371,10 @@ export default function DriversClient({ isAdmin, userBranch, userName, userRole 
               </div>
             )}
 
-            {!loading && routes.length === 0 && synced !== false && (
-              <div className="px-4 py-8 text-center text-sm text-gray-500">No routes found.</div>
+            {!loading && visibleRoutes.length === 0 && synced !== false && (
+              <div className="px-4 py-8 text-center text-sm text-gray-500">
+                {inactiveCount > 0 && !showInactive ? 'All routes are inactive.' : 'No routes found.'}
+              </div>
             )}
           </div>
         </div>

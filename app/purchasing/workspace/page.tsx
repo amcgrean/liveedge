@@ -1,16 +1,22 @@
-import { requirePageAccess } from '../../../src/lib/access-control';
+import { requirePageAccess, hasCapability } from '../../../src/lib/access-control';
 import { TopNav } from '../../../src/components/nav/TopNav';
 import WorkspaceClient from './WorkspaceClient';
 
-export const metadata = { title: 'Buyer Workspace' };
+export const metadata = { title: 'Buyer Workspace | LiveEdge' };
 
 export default async function BuyerWorkspacePage() {
   const session = await requirePageAccess('purchasing.view');
+  const isAllBranchUser = hasCapability(session, 'branch.all');
 
   return (
-    <div className="min-h-screen bg-gray-950">
-      <TopNav userName={session.user.name} userRole={session.user.role} />
-      <WorkspaceClient userBranch={session.user.branch ?? null} />
-    </div>
+    <>
+      <TopNav userName={session.user?.name ?? null} userRole={session.user?.role} />
+      <WorkspaceClient
+        userName={session.user?.name ?? null}
+        userRole={session.user?.role ?? null}
+        userBranch={session.user?.branch ?? null}
+        isAllBranchUser={isAllBranchUser}
+      />
+    </>
   );
 }

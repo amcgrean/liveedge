@@ -99,16 +99,26 @@ const SESSION_TTL_MS = 3.5 * 60 * 60 * 1000; // 3.5 hours (Agility default is 4h
 // Config helpers
 // ---------------------------------------------------------------------------
 
-function getConfig(): { baseUrl: string; username: string; password: string; defaultBranch: string } {
-  const baseUrl = process.env.AGILITY_API_URL;
+function getConfig(opts: { useTest?: boolean } = {}): {
+  baseUrl: string;
+  username: string;
+  password: string;
+  defaultBranch: string;
+} {
+  // useTest swaps the base URL to AGILITY_API_TEST_URL (DMSi-provided non-prod environment).
+  // Credentials and branch stay the same — the test instance shares the user roster with prod.
+  const baseUrl = opts.useTest
+    ? process.env.AGILITY_API_TEST_URL
+    : process.env.AGILITY_API_URL;
   const username = process.env.AGILITY_USERNAME;
   const password = process.env.AGILITY_PASSWORD;
   const defaultBranch = process.env.AGILITY_BRANCH ?? '';
 
   if (!baseUrl || !username || !password) {
+    const missingTest = opts.useTest ? ' AGILITY_API_TEST_URL,' : '';
     throw new AgilityAuthError(
       'Agility API not configured. ' +
-        'Required env vars: AGILITY_API_URL, AGILITY_USERNAME, AGILITY_PASSWORD'
+        `Required env vars: AGILITY_API_URL,${missingTest} AGILITY_USERNAME, AGILITY_PASSWORD`
     );
   }
 
@@ -133,8 +143,8 @@ function isSessionValid(session: AgilitySession): boolean {
  * Authenticate with the Agility API and cache the session for the given branch.
  * Branch is the Agility internal branch ID — leave blank to use the user's default.
  */
-async function login(branchKey: string = ''): Promise<AgilitySession> {
-  const { baseUrl, username, password } = getConfig();
+async function login(branchKey: string = '', opts: { useTest?: boolean } = {}): Promise<AgilitySession> {
+  const { baseUrl, username, password } = getConfig({ useTest: opts.useTest });
 
   // AGILITY_API_URL already includes /AgilityPublic/rest/ — append method directly
   const url = `${baseUrl}Session/Login`;
@@ -190,15 +200,21 @@ async function login(branchKey: string = ''): Promise<AgilitySession> {
     expiresAt: Date.now() + SESSION_TTL_MS,
   };
 
-  _sessionCache.set(branchKey || InitialBranch, session);
+  // Prefix the cache key by environment so test and prod sessions never collide.
+  const cacheKey = sessionCacheKey(branchKey || InitialBranch, opts.useTest);
+  _sessionCache.set(cacheKey, session);
   return session;
+}
+
+function sessionCacheKey(branchKey: string, useTest?: boolean): string {
+  return `${useTest ? 'test:' : 'prod:'}${branchKey}`;
 }
 
 /**
  * Get a valid session for the given branch, logging in if needed.
  */
-async function getSession(branchKey: string = ''): Promise<AgilitySession> {
-  const cacheKey = branchKey || '_default';
+async function getSession(branchKey: string = '', opts: { useTest?: boolean } = {}): Promise<AgilitySession> {
+  const cacheKey = sessionCacheKey(branchKey || '_default', opts.useTest);
   const cached = _sessionCache.get(cacheKey);
 
   if (cached && isSessionValid(cached)) {
@@ -206,14 +222,14 @@ async function getSession(branchKey: string = ''): Promise<AgilitySession> {
   }
 
   // Cache miss or expired — re-authenticate
-  return login(branchKey);
+  return login(branchKey, opts);
 }
 
 /**
  * Invalidate cached session for a branch (called on 401 responses).
  */
-function invalidateSession(branchKey: string): void {
-  _sessionCache.delete(branchKey || '_default');
+function invalidateSession(branchKey: string, useTest?: boolean): void {
+  _sessionCache.delete(sessionCacheKey(branchKey || '_default', useTest));
 }
 
 // ---------------------------------------------------------------------------
@@ -237,12 +253,12 @@ async function callApi<T = Record<string, unknown>>(
   service: string,
   method: string,
   body: object,
-  options: { branch?: string; retrying?: boolean } = {}
+  options: { branch?: string; useTest?: boolean; retrying?: boolean } = {}
 ): Promise<T & { ReturnCode: number; MessageText: string }> {
-  const { baseUrl } = getConfig();
+  const { baseUrl } = getConfig({ useTest: options.useTest });
   const branchKey = options.branch ?? '';
 
-  const session = await getSession(branchKey);
+  const session = await getSession(branchKey, { useTest: options.useTest });
 
   // AGILITY_API_URL already includes /AgilityPublic/rest/ — append service/method directly
   const url = `${baseUrl}${service}/${method}`;
@@ -269,7 +285,7 @@ async function callApi<T = Record<string, unknown>>(
 
   // 401 = session expired — invalidate + retry once
   if (res.status === 401 && !options.retrying) {
-    invalidateSession(branchKey);
+    invalidateSession(branchKey, options.useTest);
     return callApi(service, method, body, { ...options, retrying: true });
   }
 
@@ -571,6 +587,78 @@ async function salesOrderCancel(
   options: { branch?: string } = {}
 ): Promise<void> {
   await callApi('Orders', 'SalesOrderCancel', { OrderID: orderId }, options);
+}
+
+// ---------------------------------------------------------------------------
+// SalesOrderHeaderUpdate
+// ---------------------------------------------------------------------------
+//
+// Updates a single field on an existing SO header. The DMSi request schema is
+// large (every header field, every line item, every component) — but per the
+// DMSi field-data-type guide, character fields sent as empty strings or null
+// "may" be cleared on the target record. Behavior depends on each method's
+// internal business rules and DMSi explicitly recommends testing in non-prod
+// first.
+//
+// SAFETY MODEL FOR THIS WRAPPER:
+//   - We only touch CustomerPurchaseOrder.
+//   - We pass a minimal request payload — only OrderID + the one field. We do
+//     NOT include the line-item arrays, so they can't be wiped.
+//   - For all other header fields, we send empty strings/nulls. If DMSi's
+//     business rules wipe those, we'll see it the first time we run against
+//     test. The caller MUST run in test first and verify in the Agility UI
+//     that only po_number changed before flipping prod.
+//
+// If the test run shows other fields get cleared, the fallback is the
+// "read-modify-write" pattern: call a header-list method first, echo back
+// every field, then write. We can layer that in later if needed.
+
+export interface SalesOrderHeaderUpdateResult {
+  ReturnCode: number;
+  MessageText: string;
+}
+
+/**
+ * Update the CustomerPurchaseOrder field on an existing SO header.
+ *
+ * @param orderId - Agility OrderID (numeric — same value as agility_so_header.so_id)
+ * @param customerPo - New value for CustomerPurchaseOrder. Caller is responsible
+ *                    for appending vs. replacing — this method writes exactly
+ *                    what's passed.
+ * @param options.useTest - When true, route the call to AGILITY_API_TEST_URL.
+ *                          When false/unset, hits the production API.
+ */
+async function salesOrderHeaderUpdate(
+  orderId: number,
+  customerPo: string,
+  options: { branch?: string; useTest?: boolean } = {}
+): Promise<SalesOrderHeaderUpdateResult> {
+  const body = {
+    OrderID: orderId,
+    OrderHeaderUpdateJSON: {
+      dsOrderHeaderUpdateRequest: {
+        dtOrderHeaderUpdateRequest: [
+          {
+            // Only the one field we want to change. Everything else
+            // intentionally omitted from the array entry so DMSi defaults
+            // it to whatever they treat as "no change" per their docs.
+            CustomerPurchaseOrder: customerPo,
+          },
+        ],
+      },
+    },
+    // Deliberately do NOT include dsOrderItemRequest or
+    // dsOrderItemComponentRequest — empty/missing means no line-item
+    // changes will be attempted.
+  };
+
+  const res = await callApi<SalesOrderHeaderUpdateResult>(
+    'Orders',
+    'SalesOrderHeaderUpdate',
+    body,
+    options
+  );
+  return res;
 }
 
 // ---------------------------------------------------------------------------
@@ -920,6 +1008,7 @@ export const agilityApi = {
   salesOrderCreate,
   salesOrderCreateValidate,
   salesOrderCancel,
+  salesOrderHeaderUpdate,
 
   // Quotes
   quoteCreate,

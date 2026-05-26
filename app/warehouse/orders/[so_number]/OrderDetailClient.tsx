@@ -71,7 +71,15 @@ export default function OrderDetailClient({ soNumber }: Props) {
     ? (SO_STATUS[(h.so_status).toUpperCase()] ?? { label: h.so_status, color: 'bg-gray-800/80 text-gray-400 border-gray-600' })
     : null;
 
-  const lineTotal = (detail?.lines ?? []).reduce((sum, l: WarehouseOrderLine) => sum + (l.extended_price ?? 0), 0);
+  // Prefer extended_price (UOM-correct) but fall back to qty × unit_price for
+  // legacy rows where extended_price is NULL, so the footer total doesn't
+  // silently drop those lines.
+  const warehouseLineExt = (l: WarehouseOrderLine): number => {
+    if (l.extended_price != null) return l.extended_price;
+    if (l.qty_ordered != null && l.unit_price != null) return l.qty_ordered * l.unit_price;
+    return 0;
+  };
+  const lineTotal = (detail?.lines ?? []).reduce((sum, l: WarehouseOrderLine) => sum + warehouseLineExt(l), 0);
 
   return (
     <div className="min-h-screen bg-gray-950 text-white p-6">

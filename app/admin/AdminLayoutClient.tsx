@@ -7,7 +7,7 @@ import { usePathname } from 'next/navigation';
 import { TopNav } from '../../src/components/nav/TopNav';
 import {
   LayoutDashboard, Users, Building2, Package, Calculator,
-  FormInput, Bell, FileText, Database, BarChart2, Menu, X, Briefcase, Inbox, ClipboardList, UserCog,
+  FormInput, Bell, FileText, Database, BarChart2, Menu, X, Briefcase, Inbox, ClipboardList, UserCog, Boxes,
 } from 'lucide-react';
 import { cn } from '../../src/lib/utils';
 
@@ -41,6 +41,7 @@ const NAV_SECTIONS = [
     title: 'Operations',
     items: [
       { href: '/admin/jobs',          label: 'Job Review',     icon: Briefcase,     exact: false },
+      { href: '/admin/item-planning', label: 'Item Planning',  icon: Boxes,         exact: false },
       { href: '/admin/hubbell',       label: 'Hubbell Emails', icon: Inbox,         exact: true  },
       { href: '/admin/hubbell/jobs',  label: 'Hubbell Jobs',   icon: ClipboardList, exact: false },
     ],

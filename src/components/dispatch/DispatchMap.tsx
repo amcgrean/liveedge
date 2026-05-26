@@ -38,6 +38,7 @@ interface Props {
   selectedStop: DeliveryStop | null;
   onSelectStop: (stop: DeliveryStop | null) => void;
   branch: string;
+  onVehicleCount?: (count: number) => void;
 }
 
 // ── Constants ─────────────────────────────────────────────────────────────────
@@ -71,6 +72,15 @@ const BRANCH_VEHICLE_COLORS: Record<string, string> = {
 
 const UNROUTED_COLOR = '#6b7280'; // gray-500
 
+function stopMarkerColor(stop: { sale_type?: string | null; status_flag?: string; so_status?: string | null }, routeColor: string | undefined): string {
+  const sf = stop.status_flag?.toUpperCase();
+  const ss = stop.so_status?.toUpperCase();
+  if (sf === 'D' || ss === 'D') return '#6b7280'; // delivered → gray
+  if (routeColor) return routeColor;
+  if (stop.sale_type === 'Credit') return '#f59e0b'; // credit → amber/yellow
+  return '#ec4899'; // delivery → pink
+}
+
 // ── DispatchMap ────────────────────────────────────────────────────────────────
 
 export function DispatchMap({
@@ -80,6 +90,7 @@ export function DispatchMap({
   selectedStop,
   onSelectStop,
   branch,
+  onVehicleCount,
 }: Props) {
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<import('leaflet').Map | null>(null);
@@ -208,7 +219,8 @@ export function DispatchMap({
         currentSoIds.add(stop.so_id);
 
         const isSelected = selectedStop?.so_id === stop.so_id;
-        const routeColor = colorMap.get(stop.so_id) ?? UNROUTED_COLOR;
+        const routeColor = colorMap.get(stop.so_id);
+        const markerColor = stopMarkerColor(stop, routeColor);
         const radius = isSelected ? 10 : 7;
         const weight = isSelected ? 3 : 1.5;
 
@@ -216,8 +228,8 @@ export function DispatchMap({
         if (existing) {
           existing.setLatLng([stop.lat, stop.lon]);
           existing.setStyle({
-            fillColor: routeColor,
-            color: isSelected ? '#fff' : routeColor,
+            fillColor: markerColor,
+            color: isSelected ? '#fff' : markerColor,
             fillOpacity: isSelected ? 0.95 : 0.75,
             weight,
             radius,
@@ -226,8 +238,8 @@ export function DispatchMap({
         } else {
           const marker = L.circleMarker([stop.lat, stop.lon], {
             radius,
-            fillColor: routeColor,
-            color: isSelected ? '#fff' : routeColor,
+            fillColor: markerColor,
+            color: isSelected ? '#fff' : markerColor,
             fillOpacity: isSelected ? 0.95 : 0.75,
             weight,
           }).addTo(map);
@@ -271,6 +283,9 @@ export function DispatchMap({
   }, [stops, routes, routeStops, selectedStop]);
 
   // ── Vehicle overlay ──────────────────────────────────────────────────────────
+  const onVehicleCountRef = useRef(onVehicleCount);
+  onVehicleCountRef.current = onVehicleCount;
+
   const fetchVehicles = useCallback(() => {
     import('leaflet').then((L) => {
       const map = mapRef.current;
@@ -285,10 +300,12 @@ export function DispatchMap({
           if (!map2) return;
 
           const seenIds = new Set<string>();
+          let visibleCount = 0;
 
           data.vehicles.forEach((v) => {
             if (v.latitude == null || v.longitude == null) return;
             seenIds.add(v.id);
+            visibleCount++;
 
             const branchColor = v.branch_code ? (BRANCH_VEHICLE_COLORS[v.branch_code] ?? '#6b7280') : '#6b7280';
             const heading = v.heading ?? 0;
@@ -322,6 +339,8 @@ export function DispatchMap({
               vehicleMarkersRef.current.delete(id);
             }
           });
+
+          onVehicleCountRef.current?.(visibleCount);
         })
         .catch(() => {});
     });
@@ -330,7 +349,13 @@ export function DispatchMap({
   useEffect(() => {
     // Initial fetch after map is ready
     const t = setTimeout(fetchVehicles, 500);
-    vehicleTimerRef.current = setInterval(fetchVehicles, VEHICLE_POLL_MS);
+    // Skip polls when the tab is hidden — at 15 s cadence the background
+    // requests add up fast across many open dispatch tabs.
+    vehicleTimerRef.current = setInterval(() => {
+      if (typeof document === 'undefined' || document.visibilityState === 'visible') {
+        fetchVehicles();
+      }
+    }, VEHICLE_POLL_MS);
     return () => {
       clearTimeout(t);
       if (vehicleTimerRef.current) clearInterval(vehicleTimerRef.current);

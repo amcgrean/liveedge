@@ -96,6 +96,18 @@ type ExtractedPart = { filename: string; content_type: string; buffer: Buffer };
 
 const ALLOWED_MIME = ['image/jpeg', 'image/png', 'image/gif', 'image/webp', 'application/pdf'];
 
+// Outlook/Apple Mail/Gmail signature images use predictable filenames (image001.png …)
+// and tend to be < ~250 KB. Real CM photos from a phone are typically >> 1 MB.
+// Also catches common logo/icon filenames embedded by mail clients.
+const SIGNATURE_FILENAME_RE = /^(image\d{1,4}|logo|signature|banner|footer|icon|spacer)[._-]/i;
+const SIGNATURE_MAX_BYTES = 250_000;
+
+function looksLikeSignature(filename: string, size: number, contentType: string): boolean {
+  if (contentType === 'application/pdf') return false;
+  if (size >= SIGNATURE_MAX_BYTES) return false;
+  return SIGNATURE_FILENAME_RE.test(filename);
+}
+
 function escapeBoundary(b: string) {
   return b.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
@@ -160,9 +172,10 @@ function extractPartsFromRawEmail(raw: string): ExtractedPart[] {
     }
 
     // Skip suspiciously small parts (signature icons are typically < 5 KB)
-    if (buffer.length > 5000) {
-      results.push({ filename, content_type: ct, buffer });
-    }
+    if (buffer.length <= 5000) return;
+    // Filename-based signature guard (image001.png etc. under ~250 KB)
+    if (looksLikeSignature(filename, buffer.length, ct)) return;
+    results.push({ filename, content_type: ct, buffer });
   }
 
   try {
@@ -268,6 +281,48 @@ async function lookupRmaByAddress(
   return 'UNKNOWN';
 }
 
+// ─── Share-link extraction ────────────────────────────────────────────────────
+// Many crews send a Dropbox / WeTransfer / Google Drive / OneDrive / iCloud URL
+// instead of attaching photos. We can't auth into those hosts to fetch the bytes,
+// but we can capture the URL and store a placeholder record so it shows up on
+// the credit so a human can click through.
+
+const SHARE_LINK_HOSTS = [
+  'dropbox.com', 'www.dropbox.com',
+  'we.tl', 'wetransfer.com',
+  'drive.google.com', 'photos.google.com', 'photos.app.goo.gl',
+  '1drv.ms', 'onedrive.live.com',
+  'icloud.com', 'share.icloud.com',
+  'box.com', 'app.box.com',
+  'smugmug.com',
+  'hightail.com', 'spaces.hightail.com',
+  'sendthisfile.com',
+  'pcloud.link',
+  'mediafire.com',
+  'sync.com',
+];
+
+function extractShareLinks(text: string | null, html: string | null): string[] {
+  const found = new Set<string>();
+  const source = `${text ?? ''} ${html ?? ''}`;
+  // Match URLs broadly; we'll filter by host afterwards.
+  const urlRe = /https?:\/\/[^\s<>"')]+/gi;
+  for (const raw of source.match(urlRe) ?? []) {
+    // Strip trailing punctuation often glued to URLs in plain text
+    const cleaned = raw.replace(/[.,;:!?)\]}]+$/, '');
+    try {
+      const u = new URL(cleaned);
+      const host = u.hostname.toLowerCase();
+      if (SHARE_LINK_HOSTS.some(h => host === h || host.endsWith('.' + h))) {
+        found.add(cleaned);
+      }
+    } catch {
+      // not a parseable URL — skip
+    }
+  }
+  return [...found];
+}
+
 function getR2Client(): S3Client {
   const accountId = process.env.R2_ACCOUNT_ID;
   const accessKeyId = process.env.R2_ACCESS_KEY_ID;
@@ -316,8 +371,6 @@ export async function POST(req: NextRequest) {
   }
 
   // Only handle emails addressed to credits@beisser.cloud or *@rma.beisser.cloud (legacy).
-  // The hubbell@beisser.cloud guard in /api/inbound/hubbell is a separate exact match,
-  // so there is no collision even though both addresses share the beisser.cloud domain.
   const toAddresses = payload.data.to ?? [];
   const isCreditsEmail = toAddresses.some(addr =>
     /^credits@beisser\.cloud$/i.test(addr) ||
@@ -327,7 +380,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ ok: true, skipped: true });
   }
 
-  const { email_id: emailId, from, subject, text, attachments } = payload.data;
+  const { email_id: emailId, from, subject, text, html, attachments } = payload.data;
   let rmaNumber = extractRmaNumber(subject, text, toAddresses);
   if (rmaNumber === 'UNKNOWN') {
     // Subject/body had no CM/RMA number — try matching the job address to an open credit memo.
@@ -336,14 +389,45 @@ export async function POST(req: NextRequest) {
   }
   const receivedAt = payload.created_at ? new Date(payload.created_at) : new Date();
 
-  if (!attachments?.length) {
-    // No attachments — log metadata only with no r2_key
+  // Detect share-link URLs in the body (Dropbox, WeTransfer, Drive, etc.) so they
+  // show up on the credit even when no file is actually attached. We store the URL
+  // in `filepath` and leave `r2_key` null — the UI surfaces these as external links.
+  const shareLinks = extractShareLinks(text, html);
+
+  if (!attachments?.length && shareLinks.length === 0) {
+    // No attachments and no recognized share links — log metadata only.
     const sql = getErpSql();
     await sql`
       INSERT INTO credit_images (rma_number, filename, filepath, email_from, email_subject, received_at, uploaded_at)
       VALUES (${rmaNumber}, '(no attachment)', '', ${from}, ${subject ?? null}, ${receivedAt.toISOString()}, NOW())
     `;
     return NextResponse.json({ ok: true, rma: rmaNumber, uploaded: 0 });
+  }
+
+  // Record share-link rows up front so we always capture them even if the
+  // attachment block below short-circuits.
+  if (shareLinks.length > 0) {
+    const linkSql = getErpSql();
+    for (const url of shareLinks) {
+      let host = 'link';
+      try { host = new URL(url).hostname.replace(/^www\./, ''); } catch { /* keep default */ }
+      try {
+        await linkSql`
+          INSERT INTO credit_images
+            (rma_number, filename, filepath, email_from, email_subject, received_at, uploaded_at)
+          VALUES
+            (${rmaNumber}, ${'Photo link: ' + host}, ${url}, ${from}, ${subject ?? null},
+             ${receivedAt.toISOString()}, NOW())
+        `;
+      } catch (err) {
+        console.error('[inbound/credits] Failed to record share link', url, err);
+      }
+    }
+    console.log(`[inbound/credits] Captured ${shareLinks.length} share link(s) for RMA ${rmaNumber}`);
+  }
+
+  if (!attachments?.length) {
+    return NextResponse.json({ ok: true, rma: rmaNumber, uploaded: 0, links: shareLinks.length });
   }
 
   const r2 = getR2Client();
@@ -393,9 +477,20 @@ export async function POST(req: NextRequest) {
       continue;
     }
 
+    // Signature-image guard: Outlook image001.png etc. up to ~250 KB are almost
+    // always the sender's signature, not a CM photo.
+    if (att.size !== undefined && looksLikeSignature(att.filename, att.size, att.content_type)) {
+      console.log(`[inbound/credits] Skipping signature image (${att.size}B): ${att.filename}`);
+      continue;
+    }
+
     const buffer = await fetchAttachmentBuffer(att, emailId);
     if (!buffer) {
       console.warn('[inbound/credits] Could not retrieve attachment', att.filename);
+      continue;
+    }
+    if (looksLikeSignature(att.filename, buffer.length, att.content_type)) {
+      console.log(`[inbound/credits] Skipping signature image post-fetch (${buffer.length}B): ${att.filename}`);
       continue;
     }
     partsToUpload.push({ filename: att.filename, content_type: att.content_type, buffer });

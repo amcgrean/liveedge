@@ -17,6 +17,9 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     truck_name?: string;
     phone?: string;
     notes?: string;
+    is_active?: boolean;
+    clocked_in?: boolean;
+    on_route_id?: number | null;
   };
 
   try {
@@ -30,6 +33,14 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     if (body.truck_name !== undefined) { updates.push(`name = $${idx++}`); vals.push(body.truck_name.trim() || null); }
     if (body.phone !== undefined) { updates.push(`phone = $${idx++}`); vals.push(body.phone.trim() || null); }
     if (body.notes !== undefined) { updates.push(`notes = $${idx++}`); vals.push(body.notes.trim() || null); }
+    if (body.is_active !== undefined) { updates.push(`is_active = $${idx++}`); vals.push(body.is_active); }
+    if (body.clocked_in !== undefined) {
+      updates.push(`clocked_in = $${idx++}`);
+      vals.push(body.clocked_in);
+      updates.push(`clocked_in_at = $${idx++}`);
+      vals.push(body.clocked_in ? new Date().toISOString() : null);
+    }
+    if ('on_route_id' in body) { updates.push(`on_route_id = $${idx++}`); vals.push(body.on_route_id ?? null); }
 
     if (updates.length === 0) return NextResponse.json({ error: 'No fields to update.' }, { status: 400 });
 
@@ -37,7 +48,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
 
     const rows = await sql.unsafe(
       `UPDATE dispatch_drivers SET ${updates.join(', ')} WHERE id = $${idx}
-       RETURNING id, route_code, branch_code, default_truck_id AS assigned_truck_id, name AS assigned_truck_name, phone, notes, updated_at::text`,
+       RETURNING id, route_code, branch_code, default_truck_id AS assigned_truck_id, name AS assigned_truck_name, phone, notes, is_active, updated_at::text`,
       [...vals, driverId] as never[]
     );
 

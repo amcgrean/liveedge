@@ -10,6 +10,9 @@ export interface OpenOrderRow {
   /** Branch code → open SO count */
   by_branch: Partial<Record<Branch, number>>;
   total: number;
+  /** Dollar value computed inline from agility_so_lines (all open statuses) */
+  ordered_value: number;
+  unshipped_value: number;
 }
 
 export interface ForecastDayRow {
@@ -17,21 +20,83 @@ export interface ForecastDayRow {
   total: number;
   by_branch: Partial<Record<Branch, number>>;
   by_ship_via: Record<string, number>;
+  /** Sum of unshipped_value across orders expected this day */
+  unshipped_value: number;
+}
+
+/** Bucketed-by-time-horizon open orders. Counts and $ both cover all open
+ *  statuses (excluding HOLD/XINSTALL/I/C/X). */
+export interface HorizonBucket {
+  count: number;
+  ordered_value: number;
+  unshipped_value: number;
+  by_branch: Partial<Record<Branch, { count: number; ordered_value: number; unshipped_value: number }>>;
+}
+
+export type HorizonKey =
+  | 'overdue'
+  | 'next_7'
+  | 'next_8_30'
+  | 'next_31_90'
+  | 'next_91_plus'
+  | 'far_future'
+  | 'unscheduled';
+
+export type HorizonBuckets = Record<HorizonKey, HorizonBucket>;
+
+export interface ForecastKpis {
+  open_order_count: number;
+  ordered_value: number;
+  unshipped_value: number;
+  unscheduled_or_far_future_count: number;
+  by_branch: Array<{
+    branch: Branch;
+    count: number;
+    ordered_value: number;
+    unshipped_value: number;
+  }>;
+}
+
+export interface FarFutureOrder {
+  so_id: string;
+  system_id: string;
+  cust_name: string | null;
+  cust_code: string | null;
+  rep_1: string | null;
+  expect_date: string | null;
+  sale_type: string | null;
+  so_status: string | null;
+  ordered_value: number;
+  unshipped_value: number;
+  bucket: 'far_future' | 'unscheduled';
 }
 
 export interface ForecastPayload {
   branches: readonly Branch[];
   ship_vias: string[];
+  kpis: ForecastKpis;
+  horizons: HorizonBuckets;
+  far_future_orders: FarFutureOrder[];
   open_orders: {
     rows: OpenOrderRow[];
     branch_totals: Partial<Record<Branch, number>>;
+    branch_value_totals: Partial<Record<Branch, { ordered_value: number; unshipped_value: number }>>;
     grand_total: number;
+    grand_ordered_value: number;
+    grand_unshipped_value: number;
   };
   forecast: {
     days: ForecastDayRow[];
     branch_totals: Partial<Record<Branch, number>>;
     ship_via_totals: Record<string, number>;
     grand_total: number;
+    grand_unshipped_value: number;
   };
   forecast_days: number;
+  /** % of open SO lines with `extended_price` populated.
+   *  Backfill is mid-flight; while < 99 the client should hide $ KPIs since
+   *  totals reflect only the populated subset. Once >= 99 it's safe to display. */
+  dollars_coverage_pct: number;
+  /** Convenience flag: dollars_coverage_pct >= 99. */
+  dollars_ready: boolean;
 }

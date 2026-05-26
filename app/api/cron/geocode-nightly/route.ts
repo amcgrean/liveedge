@@ -6,6 +6,7 @@ import {
   DEFAULT_IA_JOB_ID,
 } from '../../../../src/lib/geocode-runner';
 import { processNotification } from '../../../../src/lib/notifications';
+import { verifyCronSignature } from '../../../../src/lib/service-auth';
 
 export const maxDuration = 300;
 
@@ -54,20 +55,26 @@ interface NightlyResult {
   total_elapsed_ms: number;
 }
 
+// DISABLED 2026-05-18. Geocoding consolidated on the Pi (agility-api-sync)
+// to avoid running two matchers against the same rows and to free the
+// ~666 MB `public.geocode_index` table that Supabase was hosting. The Pi
+// uses agility_api/geocoder_sqlite.py with a local SQLite parcel index.
+// Re-enabling this route requires:
+//   1. Recreating public.geocode_index (db/migrations/0014).
+//   2. Reloading source data (loadOpenAddresses + scripts/load-*-into-index).
+//   3. Re-adding the cron entry to vercel.json.
+// Until then, this endpoint is a no-op stub.
 export async function GET(req: NextRequest) {
-  const authHeader = req.headers.get('Authorization');
-  const cronSecret = process.env.CRON_SECRET;
-  if (cronSecret) {
-    if (authHeader !== `Bearer ${cronSecret}`) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
-  } else {
-    const vercelCron = req.headers.get('x-vercel-cron');
-    if (!vercelCron) {
-      return NextResponse.json({ error: 'Missing CRON_SECRET or Vercel cron header' }, { status: 401 });
-    }
-  }
+  const authError = verifyCronSignature(req);
+  if (authError) return authError;
+  return NextResponse.json({
+    disabled: true,
+    reason: 'Geocoding moved to Pi (agility-api-sync). See route header for re-enable steps.',
+  });
+}
 
+async function _disabled_GET(req: NextRequest) {
+  void req;
   const startedAt = new Date();
   const startMs = Date.now();
   const result: NightlyResult = {
@@ -138,10 +145,11 @@ export async function GET(req: NextRequest) {
       const matchedThisBatch = batch.matched_city + batch.matched_zip + batch.matched_state_unique;
       if (matchedThisBatch === 0) {
         consecutiveNoProgress += 1;
-        // Higher threshold (was 2) — with ORDER BY geocoded_at ASC NULLS FIRST
-        // the runner now plows through all rows; brief sparse stretches in the
-        // middle of the queue shouldn't terminate the run.
-        if (consecutiveNoProgress >= 5) {
+        // Higher threshold (was 5) — even with the start-with-digit filter,
+        // the queue can include long runs of legitimate-looking addresses
+        // that aren't in OA / county atlases (new subdivisions, etc.).
+        // 10 batches × 500 rows = 5,000 attempts before we give up.
+        if (consecutiveNoProgress >= 10) {
           result.geocode.stop_reason = 'no progress (likely missing from index)';
           break;
         }

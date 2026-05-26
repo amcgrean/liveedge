@@ -1,0 +1,455 @@
+# Agent Route & Module Reference
+
+**Last audited:** 2026-05-14  
+**API route handlers:** 188  
+**Page routes:** 104  
+**Source modules (`src/**/*.ts(x)`):** 125
+
+This document is a filesystem-grounded index for agents. Pair it with `docs/routes.md` for behavior notes and permissions details.
+
+## Navigation shell notes (2026-05-14 update)
+
+- Standard app pages are expected to render `TopNav`; kiosk remains the explicit no-nav exception.
+- Added `TopNav` to previously no-shell operational pages:
+  - `/driver` (`app/driver/page.tsx`)
+  - `/driver/route/[id]` (`app/driver/route/[id]/page.tsx`)
+  - `/dispatch/pod/[so]` (`app/dispatch/pod/[so]/page.tsx`)
+  - `/dispatch/run-sheet/[routeId]` (`app/dispatch/run-sheet/[routeId]/page.tsx`)
+- Redirect-only routes (for example `/sales/deliveries`, `/sales/history`, `/ops-login`) still do not render page chrome by design.
+
+## Security remediation notes for agents (2026-05-15)
+
+- `app/scorecard/layout.tsx` is intentionally capability-gated with `requirePageAccess('sales.view')`.
+- Capability catalog now exists as shared metadata in `src/lib/access-control-shared.ts` and is exposed via `GET /api/admin/capabilities`.
+- Admin permissions UI (`app/admin/users/[id]/permissions/PermissionsClient.tsx`) is catalog-driven; avoid reintroducing hardcoded capability tab lists.
+- Active phase is PR5 (permission governance hardening). Start from:
+  - `docs/security-remediation-handoff-2026-05-15-pr5-kickoff.md`
+  - `docs/security-remediation-handoff-2026-05-14-pr4.md`
+  - `docs/security-remediation-next-agent-prompt-2026-05-15.md`
+
+
+## API Route Handlers (`app/api/**/route.ts`)
+
+- `/api/admin/agility/status` → `app/api/admin/agility/status/route.ts`
+- `/api/admin/agility/test` → `app/api/admin/agility/test/route.ts`
+- `/api/admin/analytics` → `app/api/admin/analytics/route.ts`
+- `/api/admin/app-users/[id]` → `app/api/admin/app-users/[id]/route.ts`
+- `/api/admin/app-users` → `app/api/admin/app-users/route.ts`
+- `/api/admin/audit` → `app/api/admin/audit/route.ts`
+- `/api/admin/bid-fields/[id]` → `app/api/admin/bid-fields/[id]/route.ts`
+- `/api/admin/bid-fields` → `app/api/admin/bid-fields/route.ts`
+- `/api/admin/customers/export` → `app/api/admin/customers/export/route.ts`
+- `/api/admin/customers/import` → `app/api/admin/customers/import/route.ts`
+- `/api/admin/erp/introspect` → `app/api/admin/erp/introspect/route.ts`
+- `/api/admin/erp/query` → `app/api/admin/erp/query/route.ts`
+- `/api/admin/erp/status` → `app/api/admin/erp/status/route.ts`
+- `/api/admin/erp/sync` → `app/api/admin/erp/sync/route.ts`
+- `/api/admin/geocode/load-openaddresses` → `app/api/admin/geocode/load-openaddresses/route.ts`
+- `/api/admin/geocode/run` → `app/api/admin/geocode/run/route.ts`
+- `/api/admin/geocode/status` → `app/api/admin/geocode/status/route.ts`
+- `/api/admin/graph/probe` → `app/api/admin/graph/probe/route.ts`
+- `/api/admin/graph/setup` → `app/api/admin/graph/setup/route.ts`
+- `/api/admin/hubbell/emails/[id]` → `app/api/admin/hubbell/emails/[id]/route.ts`
+- `/api/admin/hubbell/emails` → `app/api/admin/hubbell/emails/route.ts`
+- `/api/admin/hubbell/jobs/[soId]` → `app/api/admin/hubbell/jobs/[soId]/route.ts`
+- `/api/admin/hubbell/jobs` → `app/api/admin/hubbell/jobs/route.ts`
+- `/api/admin/jobs/[so_id]` → `app/api/admin/jobs/[so_id]/route.ts`
+- `/api/admin/jobs` → `app/api/admin/jobs/route.ts`
+- `/api/admin/multipliers` → `app/api/admin/multipliers/route.ts`
+- `/api/admin/notifications/[id]` → `app/api/admin/notifications/[id]/route.ts`
+- `/api/admin/notifications` → `app/api/admin/notifications/route.ts`
+- `/api/admin/users/[id]/permissions` → `app/api/admin/users/[id]/permissions/route.ts`
+- `/api/admin/users/[id]` → `app/api/admin/users/[id]/route.ts`
+- `/api/admin/users/export` → `app/api/admin/users/export/route.ts`
+- `/api/admin/users/rehash-passwords` → `app/api/admin/users/rehash-passwords/route.ts`
+- `/api/admin/users` → `app/api/admin/users/route.ts`
+- `/api/all-bids` → `app/api/all-bids/route.ts`
+- `/api/auth/[...nextauth]` → `app/api/auth/[...nextauth]/route.ts`
+- `/api/auth/request-otp` → `app/api/auth/request-otp/route.ts`
+- `/api/auth/send-otp` → `app/api/auth/send-otp/route.ts`
+- `/api/auth/set-branch` → `app/api/auth/set-branch/route.ts`
+- `/api/bids/[id]` → `app/api/bids/[id]/route.ts`
+- `/api/bids` → `app/api/bids/route.ts`
+- `/api/credits/[id]/image` → `app/api/credits/[id]/image/route.ts`
+- `/api/credits/[id]/images` → `app/api/credits/[id]/images/route.ts`
+- `/api/credits/[id]` → `app/api/credits/[id]/route.ts`
+- `/api/credits/[id]/upload` → `app/api/credits/[id]/upload/route.ts`
+- `/api/credits/debug` → `app/api/credits/debug/route.ts`
+- `/api/credits` → `app/api/credits/route.ts`
+- `/api/cron/erp-sync` → `app/api/cron/erp-sync/route.ts`
+- `/api/cron/geocode-nightly` → `app/api/cron/geocode-nightly/route.ts`
+- `/api/cron/graph-subscription-renew` → `app/api/cron/graph-subscription-renew/route.ts`
+- `/api/customers/[id]/bids` → `app/api/customers/[id]/bids/route.ts`
+- `/api/customers/[id]/designs` → `app/api/customers/[id]/designs/route.ts`
+- `/api/customers/[id]/ewp` → `app/api/customers/[id]/ewp/route.ts`
+- `/api/customers/[id]` → `app/api/customers/[id]/route.ts`
+- `/api/customers` → `app/api/customers/route.ts`
+- `/api/dashboard` → `app/api/dashboard/route.ts`
+- `/api/delivery/locations` → `app/api/delivery/locations/route.ts`
+- `/api/delivery/tracker` → `app/api/delivery/tracker/route.ts`
+- `/api/designers` → `app/api/designers/route.ts`
+- `/api/designs/[id]` → `app/api/designs/[id]/route.ts`
+- `/api/designs` → `app/api/designs/route.ts`
+- `/api/dispatch/deliveries` → `app/api/dispatch/deliveries/route.ts`
+- `/api/dispatch/drivers/[id]` → `app/api/dispatch/drivers/[id]/route.ts`
+- `/api/dispatch/drivers` → `app/api/dispatch/drivers/route.ts`
+- `/api/dispatch/init` → `app/api/dispatch/init/route.ts`
+- `/api/dispatch/kpis` → `app/api/dispatch/kpis/route.ts`
+- `/api/dispatch/orders/[so_number]/deliver` → `app/api/dispatch/orders/[so_number]/deliver/route.ts`
+- `/api/dispatch/orders/[so_number]/lines` → `app/api/dispatch/orders/[so_number]/lines/route.ts`
+- `/api/dispatch/orders/[so_number]/pod` → `app/api/dispatch/orders/[so_number]/pod/route.ts`
+- `/api/dispatch/orders/[so_number]/timeline` → `app/api/dispatch/orders/[so_number]/timeline/route.ts`
+- `/api/dispatch/routes/[id]/details` → `app/api/dispatch/routes/[id]/details/route.ts`
+- `/api/dispatch/routes/[id]` → `app/api/dispatch/routes/[id]/route.ts`
+- `/api/dispatch/routes/[id]/run-sheet` → `app/api/dispatch/routes/[id]/run-sheet/route.ts`
+- `/api/dispatch/routes/[id]/stops/[stopId]` → `app/api/dispatch/routes/[id]/stops/[stopId]/route.ts`
+- `/api/dispatch/routes/[id]/stops` → `app/api/dispatch/routes/[id]/stops/route.ts`
+- `/api/dispatch/routes/generate` → `app/api/dispatch/routes/generate/route.ts`
+- `/api/dispatch/routes` → `app/api/dispatch/routes/route.ts`
+- `/api/dispatch/samsara-drivers` → `app/api/dispatch/samsara-drivers/route.ts`
+- `/api/dispatch/transfers` → `app/api/dispatch/transfers/route.ts`
+- `/api/dispatch/truck-assignments/[id]` → `app/api/dispatch/truck-assignments/[id]/route.ts`
+- `/api/dispatch/truck-assignments/copy-previous` → `app/api/dispatch/truck-assignments/copy-previous/route.ts`
+- `/api/dispatch/truck-assignments` → `app/api/dispatch/truck-assignments/route.ts`
+- `/api/dispatch/vehicles` → `app/api/dispatch/vehicles/route.ts`
+- `/api/erp/customers/[code]` → `app/api/erp/customers/[code]/route.ts`
+- `/api/erp/customers/[code]/ship-to` → `app/api/erp/customers/[code]/ship-to/route.ts`
+- `/api/erp/items` → `app/api/erp/items/route.ts`
+- `/api/erp/price-check` → `app/api/erp/price-check/route.ts`
+- `/api/ewp/[id]` → `app/api/ewp/[id]/route.ts`
+- `/api/ewp/import` → `app/api/ewp/import/route.ts`
+- `/api/ewp` → `app/api/ewp/route.ts`
+- `/api/files/[id]` → `app/api/files/[id]/route.ts`
+- `/api/files` → `app/api/files/route.ts`
+- `/api/home` → `app/api/home/route.ts`
+- `/api/inbound/credits` → `app/api/inbound/credits/route.ts`
+- `/api/inbound/graph` → `app/api/inbound/graph/route.ts`
+- `/api/it-issues/[id]` → `app/api/it-issues/[id]/route.ts`
+- `/api/it-issues` → `app/api/it-issues/route.ts`
+- `/api/kiosk/pickers` → `app/api/kiosk/pickers/route.ts`
+- `/api/kiosk/picks` → `app/api/kiosk/picks/route.ts`
+- `/api/kiosk/smart-scan` → `app/api/kiosk/smart-scan/route.ts`
+- `/api/kiosk/work-orders` → `app/api/kiosk/work-orders/route.ts`
+- `/api/legacy-bids/[id]/activity` → `app/api/legacy-bids/[id]/activity/route.ts`
+- `/api/legacy-bids/[id]/download-all` → `app/api/legacy-bids/[id]/download-all/route.ts`
+- `/api/legacy-bids/[id]/files` → `app/api/legacy-bids/[id]/files/route.ts`
+- `/api/legacy-bids/[id]/promote-quote` → `app/api/legacy-bids/[id]/promote-quote/route.ts`
+- `/api/legacy-bids/[id]/push-to-erp` → `app/api/legacy-bids/[id]/push-to-erp/route.ts`
+- `/api/legacy-bids/[id]` → `app/api/legacy-bids/[id]/route.ts`
+- `/api/legacy-bids/[id]/ship-tos` → `app/api/legacy-bids/[id]/ship-tos/route.ts`
+- `/api/legacy-bids/[id]/start-takeoff` → `app/api/legacy-bids/[id]/start-takeoff/route.ts`
+- `/api/legacy-bids/calendar` → `app/api/legacy-bids/calendar/route.ts`
+- `/api/legacy-bids` → `app/api/legacy-bids/route.ts`
+- `/api/legacy-bids/stats` → `app/api/legacy-bids/stats/route.ts`
+- `/api/management/forecast` → `app/api/management/forecast/route.ts`
+- `/api/ops/delivery-reporting` → `app/api/ops/delivery-reporting/route.ts`
+- `/api/pod/[so]/photos` → `app/api/pod/[so]/photos/route.ts`
+- `/api/products/[id]` → `app/api/products/[id]/route.ts`
+- `/api/products` → `app/api/products/route.ts`
+- `/api/projects/[id]` → `app/api/projects/[id]/route.ts`
+- `/api/projects` → `app/api/projects/route.ts`
+- `/api/purchasing/admin/refresh-cache` → `app/api/purchasing/admin/refresh-cache/route.ts`
+- `/api/purchasing/exceptions` → `app/api/purchasing/exceptions/route.ts`
+- `/api/purchasing/photos` → `app/api/purchasing/photos/route.ts`
+- `/api/purchasing/pos/[po]/live` → `app/api/purchasing/pos/[po]/live/route.ts`
+- `/api/purchasing/pos/[po]/notes` → `app/api/purchasing/pos/[po]/notes/route.ts`
+- `/api/purchasing/pos/[po]` → `app/api/purchasing/pos/[po]/route.ts`
+- `/api/purchasing/pos/open` → `app/api/purchasing/pos/open/route.ts`
+- `/api/purchasing/search` → `app/api/purchasing/search/route.ts`
+- `/api/purchasing/submissions/[id]` → `app/api/purchasing/submissions/[id]/route.ts`
+- `/api/purchasing/submissions` → `app/api/purchasing/submissions/route.ts`
+- `/api/purchasing/suggested-buys/[ppo_id]` → `app/api/purchasing/suggested-buys/[ppo_id]/route.ts`
+- `/api/purchasing/suggested-buys` → `app/api/purchasing/suggested-buys/route.ts`
+- `/api/purchasing/tasks` → `app/api/purchasing/tasks/route.ts`
+- `/api/sales/customers/[code]/ar` → `app/api/sales/customers/[code]/ar/route.ts`
+- `/api/sales/customers/[code]/ar-live` → `app/api/sales/customers/[code]/ar-live/route.ts`
+- `/api/sales/customers/[code]/notes` → `app/api/sales/customers/[code]/notes/route.ts`
+- `/api/sales/customers/[code]` → `app/api/sales/customers/[code]/route.ts`
+- `/api/sales/customers/[code]/ship-tos/[seq]` → `app/api/sales/customers/[code]/ship-tos/[seq]/route.ts`
+- `/api/sales/customers/[code]/ship-tos` → `app/api/sales/customers/[code]/ship-tos/route.ts`
+- `/api/sales/customers` → `app/api/sales/customers/route.ts`
+- `/api/sales/history` → `app/api/sales/history/route.ts`
+- `/api/sales/hub` → `app/api/sales/hub/route.ts`
+- `/api/sales/metrics` → `app/api/sales/metrics/route.ts`
+- `/api/sales/orders/[so_number]/push-to-erp` → `app/api/sales/orders/[so_number]/push-to-erp/route.ts`
+- `/api/sales/orders/[so_number]` → `app/api/sales/orders/[so_number]/route.ts`
+- `/api/sales/orders/[so_number]/shipments` → `app/api/sales/orders/[so_number]/shipments/route.ts`
+- `/api/sales/orders` → `app/api/sales/orders/route.ts`
+- `/api/sales/products/groups` → `app/api/sales/products/groups/route.ts`
+- `/api/sales/products/majors` → `app/api/sales/products/majors/route.ts`
+- `/api/sales/products/minors` → `app/api/sales/products/minors/route.ts`
+- `/api/sales/products` → `app/api/sales/products/route.ts`
+- `/api/sales/reports` → `app/api/sales/reports/route.ts`
+- `/api/scorecard/[customerId]/items` → `app/api/scorecard/[customerId]/items/route.ts`
+- `/api/scorecard/[customerId]/minors` → `app/api/scorecard/[customerId]/minors/route.ts`
+- `/api/scorecard/[customerId]/orders` → `app/api/scorecard/[customerId]/orders/route.ts`
+- `/api/scorecard/aggregate/items` → `app/api/scorecard/aggregate/items/route.ts`
+- `/api/scorecard/aggregate/minors` → `app/api/scorecard/aggregate/minors/route.ts`
+- `/api/scorecard/customers` → `app/api/scorecard/customers/route.ts`
+- `/api/scorecard/product/items` → `app/api/scorecard/product/items/route.ts`
+- `/api/scorecard/product/minors` → `app/api/scorecard/product/minors/route.ts`
+- `/api/scorecard/product` → `app/api/scorecard/product/route.ts`
+- `/api/search` → `app/api/search/route.ts`
+- `/api/supervisor/pickers` → `app/api/supervisor/pickers/route.ts`
+- `/api/takeoff/assemblies/[id]` → `app/api/takeoff/assemblies/[id]/route.ts`
+- `/api/takeoff/assemblies` → `app/api/takeoff/assemblies/route.ts`
+- `/api/takeoff/sessions/[sessionId]/groups` → `app/api/takeoff/sessions/[sessionId]/groups/route.ts`
+- `/api/takeoff/sessions/[sessionId]/measurements` → `app/api/takeoff/sessions/[sessionId]/measurements/route.ts`
+- `/api/takeoff/sessions/[sessionId]/pages` → `app/api/takeoff/sessions/[sessionId]/pages/route.ts`
+- `/api/takeoff/sessions/[sessionId]/pdf` → `app/api/takeoff/sessions/[sessionId]/pdf/route.ts`
+- `/api/takeoff/sessions/[sessionId]` → `app/api/takeoff/sessions/[sessionId]/route.ts`
+- `/api/takeoff/sessions/[sessionId]/send-to-estimate` → `app/api/takeoff/sessions/[sessionId]/send-to-estimate/route.ts`
+- `/api/takeoff/sessions/[sessionId]/upload` → `app/api/takeoff/sessions/[sessionId]/upload/route.ts`
+- `/api/takeoff/sessions/[sessionId]/viewports` → `app/api/takeoff/sessions/[sessionId]/viewports/route.ts`
+- `/api/takeoff/sessions` → `app/api/takeoff/sessions/route.ts`
+- `/api/track-visit` → `app/api/track-visit/route.ts`
+- `/api/tv/picks` → `app/api/tv/picks/route.ts`
+- `/api/warehouse/open-picks` → `app/api/warehouse/open-picks/route.ts`
+- `/api/warehouse/orders/[so_number]/release-pick` → `app/api/warehouse/orders/[so_number]/release-pick/route.ts`
+- `/api/warehouse/orders/[so_number]` → `app/api/warehouse/orders/[so_number]/route.ts`
+- `/api/warehouse/picker-stats` → `app/api/warehouse/picker-stats/route.ts`
+- `/api/warehouse/pickers/[id]` → `app/api/warehouse/pickers/[id]/route.ts`
+- `/api/warehouse/pickers` → `app/api/warehouse/pickers/route.ts`
+- `/api/warehouse/picks/assign` → `app/api/warehouse/picks/assign/route.ts`
+- `/api/warehouse/picks/create-pick-file` → `app/api/warehouse/picks/create-pick-file/route.ts`
+- `/api/warehouse/picks` → `app/api/warehouse/picks/route.ts`
+- `/api/warehouse/stats` → `app/api/warehouse/stats/route.ts`
+- `/api/work-orders/assignments/[id]` → `app/api/work-orders/assignments/[id]/route.ts`
+- `/api/work-orders/assignments` → `app/api/work-orders/assignments/route.ts`
+- `/api/work-orders/open` → `app/api/work-orders/open/route.ts`
+- `/api/work-orders/search` → `app/api/work-orders/search/route.ts`
+
+## Page Routes (`app/**/page.tsx`)
+
+- `/admin/analytics` → `app/admin/analytics/page.tsx`
+- `/admin/audit` → `app/admin/audit/page.tsx`
+- `/admin/bid-fields` → `app/admin/bid-fields/page.tsx`
+- `/admin/customers/[id]` → `app/admin/customers/[id]/page.tsx`
+- `/admin/customers` → `app/admin/customers/page.tsx`
+- `/admin/erp` → `app/admin/erp/page.tsx`
+- `/admin/formulas` → `app/admin/formulas/page.tsx`
+- `/admin/hubbell/[id]` → `app/admin/hubbell/[id]/page.tsx`
+- `/admin/hubbell/jobs/[soId]` → `app/admin/hubbell/jobs/[soId]/page.tsx`
+- `/admin/hubbell/jobs` → `app/admin/hubbell/jobs/page.tsx`
+- `/admin/hubbell` → `app/admin/hubbell/page.tsx`
+- `/admin/jobs/[so_id]` → `app/admin/jobs/[so_id]/page.tsx`
+- `/admin/jobs` → `app/admin/jobs/page.tsx`
+- `/admin/notifications` → `app/admin/notifications/page.tsx`
+- `/admin` → `app/admin/page.tsx`
+- `/admin/products` → `app/admin/products/page.tsx`
+- `/admin/users/[id]/permissions` → `app/admin/users/[id]/permissions/page.tsx`
+- `/admin/users` → `app/admin/users/page.tsx`
+- `/all-bids` → `app/all-bids/page.tsx`
+- `/bids` → `app/bids/page.tsx`
+- `/credits/[soId]` → `app/credits/[soId]/page.tsx`
+- `/credits` → `app/credits/page.tsx`
+- `/customers/[id]/bids` → `app/customers/[id]/bids/page.tsx`
+- `/dashboard` → `app/dashboard/page.tsx`
+- `/delivery/map` → `app/delivery/map/page.tsx`
+- `/delivery` → `app/delivery/page.tsx`
+- `/designs/[id]` → `app/designs/[id]/page.tsx`
+- `/designs/add` → `app/designs/add/page.tsx`
+- `/designs` → `app/designs/page.tsx`
+- `/dispatch/drivers` → `app/dispatch/drivers/page.tsx`
+- `/dispatch` → `app/dispatch/page.tsx`
+- `/dispatch/pod/[so]` → `app/dispatch/pod/[so]/page.tsx`
+- `/dispatch/run-sheet/[routeId]` → `app/dispatch/run-sheet/[routeId]/page.tsx`
+- `/dispatch/transfers` → `app/dispatch/transfers/page.tsx`
+- `/driver` → `app/driver/page.tsx`
+- `/driver/route/[id]` → `app/driver/route/[id]/page.tsx`
+- `/estimating/[bidId]` → `app/estimating/[bidId]/page.tsx`
+- `/estimating` → `app/estimating/page.tsx`
+- `/ewp/[id]` → `app/ewp/[id]/page.tsx`
+- `/ewp/add` → `app/ewp/add/page.tsx`
+- `/ewp` → `app/ewp/page.tsx`
+- `/help` → `app/help/page.tsx`
+- `/it-issues/[id]` → `app/it-issues/[id]/page.tsx`
+- `/it-issues` → `app/it-issues/page.tsx`
+- `/kiosk/[branch]` → `app/kiosk/[branch]/page.tsx`
+- `/legacy-bids/[id]` → `app/legacy-bids/[id]/page.tsx`
+- `/legacy-bids/add` → `app/legacy-bids/add/page.tsx`
+- `/legacy-bids/completed` → `app/legacy-bids/completed/page.tsx`
+- `/legacy-bids` → `app/legacy-bids/page.tsx`
+- `/login` → `app/login/page.tsx`
+- `/management/forecast` → `app/management/forecast/page.tsx`
+- `/management` → `app/management/page.tsx`
+- `/management/rebates` → `app/management/rebates/page.tsx`
+- `/ops/delivery-reporting` → `app/ops/delivery-reporting/page.tsx`
+- `/ops-login` → `app/ops-login/page.tsx`
+- `/page.tsx` → `app/page.tsx`
+- `/projects/[id]` → `app/projects/[id]/page.tsx`
+- `/projects` → `app/projects/page.tsx`
+- `/purchasing/exceptions` → `app/purchasing/exceptions/page.tsx`
+- `/purchasing/manage` → `app/purchasing/manage/page.tsx`
+- `/purchasing/open-pos` → `app/purchasing/open-pos/page.tsx`
+- `/purchasing` → `app/purchasing/page.tsx`
+- `/purchasing/pos/[po]` → `app/purchasing/pos/[po]/page.tsx`
+- `/purchasing/review/[id]` → `app/purchasing/review/[id]/page.tsx`
+- `/purchasing/review` → `app/purchasing/review/page.tsx`
+- `/purchasing/scorecard` → `app/purchasing/scorecard/page.tsx`
+- `/purchasing/suggested-buys` → `app/purchasing/suggested-buys/page.tsx`
+- `/purchasing/workspace` → `app/purchasing/workspace/page.tsx`
+- `/sales/customers/[code]` → `app/sales/customers/[code]/page.tsx`
+- `/sales/customers/[code]/ship-tos/[seq]` → `app/sales/customers/[code]/ship-tos/[seq]/page.tsx`
+- `/sales/customers` → `app/sales/customers/page.tsx`
+- `/sales/deliveries` → `app/sales/deliveries/page.tsx`
+- `/sales/history` → `app/sales/history/page.tsx`
+- `/sales/orders/[so_number]` → `app/sales/orders/[so_number]/page.tsx`
+- `/sales` → `app/sales/page.tsx`
+- `/sales/products` → `app/sales/products/page.tsx`
+- `/sales/reports` → `app/sales/reports/page.tsx`
+- `/sales/tracker` → `app/sales/tracker/page.tsx`
+- `/sales/transactions` → `app/sales/transactions/page.tsx`
+- `/scorecard/[customerId]` → `app/scorecard/[customerId]/page.tsx`
+- `/scorecard/branch/[branchId]` → `app/scorecard/branch/[branchId]/page.tsx`
+- `/scorecard/branch` → `app/scorecard/branch/page.tsx`
+- `/scorecard/overview` → `app/scorecard/overview/page.tsx`
+- `/scorecard` → `app/scorecard/page.tsx`
+- `/scorecard/product/item/[itemCode]` → `app/scorecard/product/item/[itemCode]/page.tsx`
+- `/scorecard/product/major/[majorCode]` → `app/scorecard/product/major/[majorCode]/page.tsx`
+- `/scorecard/product/minor/[majorCode]/[minorCode]` → `app/scorecard/product/minor/[majorCode]/[minorCode]/page.tsx`
+- `/scorecard/product` → `app/scorecard/product/page.tsx`
+- `/scorecard/rep/[repCode]` → `app/scorecard/rep/[repCode]/page.tsx`
+- `/scorecard/rep` → `app/scorecard/rep/page.tsx`
+- `/scorecard/vendor/[supplierKey]` → `app/scorecard/vendor/[supplierKey]/page.tsx`
+- `/scorecard/vendor` → `app/scorecard/vendor/page.tsx`
+- `/search` → `app/search/page.tsx`
+- `/supervisor` → `app/supervisor/page.tsx`
+- `/takeoff/[sessionId]` → `app/takeoff/[sessionId]/page.tsx`
+- `/takeoff` → `app/takeoff/page.tsx`
+- `/tv/[branch]` → `app/tv/[branch]/page.tsx`
+- `/warehouse/open-picks` → `app/warehouse/open-picks/page.tsx`
+- `/warehouse/orders/[so_number]` → `app/warehouse/orders/[so_number]/page.tsx`
+- `/warehouse` → `app/warehouse/page.tsx`
+- `/warehouse/picker-stats` → `app/warehouse/picker-stats/page.tsx`
+- `/warehouse/pickers/[id]` → `app/warehouse/pickers/[id]/page.tsx`
+- `/warehouse/pickers` → `app/warehouse/pickers/page.tsx`
+- `/work-orders` → `app/work-orders/page.tsx`
+
+## Source Modules (`src/**/*.ts`, `src/**/*.tsx`)
+
+- `src/App.tsx`
+- `src/TakeoffApp.tsx`
+- `src/calculations/deck.ts`
+- `src/calculations/engine.ts`
+- `src/calculations/framing.ts`
+- `src/calculations/hardware.ts`
+- `src/calculations/roof.ts`
+- `src/calculations/siding.ts`
+- `src/calculations/trim.ts`
+- `src/components/BidSummary.tsx`
+- `src/components/Breadcrumb.tsx`
+- `src/components/FileManager.tsx`
+- `src/components/admin/AdminDashboard.tsx`
+- `src/components/admin/FieldEditorModal.tsx`
+- `src/components/admin/FormulaEditorModal.tsx`
+- `src/components/admin/IntegrationDashboard.tsx`
+- `src/components/admin/JobLocationMap.tsx`
+- `src/components/admin/MetricsDashboard.tsx`
+- `src/components/admin/RegistryDashboard.tsx`
+- `src/components/bids/OpenBidModal.tsx`
+- `src/components/bids/SaveBidModal.tsx`
+- `src/components/charts/BulletChart.tsx`
+- `src/components/charts/ChartCard.tsx`
+- `src/components/charts/ComboBarLineChart.tsx`
+- `src/components/charts/ComparisonBarChart.tsx`
+- `src/components/charts/DaysToPayBullet.tsx`
+- `src/components/charts/HeatmapGrid.tsx`
+- `src/components/charts/MixDonut.tsx`
+- `src/components/charts/ParetoChart.tsx`
+- `src/components/charts/ProductTreemap.tsx`
+- `src/components/charts/StatusFunnelBar.tsx`
+- `src/components/charts/TimeSeriesChart.tsx`
+- `src/components/charts/index.ts`
+- `src/components/charts/theme.ts`
+- `src/components/data-table/DataTable.tsx`
+- `src/components/data-table/SortableHeader.tsx`
+- `src/components/data-table/TableToolbar.tsx`
+- `src/components/data-table/index.ts`
+- `src/components/data-table/serialize.ts`
+- `src/components/data-table/types.ts`
+- `src/components/data-table/useTableSort.ts`
+- `src/components/dispatch/DispatchMap.tsx`
+- `src/components/nav/TopNav.tsx`
+- `src/components/pwa/ServiceWorkerRegister.tsx`
+- `src/components/scorecard/HouseLoader.tsx`
+- `src/components/scorecard/ScorecardBreadcrumb.tsx`
+- `src/components/sections/BasementSection.tsx`
+- `src/components/sections/BearingWallSection.tsx`
+- `src/components/sections/ExteriorDeckSection.tsx`
+- `src/components/sections/FloorSection.tsx`
+- `src/components/sections/HardwareSection.tsx`
+- `src/components/sections/JobSetupSection.tsx`
+- `src/components/sections/MaterialSelectionSection.tsx`
+- `src/components/sections/OptionsSection.tsx`
+- `src/components/sections/PartyWallSection.tsx`
+- `src/components/sections/RoofSection.tsx`
+- `src/components/sections/ShinglesSection.tsx`
+- `src/components/sections/SidingSection.tsx`
+- `src/components/sections/TrimSection.tsx`
+- `src/components/sections/WindowsDoorsSection.tsx`
+- `src/components/shared/ExportTableButton.tsx`
+- `src/components/takeoff/BottomBar.tsx`
+- `src/components/takeoff/MarkupTools.tsx`
+- `src/components/takeoff/MeasurementInspector.tsx`
+- `src/components/takeoff/MeasurementSidebar.tsx`
+- `src/components/takeoff/PageNavigator.tsx`
+- `src/components/takeoff/ScaleCalibration.tsx`
+- `src/components/takeoff/TakeoffCanvas.tsx`
+- `src/components/takeoff/TakeoffToolbar.tsx`
+- `src/components/takeoff/ViewportManager.tsx`
+- `src/components/ui/SectionCard.tsx`
+- `src/data/adminBlueprint.ts`
+- `src/hooks/useBranchFilter.ts`
+- `src/hooks/useMeasurementReducer.ts`
+- `src/hooks/usePageTracking.ts`
+- `src/hooks/useTakeoffSession.ts`
+- `src/hooks/useUndoRedo.ts`
+- `src/lib/access-control-shared.ts`
+- `src/lib/access-control.ts`
+- `src/lib/agility-api.ts`
+- `src/lib/audit.ts`
+- `src/lib/branch-context.ts`
+- `src/lib/central-time.ts`
+- `src/lib/csv-utils.ts`
+- `src/lib/erp-cache.ts`
+- `src/lib/erp-sync.ts`
+- `src/lib/forecast/types.ts`
+- `src/lib/generateSpecSheet.ts`
+- `src/lib/geocode-runner.ts`
+- `src/lib/geocode.ts`
+- `src/lib/hubbell/address-cache.ts`
+- `src/lib/hubbell/address-matcher.ts`
+- `src/lib/hubbell/extractor.ts`
+- `src/lib/inbound/process-credits.ts`
+- `src/lib/inbound/types.ts`
+- `src/lib/menu-config.ts`
+- `src/lib/ms-graph.ts`
+- `src/lib/notifications.ts`
+- `src/lib/purchasing.ts`
+- `src/lib/r2.ts`
+- `src/lib/scorecard/product-drill-queries.ts`
+- `src/lib/scorecard/queries.ts`
+- `src/lib/scorecard/types.ts`
+- `src/lib/takeoff/calculations.ts`
+- `src/lib/takeoff/exportCsv.ts`
+- `src/lib/takeoff/exportPdf.ts`
+- `src/lib/takeoff/fabricHelpers.ts`
+- `src/lib/takeoff/pdfLoader.ts`
+- `src/lib/takeoff/presets.ts`
+- `src/lib/takeoff/viewportDetector.ts`
+- `src/lib/utils.ts`
+- `src/lib/vendor-scorecard/queries.ts`
+- `src/lib/vendor-scorecard/types.ts`
+- `src/lib/warehouse-open-picks.ts`
+- `src/lib/warehouse-picks.ts`
+- `src/lib/warehouse-stats.ts`
+- `src/main.tsx`
+- `src/services/adminService.ts`
+- `src/services/integrationService.ts`
+- `src/services/metricsService.ts`
+- `src/sw.ts`
+- `src/types/admin.ts`
+- `src/types/estimate.ts`
+- `src/utils/export.ts`
+- `src/utils/lookup.ts`

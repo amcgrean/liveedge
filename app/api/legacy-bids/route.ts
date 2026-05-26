@@ -9,6 +9,7 @@ import {
 } from '../../../db/schema-legacy';
 import { eq, desc, ilike, or, and, sql, asc } from 'drizzle-orm';
 import { getSelectedBranchId } from '@/lib/branch-context';
+import { processNotification } from '@/lib/notifications';
 
 function dbError(err: unknown) {
   if (err instanceof Error && err.message.includes('DATABASE_URL')) {
@@ -184,11 +185,33 @@ export async function POST(req: NextRequest) {
       })
       .returning();
 
-    // Log activity — fire-and-forget; don't block response on FK mismatch
+    // Log activity — fire-and-forget
     const userId = parseInt(session.user.id, 10);
     if (!isNaN(userId)) {
       db.insert(legacyBidActivity).values({ userId, bidId: bid.id, action: 'created' }).catch(() => {});
     }
+
+    // Notify — fire-and-forget; look up customer name for the email
+    const customerRow = await db
+      .select({ name: legacyCustomer.name })
+      .from(legacyCustomer)
+      .where(eq(legacyCustomer.id, customerId))
+      .limit(1)
+      .catch(() => []);
+
+    processNotification({
+      eventType: 'new_bid',
+      bidId: bid.id,
+      bidType: planType,
+      branchId: bid.branchId ?? undefined,
+      details: {
+        projectName: projectName,
+        planType,
+        customerName: customerRow[0]?.name ?? '',
+        dueDate: bid.dueDate ? new Date(bid.dueDate).toLocaleDateString() : '',
+        submittedBy: session.user.name ?? '',
+      },
+    }).catch(() => {});
 
     return NextResponse.json({ bid }, { status: 201 });
   } catch (err) {

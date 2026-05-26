@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import Link from 'next/link';
 import { TopNav } from '../../src/components/nav/TopNav';
 import type { OpenPickSummary } from '@/lib/warehouse-picks';
 import { usePageTracking } from '@/hooks/usePageTracking';
@@ -484,19 +485,40 @@ export default function WarehouseClient({
                             }}
                           >
                             <div className="flex items-center justify-between gap-1 mb-1">
-                              <span className="font-mono text-xs font-bold" style={{ color: '#4ec48a' }}>
+                              <Link
+                                href={`/sales/orders/${encodeURIComponent(p.so_number)}`}
+                                className="font-mono text-xs font-bold hover:underline"
+                                style={{ color: '#4ec48a' }}
+                              >
                                 {p.so_number}
-                              </span>
+                              </Link>
                               <span className={pickChipClass(p)} style={{ fontSize: 10 }}>
                                 {pickStatusLabel(p)}
                               </span>
                             </div>
                             <div className="text-xs truncate" style={{ color: 'var(--text-2)' }}>
-                              {p.customer_name}
+                              {p.customer_code ? (
+                                <Link href={`/sales/customers/${encodeURIComponent(p.customer_code)}`} className="hover:underline">
+                                  {p.customer_name}
+                                </Link>
+                              ) : (
+                                p.customer_name
+                              )}
                             </div>
                             {p.reference && (
                               <div className="text-[10px] truncate mt-0.5" style={{ color: 'var(--text-3)' }}>
                                 {p.reference}
+                              </div>
+                            )}
+                            {p.primary_item_code && (
+                              <div className="text-[10px] truncate mt-0.5" style={{ color: 'var(--text-3)' }}>
+                                Product:{' '}
+                                <Link
+                                  href={`/sales/products?query=${encodeURIComponent(p.primary_item_code)}`}
+                                  className="text-cyan-400 hover:underline"
+                                >
+                                  {p.primary_item_code}
+                                </Link>
                               </div>
                             )}
                             <div className="flex items-center justify-between mt-2 gap-1 flex-wrap">
@@ -560,14 +582,39 @@ export default function WarehouseClient({
                   {filteredPicks.map((p) => (
                     <tr key={`${p.system_id}|${p.so_number}`}>
                       <td>
-                        <span className="mono text-xs font-bold" style={{ color: '#4ec48a' }}>
+                        <Link
+                          href={`/sales/orders/${encodeURIComponent(p.so_number)}`}
+                          className="mono text-xs font-bold hover:underline"
+                          style={{ color: '#4ec48a' }}
+                        >
                           {p.so_number}
-                        </span>
+                        </Link>
                       </td>
                       <td>
-                        <span style={{ color: 'var(--text)' }}>{p.customer_name}</span>
+                        {p.customer_code ? (
+                          <Link
+                            href={`/sales/customers/${encodeURIComponent(p.customer_code)}`}
+                            className="hover:underline"
+                            style={{ color: 'var(--text)' }}
+                          >
+                            {p.customer_name}
+                          </Link>
+                        ) : (
+                          <span style={{ color: 'var(--text)' }}>{p.customer_name}</span>
+                        )}
                         {p.reference && (
                           <span className="ml-1.5 text-xs" style={{ color: 'var(--text-3)' }}>{p.reference}</span>
+                        )}
+                        {p.primary_item_code && (
+                          <span className="ml-1.5 text-xs" style={{ color: 'var(--text-3)' }}>
+                            · Product{' '}
+                            <Link
+                              href={`/sales/products?query=${encodeURIComponent(p.primary_item_code)}`}
+                              className="text-cyan-400 hover:underline"
+                            >
+                              {p.primary_item_code}
+                            </Link>
+                          </span>
                         )}
                       </td>
                       <td>

@@ -2,12 +2,13 @@
 
 import { useState, useTransition } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
-import { BarChart2, Building2, Users, List, Package, Loader2 } from 'lucide-react';
+import { BarChart2, Building2, Users, List, Package, Truck, Loader2 } from 'lucide-react';
 
 const TABS = [
   { href: '/scorecard/overview', label: 'Company Overview', icon: BarChart2 },
   { href: '/scorecard/branch', label: 'By Branch', icon: Building2 },
   { href: '/scorecard/rep', label: 'By Sales Rep', icon: Users },
+  { href: '/scorecard/vendor', label: 'Vendors', icon: Truck },
   { href: '/scorecard/product', label: 'Product Groups', icon: Package },
   { href: '/scorecard', label: 'Customers', icon: List, exact: true },
 ];

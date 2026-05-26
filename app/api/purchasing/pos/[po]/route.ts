@@ -36,7 +36,8 @@ export async function GET(_req: NextRequest, context: RouteContext) {
       sql`
         SELECT
           po_id AS po_number, supplier_name, supplier_code, system_id,
-          expect_date::text AS expect_date, order_date::text AS order_date, po_status
+          expect_date::text AS expect_date, order_date::text AS order_date, po_status,
+          supplier_key, shipfrom_seq
         FROM agility_po_header
         WHERE po_id = ${poNumber} AND is_deleted = false
         LIMIT 1
@@ -49,7 +50,12 @@ export async function GET(_req: NextRequest, context: RouteContext) {
           pl.qty_ordered,
           pl.uom AS unit_of_measure,
           pl.cost AS unit_cost,
-          COALESCE(rcv.qty_received, 0) AS qty_received
+          COALESCE(rcv.qty_received, 0) AS qty_received,
+          ims.lead_time_1            AS lead_time_days,
+          ims.min_ord_qty::float8    AS min_order_qty,
+          ims.min_ord_qty_disp_uom   AS min_order_qty_uom,
+          ims.min_ord_violation      AS min_order_violation,
+          ims.supp_uom               AS supplier_uom
         FROM agility_po_lines pl
         LEFT JOIN (
           SELECT po_id, system_id, sequence, SUM(qty) AS qty_received
@@ -57,6 +63,14 @@ export async function GET(_req: NextRequest, context: RouteContext) {
           WHERE is_deleted = false
           GROUP BY po_id, system_id, sequence
         ) rcv ON rcv.po_id = pl.po_id AND rcv.system_id = pl.system_id AND rcv.sequence = pl.sequence
+        LEFT JOIN agility_po_header ph
+          ON ph.system_id = pl.system_id AND ph.po_id = pl.po_id AND ph.is_deleted = false
+        LEFT JOIN agility_item_supplier ims
+          ON ims.item_ptr = pl.item_ptr
+         AND ims.system_id = pl.system_id
+         AND TRIM(ims.supplier_key) = TRIM(ph.supplier_key)
+         AND ims.ship_from_seq_num = ph.shipfrom_seq
+         AND ims.is_deleted = false
         WHERE pl.po_id = ${poNumber} AND pl.is_deleted = false
         ORDER BY pl.sequence ASC NULLS LAST
       `,

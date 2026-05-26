@@ -24,6 +24,11 @@ export interface RouteStop {
   sequence: number;
   status: string | null;
   notes: string | null;
+  time_window_start: string | null;
+  time_window_end: string | null;
+  eta_minutes: number | null;
+  bay_number: string | null;
+  wc_notified_at: string | null;
 }
 
 export interface TruckAssignment {
@@ -88,6 +93,7 @@ export async function GET(req: NextRequest) {
       sale_type: string | null;
       cust_name: string | null;
       cust_code: string | null;
+      cust_phone: string | null;
       address_1: string | null;
       city: string | null;
       expect_date: string | null;
@@ -107,6 +113,7 @@ export async function GET(req: NextRequest) {
         sh.loaded_date::text, sh.loaded_time,
         soh.reference, soh.sale_type,
         soh.cust_name, soh.cust_code,
+        ac.cust_phone,
         soh.shipto_address_1 AS address_1, soh.shipto_city AS city,
         soh.expect_date::text,
         ac.lat::text, ac.lon::text
@@ -126,8 +133,11 @@ export async function GET(req: NextRequest) {
         AND ac.is_deleted = false
       WHERE soh.is_deleted = false
         ${branchFilter}
-        AND soh.so_status NOT IN ('C', 'X')
-        AND soh.expect_date::date = ${deliveryDate}::date
+        AND soh.so_status NOT IN ('C', 'I', 'X')
+        AND (
+          soh.expect_date::date <= ${deliveryDate}::date
+          OR (soh.sale_type = 'Credit' AND soh.expect_date IS NULL)
+        )
       ORDER BY soh.system_id, soh.so_id
     `;
 
@@ -165,12 +175,19 @@ export async function GET(req: NextRequest) {
       sequence: number;
       status: string | null;
       notes: string | null;
+      time_window_start: string | null;
+      time_window_end: string | null;
+      eta_minutes: number | null;
+      bay_number: string | null;
+      wc_notified_at: string | null;
     };
 
     const routeIds = routeRows.map((r) => r.id);
     const allRouteStops = routeIds.length > 0
       ? await sql<StopRow[]>`
-          SELECT s.id, s.route_id, s.so_id, s.shipment_num, s.sequence, s.status, s.notes
+          SELECT s.id, s.route_id, s.so_id, s.shipment_num, s.sequence, s.status, s.notes,
+                 s.time_window_start, s.time_window_end, s.eta_minutes,
+                 s.bay_number, s.wc_notified_at::text
           FROM dispatch_route_stops s
           WHERE s.route_id = ANY(${routeIds})
           ORDER BY s.route_id, s.sequence, s.id
@@ -235,6 +252,7 @@ export async function GET(req: NextRequest) {
         sale_type: r.sale_type?.trim() || null,
         customer_name: r.cust_name?.trim() || null,
         cust_code: r.cust_code?.trim() || null,
+        cust_phone: r.cust_phone?.trim() || null,
         address_1: r.address_1?.trim() || null,
         city: r.city?.trim() || null,
         expect_date: r.expect_date,

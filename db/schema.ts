@@ -5,6 +5,7 @@ import {
   text,
   boolean,
   timestamp,
+  date,
   integer,
   jsonb,
   numeric,
@@ -401,98 +402,341 @@ export const poSubmissions = bidsSchema.table(
 );
 
 // ============================================================
-// HUBBELL EMAIL FORWARDING
+// HUBBELL PORTAL DOCUMENTS
 // ============================================================
-export const hubbellEmails = bidsSchema.table(
-  'hubbell_emails',
+// Replaces the previous email-shaped pipeline. PO/WO PDFs are scraped from the
+// Hubbell portal locally (Playwright in C:\Users\amcgrean\python\hubbell test),
+// parsed for line items + address, then POSTed to /api/admin/hubbell/upload
+// which stores the PDF in R2 and writes a row here.
+//
+// One Hubbell doc → N Agility SOs and one Agility SO → N Hubbell docs.
+// The junction is hubbell_document_sos. Initial attach comes from splitting
+// agility_so_header.po_number on commas (the team types Hubbell PO/WO numbers
+// into Agility's customer-PO field by hand, comma-separated).
+export const hubbellDocuments = bidsSchema.table(
+  'hubbell_documents',
   {
-    id:          uuid('id').primaryKey().defaultRandom(),
-    messageId:   varchar('message_id', { length: 500 }).unique(),
-    fromEmail:   varchar('from_email', { length: 255 }).notNull(),
-    fromName:    varchar('from_name', { length: 255 }),
-    subject:     text('subject').notNull(),
-    bodyText:    text('body_text'),
-    emailType:   varchar('email_type', { length: 20 }),
-    // 'po' | 'wo' | 'other'
-    extractedPoNumber:    varchar('extracted_po_number', { length: 100 }),
-    extractedWoNumber:    varchar('extracted_wo_number', { length: 100 }),
-    extractedAddress:     text('extracted_address'),
-    extractedCity:        varchar('extracted_city', { length: 100 }),
-    extractedState:       varchar('extracted_state', { length: 50 }),
-    extractedZip:         varchar('extracted_zip', { length: 20 }),
-    extractedAmount:       numeric('extracted_amount', { precision: 12, scale: 2 }),
-    extractedTaxAmount:    numeric('extracted_tax_amount', { precision: 12, scale: 2 }),
-    extractedShipping:     numeric('extracted_shipping', { precision: 12, scale: 2 }),
-    extractedNeedByDate:   varchar('extracted_need_by_date', { length: 20 }),
-    extractedContactName:  varchar('extracted_contact_name', { length: 255 }),
-    extractedContactPhone: varchar('extracted_contact_phone', { length: 50 }),
-    extractedDescription:  text('extracted_description'),
-    // 'pending' | 'matched' | 'unmatched' | 'confirmed' | 'rejected'
-    matchStatus:       varchar('match_status', { length: 20 }).notNull().default('pending'),
-    confirmedSoId:     varchar('confirmed_so_id', { length: 50 }),
-    confirmedCustCode: varchar('confirmed_cust_code', { length: 50 }),
-    confirmedCustName: varchar('confirmed_cust_name', { length: 255 }),
-    matchConfidence:   numeric('match_confidence', { precision: 5, scale: 2 }),
-    confirmedBy:  varchar('confirmed_by', { length: 100 }),
-    confirmedAt:  timestamp('confirmed_at', { withTimezone: true }),
-    receivedAt:   timestamp('received_at', { withTimezone: true }).notNull().defaultNow(),
-    createdAt:    timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
-    updatedAt:    timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+    id:                 uuid('id').primaryKey().defaultRandom(),
+    docType:            varchar('doc_type', { length: 10 }).notNull(),
+    // 'po' | 'wo'
+    docNumber:          varchar('doc_number', { length: 100 }).notNull(),
+    checkNumber:        varchar('check_number', { length: 50 }),
+    r2Key:              text('r2_key').notNull(),
+    sourceRunId:        varchar('source_run_id', { length: 100 }).notNull(),
+    sourceHash:         varchar('source_hash', { length: 64 }).notNull(),
+
+    extractedAddress:   text('extracted_address'),
+    extractedCity:      varchar('extracted_city', { length: 100 }),
+    extractedState:     varchar('extracted_state', { length: 50 }),
+    extractedZip:       varchar('extracted_zip', { length: 20 }),
+    extractedTotal:     numeric('extracted_total', { precision: 12, scale: 2 }),
+    extractedNeedBy:    date('extracted_need_by'),
+    lineItems:          jsonb('line_items'),
+
+    // Local scraper's pre-computed address match hints (from hubbell_daily_fetch.py
+    // → best_job_match against the ERP shipto master). When match_ratio is ≥ 0.78
+    // the upload route looks up open SOs at (scrape_cust_code, scrape_seq_num)
+    // and surfaces them as address-based candidates without re-running fuzzy
+    // scoring server-side.
+    scrapeCustCode:     varchar('scrape_cust_code', { length: 50 }),
+    scrapeSeqNum:       varchar('scrape_seq_num', { length: 50 }),
+    scrapeMatchRatio:   numeric('scrape_match_ratio', { precision: 4, scale: 3 }),
+
+    // Hubbell-portal job context: surfaced in /admin/hubbell/[id] so the
+    // reviewer doesn't have to open the PDF to see which house/lot the doc
+    // is for. Populated by the local scraper's metadata; all nullable.
+    devCode:            varchar('dev_code', { length: 20 }),
+    devName:            varchar('dev_name', { length: 120 }),
+    houseNumber:        varchar('house_number', { length: 30 }),
+    blockLot:           varchar('block_lot', { length: 30 }),
+    modelElevation:     varchar('model_elevation', { length: 200 }),
+
+    // Payment rollups — refreshed by /api/admin/hubbell/payments/import after
+    // each batch. Source of truth is the hubbell_document_payments child table.
+    paidAmountTotal:    numeric('paid_amount_total', { precision: 12, scale: 2 }),
+    lastPaymentDate:    date('last_payment_date'),
+    lastCheckNumber:    varchar('last_check_number', { length: 50 }),
+    paymentStatus:      varchar('payment_status', { length: 20 }),
+    // 'paid' | 'partial' | 'unpaid' | NULL
+
+    // 'unmatched' | 'auto_matched' | 'confirmed' | 'rejected'
+    matchStatus:        varchar('match_status', { length: 20 }).notNull().default('unmatched'),
+
+    receivedAt:         timestamp('received_at', { withTimezone: true }).notNull().defaultNow(),
+    createdAt:          timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt:          timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => [
-    index('hubbell_emails_match_status_idx').on(table.matchStatus),
-    index('hubbell_emails_received_at_idx').on(table.receivedAt),
-    index('hubbell_emails_confirmed_so_id_idx').on(table.confirmedSoId),
+    uniqueIndex('hubbell_documents_source_hash_uq').on(table.sourceHash),
+    index('hubbell_documents_doc_number_idx').on(table.docNumber),
+    index('hubbell_documents_match_status_recv_idx').on(table.matchStatus, table.receivedAt),
+    index('hubbell_documents_doc_type_idx').on(table.docType),
+    index('hubbell_documents_received_at_idx').on(table.receivedAt),
   ]
 );
 
-export const hubbellEmailCandidates = bidsSchema.table(
-  'hubbell_email_candidates',
+// One row per Hubbell check ever scraped. Replaces hubbell_document_payments
+// (dropped in migration 0026). Source of truth for payment facts; the
+// hubbell_documents rollup columns refresh from hubbell_check_lines below.
+//
+// Keys: check_number UNIQUE (HUBB1xxx codes are Beisser-side AR accounts for
+// work type, not separate Hubbell payer entities — all checks come from one
+// vendor stream with sequential numbering). source_hash UNIQUE makes re-POSTs
+// of identical data no-ops.
+export const hubbellChecks = bidsSchema.table(
+  'hubbell_checks',
   {
-    id:       uuid('id').primaryKey().defaultRandom(),
-    emailId:  uuid('email_id').notNull(),
-    soId:     varchar('so_id', { length: 50 }).notNull(),
-    systemId: varchar('system_id', { length: 20 }),
-    custCode: varchar('cust_code', { length: 50 }),
-    custName: varchar('cust_name', { length: 255 }),
-    reference:     varchar('reference', { length: 255 }),
-    shiptoAddress: varchar('shipto_address', { length: 255 }),
-    shiptoCity:    varchar('shipto_city', { length: 100 }),
-    shiptoState:   varchar('shipto_state', { length: 50 }),
-    shiptoZip:     varchar('shipto_zip', { length: 20 }),
-    confidence:    numeric('confidence', { precision: 5, scale: 2 }).notNull(),
-    matchReasons:  jsonb('match_reasons'),
-    rank:          integer('rank').notNull(),
+    id:             uuid('id').primaryKey().defaultRandom(),
+    checkNumber:    varchar('check_number', { length: 50 }).notNull(),
+    checkDate:      date('check_date'),
+    totalAmount:    numeric('total_amount', { precision: 14, scale: 2 }),
+    paymentCount:   integer('payment_count'),
+    sourceHash:     varchar('source_hash', { length: 128 }).notNull(),
+    sourceRunId:    varchar('source_run_id', { length: 100 }),
+    firstSeenAt:    timestamp('first_seen_at', { withTimezone: true }).notNull().defaultNow(),
+    lastSeenAt:     timestamp('last_seen_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    uniqueIndex('hubbell_checks_check_number_uq').on(table.checkNumber),
+    uniqueIndex('hubbell_checks_source_hash_uq').on(table.sourceHash),
+    index('hubbell_checks_check_date_idx').on(table.checkDate),
+  ]
+);
+
+// One row per line on a Hubbell check. doc_type 'po'|'wo' joins to
+// hubbell_documents on (doc_type, doc_number); doc_type 'inv' references
+// agility_so_header via ref_num directly (no FK — public schema, owned by
+// sync worker). payment_amount can be negative for credits.
+export const hubbellCheckLines = bidsSchema.table(
+  'hubbell_check_lines',
+  {
+    id:             uuid('id').primaryKey().defaultRandom(),
+    checkId:        uuid('check_id').notNull(),    // FK → hubbell_checks.id ON DELETE CASCADE
+    docType:        varchar('doc_type', { length: 10 }).notNull(),
+    docNumber:      varchar('doc_number', { length: 100 }).notNull(),
+    invoiceDate:    date('invoice_date'),
+    paymentAmount:  numeric('payment_amount', { precision: 14, scale: 2 }).notNull(),
+    grossAmount:    numeric('gross_amount', { precision: 14, scale: 2 }),
+    memo:           text('memo'),
+    lineSeq:        integer('line_seq').notNull(),
+  },
+  (table) => [
+    index('hubbell_check_lines_check_id_idx').on(table.checkId),
+    index('hubbell_check_lines_doc_idx').on(table.docType, table.docNumber),
+  ]
+);
+
+export const hubbellDocumentSos = bidsSchema.table(
+  'hubbell_document_sos',
+  {
+    id:                  uuid('id').primaryKey().defaultRandom(),
+    documentId:          uuid('document_id').notNull(),
+    // No FK to agility_so_header (lives in public schema, owned by sync worker)
+    soId:                integer('so_id').notNull(),
+    custCode:            varchar('cust_code', { length: 50 }),
+    // 'po_number_split' | 'address' | 'manual'
+    matchSource:         varchar('match_source', { length: 30 }).notNull(),
+    confidence:          integer('confidence').notNull().default(0),
+    matchReasons:        text('match_reasons').array().notNull().default([]),
+    confirmedBy:         varchar('confirmed_by', { length: 100 }),
+    confirmedAt:         timestamp('confirmed_at', { withTimezone: true }),
+    // Phase-2 hook for write-back to agility_so_header.po_number via the live API.
+    postedToAgilityAt:   timestamp('posted_to_agility_at', { withTimezone: true }),
+    createdAt:           timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    uniqueIndex('hubbell_document_sos_doc_so_uq').on(table.documentId, table.soId),
+    index('hubbell_document_sos_so_id_idx').on(table.soId),
+    index('hubbell_document_sos_document_id_idx').on(table.documentId),
+    index('hubbell_document_sos_cust_code_idx').on(table.custCode),
+  ]
+);
+
+// Pre-computed Hubbell-doc → Agility-SO match candidates awaiting human review.
+// Populated in batch by POST /api/admin/hubbell/documents/suggest-matches; the
+// /admin/hubbell/suggestions page renders pending rows for accept/reject. On
+// accept, a row is copied into hubbellDocumentSos (above) and this row's
+// status flips to 'accepted'.
+export const hubbellDocumentSuggestions = bidsSchema.table(
+  'hubbell_document_suggestions',
+  {
+    id:             uuid('id').primaryKey().defaultRandom(),
+    documentId:     uuid('document_id').notNull(),
+    soId:           integer('so_id').notNull(),
+    custCode:       varchar('cust_code', { length: 50 }),
+    matchSource:    varchar('match_source', { length: 30 }).notNull(),
+    confidence:     integer('confidence').notNull().default(0),
+    matchReasons:   text('match_reasons').array().notNull().default([]),
+    // 'pending' | 'accepted' | 'rejected'
+    status:         varchar('status', { length: 20 }).notNull().default('pending'),
+    suggestedAt:    timestamp('suggested_at', { withTimezone: true }).notNull().defaultNow(),
+    reviewedBy:     varchar('reviewed_by', { length: 100 }),
+    reviewedAt:     timestamp('reviewed_at', { withTimezone: true }),
+    sourceRunId:    varchar('source_run_id', { length: 100 }),
+  },
+  (table) => [
+    uniqueIndex('hubbell_document_suggestions_doc_so_uq').on(table.documentId, table.soId),
+    index('hubbell_document_suggestions_status_conf_idx').on(table.status, table.confidence),
+    index('hubbell_document_suggestions_doc_idx').on(table.documentId),
+    index('hubbell_document_suggestions_so_idx').on(table.soId),
+  ]
+);
+
+// ============================================================
+// MICROSOFT GRAPH SUBSCRIPTIONS
+// ============================================================
+// Tracks active /subscriptions resources on the Graph side (one per shared mailbox).
+// Renewed by /api/cron/graph-subscription-renew before they expire (~3-day window).
+export const graphSubscriptions = bidsSchema.table(
+  'graph_subscriptions',
+  {
+    id:                 uuid('id').primaryKey().defaultRandom(),
+    subscriptionId:     varchar('subscription_id', { length: 100 }).notNull().unique(),
+    mailbox:            varchar('mailbox', { length: 255 }).notNull(),    // e.g. credits@beisserlumber.com
+    resource:           text('resource').notNull(),                       // /users/.../messages
+    clientState:        varchar('client_state', { length: 128 }).notNull(),
+    expirationDateTime: timestamp('expiration_date_time', { withTimezone: true }).notNull(),
+    createdAt:          timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    lastRenewedAt:      timestamp('last_renewed_at', { withTimezone: true }),
+  },
+  (table) => [
+    index('graph_subscriptions_mailbox_idx').on(table.mailbox),
+    index('graph_subscriptions_expires_idx').on(table.expirationDateTime),
+  ]
+);
+
+// ============================================================
+// REPORT SUBSCRIPTIONS
+// ============================================================
+// User-driven email subscriptions to reports (sales, delivery, scorecard
+// overview). Cron sweeps next_run_at and emails PDF or Excel attachments
+// via Resend. See src/lib/reports/registry.ts for the report_key vocabulary
+// and per-key params shape.
+export const reportSubscriptions = bidsSchema.table(
+  'report_subscriptions',
+  {
+    id:           uuid('id').primaryKey().defaultRandom(),
+    // public.app_users.id (integer). No cross-schema FK.
+    userId:       integer('user_id').notNull(),
+    email:        text('email').notNull(),
+    reportKey:    text('report_key').notNull(),
+    params:       jsonb('params').notNull().default({}),
+    cadence:      text('cadence').notNull(), // 'daily'|'weekly'|'monthly'
+    sendDow:      integer('send_dow'),       // 1..7 (weekly)
+    sendDom:      integer('send_dom'),       // 1..28 (monthly)
+    sendHour:     integer('send_hour').notNull().default(7),
+    timezone:     text('timezone').notNull().default('America/Chicago'),
+    format:       text('format').notNull(),  // 'pdf'|'excel'
+    isActive:     boolean('is_active').notNull().default(true),
+    lastSentAt:   timestamp('last_sent_at',  { withTimezone: true }),
+    nextRunAt:    timestamp('next_run_at',   { withTimezone: true }).notNull(),
+    createdAt:    timestamp('created_at',    { withTimezone: true }).notNull().defaultNow(),
+    updatedAt:    timestamp('updated_at',    { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    index('report_subscriptions_due_idx').on(table.nextRunAt),
+    index('report_subscriptions_user_idx').on(table.userId),
+    index('report_subscriptions_report_idx').on(table.reportKey),
+  ]
+);
+
+export const reportSubscriptionLog = bidsSchema.table(
+  'report_subscription_log',
+  {
+    id:               uuid('id').primaryKey().defaultRandom(),
+    subscriptionId:   uuid('subscription_id').notNull()
+      .references(() => reportSubscriptions.id, { onDelete: 'cascade' }),
+    sentAt:           timestamp('sent_at', { withTimezone: true }).notNull().defaultNow(),
+    status:           text('status').notNull(), // 'sent'|'failed'|'skipped'
+    errorMessage:     text('error_message'),
+    resendMessageId:  text('resend_message_id'),
+    durationMs:       integer('duration_ms'),
+  },
+  (table) => [
+    index('report_subscription_log_sub_idx').on(table.subscriptionId, table.sentAt),
+  ]
+);
+
+// ============================================================
+// ITEM PLANNING (replenishment policy overrides)
+// ============================================================
+// LiveEdge-managed planning overrides that power the rebuilt
+// /purchasing/suggested-buys and /purchasing/outages views. The engine
+// reads these on top of Agility's stock/demand/supply data — Agility's
+// own min/max/safety-stock fields are not reliable for Beisser's mix
+// (especially Millwork), so LiveEdge owns the policy here.
+// See docs/buyers-workspace-plan-2026-05-22.md.
+export const branchPlanningDefaults = bidsSchema.table('branch_planning_defaults', {
+  systemId:           text('system_id').primaryKey(),
+  usageWindowDays:    integer('usage_window_days').notNull().default(90),
+  safetyStockDays:    integer('safety_stock_days').notNull().default(7),
+  // Optional 12-element jsonb array of monthly multipliers.
+  seasonalityProfile: jsonb('seasonality_profile'),
+  updatedBy:          text('updated_by'),
+  updatedAt:          timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  createdAt:          timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+});
+
+export const itemPlanning = bidsSchema.table(
+  'item_planning',
+  {
+    id:                 uuid('id').primaryKey().defaultRandom(),
+    systemId:           text('system_id').notNull(),
+    itemCode:           text('item_code').notNull(),
+
+    // Reorder policy — all nullable so a row can carry just one override.
+    minOnHand:          numeric('min_on_hand'),
+    targetOnHand:       numeric('target_on_hand'),
+    safetyStockDays:    integer('safety_stock_days'),
+    usageWindowDays:    integer('usage_window_days'),
+
+    // Seasonality — constant factor and/or 12-month profile.
+    seasonalityFactor:  numeric('seasonality_factor'),
+    seasonalityProfile: jsonb('seasonality_profile'),
+
+    packQty:            numeric('pack_qty'),
+    preferredSupplier:  text('preferred_supplier'),
+
+    isCritical:         boolean('is_critical').notNull().default(false),
+    category:           text('category'),
+    isPaused:           boolean('is_paused').notNull().default(false),
+
+    notes:              text('notes'),
+    // 'manual' | 'csv_import' | 'admin_suggestion'
+    source:             text('source').notNull().default('manual'),
+    updatedBy:          text('updated_by'),
+    updatedAt:          timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+    createdAt:          timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    uniqueIndex('item_planning_system_item_idx').on(table.systemId, table.itemCode),
+    index('item_planning_category_idx').on(table.systemId, table.category),
+    index('item_planning_critical_idx').on(table.systemId),
+    index('item_planning_paused_idx').on(table.systemId),
+  ],
+);
+
+// Buyer-written notes against items on the Recent Movement tile of
+// /purchasing/workspace. One row per (system_id, item_code, week_starting)
+// where week_starting is the Monday of the ISO week — lets a buyer keep
+// distinct context week to week without overwriting.
+export const movementNotes = bidsSchema.table(
+  'movement_notes',
+  {
+    id:            uuid('id').primaryKey().defaultRandom(),
+    systemId:      text('system_id').notNull(),
+    itemCode:      text('item_code').notNull(),
+    weekStarting:  date('week_starting').notNull(),
+    note:          text('note').notNull(),
+    dir:           text('dir'),                    // 'up' | 'down' | null
+    createdBy:     text('created_by'),
     createdAt:     timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt:     timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => [
-    index('hubbell_candidates_email_id_idx').on(table.emailId),
-    index('hubbell_candidates_so_id_idx').on(table.soId),
-  ]
-);
-
-export const hubbellAddressCache = bidsSchema.table(
-  'hubbell_address_cache',
-  {
-    id:              uuid('id').primaryKey().defaultRandom(),
-    addressKey:      varchar('address_key', { length: 200 }).notNull().unique(),
-    addressRaw:      varchar('address_raw', { length: 255 }),
-    soId:            varchar('so_id', { length: 50 }).notNull(),
-    systemId:        varchar('system_id', { length: 20 }),
-    custCode:        varchar('cust_code', { length: 50 }),
-    custName:        varchar('cust_name', { length: 255 }),
-    shiptoAddress:   varchar('shipto_address', { length: 255 }),
-    shiptoCity:      varchar('shipto_city', { length: 100 }),
-    shiptoState:     varchar('shipto_state', { length: 50 }),
-    shiptoZip:       varchar('shipto_zip', { length: 20 }),
-    confirmedCount:  integer('confirmed_count').notNull().default(1),
-    lastConfirmedAt: timestamp('last_confirmed_at', { withTimezone: true }).notNull().defaultNow(),
-    createdAt:       timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
-    updatedAt:       timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
-  },
-  (table) => [
-    index('hubbell_address_cache_so_id_idx').on(table.soId),
-  ]
+    uniqueIndex('movement_notes_unique_idx').on(table.systemId, table.itemCode, table.weekStarting),
+    index('movement_notes_item_idx').on(table.systemId, table.itemCode, table.weekStarting),
+  ],
 );
 
 // ============================================================
@@ -624,3 +868,14 @@ export type TakeoffMeasurement = typeof takeoffMeasurements.$inferSelect;
 export type TakeoffPageState = typeof takeoffPageStates.$inferSelect;
 export type PoSubmission = typeof poSubmissions.$inferSelect;
 export type NewPoSubmission = typeof poSubmissions.$inferInsert;
+export type GraphSubscription = typeof graphSubscriptions.$inferSelect;
+export type NewGraphSubscription = typeof graphSubscriptions.$inferInsert;
+export type ReportSubscription = typeof reportSubscriptions.$inferSelect;
+export type NewReportSubscription = typeof reportSubscriptions.$inferInsert;
+export type ReportSubscriptionLog = typeof reportSubscriptionLog.$inferSelect;
+export type BranchPlanningDefaults = typeof branchPlanningDefaults.$inferSelect;
+export type NewBranchPlanningDefaults = typeof branchPlanningDefaults.$inferInsert;
+export type ItemPlanning = typeof itemPlanning.$inferSelect;
+export type NewItemPlanning = typeof itemPlanning.$inferInsert;
+export type MovementNote = typeof movementNotes.$inferSelect;
+export type NewMovementNote = typeof movementNotes.$inferInsert;

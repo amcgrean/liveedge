@@ -1,8 +1,11 @@
 import { NextResponse } from 'next/server';
 import { requireCapability } from '../../../../src/lib/access-control';
 import { getErpSql } from '../../../../db/supabase';
+import { fetchHubErpData, type HubCustomer, type HubTransaction } from '../../../../src/lib/sales/hub-queries';
 
 type Count = { cnt: string };
+
+export type { HubCustomer, HubTransaction };
 
 export interface HubKPIs {
   myOpenOrders: number;
@@ -17,30 +20,11 @@ export interface HubKPIs {
   posIWrote: number;
 }
 
-export interface HubCustomer {
-  cust_code: string;
-  cust_name: string;
-  order_count: number;
-}
-
 export interface HubActivity {
   type: 'order' | 'will_call' | 'bid' | 'design' | 'service';
   title: string;
   subtitle: string;
   time: string;
-}
-
-export interface HubTransaction {
-  so_id: string;
-  cust_name: string | null;
-  cust_code: string | null;
-  reference: string | null;
-  so_status: string;
-  sale_type: string | null;
-  expect_date: string | null;
-  created_date: string | null;
-  rep_1: string | null;
-  system_id: string;
 }
 
 export interface HubData {
@@ -88,64 +72,21 @@ export async function GET() {
   if (!rep) return NextResponse.json(EMPTY);
   const username = userRows[0]?.username ?? '';
 
-  type TopCustRow = { cust_code: string; cust_name: string | null; order_count: string };
   type BidActRow  = { bid_id: number; action: string; project_name: string; customer_name: string; ts: string };
   type DesActRow  = { design_id: number; action: string; plan_name: string; customer_name: string; ts: string };
 
+  // ERP queries are cached for 5 minutes via erpCache() keyed on (rep, branch).
+  // Bids-schema queries (openQuotes / openDesigns / openServiceRequests /
+  // bid + design activity) read mutable per-user state so stay uncached.
   const [
-    openOrdersRes,
-    writtenOrdersRes,
-    branchWCRes,
-    myWCRes,
-    custWCRes,
+    erpData,
     openQuotesRes,
     openDesignsRes,
     openSvcRes,
-    openPOsRes,
+    recentBidActRes,
+    recentDesignActRes,
   ] = await Promise.all([
-    // My open orders — I am rep_1 (account rep on order)
-    sql<Count[]>`
-      SELECT COUNT(*)::text AS cnt FROM public.agility_so_header
-      WHERE is_deleted = false
-        AND UPPER(TRIM(rep_1)) = ${rep}
-        AND so_status NOT IN ('I', 'C')
-        ${branch ? sql`AND system_id = ${branch}` : sql``}
-    `,
-    // My written orders — rep_3 (who wrote the ticket), last 30 days
-    sql<Count[]>`
-      SELECT COUNT(*)::text AS cnt FROM public.agility_so_header
-      WHERE is_deleted = false
-        AND UPPER(TRIM(rep_3)) = ${rep}
-        AND created_date >= CURRENT_DATE - INTERVAL '30 days'
-        ${branch ? sql`AND system_id = ${branch}` : sql``}
-    `,
-    // Branch will calls open (not yet staged/delivered/invoiced/closed)
-    sql<Count[]>`
-      SELECT COUNT(*)::text AS cnt FROM public.agility_so_header
-      WHERE is_deleted = false
-        AND UPPER(TRIM(sale_type)) = 'WILLCALL'
-        AND COALESCE(UPPER(TRIM(so_status)), '') NOT IN ('S', 'D', 'I', 'C')
-        ${branch ? sql`AND system_id = ${branch}` : sql``}
-    `,
-    // Will calls I wrote — rep_3 (who entered the order)
-    sql<Count[]>`
-      SELECT COUNT(*)::text AS cnt FROM public.agility_so_header
-      WHERE is_deleted = false
-        AND UPPER(TRIM(sale_type)) = 'WILLCALL'
-        AND COALESCE(UPPER(TRIM(so_status)), '') NOT IN ('S', 'D', 'I', 'C')
-        AND UPPER(TRIM(rep_3)) = ${rep}
-        ${branch ? sql`AND system_id = ${branch}` : sql``}
-    `,
-    // Will calls for my customers — rep_1 = me (I am account rep on the order)
-    sql<Count[]>`
-      SELECT COUNT(*)::text AS cnt FROM public.agility_so_header
-      WHERE is_deleted = false
-        AND UPPER(TRIM(sale_type)) = 'WILLCALL'
-        AND COALESCE(UPPER(TRIM(so_status)), '') NOT IN ('S', 'D', 'I', 'C')
-        AND UPPER(TRIM(rep_1)) = ${rep}
-        ${branch ? sql`AND system_id = ${branch}` : sql``}
-    `,
-    // Open quotes/bids for this rep
+    fetchHubErpData(rep, branch),
     sql<Count[]>`
       SELECT COUNT(*)::text AS cnt
       FROM bids.bid b
@@ -153,7 +94,6 @@ export async function GET() {
       WHERE b.status NOT IN ('Complete', 'Closed', 'Cancelled')
         AND UPPER(TRIM(u.username)) = ${rep}
     `,
-    // Open designs for this rep's customers
     sql<Count[]>`
       SELECT COUNT(*)::text AS cnt
       FROM bids.design d
@@ -161,46 +101,11 @@ export async function GET() {
       WHERE d.status = 'Active'
         AND UPPER(TRIM(c.sales_agent)) = ${rep}
     `,
-    // Open service requests created by this user
     sql<Count[]>`
       SELECT COUNT(*)::text AS cnt FROM bids.it_service
       WHERE status = 'Open'
         AND UPPER(TRIM(createdby)) = ${rep}
     `,
-    // Open POs for branch (buyer column TBD — showing branch total)
-    branch
-      ? sql<Count[]>`
-          SELECT COUNT(*)::text AS cnt FROM public.agility_po_header
-          WHERE po_status = 'O' AND system_id = ${branch}
-        `
-      : Promise.resolve([{ cnt: '0' }] as Count[]),
-  ]);
-
-  const [topCustRes, recentTxRes, recentBidActRes, recentDesignActRes] = await Promise.all([
-    // Top customers for this rep (last 30 days, rep_1 = account rep)
-    sql<TopCustRow[]>`
-      SELECT soh.cust_code, MAX(soh.cust_name) AS cust_name, COUNT(*)::text AS order_count
-      FROM public.agility_so_header soh
-      WHERE soh.is_deleted = false
-        AND soh.created_date >= CURRENT_DATE - INTERVAL '30 days'
-        AND UPPER(TRIM(soh.rep_1)) = ${rep}
-        ${branch ? sql`AND soh.system_id = ${branch}` : sql``}
-      GROUP BY soh.cust_code
-      ORDER BY COUNT(*) DESC
-      LIMIT 7
-    `,
-    // Recent transactions (last 10, rep_1 = account rep on order)
-    sql<HubTransaction[]>`
-      SELECT so_id, cust_name, cust_code, reference, so_status, sale_type,
-             expect_date::text, created_date::text, rep_1, system_id
-      FROM public.agility_so_header
-      WHERE is_deleted = false
-        AND UPPER(TRIM(rep_1)) = ${rep}
-        ${branch ? sql`AND system_id = ${branch}` : sql``}
-      ORDER BY created_date DESC
-      LIMIT 10
-    `,
-    // Recent bid activity for this rep
     sql<BidActRow[]>`
       SELECT ba.bid_id, ba.action, b.project_name, c.name AS customer_name,
              ba.timestamp::text AS ts
@@ -212,7 +117,6 @@ export async function GET() {
       ORDER BY ba.timestamp DESC
       LIMIT 5
     `,
-    // Recent design activity for this rep's customers
     sql<DesActRow[]>`
       SELECT da.design_id, da.action, d.plan_name, c.name AS customer_name,
              da.timestamp::text AS ts
@@ -228,7 +132,7 @@ export async function GET() {
 
   // Build chronological activity feed
   const activityItems: HubActivity[] = [
-    ...recentTxRes.slice(0, 4).map((o: HubTransaction) => ({
+    ...erpData.recentTransactions.slice(0, 4).map((o: HubTransaction) => ({
       type: (o.sale_type?.toUpperCase().trim() === 'WC' ? 'will_call' : 'order') as HubActivity['type'],
       title: `SO-${o.so_id}`,
       subtitle: o.cust_name ?? '',
@@ -250,24 +154,20 @@ export async function GET() {
 
   return NextResponse.json({
     kpis: {
-      myOpenOrders:        parseInt(openOrdersRes[0]?.cnt ?? '0', 10),
-      myWrittenOrders:     parseInt(writtenOrdersRes[0]?.cnt ?? '0', 10),
-      branchWillCalls:     parseInt(branchWCRes[0]?.cnt ?? '0', 10),
-      myCustomerWillCalls: parseInt(custWCRes[0]?.cnt ?? '0', 10),
-      willCallsIWrote:     parseInt(myWCRes[0]?.cnt ?? '0', 10),
+      myOpenOrders:        erpData.myOpenOrders,
+      myWrittenOrders:     erpData.myWrittenOrders,
+      branchWillCalls:     erpData.branchWillCalls,
+      myCustomerWillCalls: erpData.myCustomerWillCalls,
+      willCallsIWrote:     erpData.willCallsIWrote,
       openQuotes:          parseInt(openQuotesRes[0]?.cnt ?? '0', 10),
       openDesigns:         parseInt(openDesignsRes[0]?.cnt ?? '0', 10),
       openServiceRequests: parseInt(openSvcRes[0]?.cnt ?? '0', 10),
-      myOpenPOs:           parseInt(openPOsRes[0]?.cnt ?? '0', 10),
+      myOpenPOs:           erpData.myOpenPOs,
       posIWrote:           0, // TODO: filter by buyer_two column once name confirmed
     },
-    topCustomers: topCustRes.map((c: TopCustRow) => ({
-      cust_code: c.cust_code,
-      cust_name: c.cust_name ?? 'Unknown',
-      order_count: parseInt(c.order_count, 10),
-    })),
+    topCustomers: erpData.topCustomers,
     recentActivity: activityItems,
-    recentTransactions: recentTxRes,
+    recentTransactions: erpData.recentTransactions,
     username,
   } satisfies HubData);
 }

@@ -7,10 +7,12 @@ import {
   AlertTriangle, ChevronRight, ChevronDown, X, ExternalLink,
   ShieldAlert, Truck, CheckCircle2, Clock, Minus,
 } from 'lucide-react';
+import Link from 'next/link';
 import type {
   VendorListRow,
   VendorScorecardSummary,
   VendorScorecardParams,
+  VendorBranchSummaryRow,
   RebateProgram,
 } from '@/lib/vendor-scorecard/types';
 import { getVendorDetail } from './actions';
@@ -28,12 +30,12 @@ const BRANCHES = [
   { id: '40CV', label: 'Coralville' },
 ];
 
-const RANGES: { id: VendorScorecardParams['range']; label: string }[] = [
-  { id: 'MTD', label: 'MTD' },
-  { id: 'QTD', label: 'QTD' },
-  { id: 'YTD', label: 'YTD' },
-  { id: 'TTM', label: 'TTM' },
-  { id: 'FY',  label: 'Full Year' },
+const RANGES: { id: VendorScorecardParams['range']; label: string; tooltip: string }[] = [
+  { id: 'MTD', label: 'MTD',      tooltip: 'Month-to-Date — from the 1st of this month through today' },
+  { id: 'QTD', label: 'QTD',      tooltip: 'Quarter-to-Date — from the start of this fiscal quarter through today' },
+  { id: 'YTD', label: 'YTD',      tooltip: 'Year-to-Date — from Jan 1 of this year through today' },
+  { id: 'TTM', label: 'T12M',     tooltip: 'Trailing 12 Months — a rolling window covering the last 365 days' },
+  { id: 'FY',  label: 'Full Year', tooltip: 'Full Year — the entire current fiscal year (Jan 1 – Dec 31)' },
 ];
 
 const PROG_TYPE_LABELS: Record<string, string> = {
@@ -400,11 +402,13 @@ export default function VendorScorecardClient({
   summary,
   vendors,
   productGroups,
+  branchSummary,
   initialParams,
 }: {
   summary: VendorScorecardSummary;
   vendors: VendorListRow[];
   productGroups: string[];
+  branchSummary: VendorBranchSummaryRow[];
   initialParams: VendorScorecardParams;
 }) {
   const router = useRouter();
@@ -460,7 +464,7 @@ export default function VendorScorecardClient({
   return (
     <div className="min-h-screen" style={{ background: 'var(--bg)' }}>
       <div
-        className="sticky top-0 z-40 flex flex-wrap items-center gap-3 px-5 py-2.5"
+        className="sticky top-0 z-40 flex flex-wrap items-center gap-x-5 gap-y-3 px-6 py-3.5"
         style={{ background: 'var(--panel)', borderBottom: '1px solid var(--line)' }}
       >
         <div className="flex rounded overflow-hidden" style={{ border: '1px solid var(--line)' }}>
@@ -468,7 +472,9 @@ export default function VendorScorecardClient({
             <button
               key={r.id}
               onClick={() => pushParams({ ...params, range: r.id })}
-              className="px-3 py-1 text-xs font-medium mono transition"
+              title={r.tooltip}
+              aria-label={r.tooltip}
+              className="px-3.5 py-1.5 text-xs font-medium mono transition cursor-help"
               style={{
                 background: params.range === r.id ? 'var(--green)' : 'var(--panel-2)',
                 color: params.range === r.id ? 'white' : 'var(--text-2)',
@@ -479,12 +485,12 @@ export default function VendorScorecardClient({
           ))}
         </div>
 
-        <div className="flex gap-1.5 flex-wrap">
+        <div className="flex gap-2 flex-wrap">
           {BRANCHES.map((b) => (
             <button
               key={b.id}
               onClick={() => pushParams({ ...params, branch: b.id })}
-              className="px-2.5 py-1 rounded text-xs font-medium transition"
+              className="px-3 py-1.5 rounded text-xs font-medium transition"
               style={{
                 background: params.branch === b.id ? 'rgba(31,138,79,0.15)' : 'var(--panel-2)',
                 color: params.branch === b.id ? 'var(--green-bright)' : 'var(--text-3)',
@@ -500,7 +506,7 @@ export default function VendorScorecardClient({
           <select
             value={params.productGroup}
             onChange={(e) => pushParams({ ...params, productGroup: e.target.value })}
-            className="text-xs px-2 py-1 rounded"
+            className="text-xs px-3 py-1.5 rounded"
             style={{ background: 'var(--panel-2)', border: '1px solid var(--line)', color: 'var(--text-2)' }}
           >
             <option value="all">All Product Groups</option>
@@ -509,7 +515,7 @@ export default function VendorScorecardClient({
         )}
       </div>
 
-      <div className="p-5 space-y-5 max-w-screen-2xl mx-auto">
+      <div className="px-6 py-6 space-y-6 max-w-screen-2xl mx-auto">
         <div>
           <h1 className="text-2xl font-bold flex items-center gap-2" style={{ color: 'var(--text)' }}>
             <Truck className="w-6 h-6" style={{ color: 'var(--green-bright)' }} />
@@ -520,7 +526,7 @@ export default function VendorScorecardClient({
           </p>
         </div>
 
-        <div className="grid grid-cols-2 sm:grid-cols-4 xl:grid-cols-8 gap-3">
+        <div className="grid grid-cols-2 sm:grid-cols-4 xl:grid-cols-8 gap-4">
           <KpiTile
             label="Total Spend"
             value={fmt$(summary.totalSpendYTD)}
@@ -679,6 +685,15 @@ export default function VendorScorecardClient({
                               <AlertTriangle className="w-3 h-3" />{v.riskFlagCount}
                             </span>
                           )}
+                          <Link
+                            href={`/scorecard/vendor/${encodeURIComponent(v.supplierKey)}?range=${params.range}&branch=${params.branch}`}
+                            onClick={(e) => e.stopPropagation()}
+                            title="Open full vendor scorecard"
+                            className="inline-flex items-center hover:text-cyan-400 transition"
+                            style={{ color: 'var(--text-3)' }}
+                          >
+                            <ExternalLink className="w-3.5 h-3.5" />
+                          </Link>
                           <ChevronRight
                             className="w-4 h-4 transition"
                             style={{ color: isSelected ? 'var(--green-bright)' : 'var(--text-4)' }}
@@ -733,27 +748,40 @@ export default function VendorScorecardClient({
               <table className="w-full text-sm">
                 <thead>
                   <tr style={{ borderBottom: '1px solid var(--line)' }}>
-                    {['Branch', 'Vendor Count', 'Spend YTD', '% of Total', 'Avg Fill', 'Avg OTD'].map((h) => (
+                    {['Branch', 'Vendor Count', `Spend ${params.range}`, 'Spend PY', '% of Total', 'Avg Fill', 'Avg OTD'].map((h) => (
                       <th key={h} className="pb-2 px-3 text-left text-xs font-semibold uppercase tracking-wider" style={{ color: 'var(--text-3)' }}>{h}</th>
                     ))}
                   </tr>
                 </thead>
                 <tbody>
-                  {BRANCHES.filter((b) => b.id !== 'all').map((b) => (
-                    <tr key={b.id} style={{ borderBottom: '1px solid var(--line-soft)' }}>
-                      <td className="py-2.5 px-3 font-medium" style={{ color: 'var(--text)' }}>{b.label}</td>
-                      <td className="py-2.5 px-3 mono" style={{ color: 'var(--text-3)' }}>—</td>
-                      <td className="py-2.5 px-3 mono" style={{ color: 'var(--text-2)' }}>—</td>
-                      <td className="py-2.5 px-3 mono" style={{ color: 'var(--text-3)' }}>—</td>
-                      <td className="py-2.5 px-3 mono" style={{ color: 'var(--text-3)' }}>—</td>
-                      <td className="py-2.5 px-3 mono" style={{ color: 'var(--text-3)' }}>—</td>
+                  {branchSummary.length === 0 ? (
+                    <tr>
+                      <td colSpan={7} className="py-8 text-center" style={{ color: 'var(--text-3)' }}>
+                        No branch activity for this range.
+                      </td>
                     </tr>
-                  ))}
+                  ) : (
+                    branchSummary.map((b) => (
+                      <tr key={b.systemId} style={{ borderBottom: '1px solid var(--line-soft)' }}>
+                        <td className="py-2.5 px-3 font-medium" style={{ color: 'var(--text)' }}>{b.branchName}</td>
+                        <td className="py-2.5 px-3 mono" style={{ color: 'var(--text-2)' }}>{b.vendorCount.toLocaleString()}</td>
+                        <td className="py-2.5 px-3 mono" style={{ color: 'var(--text-2)' }}>{fmtFull$(b.spendYTD)}</td>
+                        <td className="py-2.5 px-3 mono" style={{ color: 'var(--text-3)' }}>{fmtFull$(b.spendPY)}</td>
+                        <td className="py-2.5 px-3 mono" style={{ color: 'var(--text-3)' }}>{(b.pctOfTotal * 100).toFixed(1)}%</td>
+                        <td className="py-2.5 px-3 mono" style={{
+                          color: b.fillRatePct !== null && b.fillRatePct < 90 ? '#c9a83f' : 'var(--text-3)',
+                        }}>{pct(b.fillRatePct)}</td>
+                        <td className="py-2.5 px-3 mono" style={{
+                          color: b.otdPct !== null && b.otdPct < 85 ? '#d05050' : 'var(--text-3)',
+                        }}>{pct(b.otdPct)}</td>
+                      </tr>
+                    ))
+                  )}
                 </tbody>
               </table>
             </div>
             <p className="text-xs" style={{ color: 'var(--text-4)' }}>
-              Click a vendor in the Leaderboard to see their branch and product group breakdown in the detail panel.
+              Click a vendor in the Leaderboard to see their per-branch and product group breakdown in the detail panel.
             </p>
           </div>
         )}

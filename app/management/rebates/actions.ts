@@ -1,6 +1,8 @@
 'use server';
 
+import { revalidateTag } from 'next/cache';
 import { getErpSql } from '@/db/supabase';
+import { erpCache } from '@/lib/erp-cache';
 
 export type RebateProgramRow = {
   id: number;
@@ -39,7 +41,7 @@ export type ProgramInput = {
   isActive: boolean;
 };
 
-export async function fetchRebatePrograms(): Promise<RebateProgramRow[]> {
+async function _fetchRebatePrograms(): Promise<RebateProgramRow[]> {
   const sql = getErpSql();
   type Row = {
     id: number;
@@ -105,7 +107,7 @@ export async function fetchRebatePrograms(): Promise<RebateProgramRow[]> {
   }));
 }
 
-export async function fetchVendorOptions(): Promise<VendorOption[]> {
+async function _fetchVendorOptions(): Promise<VendorOption[]> {
   const sql = getErpSql();
   const rows = await sql<{ supplier_key: string; supplier_name: string; supplier_code: string }[]>`
     SELECT
@@ -126,7 +128,7 @@ export async function fetchVendorOptions(): Promise<VendorOption[]> {
   }));
 }
 
-export async function fetchProductGroupOptions(): Promise<string[]> {
+async function _fetchProductGroupOptions(): Promise<string[]> {
   const sql = getErpSql();
   const rows = await sql<{ pg: string }[]>`
     SELECT DISTINCT link_product_group AS pg
@@ -165,6 +167,7 @@ export async function createRebateProgram(input: ProgramInput): Promise<{ id: nu
     )
     RETURNING id
   `;
+  revalidateTag('erp');
   return { id: rows[0].id };
 }
 
@@ -188,6 +191,7 @@ export async function updateRebateProgram(id: number, input: ProgramInput): Prom
       updated_at         = now()
     WHERE id = ${id}
   `;
+  revalidateTag('erp');
 }
 
 export async function toggleRebateProgram(id: number, isActive: boolean): Promise<void> {
@@ -197,4 +201,10 @@ export async function toggleRebateProgram(id: number, isActive: boolean): Promis
     SET is_active = ${isActive}, updated_at = now()
     WHERE id = ${id}
   `;
+  revalidateTag('erp');
 }
+
+// Cached read-only exports — 5-minute TTL
+export const fetchRebatePrograms = erpCache(_fetchRebatePrograms, ['rebates-fetch-rebate-programs']);
+export const fetchVendorOptions = erpCache(_fetchVendorOptions, ['rebates-fetch-vendor-options']);
+export const fetchProductGroupOptions = erpCache(_fetchProductGroupOptions, ['rebates-fetch-product-group-options']);

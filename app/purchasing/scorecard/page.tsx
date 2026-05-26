@@ -1,9 +1,12 @@
 import { requirePageAccess } from '@/lib/access-control';
 import { CAPABILITIES } from '@/lib/access-control-shared';
+import { TopNav } from '@/components/nav/TopNav';
+import Breadcrumb from '@/components/Breadcrumb';
 import {
   fetchVendorScorecardSummary,
   fetchVendorList,
   fetchProductGroups,
+  fetchVendorBranchSummary,
 } from '@/lib/vendor-scorecard/queries';
 import type { VendorScorecardParams } from '@/lib/vendor-scorecard/types';
 import VendorScorecardClient from './VendorScorecardClient';
@@ -16,7 +19,7 @@ export default async function VendorScorecardPage({
 }: {
   searchParams: Promise<Record<string, string | string[]>>;
 }) {
-  await requirePageAccess(CAPABILITIES.PURCHASING_VIEW);
+  const session = await requirePageAccess(CAPABILITIES.PURCHASING_VIEW);
 
   const sp = await searchParams;
 
@@ -26,10 +29,11 @@ export default async function VendorScorecardPage({
 
   const params: VendorScorecardParams = { range, branch, productGroup };
 
-  const [summaryRes, vendorsRes, groupsRes] = await Promise.allSettled([
+  const [summaryRes, vendorsRes, groupsRes, branchSummaryRes] = await Promise.allSettled([
     fetchVendorScorecardSummary(params),
     fetchVendorList(params),
     fetchProductGroups({ range, branch }),
+    fetchVendorBranchSummary(params),
   ]);
 
   const summary =
@@ -45,6 +49,7 @@ export default async function VendorScorecardPage({
 
   const vendors = vendorsRes.status === 'fulfilled' ? vendorsRes.value : [];
   const productGroups = groupsRes.status === 'fulfilled' ? groupsRes.value : [];
+  const branchSummary = branchSummaryRes.status === 'fulfilled' ? branchSummaryRes.value : [];
 
   if (summaryRes.status === 'rejected') {
     console.error('[vendor-scorecard] summary query failed:', summaryRes.reason);
@@ -52,13 +57,26 @@ export default async function VendorScorecardPage({
   if (vendorsRes.status === 'rejected') {
     console.error('[vendor-scorecard] vendor list failed:', vendorsRes.reason);
   }
+  if (branchSummaryRes.status === 'rejected') {
+    console.error('[vendor-scorecard] branch summary failed:', branchSummaryRes.reason);
+  }
 
   return (
-    <VendorScorecardClient
-      summary={summary}
-      vendors={vendors}
-      productGroups={productGroups}
-      initialParams={params}
-    />
+    <div className="min-h-screen bg-gray-950">
+      <TopNav userName={session.user.name} userRole={session.user.role} />
+      <Breadcrumb
+        items={[
+          { href: '/purchasing', label: 'Purchasing' },
+          { label: 'Vendor Scorecard' },
+        ]}
+      />
+      <VendorScorecardClient
+        summary={summary}
+        vendors={vendors}
+        productGroups={productGroups}
+        branchSummary={branchSummary}
+        initialParams={params}
+      />
+    </div>
   );
 }

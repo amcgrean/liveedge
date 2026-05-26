@@ -6,6 +6,7 @@ import {
   Truck, RefreshCw, BarChart2, ChevronLeft, ChevronRight, Download,
   Activity, Building2, Layers, Calendar, ExternalLink,
 } from 'lucide-react';
+import SubscribeButton from '@/components/reports/SubscribeButton';
 import type {
   DeliveryReportPayload, DeliveryReportRow,
 } from '../../api/ops/delivery-reporting/route';
@@ -402,6 +403,13 @@ export default function DeliveryReportingClient({ isAdmin, userBranch }: Props) 
           >
             <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
           </button>
+
+          <SubscribeButton
+            reportKey="delivery-reports"
+            reportLabel="Delivery Reports"
+            paramsSummary={`${branchLabel} · ${saleType === 'all' ? 'All sale types' : saleType} · Last ${windowParam}`}
+            params={{ window: windowParam, branch, sale_type: saleType }}
+          />
         </div>
       </div>
 

@@ -24,6 +24,8 @@ import {
   ChevronUp,
   AlertCircle,
   Package,
+  Archive,
+  FileDown,
 } from 'lucide-react';
 import Link from 'next/link';
 
@@ -313,7 +315,7 @@ export default function ManageBidClient({ session }: Props) {
       const data = await res.json();
       if (!res.ok) { setError(data.error ?? 'Failed to start takeoff'); return; }
       // data.pdfPreloaded tells us if the bid's PDF was auto-loaded into the session
-      router.push(`/takeoff/${data.sessionId}`);
+      router.push(`/estimating?bid=${data.bidId}`);
     } catch {
       setError('Network error');
     } finally {
@@ -355,6 +357,16 @@ export default function ManageBidClient({ session }: Props) {
       setError('File upload failed');
     } finally {
       setUploadingFile(false);
+    }
+  };
+
+  const handleSpecSheet = async () => {
+    try {
+      const { generateSpecSheet } = await import('@/lib/generateSpecSheet');
+      await generateSpecSheet(parseInt(bidId as string, 10));
+    } catch (err) {
+      console.error('Spec sheet error:', err);
+      setError('Failed to generate spec sheet. Please try again.');
     }
   };
 
@@ -424,6 +436,14 @@ export default function ManageBidClient({ session }: Props) {
                 Complete
               </button>
             )}
+            <button
+              onClick={handleSpecSheet}
+              title="Download Spec Sheet PDF"
+              className="flex items-center gap-1 px-3 py-1.5 bg-gray-800 hover:bg-gray-700 text-gray-300 rounded-lg text-sm"
+            >
+              <FileDown className="w-4 h-4" />
+              Spec Sheet
+            </button>
             <button
               onClick={handleDelete}
               className="flex items-center gap-1 px-3 py-1.5 bg-red-900/50 hover:bg-red-800 text-red-300 rounded-lg text-sm"
@@ -563,8 +583,8 @@ export default function ManageBidClient({ session }: Props) {
             {/* Takeoff Panel */}
             <div className="bg-gray-900 border border-cyan-900/40 rounded-lg p-4 space-y-3">
               <h3 className="font-semibold text-sm flex items-center gap-1.5">
-                <Ruler className="w-3.5 h-3.5 text-cyan-400" />
-                PDF Takeoff
+                <Calculator className="w-3.5 h-3.5 text-cyan-400" />
+                Estimating
               </h3>
 
               {/* Plan PDF status */}
@@ -583,24 +603,30 @@ export default function ManageBidClient({ session }: Props) {
               {/* CTA buttons */}
               {takeoffSessionId ? (
                 <div className="space-y-2">
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                  {bid.takeoffSession?.bidId ? (
                     <Link
-                      href={`/takeoff/${takeoffSessionId}`}
+                      href={`/estimating?bid=${bid.takeoffSession.bidId}`}
                       className="flex items-center justify-center gap-2 w-full px-3 py-2 bg-cyan-700 hover:bg-cyan-600 text-white rounded-lg text-sm font-medium transition-colors"
                     >
-                      <ExternalLink className="w-4 h-4" />
-                      Open Takeoff
+                      <Calculator className="w-4 h-4" />
+                      Open Estimating App
                     </Link>
-                    {bid.takeoffSession?.bidId ? (
-                      <Link
-                        href={`/estimating?bid=${bid.takeoffSession.bidId}`}
-                        className="flex items-center justify-center gap-2 w-full px-3 py-2 bg-cyan-700 hover:bg-cyan-600 text-white rounded-lg text-sm font-medium transition-colors"
-                      >
-                        <Calculator className="w-4 h-4" />
-                        Open in Estimator
-                      </Link>
-                    ) : null}
-                  </div>
+                  ) : (
+                    <Link
+                      href="/estimating"
+                      className="flex items-center justify-center gap-2 w-full px-3 py-2 bg-cyan-700 hover:bg-cyan-600 text-white rounded-lg text-sm font-medium transition-colors"
+                    >
+                      <Calculator className="w-4 h-4" />
+                      Open Estimating App
+                    </Link>
+                  )}
+                  <Link
+                    href={`/takeoff/${takeoffSessionId}`}
+                    className="flex items-center justify-center gap-1 w-full px-2 py-1.5 text-xs text-gray-500 hover:text-gray-300 transition-colors"
+                  >
+                    <ExternalLink className="w-3 h-3" />
+                    PDF Takeoff (advanced)
+                  </Link>
                   <button
                     onClick={async () => {
                       if (!window.confirm('Push all measurement totals to the estimate?')) return;
@@ -857,14 +883,26 @@ export default function ManageBidClient({ session }: Props) {
             <div className="bg-gray-900 border border-gray-800 rounded-lg p-4">
               <div className="flex items-center justify-between mb-3">
                 <h3 className="font-semibold text-sm">Attachments</h3>
-                <button
-                  onClick={() => fileInputRef.current?.click()}
-                  disabled={uploadingFile}
-                  className="flex items-center gap-1 px-2 py-1 text-xs bg-gray-800 hover:bg-gray-700 disabled:opacity-50 rounded text-gray-300"
-                >
-                  <Upload className="w-3 h-3" />
-                  {uploadingFile ? 'Uploading...' : 'Add File'}
-                </button>
+                <div className="flex items-center gap-2">
+                  {bid.files.length > 0 && (
+                    <a
+                      href={`/api/legacy-bids/${bidId}/download-all`}
+                      download
+                      className="flex items-center gap-1 px-2 py-1 text-xs bg-gray-800 hover:bg-gray-700 rounded text-gray-300"
+                    >
+                      <Archive className="w-3 h-3" />
+                      Download All
+                    </a>
+                  )}
+                  <button
+                    onClick={() => fileInputRef.current?.click()}
+                    disabled={uploadingFile}
+                    className="flex items-center gap-1 px-2 py-1 text-xs bg-gray-800 hover:bg-gray-700 disabled:opacity-50 rounded text-gray-300"
+                  >
+                    <Upload className="w-3 h-3" />
+                    {uploadingFile ? 'Uploading...' : 'Add File'}
+                  </button>
+                </div>
                 <input
                   ref={fileInputRef}
                   type="file"

@@ -3,6 +3,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { Plus, FileText, Calendar, Link2, X } from 'lucide-react';
+import { usePageTracking } from '../../src/hooks/usePageTracking';
 
 interface SessionData {
   id: string;
@@ -28,6 +29,7 @@ interface Props {
 }
 
 export function TakeoffSessionList({ sessions }: Props) {
+  usePageTracking();
   const router = useRouter();
   const [creating, setCreating] = useState(false);
   const [newName, setNewName] = useState('');
