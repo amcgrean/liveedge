@@ -33,6 +33,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { sql as dsql } from 'drizzle-orm';
 import { requireCapability } from '../../../../../src/lib/access-control';
+import { verifyHubbellUploadToken } from '../../../../../src/lib/service-auth';
 import { getDb } from '../../../../../db/index';
 
 export const runtime = 'nodejs';
@@ -78,8 +79,15 @@ type Row = {
 };
 
 export async function GET(req: NextRequest) {
-  const auth = await requireCapability('hubbell.review');
-  if (auth instanceof NextResponse) return auth;
+  // Dual auth: bearer for local review CLI / scripts, user session for UI.
+  const hasBearer = req.headers.get('authorization')?.startsWith('Bearer ');
+  if (hasBearer) {
+    const denied = verifyHubbellUploadToken(req);
+    if (denied) return denied;
+  } else {
+    const auth = await requireCapability('hubbell.review');
+    if (auth instanceof NextResponse) return auth;
+  }
 
   const url = new URL(req.url);
   const status = url.searchParams.get('status') ?? 'pending';
