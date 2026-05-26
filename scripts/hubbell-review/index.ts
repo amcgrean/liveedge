@@ -140,14 +140,38 @@ async function cmdPull(args: Record<string, string | true>): Promise<void> {
     byDoc.set(s.document_id, arr);
   }
 
+  const appliedDir = path.join(dir, 'applied');
   let pulled = 0;
   let skipped = 0;
   for (const [docId, suggestions] of byDoc.entries()) {
     if (pulled >= limit) break;
-    const packetDir = path.join(packetsDir, docId);
+
+    // Resolve a unique packet directory. The first pull for a doc lands at
+    // packets/<doc_id>/. If a *prior* batch already processed this doc and
+    // its decisions are in applied/<doc_id>/, the suggester can surface NEW
+    // candidates on the same doc later (e.g. the prior batch all-rejected,
+    // leaving the doc still 'unmatched', and a re-run brought in different
+    // candidates). To avoid clobbering or collision, we append __pass2,
+    // __pass3, etc. on subsequent pulls. Skip if the doc is still pending
+    // local review (packetDir without a __passN suffix exists).
+    let packetDir = path.join(packetsDir, docId);
     if (fs.existsSync(packetDir)) {
+      // Doc is currently pending local review — don't clobber in-flight
+      // decisions.json. Re-pull is intentional: skip.
       skipped++;
       continue;
+    }
+    if (fs.existsSync(path.join(appliedDir, docId))) {
+      // Already-applied previously. The server is returning NEW pending
+      // suggestions on this doc, so surface as a new packet under __passN.
+      let attempt = 2;
+      while (
+        fs.existsSync(path.join(packetsDir, `${docId}__pass${attempt}`)) ||
+        fs.existsSync(path.join(appliedDir, `${docId}__pass${attempt}`))
+      ) {
+        attempt++;
+      }
+      packetDir = path.join(packetsDir, `${docId}__pass${attempt}`);
     }
     fs.mkdirSync(packetDir, { recursive: true });
 
@@ -194,8 +218,10 @@ async function cmdPull(args: Record<string, string | true>): Promise<void> {
     };
     fs.writeFileSync(path.join(packetDir, 'decisions.json'), JSON.stringify(template, null, 2));
 
+    const packetName = path.basename(packetDir);
+    const passNote = packetName !== docId ? ' [re-pass — prior decisions already applied]' : '';
     console.log(
-      `  + ${docId}  (${packet.doc.doc_type.toUpperCase()} ${packet.doc.doc_number}, ${suggestions.length} candidate${suggestions.length === 1 ? '' : 's'})`,
+      `  + ${packetName}  (${packet.doc.doc_type.toUpperCase()} ${packet.doc.doc_number}, ${suggestions.length} candidate${suggestions.length === 1 ? '' : 's'})${passNote}`,
     );
     pulled++;
   }
