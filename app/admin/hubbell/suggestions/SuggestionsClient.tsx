@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
-import { Check, X, ExternalLink, ChevronLeft, ChevronRight, RefreshCw, Play } from 'lucide-react';
+import { Check, X, ExternalLink, ChevronLeft, ChevronRight, RefreshCw, Play, Sparkles } from 'lucide-react';
 
 type Status = 'pending' | 'accepted' | 'rejected' | 'all';
 
@@ -66,6 +66,16 @@ type RunResponse = {
   errors?: Array<{ doc_id: string; error: string }>;
 };
 
+type AiReviewResponse = {
+  run_id: string;
+  processed: number;
+  suggestions_evaluated: number;
+  accepted: number;
+  rejected: number;
+  skipped: number;
+  errors?: Array<{ doc_id: string; error: string }>;
+};
+
 const STATUSES: { key: Status; label: string }[] = [
   { key: 'pending', label: 'Pending' },
   { key: 'accepted', label: 'Accepted' },
@@ -97,6 +107,8 @@ export default function SuggestionsClient() {
   const [runStatus, setRunStatus] = useState<StatusResponse | null>(null);
   const [running, setRunning] = useState(false);
   const [lastRun, setLastRun] = useState<RunResponse | null>(null);
+  const [aiReviewing, setAiReviewing] = useState(false);
+  const [lastAiReview, setLastAiReview] = useState<AiReviewResponse | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -135,6 +147,29 @@ export default function SuggestionsClient() {
   }, []);
 
   useEffect(() => { loadStatus(); }, [loadStatus]);
+
+  async function runAiReview() {
+    setAiReviewing(true);
+    setError(null);
+    try {
+      const res = await fetch('/api/admin/hubbell/documents/ai-review', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ limit: 5 }),
+      });
+      if (!res.ok) {
+        const txt = await res.text();
+        throw new Error(txt || `HTTP ${res.status}`);
+      }
+      const json: AiReviewResponse = await res.json();
+      setLastAiReview(json);
+      await Promise.all([load(), loadStatus()]);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setAiReviewing(false);
+    }
+  }
 
   async function runBatch() {
     setRunning(true);
@@ -199,11 +234,20 @@ export default function SuggestionsClient() {
         <div className="flex items-center gap-2">
           <button
             onClick={runBatch}
-            disabled={running}
+            disabled={running || aiReviewing}
             className="flex items-center gap-2 rounded bg-emerald-700 px-3 py-1.5 text-sm font-medium text-white hover:bg-emerald-600 disabled:opacity-50"
           >
             <Play className="h-3.5 w-3.5" />
-            {running ? 'Running…' : 'Run batch (200)'}
+            {running ? 'Running…' : 'Run suggester (200)'}
+          </button>
+          <button
+            onClick={runAiReview}
+            disabled={running || aiReviewing}
+            className="flex items-center gap-2 rounded bg-violet-700 px-3 py-1.5 text-sm font-medium text-white hover:bg-violet-600 disabled:opacity-50"
+            title="Use Claude vision to review the next 5 docs with pending suggestions"
+          >
+            <Sparkles className="h-3.5 w-3.5" />
+            {aiReviewing ? 'AI reviewing…' : 'AI review (5 docs)'}
           </button>
           <button
             onClick={() => { load(); loadStatus(); }}
@@ -227,13 +271,25 @@ export default function SuggestionsClient() {
           )}
           {lastRun && (
             <div className="mt-1 text-xs text-slate-400">
-              Last run: processed <span className="font-mono text-slate-200">{lastRun.processed}</span> docs,
+              Suggester: processed <span className="font-mono text-slate-200">{lastRun.processed}</span> docs,
               inserted <span className="font-mono text-emerald-300">{lastRun.candidates_inserted}</span> new candidates
               {lastRun.candidates_skipped_existing > 0 && (
                 <>, skipped <span className="font-mono">{lastRun.candidates_skipped_existing}</span> already-reviewed</>
               )}
               {lastRun.errors && lastRun.errors.length > 0 && (
                 <>, <span className="text-red-300">{lastRun.errors.length} errors</span></>
+              )}
+            </div>
+          )}
+          {lastAiReview && (
+            <div className="mt-1 text-xs text-slate-400">
+              AI review: evaluated <span className="font-mono text-slate-200">{lastAiReview.suggestions_evaluated}</span> suggestions across{' '}
+              <span className="font-mono text-slate-200">{lastAiReview.processed}</span> docs —
+              <span className="ml-1 text-emerald-300">{lastAiReview.accepted} accepted</span>,
+              <span className="ml-1 text-rose-300">{lastAiReview.rejected} rejected</span>,
+              <span className="ml-1 text-amber-300">{lastAiReview.skipped} left pending</span>
+              {lastAiReview.errors && lastAiReview.errors.length > 0 && (
+                <>, <span className="text-red-300">{lastAiReview.errors.length} errors</span></>
               )}
             </div>
           )}
