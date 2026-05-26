@@ -24,6 +24,7 @@ export interface WarehouseOrderLine {
   unit_price: number | null;
   handling_code: string | null;
   sequence: number | null;
+  extended_price: number | null;
 }
 
 export interface WarehouseOrderPick {
@@ -123,6 +124,7 @@ export async function GET(
       unit_price: string | null;
       handling_code: string | null;
       sequence: number | null;
+      extended_price: string | null;
     };
 
     const lineRows = (await sql`
@@ -134,7 +136,8 @@ export async function GET(
         qty_shipped::float::text AS qty_shipped,
         price::float::text       AS unit_price,
         handling_code,
-        sequence
+        sequence,
+        extended_price::float::text AS extended_price
       FROM agility_so_lines
       WHERE is_deleted = false
         AND so_id::text = ${soNumber}
@@ -150,6 +153,7 @@ export async function GET(
       unit_price: r.unit_price != null ? parseFloat(r.unit_price) : null,
       handling_code: r.handling_code,
       sequence: r.sequence,
+      extended_price: r.extended_price != null ? parseFloat(r.extended_price) : null,
     }));
 
     // --- Picks ---

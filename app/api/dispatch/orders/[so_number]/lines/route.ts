@@ -13,6 +13,8 @@ export interface OrderLine {
   price: number | null;
   uom: string | null;
   handling_code: string | null;
+  extended_price: number | null;
+  unshipped_extended_price: number | null;
 }
 
 // GET /api/dispatch/orders/[so_number]/lines?branch=20GR
@@ -42,6 +44,8 @@ export async function GET(
       price: string | null;
       price_uom_ptr: string | null;
       handling_code: string | null;
+      extended_price: string | null;
+      unshipped_extended_price: string | null;
     };
 
     const rows = await sql<LineRow[]>`
@@ -55,7 +59,9 @@ export async function GET(
         aib.qty_on_hand::text,
         sol.price::text,
         sol.price_uom_ptr,
-        sol.handling_code
+        sol.handling_code,
+        sol.extended_price::text,
+        sol.unshipped_extended_price::text
       FROM agility_so_lines sol
       LEFT JOIN agility_item_branch aib
         ON aib.item_code = sol.item_code
@@ -78,6 +84,8 @@ export async function GET(
       price: r.price != null ? parseFloat(r.price) : null,
       uom: r.price_uom_ptr?.trim() || null,
       handling_code: r.handling_code?.trim() || null,
+      extended_price: r.extended_price != null ? parseFloat(r.extended_price) : null,
+      unshipped_extended_price: r.unshipped_extended_price != null ? parseFloat(r.unshipped_extended_price) : null,
     }));
 
     return NextResponse.json({ lines });

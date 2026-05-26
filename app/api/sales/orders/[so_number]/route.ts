@@ -11,6 +11,7 @@ export interface OrderLine {
   bo: number | null;
   price: number | null;
   uom: string | null;
+  extended_price: number | null;
 }
 
 export interface OrderDetail {
@@ -112,6 +113,7 @@ export async function GET(
       bo: string | null;
       price: string | null;
       price_uom_ptr: string | null;
+      extended_price: string | null;
     };
 
     const lineRows = await sql<LineRow[]>`
@@ -123,7 +125,8 @@ export async function GET(
         sol.qty_ordered::text,
         sol.bo::text,
         sol.price::text,
-        sol.price_uom_ptr
+        sol.price_uom_ptr,
+        sol.extended_price::text
       FROM agility_so_lines sol
       WHERE sol.is_deleted = false
         AND sol.system_id = ${h.system_id}
@@ -140,6 +143,7 @@ export async function GET(
       bo: r.bo != null ? parseFloat(r.bo) : null,
       price: r.price != null ? parseFloat(r.price) : null,
       uom: r.price_uom_ptr,
+      extended_price: r.extended_price != null ? parseFloat(r.extended_price) : null,
     }));
 
     const detail: OrderDetail = {
