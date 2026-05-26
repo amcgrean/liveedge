@@ -348,7 +348,7 @@ Full WH-Tracker (Python/Flask) migration into LiveEdge. All modules ported:
 
 #### Purchasing Sub-Pages (2026-04-02) — COMPLETE
 - **Open POs** (`/purchasing/open-pos`): open PO list with overdue highlight. API: `/api/purchasing/pos/open` (uses `app_po_search` view)
-- **Buyer Workspace** (`/purchasing/workspace`): quick-action cards + upcoming POs + recent check-ins
+- **Buyer Workspace** (`/purchasing/workspace`): quick-action cards + upcoming POs + recent check-ins. **Rebuilt 2026-05-26 as a six-tile dashboard backed by the replenishment engine — see "Buyer Workspace & Replenishment Engine (2026-05-22 → 2026-05-26)" section below for the current shape.**
 - **Command Center** (`/purchasing/manage`): KPI cards, POs by branch, overdue list, recent submissions
 
 #### RMA Credits (2026-04-02, rewritten 2026-04-22, extended 2026-05-01) — LIVE (ERP-driven, email pipeline active)
@@ -394,7 +394,7 @@ Full WH-Tracker (Python/Flask) migration into LiveEdge. All modules ported:
 - **Estimating ▾**: Estimating App (`/estimating`), PDF Takeoff, Bids, EWP, Projects
 - **Design** (direct link → `/designs`)
 - **Service** (direct link → `/it-issues`)
-- **Purchasing ▾**: Buyer Workspace, Open POs, Command Center
+- **Purchasing ▾**: Buyer Workspace, Open POs, Command Center *(historical snapshot — see "## Navigation Structure" near the bottom of this file for the current dropdown contents, which now include Suggested Buys, Potential Outages, Recent Movement, and Exceptions)*
 - **Receiving ▾**: PO Check-In, Review Queue
 - **Admin ▾** (admin role only): all admin pages + delivery report + picker admin
 
@@ -825,7 +825,9 @@ PR [#278](https://github.com/amcgrean/liveedge/pull/278). Joined `agility_item_s
 - `OpenPO` type in `src/lib/purchasing.ts` extended with `lead_time_max_days` and `has_blocking_min_violation`.
 - No new indexes — `idx_agility_item_supplier_supplier (supplier_key, ship_from_seq_num)` covers the lookup.
 
-#### Suggested Buys supplier rules + primary mismatch (2026-05-14) — COMPLETE
+#### Suggested Buys supplier rules + primary mismatch (2026-05-14) — SUPERSEDED 2026-05-26
+**This section describes the PPO-based viewer that was replaced by the replenishment engine in PR #384 (2026-05-26). The `/api/purchasing/suggested-buys` and `/[ppo_id]` routes referenced below were deleted in that PR. Kept for historical context only — the current page reads `/api/purchasing/replenishment?view=suggested`. See the "Buyer Workspace & Replenishment Engine" section.**
+
 PR [#296](https://github.com/amcgrean/liveedge/pull/296). The `/purchasing/suggested-buys` page already existed as a read-only viewer of `agility_suggested_po_header/lines`; this PR enriched the expanded-row detail with `agility_item_supplier` rules and a primary-supplier mismatch signal.
 
 - **API (`/api/purchasing/suggested-buys/[ppo_id]`)** — two LATERAL joins on the lines query:
@@ -947,7 +949,7 @@ Snapshot of unmerged `claude/*` and `codex/*` branches with a hint about whether
 2. ~~**Extend page tracking to module clients**~~ — DONE (PR #359, 2026-05-20). `usePageTracking` hook in `src/hooks/usePageTracking.ts` is called from all 49 top-level module clients. HomeClient's pre-existing inline `track-visit` effect was replaced by the hook in the same PR to avoid double-tracking.
 3. ~~**RMA Credits thumbnails**~~ — DONE. `GET /api/credits/[id]/images` exists, `CreditsClient.tsx` has an inline expandable `ImagesPanel` with upload + presigned-URL viewing per CM.
 4. **Purchasing workflow gaps**: Before building, verify tables exist: `SELECT table_name FROM information_schema.tables WHERE table_schema='public' AND table_name IN ('purchasing_tasks','purchasing_approvals','purchasing_notes','purchasing_exceptions')` — if found, build PO notes API, exceptions view, approval workflow
-5. **Suggested Buys** — base page LIVE; rollup chips + filters + CSV export landed in PR #360 (2026-05-20). Per-PPO `has_blocking_min_violation` / `has_primary_mismatch` / `max_lead_time_days` / `estimated_value` rollups now drive warning chips on the unexpanded row, plus "Primary mismatch" / "Block violation" filter toggles and a CSV export of the filtered set. Still deferred (waiting on Agility write-back for `agility_suggested_po_lines.supplier_code`): inline supplier-override dropdown. Also unbuilt: persisted reviewed/skipped state — would need a new `bids.suggested_po_review` table; don't build speculatively.
+5. ~~**Suggested Buys**~~ — REBUILT 2026-05-26 (PR #384). The original PPO-based viewer described here (rollup chips, primary-mismatch filter, etc. landed in PR #360) was entirely replaced by a new view over the LiveEdge replenishment engine. The Agility `agility_suggested_po_*` data was confirmed unactionable for Beisser's mix; LiveEdge now owns the planning policy via `bids.item_planning`. See the "Buyer Workspace & Replenishment Engine (2026-05-22 → 2026-05-26)" section for the current architecture. The old `/api/purchasing/suggested-buys` and `/api/purchasing/suggested-buys/[ppo_id]` routes were deleted in the same PR.
 6. **Flask sunset**: DNS cutover + archive `C:\Users\amcgrean\python\wh-tracker-fly\WH-Tracker` after user testing confirms parity
 7. **County parcel loaders — MOVED TO PI (2026-05-20)**: Polk + Dallas now loaded on the Pi (see "Geocoding Pipeline" section above). Remaining: **Johnson County** loader — REST at `https://gis.johnsoncountyiowa.gov/arcgis/rest/services/LandRecords/Land_Records/MapServer` (layers 4 + 9), same template as Polk. Expected uplift ~560 customers. Owner: **Pi agent** (`C:\Users\amcgrean\python\api`). The TS loaders in `scripts/load-*.ts` are inert reference only; build the Python version in beisser-api's `scripts/`.
 8. **4th-tier fuzzy matcher (highest single-uplift remaining)**: Add a fuzzy fallback to `agility_api/geocoder_sqlite.py` that strips leading/trailing directionals from `street_norm` and retries the city/zip lookup. Tag as `sqlite_fuzzy_dir` so the relaxation is visible in `geocode_source`. Keep it gated on city OR zip-3 corroboration to avoid re-introducing the wild-misplacement bug. Expected uplift: ~1,500–2,500 rows currently blocked on direction-prefix mismatches (e.g. customer "613 Grimes St" vs atlas "613 E Grimes St").
@@ -963,6 +965,7 @@ Snapshot of unmerged `claude/*` and `codex/*` branches with a hint about whether
 14. **Perf — cache audit on remaining ERP routes**: PR #386 only wrapped `/api/home` and `/api/sales/hub`. Other high-traffic ERP-read routes that should likely follow the same pattern (extract query into `src/lib/<domain>/queries.ts`, wrap with `erpCache()` keyed on every per-user input): scan all `app/api/**/route.ts` files that call `getErpSql()` / `getErpDb()` and aren't already using `erpCache`. Likely candidates: `/api/dispatch/*`, `/api/warehouse/*`, `/api/work-orders/*`, `/api/supervisor/*`. Don't blanket-cache mutation-adjacent endpoints — confirm read-only first.
 15. **Perf — `revalidateTag` taxonomy**: split the single `'erp'` tag into per-domain tags (`erp:scorecard`, `erp:home`, `erp:sales-hub`, etc.) once a real "stale dashboard after my own write" complaint surfaces. Currently three invalidation call sites, all in `app/management/rebates/actions.ts`. Adding finer tags lets bid/design/service mutations invalidate just the affected cache instead of nuking everything. Don't build speculatively.
 16. **Perf — UOM `$` audit (consolidates with item 10)**: PR #386 didn't touch the `qty_ordered * price` math; item 10 still tracks. Specific files confirmed as still using the broken math: `/api/sales/orders/[so_number]/route.ts`, `/api/dispatch/orders/[so_number]/lines/route.ts`, `/api/warehouse/orders/[so_number]/route.ts`. Pattern: swap to `extended_price` / `unshipped_extended_price` on `agility_so_lines` (columns already exist). Spot-check the order-detail page against Agility's "Ext" column to confirm parity.
+17. **Replenishment follow-ups** (2026-05-26): all 7 phases of the buyer-workspace plan shipped. Four follow-ups intentionally deferred and documented at `docs/agent-prompts/replenishment-handoff-2026-05-26.md` in leverage order: (a) daily engine-output snapshot table → unlocks sparklines + delta-since-yesterday on workspace hero tiles, (b) per-row unit cost on engine output → unlocks `estimatedValue` + supplier $ rollup on Buy Now tile, (c) `qty_on_hand` sync health investigation (operational, not code — 16/1366 stocked items at 20GR had positive QOH at build time), (d) item scorecard Replenishment card surfacing live engine output alongside override state. **Don't build speculatively** — wait for a real complaint after the user spends time with the live system.
 
 ## Buyer Workspace & Replenishment Engine (2026-05-22 → 2026-05-26)
 
@@ -1027,7 +1030,7 @@ Branch resolution: `purchasing.view` users without `branch.all` get pinned to `s
 - **`/purchasing/outages`** — sorted by days-to-zero, critical items called out. Per-branch breakdown card for `branch.all` users.
 - **`/purchasing/movement`** — table of velocity-changing items with inline modal note editor.
 - **`/admin/item-planning`** — full CRUD for overrides + CSV template download + import. Branch Defaults modal.
-- **`/scorecard/product/item/[itemCode]`** — gained a "Replenishment" card (PR ?, 2026-05-26) showing per-branch override state for the item. Inline edit modal opens for users with `admin.config.manage`; others get a read-only view + deep link to `/admin/item-planning?q=<item>`.
+- **`/scorecard/product/item/[itemCode]`** — gained a "Replenishment" card (PR #397, 2026-05-26) showing per-branch override state for the item. Inline edit modal opens for users with `admin.config.manage`; others get a read-only view + deep link to `/admin/item-planning?q=<item>`.
 
 ### Pages NOT updated and intentional gaps
 
@@ -1262,13 +1265,13 @@ When the accounting AR view is built, add it under a dedicated route (e.g. `/acc
 - `SESSION_COOKIE_SECURE` — Secure flag on session cookie (`true` in prod, `false` in dev)
 
 ## Navigation Structure
-Current structure as of 2026-04-24 (6 domain dropdowns + user dropdown; Design is inside Services):
+Current structure as of 2026-05-26 (6 domain dropdowns + user dropdown; Design is inside Services):
 - **Yard ▾**: Picks Board, Open Picks, Picker Stats, Work Orders, Supervisor (all `/warehouse/*` paths, label renamed from "Warehouse")
 - **Dispatch ▾**: Dispatch Board, Delivery Tracker, Fleet Map
 - **Sales ▾**: Sales Hub, Customers, Transactions, Purchase History, Products & Stock, Reports, RMA Credits
 - **Services ▾**: Estimating App (`/estimating`), PDF Takeoff, **Bids** (tabbed hub at `/bids`), EWP, Projects, Design (6 items; bid list entries consolidated 2026-04-24)
-- **Purchasing ▾**: Buyer Workspace, Open POs, Command Center, PO Check-In, Review Queue (Receiving merged in)
-- **Admin ▾** (admin role only): Customers, Products/SKUs, Formulas, Bid Fields, Users, Notifications, Audit Log, ERP Sync, Page Analytics, Delivery Report, Picker Admin
+- **Purchasing ▾**: Buyer Workspace, Open POs, Suggested Buys, Potential Outages, Recent Movement, Exceptions, Command Center, PO Check-In, Review Queue (Receiving merged in; the four bold entries land in the dropdown ordered as listed — see `src/components/nav/TopNav.tsx`)
+- **Admin ▾** (admin role only): Customers, Products/SKUs, Formulas, Bid Fields, Users, Notifications, Item Planning, Audit Log, ERP Sync, Page Analytics, Delivery Report, Picker Admin
 - **User dropdown** (under logged-in username + chevron): Report an Issue (`/it-issues`), Help & Docs (`/help`), Sign Out
 - Component: `src/components/nav/TopNav.tsx`
 - Single `openMenu: string | null` state + one `<nav>` ref for click-outside
