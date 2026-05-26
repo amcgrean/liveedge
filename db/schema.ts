@@ -716,6 +716,29 @@ export const itemPlanning = bidsSchema.table(
   ],
 );
 
+// Buyer-written notes against items on the Recent Movement tile of
+// /purchasing/workspace. One row per (system_id, item_code, week_starting)
+// where week_starting is the Monday of the ISO week — lets a buyer keep
+// distinct context week to week without overwriting.
+export const movementNotes = bidsSchema.table(
+  'movement_notes',
+  {
+    id:            uuid('id').primaryKey().defaultRandom(),
+    systemId:      text('system_id').notNull(),
+    itemCode:      text('item_code').notNull(),
+    weekStarting:  date('week_starting').notNull(),
+    note:          text('note').notNull(),
+    dir:           text('dir'),                    // 'up' | 'down' | null
+    createdBy:     text('created_by'),
+    createdAt:     timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt:     timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    uniqueIndex('movement_notes_unique_idx').on(table.systemId, table.itemCode, table.weekStarting),
+    index('movement_notes_item_idx').on(table.systemId, table.itemCode, table.weekStarting),
+  ],
+);
+
 // ============================================================
 // RELATIONS
 // ============================================================
@@ -854,3 +877,5 @@ export type BranchPlanningDefaults = typeof branchPlanningDefaults.$inferSelect;
 export type NewBranchPlanningDefaults = typeof branchPlanningDefaults.$inferInsert;
 export type ItemPlanning = typeof itemPlanning.$inferSelect;
 export type NewItemPlanning = typeof itemPlanning.$inferInsert;
+export type MovementNote = typeof movementNotes.$inferSelect;
+export type NewMovementNote = typeof movementNotes.$inferInsert;
