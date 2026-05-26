@@ -10,6 +10,10 @@ import type { DispatchKpis } from '../api/dispatch/kpis/route';
 import type { DispatchInitResponse } from '../api/dispatch/init/route';
 import type { OrderLine } from '../api/dispatch/orders/[so_number]/lines/route';
 import type { DriverRoute } from '../api/dispatch/drivers/route';
+import { PodPhotoViewer } from '../../src/components/dispatch/PodPhotoViewer';
+import type { PodPhoto } from '../../src/components/dispatch/PodPhotoViewer';
+import { StopTimeline } from '../../src/components/dispatch/StopTimeline';
+import type { TimelineData } from '../../src/components/dispatch/StopTimeline';
 import Link from 'next/link';
 import {
   X, ChevronDown, ChevronRight, ChevronUp, Truck, AlertCircle,
@@ -45,17 +49,7 @@ interface TruckAssignment {
   route_id: number | null; route_name: string | null; notes: string | null;
 }
 
-interface TimelineEvent { label: string; time: string | null; detail?: string }
-interface TimelineData {
-  events: TimelineEvent[];
-  ar: { balance: number | null; open_count: number };
-  so: {
-    reference: string | null; sale_type: string | null;
-    expect_date: string | null; shipto_address_1: string | null;
-    shipto_city: string | null; cust_code: string | null;
-    ship_via: string | null;
-  };
-}
+// TimelineData is imported from StopTimeline.tsx
 
 interface Props {
   isAdmin: boolean;
@@ -513,12 +507,6 @@ function OrderLinesSection({ lines, loading }: { lines: OrderLine[] | null; load
 
 // ── Detail Panel ───────────────────────────────────────────────────────────────
 
-interface PodPhoto {
-  id: number; r2_key: string; filename: string; content_type: string;
-  category: string; driver_name: string | null; notes: string | null;
-  taken_at: string; url: string;
-}
-
 function DetailPanel({ stop, routeStop, onClose }: { stop: DeliveryStop; routeStop: RouteStop | null; onClose: () => void }) {
   const [timeline, setTimeline] = useState<TimelineData | null>(null);
   const [lines, setLines] = useState<OrderLine[] | null>(null);
@@ -797,85 +785,18 @@ function DetailPanel({ stop, routeStop, onClose }: { stop: DeliveryStop; routeSt
         )}
       </div>
 
-      {/* POD Photos */}
-      {(loadingPhotos || (podPhotos && podPhotos.length > 0)) && (
-        <div className="border-b border-gray-700 shrink-0 px-4 py-3">
-          <div className="text-[10px] uppercase tracking-wider text-gray-500 mb-2">
-            Proof of Delivery{podPhotos && podPhotos.length > 0 ? ` · ${podPhotos.length}` : ''}
-          </div>
-          {loadingPhotos ? (
-            <div className="text-xs text-gray-600">Loading photos…</div>
-          ) : (
-            <div className="flex flex-wrap gap-2">
-              {podPhotos!.map((photo) => (
-                <button
-                  key={photo.id}
-                  onClick={() => setLightboxUrl(photo.url)}
-                  className="relative w-16 h-16 rounded overflow-hidden border border-gray-700 hover:border-cyan-500 transition-colors shrink-0 bg-gray-800"
-                  title={photo.filename}
-                >
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img
-                    src={photo.url}
-                    alt={photo.filename}
-                    loading="lazy"
-                    decoding="async"
-                    className="w-full h-full object-cover"
-                  />
-                </button>
-              ))}
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* Lightbox */}
-      {lightboxUrl && (
-        <div
-          className="fixed inset-0 z-[2000] flex items-center justify-center bg-black/85"
-          onClick={() => setLightboxUrl(null)}
-        >
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img
-            src={lightboxUrl}
-            alt="POD photo"
-            className="max-w-[90vw] max-h-[90vh] rounded shadow-2xl object-contain"
-            onClick={(e) => e.stopPropagation()}
-          />
-          <button
-            className="absolute top-4 right-4 text-white/70 hover:text-white"
-            onClick={() => setLightboxUrl(null)}
-          >
-            <X className="w-6 h-6" />
-          </button>
-        </div>
-      )}
+      <PodPhotoViewer
+        photos={podPhotos}
+        loading={loadingPhotos}
+        lightboxUrl={lightboxUrl}
+        onPhotoClick={setLightboxUrl}
+        onLightboxClose={() => setLightboxUrl(null)}
+      />
 
       {/* Order lines — always visible below Actions */}
       <OrderLinesSection lines={lines} loading={loadingLines} />
 
-      {/* Timeline */}
-      <div className="flex-1 overflow-y-auto px-4 py-3">
-        <div className="text-[10px] uppercase tracking-wider text-gray-500 mb-3">Activity</div>
-        {loadingTimeline ? (
-          <div className="text-xs text-gray-500 text-center py-6">Loading timeline…</div>
-        ) : !timeline ? (
-          <div className="text-xs text-red-400 text-center py-6">Could not load timeline.</div>
-        ) : timeline.events.length === 0 ? (
-          <div className="text-xs text-gray-600 text-center py-6">No timeline events yet.</div>
-        ) : (
-          <ol className="relative border-l border-gray-700 ml-2 space-y-4">
-            {timeline.events.map((ev, i) => (
-              <li key={i} className="pl-4">
-                <span className="absolute -left-1 w-2 h-2 rounded-full bg-cyan-500 mt-0.5" />
-                <div className="text-xs font-medium text-gray-200">{ev.label}</div>
-                {ev.time && <div className="text-xs text-gray-500">{new Date(ev.time).toLocaleString()}</div>}
-                {ev.detail && <div className="text-xs text-gray-500 italic">{ev.detail}</div>}
-              </li>
-            ))}
-          </ol>
-        )}
-      </div>
+      <StopTimeline timeline={timeline} loading={loadingTimeline} />
     </div>
   );
 }
