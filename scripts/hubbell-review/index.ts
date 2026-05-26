@@ -116,8 +116,12 @@ async function cmdPull(args: Record<string, string | true>): Promise<void> {
   fs.mkdirSync(packetsDir, { recursive: true });
 
   // Pull more than `limit` suggestions because we group by doc — one doc can
-  // produce many suggestions. Aim for 5x and stop when we have `limit` packets.
-  const fetchLimit = Math.max(200, limit * 5);
+  // produce many suggestions. Multiplier is 2x: empirically ~6 candidates/doc
+  // on the live data, so 2x is enough headroom to fill `limit` unique docs.
+  // Higher multipliers push the suggestions endpoint into a slow path
+  // (the agility_so_header lookup at large IN-list sizes — no functional
+  // index on so_id::int on the ERP side). Cap absolute request at 200.
+  const fetchLimit = Math.min(200, Math.max(20, limit * 2));
   const url = `/api/admin/hubbell/suggestions?status=pending&min_confidence=${minConfidence}&limit=${fetchLimit}`;
   console.log(`Fetching pending suggestions from ${BASE_URL}${url} …`);
   const res = await api(url);
