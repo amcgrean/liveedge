@@ -1,6 +1,12 @@
 import { notFound } from 'next/navigation';
 import Link from 'next/link';
 import { Truck, ExternalLink, Star } from 'lucide-react';
+import { auth } from '../../../../../auth';
+import { hasCapability } from '../../../../../src/lib/access-control';
+import { getDb } from '../../../../../db/index';
+import { itemPlanning } from '../../../../../db/schema';
+import { eq } from 'drizzle-orm';
+import ItemPlanningCard, { type ItemPlanningRowDto } from '@/components/scorecard/ItemPlanningCard';
 import {
   fetchProductHeader,
   fetchProductKpis,
@@ -77,7 +83,7 @@ export default async function ProductItemScorecard({
     productFilter, branchIds, baseYear, compareYear, period, cutoffDate,
   };
 
-  const [headerRes, kpisRes, threeYearRes, topCustomersRes, branchMixRes, saleTypesRes, suppliersRes] =
+  const [headerRes, kpisRes, threeYearRes, topCustomersRes, branchMixRes, saleTypesRes, suppliersRes, planningRes, sessionRes] =
     await Promise.allSettled([
       fetchProductHeader(productFilter),
       fetchProductKpis(drillParams, itemCode),
@@ -86,6 +92,8 @@ export default async function ProductItemScorecard({
       fetchProductBranchMix(drillParams),
       fetchProductSaleTypes(drillParams),
       fetchItemSuppliers(itemCode),
+      fetchItemPlanning(itemCode),
+      auth(),
     ]);
 
   const failures: string[] = [];
@@ -102,6 +110,7 @@ export default async function ProductItemScorecard({
   logFail('branch mix', branchMixRes);
   logFail('sale types', saleTypesRes);
   logFail('suppliers', suppliersRes);
+  logFail('planning', planningRes);
 
   const header = headerRes.status === 'fulfilled' ? headerRes.value : null;
   const kpis = kpisRes.status === 'fulfilled' ? kpisRes.value : { ...EMPTY_KPIS, customerName: itemCode };
@@ -111,6 +120,9 @@ export default async function ProductItemScorecard({
   const saleTypes = saleTypesRes.status === 'fulfilled' ? saleTypesRes.value : [];
   const suppliers = suppliersRes.status === 'fulfilled' ? suppliersRes.value : [];
   const primarySupplier = suppliers.find((s) => s.isPrimary) ?? null;
+  const planningRows = planningRes.status === 'fulfilled' ? planningRes.value : [];
+  const session = sessionRes.status === 'fulfilled' ? sessionRes.value : null;
+  const canEditPlanning = session ? hasCapability(session, 'admin.config.manage') : false;
 
   if (!header && !kpis.base.sales && !kpis.compare.sales) notFound();
 
@@ -219,6 +231,8 @@ export default async function ProductItemScorecard({
         </div>
         <PrimarySupplierCard supplier={primarySupplier} itemCode={itemCode} childQs={childQs} fromHint={fromHint} />
       </div>
+
+      <ItemPlanningCard itemCode={itemCode} rows={planningRows} canEdit={canEditPlanning} />
 
       <Section title="3-Year Comparison">
         <ComparisonTable entries={threeYear} exportFilename={`${itemCode}-3year`} />
@@ -338,6 +352,32 @@ function PrimarySupplierCard({
       )}
     </section>
   );
+}
+
+async function fetchItemPlanning(itemCode: string): Promise<ItemPlanningRowDto[]> {
+  const db = getDb();
+  const rows = await db
+    .select()
+    .from(itemPlanning)
+    .where(eq(itemPlanning.itemCode, itemCode));
+  return rows.map((r) => ({
+    id:                 r.id,
+    systemId:           r.systemId,
+    itemCode:           r.itemCode,
+    minOnHand:          r.minOnHand,
+    targetOnHand:       r.targetOnHand,
+    safetyStockDays:    r.safetyStockDays,
+    usageWindowDays:    r.usageWindowDays,
+    seasonalityFactor:  r.seasonalityFactor,
+    packQty:            r.packQty,
+    preferredSupplier:  r.preferredSupplier,
+    isCritical:         r.isCritical,
+    category:           r.category,
+    isPaused:           r.isPaused,
+    notes:              r.notes,
+    updatedBy:          r.updatedBy,
+    updatedAt:          r.updatedAt ? r.updatedAt.toISOString() : null,
+  }));
 }
 
 function formatLeadTimes(tiers: Array<number | null>): string {
