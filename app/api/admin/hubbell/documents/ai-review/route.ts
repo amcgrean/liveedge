@@ -204,7 +204,7 @@ export async function POST(req: NextRequest) {
     FROM bids.hubbell_document_suggestions s
     JOIN bids.hubbell_documents d ON d.id = s.document_id
     LEFT JOIN public.agility_so_header soh
-      ON soh.so_id = s.so_id AND soh.is_deleted = false
+      ON soh.so_id::int = s.so_id AND soh.is_deleted = false
     WHERE s.status = 'pending'
     ${docFilter}
     ORDER BY s.document_id, s.confidence DESC, s.suggested_at DESC
