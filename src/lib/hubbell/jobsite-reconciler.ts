@@ -55,6 +55,20 @@ const NEGATIVE_REF_PATTERN = /\b(credit|cred|replacement|repl|vpo|added)\b/i;
 const CANCELLED_SO_STATUSES = new Set<string>(['C', 'X']);
 const CANCELLED_SO_PENALTY = 25;
 
+// Jobsite-number mismatch penalty. Hubbell SO references frequently embed
+// the specific house number on a duplex/cluster — "Trim load #9124",
+// "deck pack 16728", "Hardware/Locks #924". When the doc's address points
+// at a different street number in the same cluster, the SO is for the
+// neighbor and is the wrong target.
+// Probed in prod: 273 of 507 pending duplex-side candidates were mismatched,
+// 12/12 sampled were neighbor-jobsite false positives — no lot-number /
+// PO-number ambiguity. Demote large enough to push scope+amount (45) below
+// the conf 30 floor; small enough that a fully-corroborated candidate
+// (scope+amount+date = 55) still surfaces at 35 for review.
+const JOBSITE_NUMBER_PENALTY = 20;
+const STREET_NUM_PATTERN = /^\s*(\d+)/;
+const REF_NUM_PATTERN = /\d{3,}/g;
+
 const SCOPE_KEYWORDS = [
   'door',
   'window',
@@ -421,6 +435,22 @@ export function pairDocsToSos(
       if (so.so_status && CANCELLED_SO_STATUSES.has(so.so_status.toUpperCase())) {
         confidence -= CANCELLED_SO_PENALTY;
         reasons.push(`so_status:${so.so_status.toUpperCase()}_demote`);
+      }
+
+      // Jobsite-number mismatch — when the SO ref embeds a specific street
+      // number that disagrees with the doc's address, the SO is for a
+      // neighboring address in the same cluster. Applies to ALL match
+      // sources because even a po_number_split into the wrong-house SO
+      // would be wrong (rare but possible if the buyer typed into the
+      // neighbor's SO by mistake). Handles SO refs with multiple street
+      // numbers ("Doors #9124 9132") — if ANY number in the ref matches
+      // the doc's street number, no penalty.
+      const docStreetMatch = doc.extracted_address?.match(STREET_NUM_PATTERN);
+      const docStreetNum = docStreetMatch?.[1] ?? null;
+      const refNums = so.reference?.match(REF_NUM_PATTERN) ?? null;
+      if (docStreetNum && refNums && refNums.length > 0 && !refNums.includes(docStreetNum)) {
+        confidence -= JOBSITE_NUMBER_PENALTY;
+        reasons.push(`jobsite_num_mismatch:${docStreetNum}!=${refNums.join(',')}`);
       }
 
       if (confidence >= minConfidence) {
