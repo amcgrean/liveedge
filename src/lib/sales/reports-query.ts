@@ -1,8 +1,13 @@
 // Shared query for /api/sales/reports and the sales-reports report-digest
 // subscription. Single SQL invocation; isolated here so the cron path can
 // reuse the same code the UI hits.
+//
+// Wrapped in erpCache (5-min TTL) so concurrent users and the cron digest
+// share a single result set rather than each triggering this heavy JSON-agg
+// query independently.
 
 import { getErpSql } from '../../../db/supabase';
+import { erpCache } from '../erp-cache';
 
 export interface SalesReportsPayload {
   period_days:        number;
@@ -23,7 +28,7 @@ export interface SalesReportsQueryParams {
   branch: string;
 }
 
-export async function fetchSalesReports(params: SalesReportsQueryParams): Promise<SalesReportsPayload> {
+async function _fetchSalesReports(params: SalesReportsQueryParams): Promise<SalesReportsPayload> {
   const period = Math.max(7, Math.min(365, Math.floor(params.period) || 30));
   const branch = params.branch || '';
 
@@ -161,3 +166,9 @@ export async function fetchSalesReports(params: SalesReportsQueryParams): Promis
     prev_top_customers: r.prev_top_customers  ?? [],
   };
 }
+
+// 5-min server-side cache. Cache key includes all params so (period=30, branch='')
+// and (period=30, branch='20GR') never collide.
+// IMPORTANT: do NOT put .catch() inside _fetchSalesReports — let failures throw
+// so erpCache never stores a partial result. The caller applies the fallback.
+export const fetchSalesReports = erpCache(_fetchSalesReports, ['sales-reports']);
