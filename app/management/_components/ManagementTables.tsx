@@ -162,7 +162,7 @@ export function SalesByTypeTable({
   baseYear: number;
   compareYear: number;
 }) {
-  const filtered = rows.filter((s) => !s.isExcluded);
+  const filtered = rows;
   const columns: ColumnDef<SaleTypeRow>[] = [
     {
       key: 'category',

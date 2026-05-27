@@ -69,7 +69,7 @@ export function SaleTypeParetoChart({
   baseYear?: number;
 }) {
   const data = rows
-    .filter((s) => !s.isExcluded && s.salesBase > 0)
+    .filter((s) => s.salesBase > 0)
     .sort((a, b) => b.salesBase - a.salesBase)
     .map((s) => ({
       label: s.category,

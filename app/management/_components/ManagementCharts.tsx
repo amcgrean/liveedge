@@ -80,7 +80,7 @@ export default function ManagementCharts({
 
   // M3: sale-type Pareto
   const paretoRows = saleTypes
-    .filter((s) => !s.isExcluded && s.salesBase > 0)
+    .filter((s) => s.salesBase > 0)
     .map((s) => ({ label: s.category, value: s.salesBase }));
 
   const showThreeYear = threeYearData.length > 0;
