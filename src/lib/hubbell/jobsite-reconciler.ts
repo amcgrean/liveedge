@@ -201,14 +201,19 @@ export async function fetchJobsiteData(normAddr: string): Promise<{ docs: DocRow
           AND (d2.received_at, d2.id) > (d.received_at, d.id)
           AND d2.source_hash IS DISTINCT FROM d.source_hash
           -- Only skip when the later row's metadata also differs. Stale-
-          -- identical rows (same extracted_address + extracted_total, just
-          -- byte-drift in the PDF re-extraction) are matchable: the R2 file
-          -- under their key now contains a PDF that describes the same job,
-          -- so the reviewer will see a sensible document. Without this
-          -- predicate we'd needlessly block 1000+ stale-identical rows
-          -- that were eligible all along.
+          -- identical rows (same metadata across every field the matcher
+          -- uses) are matchable: the R2 file under their key now contains
+          -- a PDF that describes the same job, so the reviewer will see a
+          -- sensible document. Include *every* doc field pairDocsToSos
+          -- reads — not just address/total. Otherwise a later row that
+          -- shares address+total but has different line_items or
+          -- need_by would let the older row through and generate
+          -- suggestions whose scope/date reasoning the reviewer can't
+          -- see in the actual PDF.
           AND (d2.extracted_address IS DISTINCT FROM d.extracted_address
-            OR d2.extracted_total   IS DISTINCT FROM d.extracted_total)
+            OR d2.extracted_total   IS DISTINCT FROM d.extracted_total
+            OR d2.extracted_need_by IS DISTINCT FROM d.extracted_need_by
+            OR d2.line_items        IS DISTINCT FROM d.line_items)
       )
   `;
 
@@ -428,7 +433,9 @@ export async function listJobsiteQueue(params: { limit: number; offset: number }
             AND (d2.received_at, d2.id) > (d.received_at, d.id)
             AND d2.source_hash IS DISTINCT FROM d.source_hash
             AND (d2.extracted_address IS DISTINCT FROM d.extracted_address
-              OR d2.extracted_total   IS DISTINCT FROM d.extracted_total)
+              OR d2.extracted_total   IS DISTINCT FROM d.extracted_total
+              OR d2.extracted_need_by IS DISTINCT FROM d.extracted_need_by
+              OR d2.line_items        IS DISTINCT FROM d.line_items)
         )
       GROUP BY 1
     )
