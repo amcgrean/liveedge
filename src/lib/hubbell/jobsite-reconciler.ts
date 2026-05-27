@@ -165,6 +165,16 @@ function descriptionsFromLineItems(li: unknown): string {
 export async function fetchJobsiteData(normAddr: string): Promise<{ docs: DocRow[]; sos: SoRow[] }> {
   const sql = getErpSql();
 
+  // Skip "superseded" docs: another row exists at the same r2_key with a
+  // later received_at AND a different source_hash. That means the Pi
+  // re-uploaded a different PDF under the same `(doc_type, doc_number)`
+  // key (Hubbell reused a doc number for a new job — happens) and
+  // overwrote the R2 object. The older row's `extracted_*` fields still
+  // describe the prior PDF but the R2 file now contains different
+  // content, so any suggestion the matcher generates from this row
+  // would mismatch what a reviewer actually sees in doc.pdf.
+  // 1,391 stale rows exist at writing; 378 have divergent metadata.
+  // Reconciler only sources docs from the *current* row per r2_key.
   const docs = await sql<DocRow[]>`
     SELECT
       d.id,
@@ -181,6 +191,15 @@ export async function fetchJobsiteData(normAddr: string): Promise<{ docs: DocRow
       AND NOT EXISTS (
         SELECT 1 FROM bids.hubbell_document_suggestions sg
         WHERE sg.document_id = d.id AND sg.status IN ('pending','accepted')
+      )
+      AND NOT EXISTS (
+        SELECT 1 FROM bids.hubbell_documents d2
+        WHERE d2.r2_key = d.r2_key
+          -- Compare (received_at, id) so a batch insert that gives two
+          -- rows the same now()-stable timestamp doesn't leave both
+          -- treated as "current". Tie-break is arbitrary but deterministic.
+          AND (d2.received_at, d2.id) > (d.received_at, d.id)
+          AND d2.source_hash IS DISTINCT FROM d.source_hash
       )
   `;
 
@@ -387,6 +406,17 @@ export async function listJobsiteQueue(params: { limit: number; offset: number }
         AND NOT EXISTS (
           SELECT 1 FROM bids.hubbell_document_suggestions sg
           WHERE sg.document_id = d.id AND sg.status IN ('pending','accepted')
+        )
+        -- Skip docs whose R2 file has been overwritten by a later upload
+        -- with different content (Hubbell reused the doc_number). See
+        -- comment in fetchJobsiteData() for the data shape. (received_at,
+        -- id) tuple comparison gives a stable order even when a batch
+        -- insert produces equal timestamps.
+        AND NOT EXISTS (
+          SELECT 1 FROM bids.hubbell_documents d2
+          WHERE d2.r2_key = d.r2_key
+            AND (d2.received_at, d2.id) > (d.received_at, d.id)
+            AND d2.source_hash IS DISTINCT FROM d.source_hash
         )
       GROUP BY 1
     )
