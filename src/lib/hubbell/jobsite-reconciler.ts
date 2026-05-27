@@ -44,6 +44,17 @@ const DATE_TOLERANCE_DAYS = 90;
 const NEGATIVE_REF_PENALTY = 30;
 const NEGATIVE_REF_PATTERN = /\b(credit|cred|replacement|repl|vpo|added)\b/i;
 
+// SO statuses that are terminal-cancelled / closed-without-delivery. Backlog
+// matching against these is almost never right: across 33 surfaced candidates
+// the user has accepted 0. The pattern: when a job has a cancelled SO and a
+// re-issued live SO at the same jobsite with similar scope+amount, the live
+// (Invoiced) one is the actual match. Big enough penalty to push scope-only
+// matches below the floor without auto-suppressing — leaves room for a
+// genuine all-cancelled jobsite to still surface if scope+amount+date all
+// align.
+const CANCELLED_SO_STATUSES = new Set<string>(['C', 'X']);
+const CANCELLED_SO_PENALTY = 25;
+
 const SCOPE_KEYWORDS = [
   'door',
   'window',
@@ -74,6 +85,18 @@ const SCOPE_KEYWORDS = [
 // only count at full weight when paired with another keyword or another
 // signal.
 const BROAD_SCOPE_KEYWORDS = new Set<string>(['frame', 'lumber']);
+
+// Parent → sub-component map for the "door hardware trap" class of false
+// positives. When the doc's line items carry a sub-component keyword
+// (hardware/lock/screen), the doc is specifically about that sub-component,
+// not the parent assembly. An SO whose reference matches only the parent
+// (door/window) is therefore the wrong target — even if amount corroborates,
+// the parent SO is for the assembly, not the sub-component.
+// Codex flagged the door↔hardware case 4+ times across review batches.
+const PARENT_TO_SUBS: Record<string, readonly string[]> = {
+  door:   ['hardware', 'lock'],
+  window: ['screen'],
+};
 
 // Stem any scope keyword to its singular root for comparison
 //   "doors" → "door", "windows" → "window", "framing" → "frame"
@@ -165,6 +188,16 @@ function descriptionsFromLineItems(li: unknown): string {
 export async function fetchJobsiteData(normAddr: string): Promise<{ docs: DocRow[]; sos: SoRow[] }> {
   const sql = getErpSql();
 
+  // Skip "superseded" docs: another row exists at the same r2_key with a
+  // later received_at AND a different source_hash. That means the Pi
+  // re-uploaded a different PDF under the same `(doc_type, doc_number)`
+  // key (Hubbell reused a doc number for a new job — happens) and
+  // overwrote the R2 object. The older row's `extracted_*` fields still
+  // describe the prior PDF but the R2 file now contains different
+  // content, so any suggestion the matcher generates from this row
+  // would mismatch what a reviewer actually sees in doc.pdf.
+  // 1,391 stale rows exist at writing; 378 have divergent metadata.
+  // Reconciler only sources docs from the *current* row per r2_key.
   const docs = await sql<DocRow[]>`
     SELECT
       d.id,
@@ -181,6 +214,29 @@ export async function fetchJobsiteData(normAddr: string): Promise<{ docs: DocRow
       AND NOT EXISTS (
         SELECT 1 FROM bids.hubbell_document_suggestions sg
         WHERE sg.document_id = d.id AND sg.status IN ('pending','accepted')
+      )
+      AND NOT EXISTS (
+        SELECT 1 FROM bids.hubbell_documents d2
+        WHERE d2.r2_key = d.r2_key
+          -- Compare (received_at, id) so a batch insert that gives two
+          -- rows the same now()-stable timestamp doesn't leave both
+          -- treated as "current". Tie-break is arbitrary but deterministic.
+          AND (d2.received_at, d2.id) > (d.received_at, d.id)
+          AND d2.source_hash IS DISTINCT FROM d.source_hash
+          -- Only skip when the later row's metadata also differs. Stale-
+          -- identical rows (same metadata across every field the matcher
+          -- uses) are matchable: the R2 file under their key now contains
+          -- a PDF that describes the same job, so the reviewer will see a
+          -- sensible document. Include *every* doc field pairDocsToSos
+          -- reads — not just address/total. Otherwise a later row that
+          -- shares address+total but has different line_items or
+          -- need_by would let the older row through and generate
+          -- suggestions whose scope/date reasoning the reviewer can't
+          -- see in the actual PDF.
+          AND (d2.extracted_address IS DISTINCT FROM d.extracted_address
+            OR d2.extracted_total   IS DISTINCT FROM d.extracted_total
+            OR d2.extracted_need_by IS DISTINCT FROM d.extracted_need_by
+            OR d2.line_items        IS DISTINCT FROM d.line_items)
       )
   `;
 
@@ -270,9 +326,32 @@ export function pairDocsToSos(
         const overlap = scopeOverlap(docScope, refScope);
         const hasSpecificOverlap = overlap.some((k) => !BROAD_SCOPE_KEYWORDS.has(k));
         const docHasSpecific = Array.from(docScope).some((k) => !BROAD_SCOPE_KEYWORDS.has(k));
+
+        // Parent-component demotion: if the doc carries a sub-component
+        // keyword that this candidate's overlap doesn't include, but the
+        // overlap is a "parent" of that sub-component (door↔hardware,
+        // window↔screen, etc.), this candidate is matching the wrong
+        // scope. Drop all parent-matched tokens to 0 weight. Sub-
+        // components are still specific enough to score, so a candidate
+        // whose ref does contain `hardware`/`screen`/etc. wins.
+        const parentMatchedWrongly = new Set<string>();
+        for (const k of overlap) {
+          const subs = PARENT_TO_SUBS[k];
+          if (!subs) continue;
+          const docHasSub = subs.some((s) => docScope.has(s));
+          const overlapHasSub = subs.some((s) => overlap.includes(s));
+          if (docHasSub && !overlapHasSub) parentMatchedWrongly.add(k);
+        }
+
         if (overlap.length > 0) {
           let scopeBoost = 0;
           for (const k of overlap) {
+            if (parentMatchedWrongly.has(k)) {
+              // Doc is about the sub-component; this parent match is
+              // incidental. Contribute 0.
+              scopeBoost += 0;
+              continue;
+            }
             const isBroad = BROAD_SCOPE_KEYWORDS.has(k);
             if (!isBroad) {
               scopeBoost += SIGNAL_S_PER_KEYWORD;
@@ -291,7 +370,11 @@ export function pairDocsToSos(
           scopeBoost = Math.min(scopeBoost, SIGNAL_S_CAP);
           if (scopeBoost > 0) {
             confidence += scopeBoost;
-            reasons.push(`scope:${overlap.join('+')}`);
+            const reasonTokens = overlap.filter((k) => !parentMatchedWrongly.has(k));
+            if (reasonTokens.length > 0) reasons.push(`scope:${reasonTokens.join('+')}`);
+            if (parentMatchedWrongly.size > 0) {
+              reasons.push(`parent_demote:${Array.from(parentMatchedWrongly).join('+')}`);
+            }
           }
         }
 
@@ -324,6 +407,20 @@ export function pairDocsToSos(
           confidence -= NEGATIVE_REF_PENALTY;
           reasons.push('neg_ref');
         }
+      }
+
+      // Cancelled-SO penalty — applies to ALL match sources, including
+      // Signal A (po_number_split). Codex flagged this: the PR's stated
+      // table said a Signal A C-status candidate should land at conf 75,
+      // but if this were inside the !Signal-A branch above it would stay
+      // at 100. An exact PO# typed into a Cancelled SO's po_number field
+      // is rare (the SO is dead, no one types into dead SOs), but if it
+      // happens we still want the audit-trail demotion + the conf hit.
+      // Across 33 surfaced C-status candidates so far, 0 have been
+      // accepted.
+      if (so.so_status && CANCELLED_SO_STATUSES.has(so.so_status.toUpperCase())) {
+        confidence -= CANCELLED_SO_PENALTY;
+        reasons.push(`so_status:${so.so_status.toUpperCase()}_demote`);
       }
 
       if (confidence >= minConfidence) {
@@ -387,6 +484,22 @@ export async function listJobsiteQueue(params: { limit: number; offset: number }
         AND NOT EXISTS (
           SELECT 1 FROM bids.hubbell_document_suggestions sg
           WHERE sg.document_id = d.id AND sg.status IN ('pending','accepted')
+        )
+        -- Skip docs whose R2 file has been overwritten by a later upload
+        -- with different content (Hubbell reused the doc_number). See
+        -- fetchJobsiteData() above for the full data-shape comment.
+        -- Stale-identical rows (later sibling with same metadata, just
+        -- byte-drift) are *not* skipped — their R2 file still describes
+        -- the same job they expect.
+        AND NOT EXISTS (
+          SELECT 1 FROM bids.hubbell_documents d2
+          WHERE d2.r2_key = d.r2_key
+            AND (d2.received_at, d2.id) > (d.received_at, d.id)
+            AND d2.source_hash IS DISTINCT FROM d.source_hash
+            AND (d2.extracted_address IS DISTINCT FROM d.extracted_address
+              OR d2.extracted_total   IS DISTINCT FROM d.extracted_total
+              OR d2.extracted_need_by IS DISTINCT FROM d.extracted_need_by
+              OR d2.line_items        IS DISTINCT FROM d.line_items)
         )
       GROUP BY 1
     )

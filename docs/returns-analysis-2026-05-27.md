@@ -116,31 +116,22 @@ So roughly **7% is the unavoidable "broke-a-bundle" floor**. Any SKU above 10–
 
 ### 4.1 Items Operating Well Above Baseline
 
-Column legend: **SOs** = distinct ship sales orders; **CMs** = distinct credit memo SOs; **Jobs** = distinct jobsites (customer + ship-to) that received the item; **Custs** = distinct customers that received it; **Jobs Hit %** = share of those jobsites that generated a credit.
-
-| Item | Description | SOs | CMs | Jobs | Custs | Sticks Shipped | Sticks Returned | Qty Return % | Jobs Hit % | Credit $ |
-|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|
-| clayjamb691617 | Pine FJ Jamb 6-9/16x17' | 397 | 259 | 368 | 61 | 3,528 | 1,201 | 34.0% | 69.3% | $39.8K |
-| birchply4814mdf | 4x8-¼ Birch Ply MDF | 572 | 216 | 504 | 69 | 1,350 | 386 | 28.6% | 42.1% | $25.0K |
-| 0108whiteoak | 1x8 RL S4S White Oak | 108 | 35 | 76 | 41 | 3,751 | 1,033 | 27.5% | 40.8% | $20.8K |
-| rollexwht316 | Rollex SYS316 White Soffit | 112 | 44 | 89 | 59 | 1,538 | 374 | 24.3% | 46.1% | $14.3K |
-| jhshakestaggered | Hardie Heritage Staggered | 75 | 43 | 69 | 11 | 7,509 | 1,746 | 23.3% | 62.3% | $17.0K |
-| lpshake7161248st | LP Text Shake 12x48 | 138 | 63 | 114 | 38 | 10,659 | 2,413 | 22.6% | 54.4% | $25.3K |
-| jhtrimtx4425 | Hardie Textured Batten 2½"-12' | 275 | 143 | 189 | 30 | 9,604 | 2,139 | 22.3% | 64.0% | $23.6K |
-| popbase293mis00 | Poplar Mission Base 5¼" | 239 | 105 | 212 | 30 | 21,214 | 4,421 | 20.8% | 49.5% | $16.0K |
-| popplypmdf4814 | 4x8-¼ Poplar Ply MDF | 420 | 127 | 343 | 49 | 1,394 | 283 | 20.3% | 35.6% | $18.6K |
-| jhtrimtx5411 | 5/4x11¼-12' Hardie Trim | 246 | 90 | 208 | 31 | 2,157 | 366 | 17.0% | 42.3% | $17.2K |
-| mdfbase512Ee1e | 512E MDF Base 5¼" | 1,012 | 432 | 831 | 182 | 28,674 | 4,539 | 15.8% | 50.4% | $40.9K |
-| lptrimtxt010816 | 1x8-16' LP Strand Trim | 838 | 219 | 627 | 157 | 11,026 | 1,655 | 15.0% | 32.4% | $51.2K |
-| 0108pop | 1x8 RL S4S Poplar | 1,601 | 427 | 1,165 | 175 | 58,368 | 8,355 | 14.3% | 35.8% | $34.8K |
-| popplypwvc4834 | 4x8-¾ Poplar Ply Veneer | 667 | 176 | 497 | 69 | 2,759 | 377 | 13.7% | 33.8% | $42.0K |
-
-The new count columns sharpen the picture of how each SKU's leak is distributed:
-
-- **`mdfbase512Ee1e`** (MDF Base) is a **broad-base** problem — 1,012 ship SOs, 831 jobsites, 182 customers. Generic estimating-template fix (action item #3) is the right lever.
-- **`jhshakestaggered`** (Hardie Heritage Staggered) is the **opposite** — only 11 customers buy it, but 9 of them have credits on it. That's a small, targetable list for customer-direct conversations alongside the takeoff recalibration (action item #1).
-- **`0108pop`** (1x8 Poplar) ships on 1,601 SOs to 175 customers — the highest spread of any item in the table. Every Beisser house touches this SKU. Even a 1-point reduction in qty return percentage is worth ~$2.5K.
-- **`clayjamb691617`** (17' Pine Jamb) has 259 credit memos against 397 ship SOs — almost two-thirds of ship orders generate a follow-on credit memo. That's a near-deterministic over-order pattern, strongest case for the per-RO counting rule (action item #2).
+| Item | Description | Sticks Shipped | Sticks Returned | Qty Return % | Jobsites Hit % | Credit $ |
+|---|---|---:|---:|---:|---:|---:|
+| clayjamb691617 | Pine FJ Jamb 6-9/16x17' | 3,460 | 1,195 | 34.5% | 74.1% | $40K |
+| birchply4814mdf | 4x8-¼ Birch Ply MDF | 1,305 | 383 | 29.3% | 46.0% | $25K |
+| 0108whiteoak | 1x8 RL S4S White Oak | 3,725 | 1,033 | 27.7% | 47.7% | $21K |
+| rollexwht316 | Rollex SYS316 White Soffit | 1,486 | 373 | 25.1% | 48.4% | $14K |
+| jhshakestaggered | Hardie Heritage Staggered | 7,294 | 1,725 | 23.6% | 63.6% | $17K |
+| lpshake7161248st | LP Text Shake 12x48 | 10,455 | 2,413 | 23.1% | 56.9% | $25K |
+| jhtrimtx4425 | Hardie Textured Batten 2½"-12' | 9,061 | 2,020 | 22.3% | 67.3% | $22K |
+| popbase293mis00 | Poplar Mission Base 5¼" | 19,802 | 4,421 | 22.3% | 54.7% | $16K |
+| popplypmdf4814 | 4x8-¼ Poplar Ply MDF | 1,333 | 283 | 21.2% | 38.6% | $19K |
+| jhtrimtx5411 | 5/4x11¼-12' Hardie Trim | 2,069 | 355 | 17.2% | 45.3% | $17K |
+| mdfbase512Ee1e | 512E MDF Base 5¼" | 27,557 | 4,507 | 16.4% | 63.1% | $41K |
+| lptrimtxt010816 | 1x8-16' LP Strand Trim | 10,640 | 1,631 | 15.3% | 37.0% | $50K |
+| 0108pop | 1x8 RL S4S Poplar | 57,010 | 8,229 | 14.4% | 42.2% | $34K |
+| popplypwvc4834 | 4x8-¾ Poplar Ply Veneer | 2,639 | 373 | 14.1% | 37.4% | $42K |
 
 **Counter-example proving this is fixable:** `jhtrimtx5405` (5/4x5.5"-12' Hardie Trim) ships 9,872 sticks across 249 jobsites at **only 6.3% qty return** — the most-commonly-specified Hardie trim width. As Hardie trim gets wider (5.5" → 7.25" → 11.25"), the return rate climbs from 6.3% to 13.2% to 17.2%, suggesting estimators are not adjusting per-stick consumption as width increases.
 

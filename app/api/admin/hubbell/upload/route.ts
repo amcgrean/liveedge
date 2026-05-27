@@ -117,7 +117,7 @@ export async function POST(req: NextRequest) {
   }
 
   // Upload PDF to R2 first — if this fails we want to bail before writing the row.
-  const r2Key = buildHubbellKey({ docType, docNumber });
+  const r2Key = buildHubbellKey({ docType, docNumber, sourceHash });
   try {
     await putHubbellPdf(r2Key, bytes);
   } catch (err) {
