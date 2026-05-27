@@ -851,7 +851,7 @@ The `/management/forecast` page now has UOM-correct $ and clickable drill-throug
 
 #### App Performance Audit (2026-05-26) — PRs #386 + #387 MERGED
 
-Three-Explore-agent audit on `claude/app-performance-issues-Hgx9B`. Plan in `/root/.claude/plans/how-does-our-app-floating-hedgehog.md`. Three small fix PRs landed; PR 4 (virtualization + DispatchClient slice) was dropped on inspection (see "deferred" below).
+Three-Explore-agent audit on `claude/app-performance-issues-Hgx9B`. Plan in `/root/.claude/plans/how-does-our-app-floating-hedgehog.md`. Three fix PRs landed in the original audit; two more follow-up PRs landed 2026-05-27 (see "Landed 2026-05-27" below).
 
 **Landed in PR #386:**
 - **ERP-read caching on the hot paths.** Two new modules wrap `agility_*` reads in `erpCache()`:
@@ -873,13 +873,18 @@ Three-Explore-agent audit on `claude/app-performance-issues-Hgx9B`. Plan in `/ro
 - The Hubbell `needs-extraction` "N+1 R2 fetches" is `getPresignedUrl()` local SDK signing with no network round-trip, wrapped in `Promise.all`. Not a perf concern at any reasonable batch size.
 - `/api/credits` LATERAL + GROUP BY is real but already indexed by `db/migrations/0014_credits_performance_indexes.sql`. Don't touch unless `EXPLAIN ANALYZE` says otherwise.
 
+**Landed 2026-05-27 (follow-up PRs):**
+- **PR #406 — `DispatchClient.tsx` presentational extraction.** `PodPhotoViewer` → `src/components/dispatch/PodPhotoViewer.tsx`; `StopTimeline` → `src/components/dispatch/StopTimeline.tsx`. All state, fetching, and `useEffect` logic stayed in `DetailPanel`. Pure prop-driven renderers extracted. −79 lines in DispatchClient.tsx.
+- **PR #401 — UOM `extended_price` on order-detail routes.** Fixed `qty_ordered * price` overstatement (10–100× on lumber lines) in `/api/sales/orders/[so_number]/route.ts`, `/api/dispatch/orders/[so_number]/lines/route.ts`, `/api/warehouse/orders/[so_number]/route.ts`. Client-side `lineTotal` math in both `OrderDetailClient.tsx` files also updated.
+- **PR #420 — ERP cache audit.** Wrapped `fetchSalesReports` (`src/lib/sales/reports-query.ts`), `fetchDeliveryReport` (`src/lib/ops/delivery-reporting-query.ts`), and new `fetchPickerStats` (`src/lib/warehouse/picker-stats-query.ts`) in `erpCache()`. Routes deliberately NOT cached (real-time operational data): `/api/dispatch/init`, `/kpis`, `/deliveries`, `/api/supervisor/pickers`, `/api/work-orders/open`, `/api/warehouse/stats`.
+
 **Deferred / dropped (with rationale — don't reopen speculatively):**
-- **Virtualization on `JobsClient` + `TransactionsClient`** — DROPPED. Both already paginate server-side at 50 rows (`JobsClient.tsx:164`, `TransactionsClient.tsx:106`). 50 `<tr>` elements is well below where the DOM cost matters; `@tanstack/react-virtual` would have added bundle weight for no real-world win. Reopen only if page-size ever climbs above ~150.
-- **`DispatchClient.tsx` slice extraction** (2480 LOC, 7 chained `useEffect`s) — deferred. Behavior-preserving refactor across a god file with zero tests and no paired user-visible perf win that justifies the regression risk. Will need its own dedicated PR with manual smoke verification when tackled. Same logic applies to `ForecastClient.tsx` (1096), `TakeoffCanvas.tsx` (988 — has an active bug-fix branch already), `ManageBidClient.tsx` (972), `TopNav.tsx` (956).
-- **`<Suspense>` on `forecast` / `sales/reports` / `ops/delivery-reporting`** — NOT APPLICABLE. Each `page.tsx` just renders a `'use client'` component that manages its own loading state; there's no server-side fetch to suspend. The Explore agent's audit didn't distinguish between server-fetched and client-fetched routes.
-- **`next/image` migration** — deferred. Requires `images.remotePatterns` for the R2 host(s) in `next.config.js` and careful handling of presigned-URL query-string rotation (cache-key churn). Lazy-load attrs landed instead; revisit only if photo galleries grow much larger than the current 4–20 thumbnails per stop/submission.
-- **Per-domain `revalidateTag` taxonomy** — deferred. Only one tag (`'erp'`) and three invalidation sites (all in `app/management/rebates/actions.ts`). Splitting tags (e.g. `erp:scorecard`, `erp:sales-hub`, `erp:home`) would let bid/design/service mutations invalidate the hub cache surgically instead of waiting for the 5-min TTL. Build only when a real "stale dashboard after my own write" complaint surfaces.
-- **Composite index audit on `agility_so_header(system_id, so_status, sale_type)`** — deferred. The query patterns in `/api/home` + `/api/sales/hub` filter heavily on these three columns, but `0013_erp_performance_indexes.sql` and `0016_scorecard_management_indexes.sql` likely already cover. Don't add a migration speculatively — run `EXPLAIN ANALYZE` on the actual slow query first.
+- **Virtualization on `JobsClient` + `TransactionsClient`** — DROPPED. Both already paginate server-side at 50 rows. 50 `<tr>` elements is well below where the DOM cost matters; `@tanstack/react-virtual` would add bundle weight for no real-world win. Reopen only if page-size ever climbs above ~150.
+- **`<Suspense>` on `forecast` / `sales/reports` / `ops/delivery-reporting`** — NOT APPLICABLE. Each `page.tsx` renders a `'use client'` component that manages its own loading state; no server-side fetch to suspend.
+- **`next/image` migration** — deferred. Requires `images.remotePatterns` for the R2 host(s) in `next.config.js` + careful presigned-URL query-string rotation handling. Lazy-load attrs (PR #386) get most of the win; revisit only if photo galleries grow past ~20 thumbnails.
+- **Per-domain `revalidateTag` taxonomy** — deferred. Only one tag (`'erp'`), three invalidation sites (all in `app/management/rebates/actions.ts`). Build only when a real "stale dashboard after my own write" complaint surfaces.
+- **Composite index audit on `agility_so_header(system_id, so_status, sale_type)`** — deferred. Likely already covered by `0013_erp_performance_indexes.sql` + `0016_scorecard_management_indexes.sql`. Run `EXPLAIN ANALYZE` before adding anything.
+- **`ForecastClient.tsx` (1096 LOC), `ManageBidClient.tsx` (972), `TopNav.tsx` (956) god-file splits** — deferred until a feature change forces a touch. Skip `TakeoffCanvas.tsx` (988) — has an active bug-fix branch.
 
 **Pattern reminders for future ERP-route refactors:**
 - New `/api/*` routes that read `agility_*` for non-mutating dashboard purposes should default to wrapping the query function in `erpCache()` keyed on every input that affects the result (branch, rep, date range).
