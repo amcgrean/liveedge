@@ -162,6 +162,10 @@ export function SalesByTypeTable({
   baseYear: number;
   compareYear: number;
 }) {
+  // `isExcluded` covers only the truly-excluded sale types (TRANSFER /
+  // XCONTRAC / XFERDIR mapped to the 'exclude' bucket). HOLD/DOORHOLD are
+  // reclassified into their own categories at the query layer and surface
+  // here as normal rows.
   const filtered = rows.filter((s) => !s.isExcluded);
   const columns: ColumnDef<SaleTypeRow>[] = [
     {
