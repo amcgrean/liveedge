@@ -75,6 +75,18 @@ const SCOPE_KEYWORDS = [
 // signal.
 const BROAD_SCOPE_KEYWORDS = new Set<string>(['frame', 'lumber']);
 
+// Parent → sub-component map for the "door hardware trap" class of false
+// positives. When the doc's line items carry a sub-component keyword
+// (hardware/lock/screen), the doc is specifically about that sub-component,
+// not the parent assembly. An SO whose reference matches only the parent
+// (door/window) is therefore the wrong target — even if amount corroborates,
+// the parent SO is for the assembly, not the sub-component.
+// Codex flagged the door↔hardware case 4+ times across review batches.
+const PARENT_TO_SUBS: Record<string, readonly string[]> = {
+  door:   ['hardware', 'lock'],
+  window: ['screen'],
+};
+
 // Stem any scope keyword to its singular root for comparison
 //   "doors" → "door", "windows" → "window", "framing" → "frame"
 function stemScope(word: string): string {
@@ -289,9 +301,32 @@ export function pairDocsToSos(
         const overlap = scopeOverlap(docScope, refScope);
         const hasSpecificOverlap = overlap.some((k) => !BROAD_SCOPE_KEYWORDS.has(k));
         const docHasSpecific = Array.from(docScope).some((k) => !BROAD_SCOPE_KEYWORDS.has(k));
+
+        // Parent-component demotion: if the doc carries a sub-component
+        // keyword that this candidate's overlap doesn't include, but the
+        // overlap is a "parent" of that sub-component (door↔hardware,
+        // window↔screen, etc.), this candidate is matching the wrong
+        // scope. Drop all parent-matched tokens to 0 weight. Sub-
+        // components are still specific enough to score, so a candidate
+        // whose ref does contain `hardware`/`screen`/etc. wins.
+        const parentMatchedWrongly = new Set<string>();
+        for (const k of overlap) {
+          const subs = PARENT_TO_SUBS[k];
+          if (!subs) continue;
+          const docHasSub = subs.some((s) => docScope.has(s));
+          const overlapHasSub = subs.some((s) => overlap.includes(s));
+          if (docHasSub && !overlapHasSub) parentMatchedWrongly.add(k);
+        }
+
         if (overlap.length > 0) {
           let scopeBoost = 0;
           for (const k of overlap) {
+            if (parentMatchedWrongly.has(k)) {
+              // Doc is about the sub-component; this parent match is
+              // incidental. Contribute 0.
+              scopeBoost += 0;
+              continue;
+            }
             const isBroad = BROAD_SCOPE_KEYWORDS.has(k);
             if (!isBroad) {
               scopeBoost += SIGNAL_S_PER_KEYWORD;
@@ -310,7 +345,11 @@ export function pairDocsToSos(
           scopeBoost = Math.min(scopeBoost, SIGNAL_S_CAP);
           if (scopeBoost > 0) {
             confidence += scopeBoost;
-            reasons.push(`scope:${overlap.join('+')}`);
+            const reasonTokens = overlap.filter((k) => !parentMatchedWrongly.has(k));
+            if (reasonTokens.length > 0) reasons.push(`scope:${reasonTokens.join('+')}`);
+            if (parentMatchedWrongly.size > 0) {
+              reasons.push(`parent_demote:${Array.from(parentMatchedWrongly).join('+')}`);
+            }
           }
         }
 
