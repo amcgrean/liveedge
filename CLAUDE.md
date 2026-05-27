@@ -575,6 +575,115 @@ LEFT JOIN (
 ) ar ON ar.cust_key = ac.cust_key
 ```
 
+#### Hubbell within-jobsite reconciler (2026-05-26 → 2026-05-27) — LIVE
+
+Second-generation matcher targeting the ~6,800-doc historical Hubbell backlog the existing `document-matcher.ts` couldn't recover. Lives in `src/lib/hubbell/jobsite-reconciler.ts`. PRs #402–#419.
+
+**Why this exists separate from `document-matcher.ts`:**
+- `document-matcher.ts` filters `agility_so_header` to `so_status NOT IN ('I','C','X')`. For historical Hubbell docs the matching SO is almost always already invoiced (`I`) — the existing matcher excludes the right answer by construction.
+- Address-fuzzy fallback can't recover them because **99.8% of HUBB SOs have NULL `shipto_address_1`** on the header (43,254 / 43,354 in prod). The physical address lives in `agility_customers` and is reached via `(cust_key, shipto_seq_num=seq_num)`.
+
+**Per-jobsite design:** outer loop is one jobsite (one normalized resolved address); inner data is ALL unmatched docs at that jobsite + ALL HUBB SOs at that jobsite **across every status**. Within that small set, the matcher pairs docs to SOs via four signals.
+
+##### Matcher signals & confidence math
+
+| Signal | Source | Weight | Notes |
+|---|---|---|---|
+| A — `po_number_split` | doc# token appears in `agility_so_header.po_number` | **100** (auto-attach) | Buyer-typed, authoritative |
+| S — scope keyword | overlap between extracted line-item descriptions and SO.reference | +30/keyword, cap 80 | Tokenized + stemmed via `SCOPE_KEYWORDS` |
+| T — amount | doc total within 10% of `SUM(extended_price)` | +15 | UOM-correct via the `extended_price` column |
+| D — date | doc need-by within 90d of SO `created_date` | +10 | |
+
+Floor: `minConfidence = 30`. Below floor → suppressed.
+
+##### Tuning rules (each driven by a Codex review-batch pattern)
+
+Documented in the constants block at the top of `jobsite-reconciler.ts`. **All hard-won from real review batches — don't relax without an equivalent data set behind the change.**
+
+1. **Negative reference penalty** (`NEGATIVE_REF_PATTERN` / `NEGATIVE_REF_PENALTY = 30`).
+   SOs whose ref contains `credit | cred | replacement | repl | vpo | added` are partial-scope SOs that almost never match a full doc on scope-only matching. Apply −30 **unless** amount also matches within 10% (then the doc really is for the small partial-scope amount).
+   - Source: first 3 Codex batches consistently rejected `Trim Credit`, `Deck Credit`, `REplacement Trim VPO`, `added trim`.
+2. **Broad keyword half-weight** (`BROAD_SCOPE_KEYWORDS = {frame, lumber}`).
+   These keywords appear in too many unrelated docs to count at full weight on their own.
+   - Full weight (+30) when paired with another non-broad keyword in the overlap.
+   - Half weight (+15) when overlap is broad-only AND the doc is also broad-only (legit framing-pkg ↔ framing-pkg).
+   - **Zero contribution** when overlap is broad-only AND the doc carries a specific keyword like `joist` — the doc is about something specific the SO doesn't share, so "frame ↔ frame" is incidental.
+   - Source: floor-joist WO ↔ "Roof Framing" SO false positives.
+3. **Parent → sub-component demote** (`PARENT_TO_SUBS = {door: [hardware, lock], window: [screen]}`).
+   When the doc's line items carry a sub-component keyword that the candidate's overlap doesn't include, but the overlap contains a parent of that sub-component, the parent token contributes 0.
+   - Catches "Door Hardware Set" doc ↔ "ext door" SO false positives.
+   - Source: 4+ Codex batches flagged the same trap.
+4. **Cancelled-SO penalty** (`CANCELLED_SO_STATUSES = {C, X}`, −25).
+   Applies to **all** match sources including Signal A (the demotion sits AFTER the Signal A guard — Codex P1 #411). Live data showed 0/33 accepted for C-status candidates across the queue's lifetime.
+5. **Jobsite-number mismatch** (`JOBSITE_NUMBER_PENALTY = 20`).
+   Parses leading street number from doc's `extracted_address` and ALL 3+ digit tokens from `so.reference`. If the doc's street # doesn't appear in any of the ref's tokens, −20.
+   - Catches "Trim load #9124" SO for doc at "9108 Robinson Dr" — duplex/cluster neighbor wrong match.
+   - Multi-number refs ("Doors #9124 9132") are correctly handled.
+
+##### R2 keying bug (2026-05-26) — root cause + fix
+
+The Pi uploader keyed R2 by `(doc_type, doc_number)` only. When Hubbell reused a doc number for a different job (measured at 378 occurrences in prod), the second upload **silently overwrote** the prior PDF. The older `hubbell_documents` row retained its correct original metadata but its `r2_key` now resolved to a different PDF — reviewers saw a PDF that didn't match the suggestion's reasoning.
+
+**PR #407 fix:** `buildHubbellKey` appends the first 12 hex chars of `source_hash` to the key. Each unique PDF body lands on a distinct R2 object; identical re-uploads are idempotent because they share a hash. Pre-2026-05-27 rows still use the un-suffixed key shape and remain readable on the old keys.
+
+```
+Old: hubbell/2026/wo/768.pdf
+New: hubbell/2026/wo/768-a20c5d652921.pdf
+```
+
+##### Supersession skip (post-fix gate for backlog)
+
+`fetchJobsiteData()` and `listJobsiteQueue()` skip any doc where a **later** row exists at the same `r2_key` with a different `source_hash` AND **different metadata** across the four matcher inputs (`extracted_address`, `extracted_total`, `extracted_need_by`, `line_items`). Codex P2 #409 caught the original predicate missing `line_items`/`need_by`.
+
+Tie-break on equal `received_at` via `(received_at, id) > (d.received_at, d.id)` — Codex P1 #405 caught the silent leak under batched same-`now()` inserts.
+
+Stale-**identical** rows (later sibling with same metadata, just byte-drift in re-extraction) are NOT skipped — their R2 file still describes the same job they expect, so the matcher can use them. Pre-tightening (#405 only) over-filtered ~1,000 of these.
+
+##### Backfill recovery flow
+
+`POST /api/admin/hubbell/backfill { document_id, pdf }` — bearer-auth endpoint. Re-verifies `sha256(bytes) == row.source_hash`, writes the bytes to R2 under the new hashed key (PR #407 shape), updates `r2_key` on the row. Idempotent.
+
+`scripts/hubbell-restore-pdfs.ts` — local Node script. Pulls stale-divergent rows via direct postgres connection, walks the local Hubbell cache at `C:\Users\amcgrean\python\hubbell test\` (`HUBBELL_LOCAL_CACHE` env override), sha256-indexes ~7K PDFs in seconds, POSTs matches to the backfill endpoint. Flags: `--dry-run`, `--limit N`, `--concurrency N`.
+
+**Prod recovery results (2026-05-26):** 290 of 378 stale-divergent rows restored (77%) from local cache. The remaining 86 are pre-cache historicals — a one-off Hubbell portal re-scrape is handed off via `docs/agent-prompts/hubbell-stale-divergent-rescrape-2026-05-27.md` + CSV target list.
+
+##### Coverage trajectory & accept-rate trend
+
+Doc backlog reachability (out of 6,813 unmatched at start):
+
+| Filter | Reachable jobsites | Reachable docs | % |
+|---|---|---|---|
+| Old matcher (header shipto, open-only) | 35 | 345 | 5% |
+| + `agility_customers` cust_key resolution | 314 | 3,943 | 58% |
+| + USPS suffix table + duplex `(,&-)` expansion | 520 | 6,447 | 94.6% |
+| + directional-suffix fallback (matcher layer) | — | 6,527 | 95.8% |
+
+Cumulative Codex review accept rate after 14 batches (167 accepted / 62 rejected = 73%). Per-batch trend showing the tuning land:
+
+```
+45 → 38 → 47 → 62 → 91 → 72 → 93 → 87 → 100 → 87 → 93 → 94 → 100 → 100 → 100
+```
+
+##### Operational learnings (worth re-using elsewhere)
+
+1. **Tuning rules don't retroactively re-score pending candidates.** Every time a new rule lands, do a targeted DB wipe of the pending candidates the rule would now suppress. SQL pattern matches the rule's logic:
+   ```sql
+   DELETE FROM bids.hubbell_document_suggestions
+   WHERE match_source='jobsite_reconcile' AND status='pending'
+     AND <rule's filter predicate>
+   ```
+   Doing this kept Codex from re-swatting the same false positives across batches. Cleanup counts so far: 748 pre-tuning credit/VPO + 41 stale-divergent + 234 door-hardware + 31 + 24 C-status + 282 jobsite-number = ~1,400 noise candidates wiped operationally.
+2. **Codex's CLI caches packets locally.** When you DB-wipe in the middle of a batch, the packets Codex pulled before the wipe still apply correctly (the suggestion IDs exist as soft-deleted rows or get harmlessly missed). The wipe only affects the *next* `pull`.
+3. **Reviewer feedback loop converts noise to rules at ~1 rule per 2-3 batches.** Each rule reduces review burden by 5–20% of subsequent batches. The compound effect is the trend above.
+4. **Codex P-comments on PRs catch real bugs in this work** (cancelled-SO inside Signal A guard, missing tie-break, incomplete divergence check). Run the Codex reviewer on every reconciler PR — the matcher's logic is subtle enough that even careful tuning misses edge cases.
+
+##### Recurring "this is real revenue, not noise" examples Codex worked through
+
+- **"Dunnage Doors"** — sounds like packing lumber, but in Hubbell context means rough-opening door material. Accept when amount + scope corroborate.
+- **"Replace damaged bypass door" VPO** — the `replacement` keyword triggers the `neg_ref` penalty, but it's waived when amount matches → correctly surfaces and gets accepted.
+- **Unit-numbered trim refs** (`Trim load #6519` vs `#6529`) — the matcher's jobsite-number-mismatch rule auto-rejects neighbor mismatches.
+- **Status I vs C duplicates at same jobsite** — the cancelled-SO penalty auto-rejects C; I surfaces normally.
+
 #### AR / Agility API Cleanup (2026-04-17) — COMPLETE
 Branch: `claude/review-customer-route-api-jVgJG`
 
