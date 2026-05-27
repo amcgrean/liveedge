@@ -18,12 +18,18 @@ interface Recipient {
 
 interface LogRow {
   id:                 string;
-  routeId:            number;
+  routeSource:        'liveedge' | 'agility';
+  routeId:            number | null;
   branchCode:         string;
   driverName:         string | null;
   routeName:          string | null;
   completedSoNumber:  string | null;
   completedAt:        string;
+  // Agility-source identity (NULL when routeSource='liveedge')
+  systemId:           string | null;
+  agilityRouteCode:   string | null;
+  agilityShipDate:    string | null;
+  shipmentCount:      number | null;
   recipientId:        string | null;
   recipientLabel:     string | null;
   channel:            'email' | 'sms';
@@ -245,6 +251,7 @@ export default function DispatchAlertsClient() {
               <thead>
                 <tr>
                   <th>Sent</th>
+                  <th>Source</th>
                   <th>Branch</th>
                   <th>Driver</th>
                   <th>Route</th>
@@ -258,9 +265,16 @@ export default function DispatchAlertsClient() {
                 {recentLog.map((l) => (
                   <tr key={l.id}>
                     <td className="text-slate-400 text-xs">{formatDate(l.sentAt)}</td>
+                    <td>
+                      <span className={`text-xs px-2 py-0.5 rounded ${
+                        l.routeSource === 'agility'
+                          ? 'bg-amber-900/40 text-amber-300'
+                          : 'bg-cyan-900/40 text-cyan-300'
+                      }`}>{l.routeSource}</span>
+                    </td>
                     <td className="text-slate-300 text-xs">{l.branchCode}</td>
                     <td className="text-slate-300 text-sm">{l.driverName ?? '—'}</td>
-                    <td className="text-slate-300 text-sm">{l.routeName ?? `#${l.routeId}`}</td>
+                    <td className="text-slate-300 text-sm">{l.routeName ?? (l.routeId != null ? `#${l.routeId}` : '—')}</td>
                     <td className="text-slate-300 text-xs max-w-[200px] truncate">{l.recipientLabel ?? '—'}</td>
                     <td>
                       <span className="text-xs px-2 py-0.5 rounded bg-slate-800 text-slate-300">{l.channel}</span>
