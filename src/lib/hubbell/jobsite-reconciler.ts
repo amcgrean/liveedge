@@ -368,7 +368,6 @@ export function pairDocsToSos(
         //   (c) Specific keywords always score at full weight.
         const refScope = extractScopeTokens(so.reference);
         const overlap = scopeOverlap(docScope, refScope);
-        const hasSpecificOverlap = overlap.some((k) => !BROAD_SCOPE_KEYWORDS.has(k));
         const docHasSpecific = Array.from(docScope).some((k) => !BROAD_SCOPE_KEYWORDS.has(k));
 
         // Parent-component demotion: if the doc carries a sub-component
@@ -397,6 +396,16 @@ export function pairDocsToSos(
           ? hasDoorSubtypeMismatch(docTextForSubtype, so.reference)
           : null;
         if (doorSubtypeMismatch) parentMatchedWrongly.add('door');
+
+        // Recompute hasSpecificOverlap AFTER parent/subtype demotes — a
+        // demoted specific token (door) shouldn't keep boosting an
+        // adjacent broad token (frame) to full weight. Otherwise a
+        // patio-door SO with "patio door frame" ref against an interior-
+        // doors doc would still surface via the frame=+30 path.
+        // Codex P2 #423 caught this.
+        const hasSpecificOverlap = overlap.some(
+          (k) => !BROAD_SCOPE_KEYWORDS.has(k) && !parentMatchedWrongly.has(k),
+        );
 
         if (overlap.length > 0) {
           let scopeBoost = 0;
