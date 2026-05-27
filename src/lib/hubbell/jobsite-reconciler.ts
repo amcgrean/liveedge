@@ -112,6 +112,36 @@ const PARENT_TO_SUBS: Record<string, readonly string[]> = {
   window: ['screen'],
 };
 
+// Door-subtype mismatch. SO references that specify a different door subtype
+// than the doc's line items are wrong-scope matches even when generic `door`
+// overlaps. Codex flagged the patio-vs-interior case 3+ times across review
+// batches: a Hubbell "Interior Doors" PO surfaced as a match against an
+// "SP Patio Door" SO via the bare `door` keyword + amount corroboration.
+//
+// Narrow rule: when the SO ref contains one of these "distinct subtype"
+// keywords AND the doc's line items don't, demote the `door` scope to 0.
+//
+// Conservative on what counts as "distinct":
+//   - `patio` — confirmed false positive shape
+//   - NOT `dunnage` — that's the Hubbell-side word for rough-opening
+//     interior door material; matches interior-doors POs correctly
+//     (and Codex accepts them).
+//   - NOT `interior`/`exterior` — too noisy without bigram parsing
+// Extend the set only when a new subtype mismatch shows up 3+ times in
+// review batches.
+const DOOR_SUBTYPE_DISTINCT_KEYWORDS = ['patio'] as const;
+
+function hasDoorSubtypeMismatch(docText: string, refText: string | null | undefined): string | null {
+  if (!refText) return null;
+  const refLower = refText.toLowerCase();
+  const docLower = docText.toLowerCase();
+  for (const subtype of DOOR_SUBTYPE_DISTINCT_KEYWORDS) {
+    const re = new RegExp(`\\b${subtype}\\b`);
+    if (re.test(refLower) && !re.test(docLower)) return subtype;
+  }
+  return null;
+}
+
 // Stem any scope keyword to its singular root for comparison
 //   "doors" → "door", "windows" → "window", "framing" → "frame"
 function stemScope(word: string): string {
@@ -357,6 +387,17 @@ export function pairDocsToSos(
           if (docHasSub && !overlapHasSub) parentMatchedWrongly.add(k);
         }
 
+        // Door-subtype mismatch (SP Patio Door SO ↔ Interior Doors doc).
+        // Wipes `door` from the overlap when the SO ref specifies a distinct
+        // subtype (patio) the doc doesn't share. Treated as a parent-demote
+        // for accounting since the effect is identical: kill the `door`
+        // scope contribution.
+        const docTextForSubtype = descriptionsFromLineItems(doc.line_items);
+        const doorSubtypeMismatch = overlap.includes('door')
+          ? hasDoorSubtypeMismatch(docTextForSubtype, so.reference)
+          : null;
+        if (doorSubtypeMismatch) parentMatchedWrongly.add('door');
+
         if (overlap.length > 0) {
           let scopeBoost = 0;
           for (const k of overlap) {
@@ -388,6 +429,9 @@ export function pairDocsToSos(
             if (reasonTokens.length > 0) reasons.push(`scope:${reasonTokens.join('+')}`);
             if (parentMatchedWrongly.size > 0) {
               reasons.push(`parent_demote:${Array.from(parentMatchedWrongly).join('+')}`);
+            }
+            if (doorSubtypeMismatch) {
+              reasons.push(`door_subtype_mismatch:${doorSubtypeMismatch}`);
             }
           }
         }
