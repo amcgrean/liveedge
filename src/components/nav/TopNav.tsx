@@ -431,6 +431,7 @@ const ADMIN_LINKS: AdminLink[] = [
   { href: '/admin/users',         label: 'Users',           sectionBefore: 'Users',       requiresCap: ['admin.users.manage'] },
   { href: '/warehouse/pickers',   label: 'Picker Admin',                                  requiresCap: ['pickers.manage', 'admin.config.manage'] },
   { href: '/admin/notifications', label: 'Notifications',                                 requiresCap: ['admin.config.manage'] },
+  { href: '/admin/dispatch-alerts', label: 'Dispatch Alerts',                              requiresCap: ['admin.config.manage'] },
   { href: '/admin/jobs',          label: 'Job Review',      sectionBefore: 'Operations',  requiresCap: ['admin.jobs.review'] },
   { href: '/admin/hubbell',       label: 'Hubbell Emails',                                requiresCap: ['hubbell.review'] },
   { href: '/admin/hubbell/jobs',  label: 'Hubbell Jobs',                                  requiresCap: ['hubbell.review'] },

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '../../../../../../auth';
 import { agilityApi, isAgilityConfigured, BRANCH_MAP, AgilityApiError } from '../../../../../../src/lib/agility-api';
 import { getErpSql } from '../../../../../../db/supabase';
+import { notifyRouteCompletedIfLastStop } from '../../../../../../src/lib/dispatch/route-completion';
 
 /**
  * POST /api/dispatch/orders/:so_number/deliver
@@ -69,17 +70,30 @@ export async function POST(req: NextRequest, context: RouteContext) {
   }
 
   // 2. Update stop status in dispatch_route_stops
+  let routeId: number | null = null;
   try {
     const sql = getErpSql();
-    await sql`
+    const updated = await sql<{ route_id: number | null }[]>`
       UPDATE dispatch_route_stops
       SET status = ${stopStatus},
           notes  = COALESCE(${body.notes ?? null}, notes)
       WHERE id = ${Number(body.stopId)}
+      RETURNING route_id
     `;
+    routeId = updated[0]?.route_id ?? null;
   } catch (err) {
     console.error(`[deliver/${soNumber}] stop update failed:`, err);
     return NextResponse.json({ error: 'Failed to update stop status' }, { status: 500 });
+  }
+
+  // 3. Best-effort: if this was the last open stop on the route, notify dispatch.
+  //    Wrapped so a notification failure never bubbles up to the deliver caller.
+  if (routeId) {
+    try {
+      await notifyRouteCompletedIfLastStop({ routeId, completedSoNumber: soNumber });
+    } catch (err) {
+      console.error(`[deliver/${soNumber}] route-completion notify failed:`, err);
+    }
   }
 
   return NextResponse.json({
