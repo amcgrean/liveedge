@@ -1,7 +1,12 @@
 // Shared query for /api/ops/delivery-reporting and the delivery-reports
 // subscription digest.
+//
+// Wrapped in erpCache (5-min TTL) so concurrent users and the cron digest
+// share one result set rather than each hitting the shipments × SO join
+// independently.
 
 import { getErpSql } from '../../../db/supabase';
+import { erpCache } from '../erp-cache';
 
 export interface DeliveryReportRow {
   ship_date: string;
@@ -38,7 +43,7 @@ export interface DeliveryReportQueryParams {
   detailLimit?: number;
 }
 
-export async function fetchDeliveryReport(args: DeliveryReportQueryParams): Promise<DeliveryReportPayload> {
+async function _fetchDeliveryReport(args: DeliveryReportQueryParams): Promise<DeliveryReportPayload> {
   const windowDays = args.windowParam === '7d' ? 7 : args.windowParam === '90d' ? 90 : 30;
   const since = new Date(Date.now() - windowDays * 86_400_000).toISOString().slice(0, 10);
   const saleTypeFilter = args.saleTypeParam !== 'all' ? args.saleTypeParam.toUpperCase() : null;
@@ -164,3 +169,11 @@ export async function fetchDeliveryReport(args: DeliveryReportQueryParams): Prom
     detail: r.detail ?? [],
   };
 }
+
+// 5-min server-side cache. All args (windowParam, saleTypeParam, branchParam,
+// dateParam, detailLimit) are serialized as part of the cache key automatically
+// by unstable_cache, so drill-down calls with different params get their own
+// independent cache entries.
+// IMPORTANT: do NOT add .catch() inside _fetchDeliveryReport — let failures
+// throw so erpCache never stores a partial/empty result.
+export const fetchDeliveryReport = erpCache(_fetchDeliveryReport, ['ops-delivery-reporting']);
