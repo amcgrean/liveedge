@@ -407,16 +407,20 @@ export function pairDocsToSos(
           confidence -= NEGATIVE_REF_PENALTY;
           reasons.push('neg_ref');
         }
+      }
 
-        // Cancelled-SO penalty — Codex flagged a recurring tie-break case
-        // (status I vs status C duplicates with similar scope+amount) and
-        // the live data shows 0 of 33 C-status candidates accepted. Drop
-        // confidence so cancelled SOs need multiple corroborating signals
-        // to surface, breaking the tie in favor of the Invoiced sibling.
-        if (so.so_status && CANCELLED_SO_STATUSES.has(so.so_status.toUpperCase())) {
-          confidence -= CANCELLED_SO_PENALTY;
-          reasons.push(`so_status:${so.so_status.toUpperCase()}_demote`);
-        }
+      // Cancelled-SO penalty — applies to ALL match sources, including
+      // Signal A (po_number_split). Codex flagged this: the PR's stated
+      // table said a Signal A C-status candidate should land at conf 75,
+      // but if this were inside the !Signal-A branch above it would stay
+      // at 100. An exact PO# typed into a Cancelled SO's po_number field
+      // is rare (the SO is dead, no one types into dead SOs), but if it
+      // happens we still want the audit-trail demotion + the conf hit.
+      // Across 33 surfaced C-status candidates so far, 0 have been
+      // accepted.
+      if (so.so_status && CANCELLED_SO_STATUSES.has(so.so_status.toUpperCase())) {
+        confidence -= CANCELLED_SO_PENALTY;
+        reasons.push(`so_status:${so.so_status.toUpperCase()}_demote`);
       }
 
       if (confidence >= minConfidence) {
