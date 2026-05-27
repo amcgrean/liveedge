@@ -44,6 +44,17 @@ const DATE_TOLERANCE_DAYS = 90;
 const NEGATIVE_REF_PENALTY = 30;
 const NEGATIVE_REF_PATTERN = /\b(credit|cred|replacement|repl|vpo|added)\b/i;
 
+// SO statuses that are terminal-cancelled / closed-without-delivery. Backlog
+// matching against these is almost never right: across 33 surfaced candidates
+// the user has accepted 0. The pattern: when a job has a cancelled SO and a
+// re-issued live SO at the same jobsite with similar scope+amount, the live
+// (Invoiced) one is the actual match. Big enough penalty to push scope-only
+// matches below the floor without auto-suppressing — leaves room for a
+// genuine all-cancelled jobsite to still surface if scope+amount+date all
+// align.
+const CANCELLED_SO_STATUSES = new Set<string>(['C', 'X']);
+const CANCELLED_SO_PENALTY = 25;
+
 const SCOPE_KEYWORDS = [
   'door',
   'window',
@@ -396,6 +407,20 @@ export function pairDocsToSos(
           confidence -= NEGATIVE_REF_PENALTY;
           reasons.push('neg_ref');
         }
+      }
+
+      // Cancelled-SO penalty — applies to ALL match sources, including
+      // Signal A (po_number_split). Codex flagged this: the PR's stated
+      // table said a Signal A C-status candidate should land at conf 75,
+      // but if this were inside the !Signal-A branch above it would stay
+      // at 100. An exact PO# typed into a Cancelled SO's po_number field
+      // is rare (the SO is dead, no one types into dead SOs), but if it
+      // happens we still want the audit-trail demotion + the conf hit.
+      // Across 33 surfaced C-status candidates so far, 0 have been
+      // accepted.
+      if (so.so_status && CANCELLED_SO_STATUSES.has(so.so_status.toUpperCase())) {
+        confidence -= CANCELLED_SO_PENALTY;
+        reasons.push(`so_status:${so.so_status.toUpperCase()}_demote`);
       }
 
       if (confidence >= minConfidence) {
