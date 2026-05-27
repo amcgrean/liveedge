@@ -200,6 +200,20 @@ export async function fetchJobsiteData(normAddr: string): Promise<{ docs: DocRow
           -- treated as "current". Tie-break is arbitrary but deterministic.
           AND (d2.received_at, d2.id) > (d.received_at, d.id)
           AND d2.source_hash IS DISTINCT FROM d.source_hash
+          -- Only skip when the later row's metadata also differs. Stale-
+          -- identical rows (same metadata across every field the matcher
+          -- uses) are matchable: the R2 file under their key now contains
+          -- a PDF that describes the same job, so the reviewer will see a
+          -- sensible document. Include *every* doc field pairDocsToSos
+          -- reads — not just address/total. Otherwise a later row that
+          -- shares address+total but has different line_items or
+          -- need_by would let the older row through and generate
+          -- suggestions whose scope/date reasoning the reviewer can't
+          -- see in the actual PDF.
+          AND (d2.extracted_address IS DISTINCT FROM d.extracted_address
+            OR d2.extracted_total   IS DISTINCT FROM d.extracted_total
+            OR d2.extracted_need_by IS DISTINCT FROM d.extracted_need_by
+            OR d2.line_items        IS DISTINCT FROM d.line_items)
       )
   `;
 
@@ -409,14 +423,19 @@ export async function listJobsiteQueue(params: { limit: number; offset: number }
         )
         -- Skip docs whose R2 file has been overwritten by a later upload
         -- with different content (Hubbell reused the doc_number). See
-        -- comment in fetchJobsiteData() for the data shape. (received_at,
-        -- id) tuple comparison gives a stable order even when a batch
-        -- insert produces equal timestamps.
+        -- fetchJobsiteData() above for the full data-shape comment.
+        -- Stale-identical rows (later sibling with same metadata, just
+        -- byte-drift) are *not* skipped — their R2 file still describes
+        -- the same job they expect.
         AND NOT EXISTS (
           SELECT 1 FROM bids.hubbell_documents d2
           WHERE d2.r2_key = d.r2_key
             AND (d2.received_at, d2.id) > (d.received_at, d.id)
             AND d2.source_hash IS DISTINCT FROM d.source_hash
+            AND (d2.extracted_address IS DISTINCT FROM d.extracted_address
+              OR d2.extracted_total   IS DISTINCT FROM d.extracted_total
+              OR d2.extracted_need_by IS DISTINCT FROM d.extracted_need_by
+              OR d2.line_items        IS DISTINCT FROM d.line_items)
         )
       GROUP BY 1
     )
