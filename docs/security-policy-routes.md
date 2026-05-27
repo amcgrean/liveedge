@@ -20,7 +20,8 @@ This policy defines authorization expectations for `app/api/**/route.ts`.
     "app/api/cron/**/route.ts",
     "app/api/inbound/**/route.ts",
     "app/api/admin/hubbell/upload/route.ts",
-    "app/api/admin/hubbell/payments/import/route.ts"
+    "app/api/admin/hubbell/payments/import/route.ts",
+    "app/api/dispatch/agility-route-complete/route.ts"
   ],
   "serviceAuthLegacy": [
     "app/api/inbound/**/route.ts"
@@ -37,7 +38,8 @@ This policy defines authorization expectations for `app/api/**/route.ts`.
     "await auth(",
     "verifyCronSignature(",
     "verifyInternalToken(",
-    "verifyHubbellUploadToken("
+    "verifyHubbellUploadToken(",
+    "verifyDispatchSyncToken("
   ]
 }
 ```
