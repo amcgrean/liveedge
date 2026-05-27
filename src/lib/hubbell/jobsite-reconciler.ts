@@ -44,6 +44,17 @@ const DATE_TOLERANCE_DAYS = 90;
 const NEGATIVE_REF_PENALTY = 30;
 const NEGATIVE_REF_PATTERN = /\b(credit|cred|replacement|repl|vpo|added)\b/i;
 
+// SO statuses that are terminal-cancelled / closed-without-delivery. Backlog
+// matching against these is almost never right: across 33 surfaced candidates
+// the user has accepted 0. The pattern: when a job has a cancelled SO and a
+// re-issued live SO at the same jobsite with similar scope+amount, the live
+// (Invoiced) one is the actual match. Big enough penalty to push scope-only
+// matches below the floor without auto-suppressing — leaves room for a
+// genuine all-cancelled jobsite to still surface if scope+amount+date all
+// align.
+const CANCELLED_SO_STATUSES = new Set<string>(['C', 'X']);
+const CANCELLED_SO_PENALTY = 25;
+
 const SCOPE_KEYWORDS = [
   'door',
   'window',
@@ -395,6 +406,16 @@ export function pairDocsToSos(
         if (so.reference && NEGATIVE_REF_PATTERN.test(so.reference) && !totalMatched) {
           confidence -= NEGATIVE_REF_PENALTY;
           reasons.push('neg_ref');
+        }
+
+        // Cancelled-SO penalty — Codex flagged a recurring tie-break case
+        // (status I vs status C duplicates with similar scope+amount) and
+        // the live data shows 0 of 33 C-status candidates accepted. Drop
+        // confidence so cancelled SOs need multiple corroborating signals
+        // to surface, breaking the tie in favor of the Invoiced sibling.
+        if (so.so_status && CANCELLED_SO_STATUSES.has(so.so_status.toUpperCase())) {
+          confidence -= CANCELLED_SO_PENALTY;
+          reasons.push(`so_status:${so.so_status.toUpperCase()}_demote`);
         }
       }
 
