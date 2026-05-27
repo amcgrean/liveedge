@@ -776,8 +776,8 @@ async function _fetchSaleTypes(params: ScorecardParams): Promise<SaleTypeRow[]> 
   const rows = params.branchIds.length > 0
     ? await sql<Row[]>`
         SELECT
-          COALESCE(sale_type_reporting_category, 'Other') AS category,
-          BOOL_OR(is_sale_type_excluded) AS is_excluded,
+          CASE WHEN sale_type IN ('HOLD','DOORHOLD') THEN sale_type ELSE COALESCE(sale_type_reporting_category, 'Other') END AS category,
+          BOOL_OR(is_sale_type_excluded AND sale_type NOT IN ('HOLD','DOORHOLD')) AS is_excluded,
           SUM(sales_amount) FILTER (
             WHERE invoice_date >= make_date(${params.baseYear}, 1, 1)
               AND invoice_date::date <= ${baseCutoff}::date
@@ -800,7 +800,7 @@ async function _fetchSaleTypes(params: ScorecardParams): Promise<SaleTypeRow[]> 
           AND invoice_date >= ${dateFrom}::timestamp
           AND invoice_date < ${dateTo}::timestamp
           AND branch_id = ANY(${params.branchIds}::text[])
-        GROUP BY sale_type_reporting_category
+        GROUP BY 1
         ORDER BY COALESCE(SUM(sales_amount) FILTER (
           WHERE invoice_date >= make_date(${params.baseYear}, 1, 1)
             AND invoice_date::date <= ${baseCutoff}::date
@@ -808,8 +808,8 @@ async function _fetchSaleTypes(params: ScorecardParams): Promise<SaleTypeRow[]> 
       `
     : await sql<Row[]>`
         SELECT
-          COALESCE(sale_type_reporting_category, 'Other') AS category,
-          BOOL_OR(is_sale_type_excluded) AS is_excluded,
+          CASE WHEN sale_type IN ('HOLD','DOORHOLD') THEN sale_type ELSE COALESCE(sale_type_reporting_category, 'Other') END AS category,
+          BOOL_OR(is_sale_type_excluded AND sale_type NOT IN ('HOLD','DOORHOLD')) AS is_excluded,
           SUM(sales_amount) FILTER (
             WHERE invoice_date >= make_date(${params.baseYear}, 1, 1)
               AND invoice_date::date <= ${baseCutoff}::date
@@ -831,7 +831,7 @@ async function _fetchSaleTypes(params: ScorecardParams): Promise<SaleTypeRow[]> 
           AND customer_id = ${params.customerId}
           AND invoice_date >= ${dateFrom}::timestamp
           AND invoice_date < ${dateTo}::timestamp
-        GROUP BY sale_type_reporting_category
+        GROUP BY 1
         ORDER BY COALESCE(SUM(sales_amount) FILTER (
           WHERE invoice_date >= make_date(${params.baseYear}, 1, 1)
             AND invoice_date::date <= ${baseCutoff}::date
@@ -1827,8 +1827,8 @@ async function _fetchAggregateSaleTypes(
     const repCol = params.repField ?? 'rep_1';
     rows = params.branchIds.length > 0
       ? await sql<Row[]>`
-          SELECT COALESCE(csf.sale_type_reporting_category, 'Other') AS category,
-            BOOL_OR(csf.is_sale_type_excluded) AS is_excluded,
+          SELECT CASE WHEN csf.sale_type IN ('HOLD','DOORHOLD') THEN csf.sale_type ELSE COALESCE(csf.sale_type_reporting_category, 'Other') END AS category,
+            BOOL_OR(csf.is_sale_type_excluded AND csf.sale_type NOT IN ('HOLD','DOORHOLD')) AS is_excluded,
             SUM(csf.sales_amount) FILTER (WHERE csf.invoice_date >= make_date(${params.baseYear}, 1, 1) AND csf.invoice_date::date <= ${baseCutoff}::date)::text AS sales_base,
             SUM(csf.gross_profit)  FILTER (WHERE csf.invoice_date >= make_date(${params.baseYear}, 1, 1) AND csf.invoice_date::date <= ${baseCutoff}::date)::text AS gp_base,
             SUM(csf.sales_amount) FILTER (WHERE csf.invoice_date >= make_date(${params.compareYear}, 1, 1) AND csf.invoice_date::date <= ${compareCutoff}::date)::text AS sales_compare,
@@ -1840,12 +1840,12 @@ async function _fetchAggregateSaleTypes(
             AND csf.invoice_date < ${dateTo}::timestamp
             AND soh.${sql(repCol)} = ${params.repCode}
             AND csf.branch_id = ANY(${params.branchIds}::text[])
-          GROUP BY csf.sale_type_reporting_category
+          GROUP BY 1
           ORDER BY COALESCE(SUM(csf.sales_amount) FILTER (WHERE csf.invoice_date >= make_date(${params.baseYear}, 1, 1) AND csf.invoice_date::date <= ${baseCutoff}::date), 0) DESC
         `
       : await sql<Row[]>`
-          SELECT COALESCE(csf.sale_type_reporting_category, 'Other') AS category,
-            BOOL_OR(csf.is_sale_type_excluded) AS is_excluded,
+          SELECT CASE WHEN csf.sale_type IN ('HOLD','DOORHOLD') THEN csf.sale_type ELSE COALESCE(csf.sale_type_reporting_category, 'Other') END AS category,
+            BOOL_OR(csf.is_sale_type_excluded AND csf.sale_type NOT IN ('HOLD','DOORHOLD')) AS is_excluded,
             SUM(csf.sales_amount) FILTER (WHERE csf.invoice_date >= make_date(${params.baseYear}, 1, 1) AND csf.invoice_date::date <= ${baseCutoff}::date)::text AS sales_base,
             SUM(csf.gross_profit)  FILTER (WHERE csf.invoice_date >= make_date(${params.baseYear}, 1, 1) AND csf.invoice_date::date <= ${baseCutoff}::date)::text AS gp_base,
             SUM(csf.sales_amount) FILTER (WHERE csf.invoice_date >= make_date(${params.compareYear}, 1, 1) AND csf.invoice_date::date <= ${compareCutoff}::date)::text AS sales_compare,
@@ -1856,14 +1856,14 @@ async function _fetchAggregateSaleTypes(
             AND csf.invoice_date >= ${dateFrom}::timestamp
             AND csf.invoice_date < ${dateTo}::timestamp
             AND soh.${sql(repCol)} = ${params.repCode}
-          GROUP BY csf.sale_type_reporting_category
+          GROUP BY 1
           ORDER BY COALESCE(SUM(csf.sales_amount) FILTER (WHERE csf.invoice_date >= make_date(${params.baseYear}, 1, 1) AND csf.invoice_date::date <= ${baseCutoff}::date), 0) DESC
         `;
   } else {
     rows = params.branchIds.length > 0
       ? await sql<Row[]>`
-          SELECT COALESCE(sale_type_reporting_category, 'Other') AS category,
-            BOOL_OR(is_sale_type_excluded) AS is_excluded,
+          SELECT CASE WHEN sale_type IN ('HOLD','DOORHOLD') THEN sale_type ELSE COALESCE(sale_type_reporting_category, 'Other') END AS category,
+            BOOL_OR(is_sale_type_excluded AND sale_type NOT IN ('HOLD','DOORHOLD')) AS is_excluded,
             SUM(sales_amount) FILTER (WHERE invoice_date >= make_date(${params.baseYear}, 1, 1) AND invoice_date::date <= ${baseCutoff}::date)::text AS sales_base,
             SUM(gross_profit)  FILTER (WHERE invoice_date >= make_date(${params.baseYear}, 1, 1) AND invoice_date::date <= ${baseCutoff}::date)::text AS gp_base,
             SUM(sales_amount) FILTER (WHERE invoice_date >= make_date(${params.compareYear}, 1, 1) AND invoice_date::date <= ${compareCutoff}::date)::text AS sales_compare,
@@ -1873,12 +1873,12 @@ async function _fetchAggregateSaleTypes(
             AND invoice_date >= ${dateFrom}::timestamp
             AND invoice_date < ${dateTo}::timestamp
             AND branch_id = ANY(${params.branchIds}::text[])
-          GROUP BY sale_type_reporting_category
+          GROUP BY 1
           ORDER BY COALESCE(SUM(sales_amount) FILTER (WHERE invoice_date >= make_date(${params.baseYear}, 1, 1) AND invoice_date::date <= ${baseCutoff}::date), 0) DESC
         `
       : await sql<Row[]>`
-          SELECT COALESCE(sale_type_reporting_category, 'Other') AS category,
-            BOOL_OR(is_sale_type_excluded) AS is_excluded,
+          SELECT CASE WHEN sale_type IN ('HOLD','DOORHOLD') THEN sale_type ELSE COALESCE(sale_type_reporting_category, 'Other') END AS category,
+            BOOL_OR(is_sale_type_excluded AND sale_type NOT IN ('HOLD','DOORHOLD')) AS is_excluded,
             SUM(sales_amount) FILTER (WHERE invoice_date >= make_date(${params.baseYear}, 1, 1) AND invoice_date::date <= ${baseCutoff}::date)::text AS sales_base,
             SUM(gross_profit)  FILTER (WHERE invoice_date >= make_date(${params.baseYear}, 1, 1) AND invoice_date::date <= ${baseCutoff}::date)::text AS gp_base,
             SUM(sales_amount) FILTER (WHERE invoice_date >= make_date(${params.compareYear}, 1, 1) AND invoice_date::date <= ${compareCutoff}::date)::text AS sales_compare,
@@ -1887,7 +1887,7 @@ async function _fetchAggregateSaleTypes(
           WHERE is_deleted = false
             AND invoice_date >= ${dateFrom}::timestamp
             AND invoice_date < ${dateTo}::timestamp
-          GROUP BY sale_type_reporting_category
+          GROUP BY 1
           ORDER BY COALESCE(SUM(sales_amount) FILTER (WHERE invoice_date >= make_date(${params.baseYear}, 1, 1) AND invoice_date::date <= ${baseCutoff}::date), 0) DESC
         `;
   }

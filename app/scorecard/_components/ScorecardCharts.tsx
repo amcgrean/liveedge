@@ -68,8 +68,11 @@ export function SaleTypeParetoChart({
   rows: SaleTypeRow[];
   baseYear?: number;
 }) {
+  // `isExcluded` only flags genuine excluded sale types (TRANSFER /
+  // XCONTRAC / XFERDIR). HOLD and DOORHOLD are reclassified into their
+  // own non-excluded categories at the query layer per PR #413's intent.
   const data = rows
-    .filter((s) => s.salesBase > 0)
+    .filter((s) => !s.isExcluded && s.salesBase > 0)
     .sort((a, b) => b.salesBase - a.salesBase)
     .map((s) => ({
       label: s.category,

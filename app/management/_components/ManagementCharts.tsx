@@ -78,9 +78,11 @@ export default function ManagementCharts({
     compare: b.salesCompare,
   }));
 
-  // M3: sale-type Pareto
+  // M3: sale-type Pareto. `isExcluded` is true only for genuinely-excluded
+  // categories (TRANSFER/XCONTRAC/XFERDIR-style — the query layer reclassifies
+  // HOLD/DOORHOLD into their own non-excluded categories so they show here).
   const paretoRows = saleTypes
-    .filter((s) => s.salesBase > 0)
+    .filter((s) => !s.isExcluded && s.salesBase > 0)
     .map((s) => ({ label: s.category, value: s.salesBase }));
 
   const showThreeYear = threeYearData.length > 0;
