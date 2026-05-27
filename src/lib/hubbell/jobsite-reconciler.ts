@@ -200,6 +200,15 @@ export async function fetchJobsiteData(normAddr: string): Promise<{ docs: DocRow
           -- treated as "current". Tie-break is arbitrary but deterministic.
           AND (d2.received_at, d2.id) > (d.received_at, d.id)
           AND d2.source_hash IS DISTINCT FROM d.source_hash
+          -- Only skip when the later row's metadata also differs. Stale-
+          -- identical rows (same extracted_address + extracted_total, just
+          -- byte-drift in the PDF re-extraction) are matchable: the R2 file
+          -- under their key now contains a PDF that describes the same job,
+          -- so the reviewer will see a sensible document. Without this
+          -- predicate we'd needlessly block 1000+ stale-identical rows
+          -- that were eligible all along.
+          AND (d2.extracted_address IS DISTINCT FROM d.extracted_address
+            OR d2.extracted_total   IS DISTINCT FROM d.extracted_total)
       )
   `;
 
@@ -409,14 +418,17 @@ export async function listJobsiteQueue(params: { limit: number; offset: number }
         )
         -- Skip docs whose R2 file has been overwritten by a later upload
         -- with different content (Hubbell reused the doc_number). See
-        -- comment in fetchJobsiteData() for the data shape. (received_at,
-        -- id) tuple comparison gives a stable order even when a batch
-        -- insert produces equal timestamps.
+        -- fetchJobsiteData() above for the full data-shape comment.
+        -- Stale-identical rows (later sibling with same metadata, just
+        -- byte-drift) are *not* skipped — their R2 file still describes
+        -- the same job they expect.
         AND NOT EXISTS (
           SELECT 1 FROM bids.hubbell_documents d2
           WHERE d2.r2_key = d.r2_key
             AND (d2.received_at, d2.id) > (d.received_at, d.id)
             AND d2.source_hash IS DISTINCT FROM d.source_hash
+            AND (d2.extracted_address IS DISTINCT FROM d.extracted_address
+              OR d2.extracted_total   IS DISTINCT FROM d.extracted_total)
         )
       GROUP BY 1
     )
