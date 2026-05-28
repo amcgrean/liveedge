@@ -42,7 +42,10 @@ const DATE_TOLERANCE_DAYS = 90;
 // VPO`, `added trim`). Suppress these unless the doc's total also matches
 // (i.e. the document really is for the small partial-scope amount).
 const NEGATIVE_REF_PENALTY = 30;
-const NEGATIVE_REF_PATTERN = /\b(credit|cred|replacement|repl|vpo|added)\b/i;
+// Added `correction|correct` 2026-05-28: Codex flagged "Door correction"
+// $30 add-on SOs surfacing for $1000+ full-scope door PDFs — same shape
+// as the existing credit/added/VPO partial-scope traps.
+const NEGATIVE_REF_PATTERN = /\b(credit|cred|replacement|repl|vpo|added|correction|correct)\b/i;
 
 // SO statuses that are terminal-cancelled / closed-without-delivery. Backlog
 // matching against these is almost never right: across 33 surfaced candidates
@@ -114,32 +117,49 @@ const PARENT_TO_SUBS: Record<string, readonly string[]> = {
 
 // Door-subtype mismatch. SO references that specify a different door subtype
 // than the doc's line items are wrong-scope matches even when generic `door`
-// overlaps. Codex flagged the patio-vs-interior case 3+ times across review
-// batches: a Hubbell "Interior Doors" PO surfaced as a match against an
-// "SP Patio Door" SO via the bare `door` keyword + amount corroboration.
+// overlaps. Generalized 2026-05-28 from the narrow patio-only rule to a
+// symmetric subtype family match after Codex's Thorton Drive cluster
+// surfaced multiple "Exterior Doors" docs matched to "int. doors" / "Door
+// correction" SOs.
 //
-// Narrow rule: when the SO ref contains one of these "distinct subtype"
-// keywords AND the doc's line items don't, demote the `door` scope to 0.
-//
-// Conservative on what counts as "distinct":
-//   - `patio` — confirmed false positive shape
-//   - NOT `dunnage` — that's the Hubbell-side word for rough-opening
-//     interior door material; matches interior-doors POs correctly
-//     (and Codex accepts them).
-//   - NOT `interior`/`exterior` — too noisy without bigram parsing
-// Extend the set only when a new subtype mismatch shows up 3+ times in
-// review batches.
-const DOOR_SUBTYPE_DISTINCT_KEYWORDS = ['patio'] as const;
+// Subtype families. Raw token (with optional trailing period) → canonical
+// subtype. Aliases collapse to the same family so "ext door" SO ↔ "Exterior
+// Doors" doc both resolve to {exterior} and match correctly.
+const DOOR_SUBTYPE_FAMILY: Record<string, string> = {
+  patio:    'patio',
+  ext:      'exterior',
+  exterior: 'exterior',
+  int:      'interior',
+  interior: 'interior',
+};
+// NOT included: `dunnage` (Hubbell-side word for rough-opening interior-
+// door material; correctly matches interior-doors POs — Codex consistently
+// accepts these).
 
+function extractDoorSubtypes(text: string | null | undefined): Set<string> {
+  if (!text) return new Set();
+  const lower = text.toLowerCase();
+  const out = new Set<string>();
+  for (const [raw, canonical] of Object.entries(DOOR_SUBTYPE_FAMILY)) {
+    // Accept `ext`, `ext.`, `int`, `int.`, `interior`, `exterior`, `patio` —
+    // optional trailing period to handle abbreviated forms.
+    const re = new RegExp(`\\b${raw}\\.?\\b`);
+    if (re.test(lower)) out.add(canonical);
+  }
+  return out;
+}
+
+// Returns a string describing the mismatch (for the audit reason), or null
+// if no mismatch. Mismatch fires when both sides specify a subtype AND they
+// share NO common subtype. One-sided cases (doc has subtype, SO doesn't or
+// vice versa) don't demote — generic refs match anything.
 function hasDoorSubtypeMismatch(docText: string, refText: string | null | undefined): string | null {
   if (!refText) return null;
-  const refLower = refText.toLowerCase();
-  const docLower = docText.toLowerCase();
-  for (const subtype of DOOR_SUBTYPE_DISTINCT_KEYWORDS) {
-    const re = new RegExp(`\\b${subtype}\\b`);
-    if (re.test(refLower) && !re.test(docLower)) return subtype;
-  }
-  return null;
+  const docSubtypes = extractDoorSubtypes(docText);
+  const refSubtypes = extractDoorSubtypes(refText);
+  if (docSubtypes.size === 0 || refSubtypes.size === 0) return null;
+  for (const s of refSubtypes) if (docSubtypes.has(s)) return null;
+  return `${[...docSubtypes].sort().join(',')}!=${[...refSubtypes].sort().join(',')}`;
 }
 
 // Stem any scope keyword to its singular root for comparison
