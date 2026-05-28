@@ -1,47 +1,124 @@
-# Pi-side fix: replace two `COUNT(*)` probes hammering Supabase
+# Pi-side fix: mgmt-api I/O storm on the agility-api Supabase
 
 **Audience:** the agent working on `beisser-api` (Pi `/home/api/`, PC `C:\Users\amcgrean\python\api`).
-**Status:** scoped, one-day change. Highest-leverage performance fix outstanding.
-**Branch suggestion:** `claude/mgmt-api-count-probe-fix` (or your repo's convention).
+**Status:** scoped, one-day change. Highest-leverage performance work outstanding.
+**Branch suggestion:** `claude/mgmt-api-io-storm` (or your repo's convention).
 
-## Why
+## What we observed
 
-LiveEdge management and scorecard pages started timing out on 2026-05-28. Supabase
-flagged elevated disk I/O. Root cause traced via `pg_stat_statements`:
+LiveEdge `/management` and `/scorecard/*` pages started timing out on 2026-05-28.
+Supabase flagged elevated disk I/O. Investigation via `pg_stat_statements`
+on the `agility-api` project (`vyatosniqboeqzadyqmr`) traced ~95% of the
+load to two unguarded `COUNT(*)` probes from `application_name = mgmt-api`:
 
-| Probe (verbatim) | Calls | Total DB time | Disk blocks read |
-|---|---:|---:|---:|
-| `select count(*) from customer_scorecard_fact` | 33,497 | **7h 20m** | 193 M (~1.5 TB) |
-| `SELECT COUNT(*) FROM public.agility_so_header` | 52,947 | **4h 52m** | 1.79 B (~14 TB) |
+| Probe (verbatim) | queryid | Calls | Total DB time | Disk reads |
+|---|---|---:|---:|---:|
+| `select count(*) from customer_scorecard_fact` | `-2186310581588620979` | 33,515 | **7h 20m** | 193 M blocks (~1.5 TB) |
+| `SELECT COUNT(*) FROM public.agility_so_header` | `-3014666078659518893` | 52,961 | **4h 52m** | 1.79 B blocks (~14 TB) |
 
-Both have `application_name = mgmt-api`. Both run unguarded `COUNT(*)` against
-multi-GB tables with no `WHERE` clause, so every call seq-scans the entire heap
-(`customer_scorecard_fact` is 6.4 GB total / 4.2 M rows; `agility_so_header` is
-similar order).
+Combined: **~12 hours of DB time + ~15.5 TB of disk reads** in the stat
+window. Buffer cache eviction from the seq-scans drives the legit scorecard
+aggregates to 70–78 s mean and triggers LiveEdge's 60 s `maxDuration`.
 
-Cumulative effect:
-- ~12 hours of cumulative DB time per measurement window.
-- ~15.5 TB of disk reads — this is what tripped the Supabase disk-I/O alert.
-- Buffer cache continuously evicted by the full-heap scans → legit scorecard
-  aggregates fall to 70–78 s mean and trigger LiveEdge's 60 s `maxDuration`.
+The `agility-api` user also flagged that two duplicate worker processes
+were running on the Pi at the time of the incident
+(PIDs 1691587/1691590 and 1691602/1691604, both started 10:48). That's
+the **PR #29 duplicate-worker bug recurring** — likely caused by an
+autodeploy thrash racing the killer. **Almost everything below assumes
+that hypothesis is correct.** Step 0 verifies it before any other work.
 
-Replacing both probes with a planner-stat lookup is sub-millisecond, zero scan,
-and resolves the symptom on its own.
+## Step 0 — Verify single vs duplicate worker (do this first)
 
-## The change
+If two `mgmt-api` workers are racing, the I/O numbers above are ~2x
+inflated AND Rec 3 below becomes the right starting point instead of
+Rec 1 / 2. Do not skip this step.
 
-Find every call site of these two queries inside `beisser-api`. Likely
-suspects are health-check endpoints, sync-progress loggers, or "rows synced"
-status probes. Grep for:
+On the Pi:
 
+```bash
+# How many copies of the sync worker are currently running?
+sudo systemctl status agility-api-sync.service
+ps -ef | grep -E "(runtime_sync|beisser_sync|mgmt[-_]api)" | grep -v grep
 ```
-count(\\*) from customer_scorecard_fact
-COUNT(\\*) FROM (public.)?agility_so_header
-COUNT(\\*) FROM customer_scorecard_fact
-count(\\*) from agility_so_header
+
+Expected = 1 main + N child workers from a single supervisor. If you see
+two independent process trees with overlapping start times (the way
+PR #29 manifested), you're in the duplicate-worker case.
+
+You can also cross-check from Supabase. Two distinct PIDs running the
+same sync queries from the same `client_addr` is the signature:
+
+```sql
+SELECT pid, application_name, client_addr::text, backend_start, state,
+       left(query, 80) AS q
+FROM pg_stat_activity
+WHERE application_name = 'mgmt-api'
+   OR backend_type = 'client backend'
+ORDER BY backend_start;
 ```
 
-Replace each with a `pg_class.reltuples` lookup:
+### Branching from Step 0
+
+| State | Do next |
+|---|---|
+| One worker tree, no duplicates | Skip to Rec 1 |
+| Two worker trees overlapping | Start with Rec 3 (kill duplicates), then re-measure before deciding on Rec 1/2 |
+
+## Rec 3 (promoted) — kill the duplicate worker, harden the killer
+
+This is the cheapest fix if Step 0 confirms duplicates: it doesn't touch
+sync logic at all.
+
+1. Kill one of the two worker trees (whichever is younger / clearly the
+   duplicate). The PR #29 fix already implemented the killer; the
+   regression is that the killer raced the autodeploy forward → rollback
+   → forward cycle.
+2. Reproduce PR #29's fix and harden it:
+   - Take an `flock` or `pidfile` lock on `systemd start`, so a second
+     start attempt is rejected synchronously before any DB connection.
+   - Make the killer idempotent and wait for full process-group death
+     (use `kill -- -PGID` + a poll loop) before returning so a
+     follow-up autodeploy can't sneak in.
+3. Add a Supabase-side guard: at sync-worker startup, abort if more
+   than one row with `application_name = 'mgmt-api'` exists in
+   `pg_stat_activity` for this worker's `client_addr`. Cheap belt-and-
+   braces.
+
+After landing, re-run the LiveEdge agent's `pg_stat_statements` query
+(below) and confirm `agility_so_header` probe call rate drops by ~50%.
+If the new rate is acceptable and the disk-I/O alert clears, Rec 1 and
+Rec 2 become optional polish, not urgent fixes.
+
+## Rec 1 (conditional on Rec 3 not being sufficient) — swap probes for reltuples
+
+If duplicates were never the issue, OR if Rec 3 didn't drop the I/O
+enough, swap the two probes for a `pg_class.reltuples` lookup.
+
+### Pin the call sites before swapping
+
+The user's suspect is `PostgresMirrorWriter.count_target_rows()` in
+`agility_api/runtime_sync.py`, called after every merge to log row
+counts. Confirm by grepping for the exact strings and counting hits:
+
+```bash
+cd /home/api  # or your local checkout
+grep -rn --include='*.py' -E 'count\(\*\)\s+FROM\s+(public\.)?customer_scorecard_fact' .
+grep -rn --include='*.py' -E 'count\(\*\)\s+FROM\s+(public\.)?agility_so_header' .
+grep -rn --include='*.py' 'count_target_rows' .
+```
+
+**Exclude `dashboard_stats` and any filtered-count site from this swap.**
+`reltuples` only works for full-table counts. Calls like
+`COUNT(*) FROM agility_picks WHERE print_status NOT IN (...)` are
+legitimately scanning a subset; leave them alone. They're not in the
+`pg_stat_statements` top offenders.
+
+If grep turns up something more surprising than `count_target_rows()`
+(e.g. a heartbeat in `dashboard_stats`, a `verification.py` reconciliation
+loop, an undocumented `/healthz` endpoint), document where the call lives
+in the PR description so the next agent sees it.
+
+### The swap
 
 ```python
 # Before
@@ -57,81 +134,105 @@ cur.execute("""
 total = cur.fetchone()[0]
 ```
 
-Same swap for `agility_so_header`.
+Same pattern for `agility_so_header`. `reltuples` is the planner's row
+estimate, refreshed by autoanalyze (currently at ~96 runs on
+`customer_scorecard_fact` per `pg_stat_user_tables` — fresh enough).
+For a post-merge log message, approximate is fine.
 
-## Trade-off (important to understand, but doesn't matter here)
+If a caller turns out to gate logic on the count (e.g. "if count >= N
+do X"), that caller needs to either tolerate an estimate, or fall back
+to a `COUNT(*)` with a `WHERE` that restricts the scan. Don't reintroduce
+an unguarded full-table scan in a loop.
 
-`reltuples` is the planner's row estimate, refreshed by autovacuum / autoanalyze.
-On `customer_scorecard_fact`, `pg_stat_user_tables` shows `autoanalyze_count = 96`
-and the last autoanalyze was minutes before this brief was written — i.e. the
-estimate is current to within one sync cycle.
+## Rec 2 (defer unless metrics still bad) — fingerprint guard on the UPSERT
 
-For a health probe or sync-progress display, an estimate within 0.1% is fine.
-**If any caller is using this number to gate logic** (e.g. "if count >= N, do
-X"), check that the gate still works with an approximate value, or have that
-specific caller fall back to a real `COUNT(*)` with a `WHERE` clause that
-restricts the scan. Don't reintroduce an unguarded full-table scan in a loop.
+`pg_stat_user_tables` shows **30 M updates on 4.4 M rows** for
+`customer_scorecard_fact` (~7× table rewrite). The table already carries
+a `row_fingerprint varchar` column the sync writes but doesn't read.
 
-If you discover a caller that legitimately needs an exact count, the
-acceptable patterns are:
+If after Rec 3 (and possibly Rec 1) the disk-I/O alert recurs, add a
+fingerprint guard to the existing `ON CONFLICT DO UPDATE`:
 
 ```sql
--- Exact, but only over recently-synced rows (uses an index)
-SELECT COUNT(*) FROM customer_scorecard_fact WHERE synced_at >= now() - interval '1 hour';
-
--- Or: a one-shot call gated behind an explicit flag, not in any loop
+ON CONFLICT (shipment_line_key) DO UPDATE SET
+  shipment_date = EXCLUDED.shipment_date,
+  ... (existing 50-column SET list)
+WHERE customer_scorecard_fact.row_fingerprint IS DISTINCT FROM EXCLUDED.row_fingerprint
 ```
 
-## How to verify the fix landed
+Unchanged rows become true no-ops (no WAL, no autovacuum churn, no
+buffer dirtying). The conflict arbiter still claims the row lock, the
+constraint still holds — only the heap write is skipped. Logged
+`rowcount` will drop to the count of actually-changed rows; that's the
+correct number, not a regression.
 
-1. Deploy the change (Pi `systemd restart`, whatever your normal flow is).
-2. Wait 10 minutes for new traffic to accumulate.
-3. From the same Postgres connection that issued this brief (the Supabase MCP
-   in the LiveEdge agent), I'll re-run:
+## How to verify (LiveEdge agent will run these for you)
 
-   ```sql
-   SELECT calls, round(total_exec_time/1000.0)::int AS total_sec,
-          round(mean_exec_time)::int AS mean_ms
-   FROM pg_stat_statements pss JOIN pg_database pd ON pd.oid = pss.dbid
-   WHERE pd.datname = current_database()
-     AND (query ILIKE '%count(*) from customer_scorecard_fact%'
-          OR query ILIKE '%COUNT(*) FROM public.agility_so_header%')
-   ORDER BY total_exec_time DESC;
-   ```
+After deploy, ping the LiveEdge agent (session
+`session_01Xzna5Mb297YcPUvBWmyqNw`) and ask it to re-run the
+verification block. It maps to these SQL queries on the
+`agility-api` Supabase project (`vyatosniqboeqzadyqmr`):
 
-   The `calls` counter on the two old probe entries should freeze (no new calls
-   accruing). A new entry for the `reltuples` query should appear with sub-1 ms
-   mean time.
+```sql
+-- 1. Did the old probes stop accruing calls?
+SELECT queryid, calls, round(total_exec_time/1000.0)::int AS total_sec,
+       round(mean_exec_time)::int AS mean_ms
+FROM pg_stat_statements pss JOIN pg_database pd ON pd.oid = pss.dbid
+WHERE pd.datname = current_database()
+  AND queryid IN (-2186310581588620979, -3014666078659518893);
+-- expect: calls frozen at ~33,515 / ~52,961 (or no rows if you reset
+-- stats post-deploy)
 
-4. From LiveEdge, hit `/management` and `/scorecard/overview` — they should
-   render in <5 s end-to-end (down from 60 s+ / timeout). Confirm via
-   `pg_stat_statements`: the long scorecard aggregate queries' `mean_exec_time`
-   should drop from 70-78 s back into the single-second range.
+-- 2. Did a new reltuples query appear with sub-1ms mean?
+SELECT calls, round(mean_exec_time, 2) AS mean_ms, query
+FROM pg_stat_statements pss JOIN pg_database pd ON pd.oid = pss.dbid
+WHERE pd.datname = current_database()
+  AND query ILIKE '%reltuples%'
+  AND (query ILIKE '%customer_scorecard_fact%'
+       OR query ILIKE '%agility_so_header%');
 
-## Reset stats so the verification window is clean
+-- 3. Did the scorecard aggregates' mean drop back to single-second?
+SELECT calls, round(mean_exec_time)::int AS mean_ms,
+       round(total_exec_time/1000.0)::int AS total_sec,
+       left(query, 100) AS q
+FROM pg_stat_statements pss JOIN pg_database pd ON pd.oid = pss.dbid
+WHERE pd.datname = current_database()
+  AND query ILIKE '%customer_scorecard_fact%'
+  AND query ILIKE '%agility_so_header%'
+ORDER BY total_exec_time DESC LIMIT 5;
+-- expect mean_ms to drop from 70-78s into the single-second range
 
-When you're done deploying, run this from Supabase SQL editor (or ping the
-LiveEdge agent and it can do it via MCP):
+-- 4. Are concurrent ShareLock waits gone? (specifically for Rec 3)
+SELECT count(*) FILTER (WHERE wait_event = 'transactionid') AS lock_waits,
+       count(*) FILTER (WHERE wait_event = 'DataFileRead') AS io_waits
+FROM pg_stat_activity
+WHERE backend_type = 'client backend';
+```
+
+End-user check: hit `/management` and `/scorecard/overview` from
+LiveEdge prod. Both should render in <5 s.
+
+## Optional — reset stats for a clean window
+
+If you want unambiguous post-deploy numbers instead of having to subtract
+cumulative totals:
 
 ```sql
 SELECT pg_stat_statements_reset();
 ```
 
-Optional — gives a fresh window so the new traffic shape is unambiguous instead
-of having to subtract old cumulative totals.
+Run this in Supabase SQL editor after the new code is verified live.
+Asks the LiveEdge agent to drop a marker timestamp in this doc when it
+re-measures, so the window is anchored.
 
-## Out of scope for this brief
+## Rollout order recap
 
-There are two follow-ups documented in the LiveEdge investigation that are NOT
-part of this change. If the disk-I/O issue isn't fully resolved after this
-fix, come back for:
+1. **Step 0** — `ps`/`pg_stat_activity` check for duplicate workers.
+2. If duplicated → **Rec 3** (kill + harden killer) → re-measure → stop if I/O drops enough.
+3. If not duplicated, or Rec 3 wasn't enough → **Rec 1** (probes → reltuples), call sites pinned via grep first.
+4. If I/O storm still recurs after Rec 1 → **Rec 2** (fingerprint guard).
 
-- **Rec 2** — add a `WHERE row_fingerprint IS DISTINCT FROM EXCLUDED.row_fingerprint`
-  guard to the `customer_scorecard_fact` UPSERT's `DO UPDATE` clause. Reduces
-  ~30 M updates/window to only actually-changed rows.
-- **Rec 3** — serialize the `customer_scorecard_fact` UPSERT worker pool, or
-  sort batches by `shipment_line_key` so concurrent workers stop blocking each
-  other on the `uq_customer_scorecard_fact_key` arbiter index (Postgres log
-  shows `ShareLock` waits of 1–5 s stacking up).
-
-Ship Rec 1 first; verify; only do Rec 2/3 if metrics say they're still needed.
+No LiveEdge code changes required at any step. If end-user timeouts
+recur during the window between Step 0 and the deploy, ping the
+LiveEdge agent — it can land a 300 s `maxDuration` band-aid on the
+scorecard routes as an interim, but only if asked.
