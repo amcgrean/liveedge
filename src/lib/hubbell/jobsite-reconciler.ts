@@ -49,7 +49,10 @@ const NEGATIVE_REF_PENALTY = 30;
 //     pattern, 23 candidates in the queue)
 //   `correction|correct` — added with PR #430
 //   `credit|cred|replacement|repl|vpo` — original rules
-const NEGATIVE_REF_PATTERN = /\b(credit|cred|replacement|repl|vpo|add(ed|on)?|correction|correct)\b/i;
+// `missing` added 2026-05-28: Codex flagged "Missing trim" / "missing window"
+// SO refs surfacing for full-scope packets. Same partial-scope shape as
+// credit/correction/added — penalty waived when amount corroborates.
+const NEGATIVE_REF_PATTERN = /\b(credit|cred|replacement|repl|vpo|add(ed|on)?|correction|correct|missing)\b/i;
 
 // Negative-total SO penalty. Credit-memo / return SOs (where
 // SUM(extended_price) < 0) represent work being un-delivered, not
@@ -159,6 +162,23 @@ const DOOR_SUBTYPE_FAMILY: Record<string, string> = {
 // door material; correctly matches interior-doors POs — Codex consistently
 // accepts these).
 
+// Frame-subtype family — same shape as DOOR_SUBTYPE_FAMILY. Hubbell SO refs
+// often carry a location modifier on framing ("Roof Frame", "basement
+// framing", "garage framing", "porch framing") and Hubbell doc line items
+// do the same ("Framing Mat. - Roof", "Framing Mat. - Basement"). When
+// both sides specify a location AND they don't match, the SO is the wrong
+// scope even though `frame` overlaps. Codex flagged this 3+ times across
+// review batches (PDF=Basement Framing vs SO=Roof Frame with amount close).
+//
+// Symmetric like the door FAMILY tier — one-sided cases don't demote
+// (generic "Frame" or "Framing" refs still match anything).
+const FRAME_SUBTYPE_FAMILY: Record<string, string> = {
+  roof:     'roof',
+  basement: 'basement',
+  garage:   'garage',
+  porch:    'porch',
+};
+
 function extractSubtypesFromMap(
   text: string,
   map: Record<string, string>,
@@ -193,6 +213,19 @@ function hasDoorSubtypeMismatch(docText: string, refText: string | null | undefi
   const refFamily = extractSubtypesFromMap(refText, DOOR_SUBTYPE_FAMILY);
   if (refFamily.size === 0) return null;
   const docFamily = extractSubtypesFromMap(docText, DOOR_SUBTYPE_FAMILY);
+  if (docFamily.size === 0) return null;
+  for (const s of refFamily) if (docFamily.has(s)) return null;
+  return `${[...docFamily].sort().join(',')}!=${[...refFamily].sort().join(',')}`;
+}
+
+// Frame-subtype mismatch — same shape as the door FAMILY tier. Both sides
+// must specify a location modifier (roof/basement/garage/porch), and they
+// must not share. One-sided cases don't demote.
+function hasFrameSubtypeMismatch(docText: string, refText: string | null | undefined): string | null {
+  if (!refText) return null;
+  const refFamily = extractSubtypesFromMap(refText, FRAME_SUBTYPE_FAMILY);
+  if (refFamily.size === 0) return null;
+  const docFamily = extractSubtypesFromMap(docText, FRAME_SUBTYPE_FAMILY);
   if (docFamily.size === 0) return null;
   for (const s of refFamily) if (docFamily.has(s)) return null;
   return `${[...docFamily].sort().join(',')}!=${[...refFamily].sort().join(',')}`;
@@ -453,6 +486,14 @@ export function pairDocsToSos(
           : null;
         if (doorSubtypeMismatch) parentMatchedWrongly.add('door');
 
+        // Frame-subtype mismatch — Roof Frame SO vs Basement Framing doc,
+        // etc. Same accounting as door subtype: kill the `frame` scope
+        // contribution via parent_demote tracking.
+        const frameSubtypeMismatch = overlap.includes('frame')
+          ? hasFrameSubtypeMismatch(docTextForSubtype, so.reference)
+          : null;
+        if (frameSubtypeMismatch) parentMatchedWrongly.add('frame');
+
         // Recompute hasSpecificOverlap AFTER parent/subtype demotes — a
         // demoted specific token (door) shouldn't keep boosting an
         // adjacent broad token (frame) to full weight. Otherwise a
@@ -497,6 +538,9 @@ export function pairDocsToSos(
             }
             if (doorSubtypeMismatch) {
               reasons.push(`door_subtype_mismatch:${doorSubtypeMismatch}`);
+            }
+            if (frameSubtypeMismatch) {
+              reasons.push(`frame_subtype_mismatch:${frameSubtypeMismatch}`);
             }
           }
         }
