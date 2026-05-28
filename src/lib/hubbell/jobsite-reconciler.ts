@@ -42,7 +42,26 @@ const DATE_TOLERANCE_DAYS = 90;
 // VPO`, `added trim`). Suppress these unless the doc's total also matches
 // (i.e. the document really is for the small partial-scope amount).
 const NEGATIVE_REF_PENALTY = 30;
-const NEGATIVE_REF_PATTERN = /\b(credit|cred|replacement|repl|vpo|added)\b/i;
+// Partial-scope SO references. Penalty waived when amount also matches (the
+// doc really is for the small partial-scope amount).
+//   `add(ed|on)?` — matches "add", "added", "addon" (Codex flagged "deck
+//     add" / "trim add" still leaking through the original `added`-only
+//     pattern, 23 candidates in the queue)
+//   `correction|correct` — added with PR #430
+//   `credit|cred|replacement|repl|vpo` — original rules
+// `missing` added 2026-05-28: Codex flagged "Missing trim" / "missing window"
+// SO refs surfacing for full-scope packets. Same partial-scope shape as
+// credit/correction/added — penalty waived when amount corroborates.
+const NEGATIVE_REF_PATTERN = /\b(credit|cred|replacement|repl|vpo|add(ed|on)?|correction|correct|missing)\b/i;
+
+// Negative-total SO penalty. Credit-memo / return SOs (where
+// SUM(extended_price) < 0) represent work being un-delivered, not
+// delivered — almost never the right match for a real material PO/WO.
+// 161 candidates surfaced in the queue at writing; demote heavily to
+// push scope-only matches below the floor. Same magnitude as the
+// cancelled-SO penalty so a fully-corroborated genuine credit doc could
+// still surface for review.
+const NEGATIVE_TOTAL_PENALTY = 25;
 
 // SO statuses that are terminal-cancelled / closed-without-delivery. Backlog
 // matching against these is almost never right: across 33 surfaced candidates
@@ -54,6 +73,20 @@ const NEGATIVE_REF_PATTERN = /\b(credit|cred|replacement|repl|vpo|added)\b/i;
 // align.
 const CANCELLED_SO_STATUSES = new Set<string>(['C', 'X']);
 const CANCELLED_SO_PENALTY = 25;
+
+// Jobsite-number mismatch penalty. Hubbell SO references frequently embed
+// the specific house number on a duplex/cluster — "Trim load #9124",
+// "deck pack 16728", "Hardware/Locks #924". When the doc's address points
+// at a different street number in the same cluster, the SO is for the
+// neighbor and is the wrong target.
+// Probed in prod: 273 of 507 pending duplex-side candidates were mismatched,
+// 12/12 sampled were neighbor-jobsite false positives — no lot-number /
+// PO-number ambiguity. Demote large enough to push scope+amount (45) below
+// the conf 30 floor; small enough that a fully-corroborated candidate
+// (scope+amount+date = 55) still surfaces at 35 for review.
+const JOBSITE_NUMBER_PENALTY = 20;
+const STREET_NUM_PATTERN = /^\s*(\d+)/;
+const REF_NUM_PATTERN = /\d{3,}/g;
 
 const SCOPE_KEYWORDS = [
   'door',
@@ -97,6 +130,106 @@ const PARENT_TO_SUBS: Record<string, readonly string[]> = {
   door:   ['hardware', 'lock'],
   window: ['screen'],
 };
+
+// Door-subtype mismatch — two-tier model:
+//
+//   HARD subtypes (patio, scuttle): narrowly specific. SO ref has the
+//     keyword AND the doc doesn't share it → demote, regardless of whether
+//     the doc has any other subtype info. A doc that doesn't mention
+//     `patio` or `scuttle` is almost never patio/scuttle by accident.
+//
+//   FAMILY subtypes (interior, exterior): symmetric. BOTH sides have a
+//     subtype AND they don't share → demote. One-sided cases (one side has
+//     a subtype, other is generic) don't demote because generic refs match
+//     anything.
+//
+// History:
+//   PR #423 — narrow patio-only asymmetric rule
+//   PR #430 — generalized to interior/exterior family match (symmetric)
+//   PR #432 (this) — split into HARD + FAMILY tiers + add `scuttle` after
+//     Codex flagged Scuttle Doors SOs matching full-scope door packets
+const DOOR_SUBTYPE_HARD: Record<string, string> = {
+  patio:   'patio',
+  scuttle: 'scuttle',
+};
+const DOOR_SUBTYPE_FAMILY: Record<string, string> = {
+  ext:      'exterior',
+  exterior: 'exterior',
+  int:      'interior',
+  interior: 'interior',
+};
+// NOT included: `dunnage` (Hubbell-side word for rough-opening interior-
+// door material; correctly matches interior-doors POs — Codex consistently
+// accepts these).
+
+// Frame-subtype family — same shape as DOOR_SUBTYPE_FAMILY. Hubbell SO refs
+// often carry a location modifier on framing ("Roof Frame", "basement
+// framing", "garage framing", "porch framing") and Hubbell doc line items
+// do the same ("Framing Mat. - Roof", "Framing Mat. - Basement"). When
+// both sides specify a location AND they don't match, the SO is the wrong
+// scope even though `frame` overlaps. Codex flagged this 3+ times across
+// review batches (PDF=Basement Framing vs SO=Roof Frame with amount close).
+//
+// Symmetric like the door FAMILY tier — one-sided cases don't demote
+// (generic "Frame" or "Framing" refs still match anything).
+const FRAME_SUBTYPE_FAMILY: Record<string, string> = {
+  roof:     'roof',
+  basement: 'basement',
+  garage:   'garage',
+  porch:    'porch',
+};
+
+function extractSubtypesFromMap(
+  text: string,
+  map: Record<string, string>,
+): Set<string> {
+  const lower = text.toLowerCase();
+  const out = new Set<string>();
+  for (const [raw, canonical] of Object.entries(map)) {
+    // Accept abbreviated forms with optional trailing period: ext., int.
+    const re = new RegExp(`\\b${raw}\\.?\\b`);
+    if (re.test(lower)) out.add(canonical);
+  }
+  return out;
+}
+
+// Returns a string describing the mismatch (for the audit reason), or null
+// if no mismatch. HARD tier checks first (asymmetric), then FAMILY tier
+// (symmetric). Returns on first mismatch — the audit reason is informative
+// but not a complete list of all mismatches found.
+function hasDoorSubtypeMismatch(docText: string, refText: string | null | undefined): string | null {
+  if (!refText) return null;
+
+  // HARD tier — SO has subtype, doc doesn't share it.
+  const refHard = extractSubtypesFromMap(refText, DOOR_SUBTYPE_HARD);
+  if (refHard.size > 0) {
+    const docHard = extractSubtypesFromMap(docText, DOOR_SUBTYPE_HARD);
+    for (const s of refHard) {
+      if (!docHard.has(s)) return `hard:${s}`;
+    }
+  }
+
+  // FAMILY tier — both sides have a subtype, no overlap.
+  const refFamily = extractSubtypesFromMap(refText, DOOR_SUBTYPE_FAMILY);
+  if (refFamily.size === 0) return null;
+  const docFamily = extractSubtypesFromMap(docText, DOOR_SUBTYPE_FAMILY);
+  if (docFamily.size === 0) return null;
+  for (const s of refFamily) if (docFamily.has(s)) return null;
+  return `${[...docFamily].sort().join(',')}!=${[...refFamily].sort().join(',')}`;
+}
+
+// Frame-subtype mismatch — same shape as the door FAMILY tier. Both sides
+// must specify a location modifier (roof/basement/garage/porch), and they
+// must not share. One-sided cases don't demote.
+function hasFrameSubtypeMismatch(docText: string, refText: string | null | undefined): string | null {
+  if (!refText) return null;
+  const refFamily = extractSubtypesFromMap(refText, FRAME_SUBTYPE_FAMILY);
+  if (refFamily.size === 0) return null;
+  const docFamily = extractSubtypesFromMap(docText, FRAME_SUBTYPE_FAMILY);
+  if (docFamily.size === 0) return null;
+  for (const s of refFamily) if (docFamily.has(s)) return null;
+  return `${[...docFamily].sort().join(',')}!=${[...refFamily].sort().join(',')}`;
+}
 
 // Stem any scope keyword to its singular root for comparison
 //   "doors" → "door", "windows" → "window", "framing" → "frame"
@@ -324,7 +457,6 @@ export function pairDocsToSos(
         //   (c) Specific keywords always score at full weight.
         const refScope = extractScopeTokens(so.reference);
         const overlap = scopeOverlap(docScope, refScope);
-        const hasSpecificOverlap = overlap.some((k) => !BROAD_SCOPE_KEYWORDS.has(k));
         const docHasSpecific = Array.from(docScope).some((k) => !BROAD_SCOPE_KEYWORDS.has(k));
 
         // Parent-component demotion: if the doc carries a sub-component
@@ -342,6 +474,35 @@ export function pairDocsToSos(
           const overlapHasSub = subs.some((s) => overlap.includes(s));
           if (docHasSub && !overlapHasSub) parentMatchedWrongly.add(k);
         }
+
+        // Door-subtype mismatch (SP Patio Door SO ↔ Interior Doors doc).
+        // Wipes `door` from the overlap when the SO ref specifies a distinct
+        // subtype (patio) the doc doesn't share. Treated as a parent-demote
+        // for accounting since the effect is identical: kill the `door`
+        // scope contribution.
+        const docTextForSubtype = descriptionsFromLineItems(doc.line_items);
+        const doorSubtypeMismatch = overlap.includes('door')
+          ? hasDoorSubtypeMismatch(docTextForSubtype, so.reference)
+          : null;
+        if (doorSubtypeMismatch) parentMatchedWrongly.add('door');
+
+        // Frame-subtype mismatch — Roof Frame SO vs Basement Framing doc,
+        // etc. Same accounting as door subtype: kill the `frame` scope
+        // contribution via parent_demote tracking.
+        const frameSubtypeMismatch = overlap.includes('frame')
+          ? hasFrameSubtypeMismatch(docTextForSubtype, so.reference)
+          : null;
+        if (frameSubtypeMismatch) parentMatchedWrongly.add('frame');
+
+        // Recompute hasSpecificOverlap AFTER parent/subtype demotes — a
+        // demoted specific token (door) shouldn't keep boosting an
+        // adjacent broad token (frame) to full weight. Otherwise a
+        // patio-door SO with "patio door frame" ref against an interior-
+        // doors doc would still surface via the frame=+30 path.
+        // Codex P2 #423 caught this.
+        const hasSpecificOverlap = overlap.some(
+          (k) => !BROAD_SCOPE_KEYWORDS.has(k) && !parentMatchedWrongly.has(k),
+        );
 
         if (overlap.length > 0) {
           let scopeBoost = 0;
@@ -374,6 +535,12 @@ export function pairDocsToSos(
             if (reasonTokens.length > 0) reasons.push(`scope:${reasonTokens.join('+')}`);
             if (parentMatchedWrongly.size > 0) {
               reasons.push(`parent_demote:${Array.from(parentMatchedWrongly).join('+')}`);
+            }
+            if (doorSubtypeMismatch) {
+              reasons.push(`door_subtype_mismatch:${doorSubtypeMismatch}`);
+            }
+            if (frameSubtypeMismatch) {
+              reasons.push(`frame_subtype_mismatch:${frameSubtypeMismatch}`);
             }
           }
         }
@@ -421,6 +588,34 @@ export function pairDocsToSos(
       if (so.so_status && CANCELLED_SO_STATUSES.has(so.so_status.toUpperCase())) {
         confidence -= CANCELLED_SO_PENALTY;
         reasons.push(`so_status:${so.so_status.toUpperCase()}_demote`);
+      }
+
+      // Negative-total SO demote — credit-memo / return SOs almost never
+      // match a real material doc. Applies to all match sources (a
+      // po_number_split into a credit SO is rare but possible if the SO
+      // was re-issued from a credit).
+      if (so.order_total !== null) {
+        const t = Number(so.order_total);
+        if (Number.isFinite(t) && t < 0) {
+          confidence -= NEGATIVE_TOTAL_PENALTY;
+          reasons.push('so_negative_total_demote');
+        }
+      }
+
+      // Jobsite-number mismatch — when the SO ref embeds a specific street
+      // number that disagrees with the doc's address, the SO is for a
+      // neighboring address in the same cluster. Applies to ALL match
+      // sources because even a po_number_split into the wrong-house SO
+      // would be wrong (rare but possible if the buyer typed into the
+      // neighbor's SO by mistake). Handles SO refs with multiple street
+      // numbers ("Doors #9124 9132") — if ANY number in the ref matches
+      // the doc's street number, no penalty.
+      const docStreetMatch = doc.extracted_address?.match(STREET_NUM_PATTERN);
+      const docStreetNum = docStreetMatch?.[1] ?? null;
+      const refNums = so.reference?.match(REF_NUM_PATTERN) ?? null;
+      if (docStreetNum && refNums && refNums.length > 0 && !refNums.includes(docStreetNum)) {
+        confidence -= JOBSITE_NUMBER_PENALTY;
+        reasons.push(`jobsite_num_mismatch:${docStreetNum}!=${refNums.join(',')}`);
       }
 
       if (confidence >= minConfidence) {

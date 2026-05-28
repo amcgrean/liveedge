@@ -47,6 +47,23 @@ All data lives in one Supabase Postgres instance, split into two schemas:
 
 **Never run drizzle-kit against the `public` schema.** `drizzle.config.ts` has `schemaFilter: ['bids']` to enforce this.
 
+### Agent MCP queries against agility-api Supabase — use `reltuples`, not `COUNT(*)`
+
+When an agent (any agent — Claude Code, Codex, future ones) needs row counts on hot tables via the Supabase MCP, **use `pg_class.reltuples`, not unguarded `COUNT(*)`.** The Supabase MCP tags every connection `application_name='mgmt-api'`, so all agent-issued queries land in `pg_stat_statements` under that name and accumulate across sessions.
+
+A single `select count(*) from customer_scorecard_fact` reads the full 6.4 GB heap (~788 ms, ~5.7 MB of buffer reads). Repeated across analytical sessions this evicts the buffer cache used by LiveEdge's `/management` and `/scorecard` page queries — that's what produced the 2026-05-28 timeout incident (~12 hours of accumulated DB time + ~15.5 TB of disk reads across two probe queryids, traced to MCP traffic — see `docs/agent-prompts/mgmt-api-count-probe-fix-2026-05-28.md` for the full attribution).
+
+Hot tables to be careful about: `customer_scorecard_fact`, `agility_so_header`, `agility_so_lines`, `agility_picks`, `agility_shipments`. Pattern:
+
+```sql
+-- Ballpark row count, sub-millisecond, no scan
+SELECT reltuples::bigint
+FROM pg_class
+WHERE oid = 'public.customer_scorecard_fact'::regclass;
+```
+
+Use exact `COUNT(*) WHERE …` only when you actually need a subset count with an indexable predicate. After a heavy analytical session, consider `SELECT pg_stat_statements_reset();` so the next investigation has a clean stat window.
+
 ### ERP Table Layer — agility_* (2026-04-04)
 All LiveEdge API routes now query the optimized `agility_*` tables instead of the old `erp_mirror_*` tables. **Never write new queries against `erp_mirror_*` — use `agility_*`.**
 
@@ -575,6 +592,115 @@ LEFT JOIN (
 ) ar ON ar.cust_key = ac.cust_key
 ```
 
+#### Hubbell within-jobsite reconciler (2026-05-26 → 2026-05-27) — LIVE
+
+Second-generation matcher targeting the ~6,800-doc historical Hubbell backlog the existing `document-matcher.ts` couldn't recover. Lives in `src/lib/hubbell/jobsite-reconciler.ts`. PRs #402–#419.
+
+**Why this exists separate from `document-matcher.ts`:**
+- `document-matcher.ts` filters `agility_so_header` to `so_status NOT IN ('I','C','X')`. For historical Hubbell docs the matching SO is almost always already invoiced (`I`) — the existing matcher excludes the right answer by construction.
+- Address-fuzzy fallback can't recover them because **99.8% of HUBB SOs have NULL `shipto_address_1`** on the header (43,254 / 43,354 in prod). The physical address lives in `agility_customers` and is reached via `(cust_key, shipto_seq_num=seq_num)`.
+
+**Per-jobsite design:** outer loop is one jobsite (one normalized resolved address); inner data is ALL unmatched docs at that jobsite + ALL HUBB SOs at that jobsite **across every status**. Within that small set, the matcher pairs docs to SOs via four signals.
+
+##### Matcher signals & confidence math
+
+| Signal | Source | Weight | Notes |
+|---|---|---|---|
+| A — `po_number_split` | doc# token appears in `agility_so_header.po_number` | **100** (auto-attach) | Buyer-typed, authoritative |
+| S — scope keyword | overlap between extracted line-item descriptions and SO.reference | +30/keyword, cap 80 | Tokenized + stemmed via `SCOPE_KEYWORDS` |
+| T — amount | doc total within 10% of `SUM(extended_price)` | +15 | UOM-correct via the `extended_price` column |
+| D — date | doc need-by within 90d of SO `created_date` | +10 | |
+
+Floor: `minConfidence = 30`. Below floor → suppressed.
+
+##### Tuning rules (each driven by a Codex review-batch pattern)
+
+Documented in the constants block at the top of `jobsite-reconciler.ts`. **All hard-won from real review batches — don't relax without an equivalent data set behind the change.**
+
+1. **Negative reference penalty** (`NEGATIVE_REF_PATTERN` / `NEGATIVE_REF_PENALTY = 30`).
+   SOs whose ref contains `credit | cred | replacement | repl | vpo | added` are partial-scope SOs that almost never match a full doc on scope-only matching. Apply −30 **unless** amount also matches within 10% (then the doc really is for the small partial-scope amount).
+   - Source: first 3 Codex batches consistently rejected `Trim Credit`, `Deck Credit`, `REplacement Trim VPO`, `added trim`.
+2. **Broad keyword half-weight** (`BROAD_SCOPE_KEYWORDS = {frame, lumber}`).
+   These keywords appear in too many unrelated docs to count at full weight on their own.
+   - Full weight (+30) when paired with another non-broad keyword in the overlap.
+   - Half weight (+15) when overlap is broad-only AND the doc is also broad-only (legit framing-pkg ↔ framing-pkg).
+   - **Zero contribution** when overlap is broad-only AND the doc carries a specific keyword like `joist` — the doc is about something specific the SO doesn't share, so "frame ↔ frame" is incidental.
+   - Source: floor-joist WO ↔ "Roof Framing" SO false positives.
+3. **Parent → sub-component demote** (`PARENT_TO_SUBS = {door: [hardware, lock], window: [screen]}`).
+   When the doc's line items carry a sub-component keyword that the candidate's overlap doesn't include, but the overlap contains a parent of that sub-component, the parent token contributes 0.
+   - Catches "Door Hardware Set" doc ↔ "ext door" SO false positives.
+   - Source: 4+ Codex batches flagged the same trap.
+4. **Cancelled-SO penalty** (`CANCELLED_SO_STATUSES = {C, X}`, −25).
+   Applies to **all** match sources including Signal A (the demotion sits AFTER the Signal A guard — Codex P1 #411). Live data showed 0/33 accepted for C-status candidates across the queue's lifetime.
+5. **Jobsite-number mismatch** (`JOBSITE_NUMBER_PENALTY = 20`).
+   Parses leading street number from doc's `extracted_address` and ALL 3+ digit tokens from `so.reference`. If the doc's street # doesn't appear in any of the ref's tokens, −20.
+   - Catches "Trim load #9124" SO for doc at "9108 Robinson Dr" — duplex/cluster neighbor wrong match.
+   - Multi-number refs ("Doors #9124 9132") are correctly handled.
+
+##### R2 keying bug (2026-05-26) — root cause + fix
+
+The Pi uploader keyed R2 by `(doc_type, doc_number)` only. When Hubbell reused a doc number for a different job (measured at 378 occurrences in prod), the second upload **silently overwrote** the prior PDF. The older `hubbell_documents` row retained its correct original metadata but its `r2_key` now resolved to a different PDF — reviewers saw a PDF that didn't match the suggestion's reasoning.
+
+**PR #407 fix:** `buildHubbellKey` appends the first 12 hex chars of `source_hash` to the key. Each unique PDF body lands on a distinct R2 object; identical re-uploads are idempotent because they share a hash. Pre-2026-05-27 rows still use the un-suffixed key shape and remain readable on the old keys.
+
+```
+Old: hubbell/2026/wo/768.pdf
+New: hubbell/2026/wo/768-a20c5d652921.pdf
+```
+
+##### Supersession skip (post-fix gate for backlog)
+
+`fetchJobsiteData()` and `listJobsiteQueue()` skip any doc where a **later** row exists at the same `r2_key` with a different `source_hash` AND **different metadata** across the four matcher inputs (`extracted_address`, `extracted_total`, `extracted_need_by`, `line_items`). Codex P2 #409 caught the original predicate missing `line_items`/`need_by`.
+
+Tie-break on equal `received_at` via `(received_at, id) > (d.received_at, d.id)` — Codex P1 #405 caught the silent leak under batched same-`now()` inserts.
+
+Stale-**identical** rows (later sibling with same metadata, just byte-drift in re-extraction) are NOT skipped — their R2 file still describes the same job they expect, so the matcher can use them. Pre-tightening (#405 only) over-filtered ~1,000 of these.
+
+##### Backfill recovery flow
+
+`POST /api/admin/hubbell/backfill { document_id, pdf }` — bearer-auth endpoint. Re-verifies `sha256(bytes) == row.source_hash`, writes the bytes to R2 under the new hashed key (PR #407 shape), updates `r2_key` on the row. Idempotent.
+
+`scripts/hubbell-restore-pdfs.ts` — local Node script. Pulls stale-divergent rows via direct postgres connection, walks the local Hubbell cache at `C:\Users\amcgrean\python\hubbell test\` (`HUBBELL_LOCAL_CACHE` env override), sha256-indexes ~7K PDFs in seconds, POSTs matches to the backfill endpoint. Flags: `--dry-run`, `--limit N`, `--concurrency N`.
+
+**Prod recovery results (2026-05-26):** 290 of 378 stale-divergent rows restored (77%) from local cache. The remaining 86 are pre-cache historicals — a one-off Hubbell portal re-scrape is handed off via `docs/agent-prompts/hubbell-stale-divergent-rescrape-2026-05-27.md` + CSV target list.
+
+##### Coverage trajectory & accept-rate trend
+
+Doc backlog reachability (out of 6,813 unmatched at start):
+
+| Filter | Reachable jobsites | Reachable docs | % |
+|---|---|---|---|
+| Old matcher (header shipto, open-only) | 35 | 345 | 5% |
+| + `agility_customers` cust_key resolution | 314 | 3,943 | 58% |
+| + USPS suffix table + duplex `(,&-)` expansion | 520 | 6,447 | 94.6% |
+| + directional-suffix fallback (matcher layer) | — | 6,527 | 95.8% |
+
+Cumulative Codex review accept rate after 14 batches (167 accepted / 62 rejected = 73%). Per-batch trend showing the tuning land:
+
+```
+45 → 38 → 47 → 62 → 91 → 72 → 93 → 87 → 100 → 87 → 93 → 94 → 100 → 100 → 100
+```
+
+##### Operational learnings (worth re-using elsewhere)
+
+1. **Tuning rules don't retroactively re-score pending candidates.** Every time a new rule lands, do a targeted DB wipe of the pending candidates the rule would now suppress. SQL pattern matches the rule's logic:
+   ```sql
+   DELETE FROM bids.hubbell_document_suggestions
+   WHERE match_source='jobsite_reconcile' AND status='pending'
+     AND <rule's filter predicate>
+   ```
+   Doing this kept Codex from re-swatting the same false positives across batches. Cleanup counts so far: 748 pre-tuning credit/VPO + 41 stale-divergent + 234 door-hardware + 31 + 24 C-status + 282 jobsite-number = ~1,400 noise candidates wiped operationally.
+2. **Codex's CLI caches packets locally.** When you DB-wipe in the middle of a batch, the packets Codex pulled before the wipe still apply correctly (the suggestion IDs exist as soft-deleted rows or get harmlessly missed). The wipe only affects the *next* `pull`.
+3. **Reviewer feedback loop converts noise to rules at ~1 rule per 2-3 batches.** Each rule reduces review burden by 5–20% of subsequent batches. The compound effect is the trend above.
+4. **Codex P-comments on PRs catch real bugs in this work** (cancelled-SO inside Signal A guard, missing tie-break, incomplete divergence check). Run the Codex reviewer on every reconciler PR — the matcher's logic is subtle enough that even careful tuning misses edge cases.
+
+##### Recurring "this is real revenue, not noise" examples Codex worked through
+
+- **"Dunnage Doors"** — sounds like packing lumber, but in Hubbell context means rough-opening door material. Accept when amount + scope corroborate.
+- **"Replace damaged bypass door" VPO** — the `replacement` keyword triggers the `neg_ref` penalty, but it's waived when amount matches → correctly surfaces and gets accepted.
+- **Unit-numbered trim refs** (`Trim load #6519` vs `#6529`) — the matcher's jobsite-number-mismatch rule auto-rejects neighbor mismatches.
+- **Status I vs C duplicates at same jobsite** — the cancelled-SO penalty auto-rejects C; I surfaces normally.
+
 #### AR / Agility API Cleanup (2026-04-17) — COMPLETE
 Branch: `claude/review-customer-route-api-jVgJG`
 
@@ -851,7 +977,7 @@ The `/management/forecast` page now has UOM-correct $ and clickable drill-throug
 
 #### App Performance Audit (2026-05-26) — PRs #386 + #387 MERGED
 
-Three-Explore-agent audit on `claude/app-performance-issues-Hgx9B`. Plan in `/root/.claude/plans/how-does-our-app-floating-hedgehog.md`. Three small fix PRs landed; PR 4 (virtualization + DispatchClient slice) was dropped on inspection (see "deferred" below).
+Three-Explore-agent audit on `claude/app-performance-issues-Hgx9B`. Plan in `/root/.claude/plans/how-does-our-app-floating-hedgehog.md`. Three fix PRs landed in the original audit; two more follow-up PRs landed 2026-05-27 (see "Landed 2026-05-27" below).
 
 **Landed in PR #386:**
 - **ERP-read caching on the hot paths.** Two new modules wrap `agility_*` reads in `erpCache()`:
@@ -873,18 +999,62 @@ Three-Explore-agent audit on `claude/app-performance-issues-Hgx9B`. Plan in `/ro
 - The Hubbell `needs-extraction` "N+1 R2 fetches" is `getPresignedUrl()` local SDK signing with no network round-trip, wrapped in `Promise.all`. Not a perf concern at any reasonable batch size.
 - `/api/credits` LATERAL + GROUP BY is real but already indexed by `db/migrations/0014_credits_performance_indexes.sql`. Don't touch unless `EXPLAIN ANALYZE` says otherwise.
 
+**Landed 2026-05-27 (follow-up PRs):**
+- **PR #406 — `DispatchClient.tsx` presentational extraction.** `PodPhotoViewer` → `src/components/dispatch/PodPhotoViewer.tsx`; `StopTimeline` → `src/components/dispatch/StopTimeline.tsx`. All state, fetching, and `useEffect` logic stayed in `DetailPanel`. Pure prop-driven renderers extracted. −79 lines in DispatchClient.tsx.
+- **PR #401 — UOM `extended_price` on order-detail routes.** Fixed `qty_ordered * price` overstatement (10–100× on lumber lines) in `/api/sales/orders/[so_number]/route.ts`, `/api/dispatch/orders/[so_number]/lines/route.ts`, `/api/warehouse/orders/[so_number]/route.ts`. Client-side `lineTotal` math in both `OrderDetailClient.tsx` files also updated.
+- **PR #420 — ERP cache audit.** Wrapped `fetchSalesReports` (`src/lib/sales/reports-query.ts`), `fetchDeliveryReport` (`src/lib/ops/delivery-reporting-query.ts`), and new `fetchPickerStats` (`src/lib/warehouse/picker-stats-query.ts`) in `erpCache()`. Routes deliberately NOT cached (real-time operational data): `/api/dispatch/init`, `/kpis`, `/deliveries`, `/api/supervisor/pickers`, `/api/work-orders/open`, `/api/warehouse/stats`.
+
 **Deferred / dropped (with rationale — don't reopen speculatively):**
-- **Virtualization on `JobsClient` + `TransactionsClient`** — DROPPED. Both already paginate server-side at 50 rows (`JobsClient.tsx:164`, `TransactionsClient.tsx:106`). 50 `<tr>` elements is well below where the DOM cost matters; `@tanstack/react-virtual` would have added bundle weight for no real-world win. Reopen only if page-size ever climbs above ~150.
-- **`DispatchClient.tsx` slice extraction** (2480 LOC, 7 chained `useEffect`s) — deferred. Behavior-preserving refactor across a god file with zero tests and no paired user-visible perf win that justifies the regression risk. Will need its own dedicated PR with manual smoke verification when tackled. Same logic applies to `ForecastClient.tsx` (1096), `TakeoffCanvas.tsx` (988 — has an active bug-fix branch already), `ManageBidClient.tsx` (972), `TopNav.tsx` (956).
-- **`<Suspense>` on `forecast` / `sales/reports` / `ops/delivery-reporting`** — NOT APPLICABLE. Each `page.tsx` just renders a `'use client'` component that manages its own loading state; there's no server-side fetch to suspend. The Explore agent's audit didn't distinguish between server-fetched and client-fetched routes.
-- **`next/image` migration** — deferred. Requires `images.remotePatterns` for the R2 host(s) in `next.config.js` and careful handling of presigned-URL query-string rotation (cache-key churn). Lazy-load attrs landed instead; revisit only if photo galleries grow much larger than the current 4–20 thumbnails per stop/submission.
-- **Per-domain `revalidateTag` taxonomy** — deferred. Only one tag (`'erp'`) and three invalidation sites (all in `app/management/rebates/actions.ts`). Splitting tags (e.g. `erp:scorecard`, `erp:sales-hub`, `erp:home`) would let bid/design/service mutations invalidate the hub cache surgically instead of waiting for the 5-min TTL. Build only when a real "stale dashboard after my own write" complaint surfaces.
-- **Composite index audit on `agility_so_header(system_id, so_status, sale_type)`** — deferred. The query patterns in `/api/home` + `/api/sales/hub` filter heavily on these three columns, but `0013_erp_performance_indexes.sql` and `0016_scorecard_management_indexes.sql` likely already cover. Don't add a migration speculatively — run `EXPLAIN ANALYZE` on the actual slow query first.
+- **Virtualization on `JobsClient` + `TransactionsClient`** — DROPPED. Both already paginate server-side at 50 rows. 50 `<tr>` elements is well below where the DOM cost matters; `@tanstack/react-virtual` would add bundle weight for no real-world win. Reopen only if page-size ever climbs above ~150.
+- **`<Suspense>` on `forecast` / `sales/reports` / `ops/delivery-reporting`** — NOT APPLICABLE. Each `page.tsx` renders a `'use client'` component that manages its own loading state; no server-side fetch to suspend.
+- **`next/image` migration** — deferred. Requires `images.remotePatterns` for the R2 host(s) in `next.config.js` + careful presigned-URL query-string rotation handling. Lazy-load attrs (PR #386) get most of the win; revisit only if photo galleries grow past ~20 thumbnails.
+- **Per-domain `revalidateTag` taxonomy** — deferred. Only one tag (`'erp'`), three invalidation sites (all in `app/management/rebates/actions.ts`). Build only when a real "stale dashboard after my own write" complaint surfaces.
+- **Composite index audit on `agility_so_header(system_id, so_status, sale_type)`** — deferred. Likely already covered by `0013_erp_performance_indexes.sql` + `0016_scorecard_management_indexes.sql`. Run `EXPLAIN ANALYZE` before adding anything.
+- **`ForecastClient.tsx` (1096 LOC), `ManageBidClient.tsx` (972), `TopNav.tsx` (956) god-file splits** — deferred until a feature change forces a touch. Skip `TakeoffCanvas.tsx` (988) — has an active bug-fix branch.
 
 **Pattern reminders for future ERP-route refactors:**
 - New `/api/*` routes that read `agility_*` for non-mutating dashboard purposes should default to wrapping the query function in `erpCache()` keyed on every input that affects the result (branch, rep, date range).
 - Always partition cache keys on per-user scoping inputs. Two reps hitting `/api/sales/hub` must NOT share a cached payload.
 - The Codex P2 lesson: never put `.catch(() => fallback)` inside an `erpCache`-wrapped function — let it throw, apply the fallback at the call site.
+
+#### Dispatch route-completion alerts (2026-05-27 → 2026-05-28) — LIVE
+
+Email + SMS alert fires the moment a dispatch route's final stop is delivered, so dispatch can pre-stage the next load instead of catching it from a board refresh. Two trigger paths share one recipient table, one Resend/Twilio integration, and one audit log:
+
+| Source | Trigger | Hook |
+|---|---|---|
+| `liveedge` | `dispatch_route_stops.status` flips to `'delivered'` / `'skipped'` via the dispatch board | `POST /api/dispatch/orders/[so_number]/deliver` calls `notifyRouteCompletedIfLastStop()` after the UPDATE — PR #418 |
+| `agility` | Every shipment in an Agility `(system_id, ship_date, route_id_char, driver)` group flips `status_flag_delivery='D'` | Pi-side `agility_api/dispatch_completion.py::reconcile_completed_routes()` POSTs to `/api/dispatch/agility-route-complete` after each `agility_shipments` sync — PR #426 |
+
+The Agility path is what's actually in use today — dispatchers build routes in the **old POD system**, not the LiveEdge dispatch board, so `public.dispatch_route_stops` is empty/stale and the LiveEdge-source trigger never fires for real loads. The LiveEdge path exists for when/if dispatch starts using the LiveEdge board.
+
+**Recipients per branch** at `/admin/dispatch-alerts` (`admin.config.manage` capability). One row = one person/phone/inbox, with independent email + SMS toggles. Test-send button per row fires a sample alert without waiting for a real route.
+
+**Schema (bids):**
+- `dispatch_alert_recipients` (migration 0033) — `branch_code`, `name`, `email`, `phone_e164`, `notify_email`, `notify_sms`, `is_active`. CHECK constraint requires email present when email channel is on, phone present when SMS is on.
+- `dispatch_route_completion_log` (migration 0033 + 0034) — one row per send attempt. Columns: `route_source` ('liveedge' | 'agility'), LiveEdge identity (`route_id`), Agility identity (`system_id`, `agility_route_code`, `agility_ship_date`, `shipment_count`), `recipient_id`, `channel`, `status` ('sent' | 'failed' | 'skipped_console'), `provider_message_id`, `error`. Migration 0034 made `route_id` nullable and added a CHECK that enforces "one source identity must be present".
+
+**Dedupe** is purely audit-log lookup, no unique constraint:
+- LiveEdge source: `WHERE route_source='liveedge' AND route_id=$1`
+- Agility source: `WHERE route_source='agility' AND system_id=$1 AND agility_ship_date=$2 AND COALESCE(agility_route_code,'')=COALESCE($3,'') AND COALESCE(driver_name,'')=COALESCE($4,'')`
+
+Skip when any prior row for `(recipient_id, channel)` is `'sent'` or `'skipped_console'`. `'failed'` rows are retried on the next call. The Pi pre-checks the same tuple before POSTing to avoid unnecessary round-trips; LiveEdge double-checks server-side as belt-and-suspenders.
+
+**Env vars (Vercel):**
+- `RESEND_API_KEY` — reused from auth.
+- `TWILIO_ACCOUNT_SID` / `TWILIO_AUTH_TOKEN` / `TWILIO_FROM_NUMBER` — bring-your-own Twilio account, E.164 sender.
+- `DISPATCH_ALERTS_EMAIL_FROM` — defaults to `'LiveEdge Dispatch <noreply@app.beisser.cloud>'`.
+- `DISPATCH_ALERTS_CONSOLE=true` — dev fallback that logs payloads to server console instead of sending. Mirrors `AUTH_OTP_CONSOLE` / `REPORTS_EMAIL_CONSOLE`.
+- `DISPATCH_SYNC_TOKEN` — bearer for `/api/dispatch/agility-route-complete`. Matches `LIVEEDGE_DISPATCH_SYNC_TOKEN` in the Pi `.env`.
+
+**Pi-side handoff doc:** `docs/agent-prompts/dispatch-agility-route-completion-pi.md` — the brief used to wire up `agility_api/dispatch_completion.py`. Reference for future Pi-coupled features.
+
+**Pi topology (verified 2026-05-28 during the dispatch reconciler deploy — capture so future Pi-coupled features don't repeat the discovery):**
+- Env file: `/home/api/beisser-api/.env`
+- Worker: systemd `agility-api-sync.service` → `run_repo_worker.sh` → `python3 -m agility_api.worker --agility --exclude-family document`
+- Autodeploy: `scripts/pi_autodeploy.sh` via `api-user` cron `* * * * *`, hard-resets `/home/api/beisser-api` to `origin/pi` and restarts the worker
+- Deploy primitive: **moving `origin/pi` IS the deploy.** Worker restart is implicit. `systemctl restart` is unnecessary.
+- Branch tracking: `origin/pi` typically follows `main`. **Do not point `origin/pi` at a feature branch SHA** — the next autodeploy cycle would advance it and we'd lose track of what's deployed. Merge to main first, then `origin/pi` follows.
 
 #### Still Missing / Deferred
 - **WH-Tracker kiosk/TV/smart scan**: not appropriate for LiveEdge web app pattern — intentionally deferred
@@ -953,18 +1123,13 @@ Snapshot of unmerged `claude/*` and `codex/*` branches with a hint about whether
 6. **Flask sunset**: DNS cutover + archive `C:\Users\amcgrean\python\wh-tracker-fly\WH-Tracker` after user testing confirms parity
 7. **County parcel loaders — MOVED TO PI (2026-05-20)**: Polk + Dallas now loaded on the Pi (see "Geocoding Pipeline" section above). Remaining: **Johnson County** loader — REST at `https://gis.johnsoncountyiowa.gov/arcgis/rest/services/LandRecords/Land_Records/MapServer` (layers 4 + 9), same template as Polk. Expected uplift ~560 customers. Owner: **Pi agent** (`C:\Users\amcgrean\python\api`). The TS loaders in `scripts/load-*.ts` are inert reference only; build the Python version in beisser-api's `scripts/`.
 8. **4th-tier fuzzy matcher (highest single-uplift remaining)**: Add a fuzzy fallback to `agility_api/geocoder_sqlite.py` that strips leading/trailing directionals from `street_norm` and retries the city/zip lookup. Tag as `sqlite_fuzzy_dir` so the relaxation is visible in `geocode_source`. Keep it gated on city OR zip-3 corroboration to avoid re-introducing the wild-misplacement bug. Expected uplift: ~1,500–2,500 rows currently blocked on direction-prefix mismatches (e.g. customer "613 Grimes St" vs atlas "613 E Grimes St").
-10. **Audit other `qty_ordered * price` usages and swap to `extended_price`** (2026-05-14): `/management/forecast` is fixed but the same UOM bug affects every other place that aggregates SO line $. Known offenders to grep + fix:
-    - `app/api/sales/orders/[so_number]/route.ts` — Ext column on the order detail page (user-confirmed broken: SO 1480288 line 3 shows $15,960 vs Agility's $85.11)
-    - `app/api/dispatch/orders/[so_number]/lines/route.ts` — same shape
-    - `app/api/warehouse/orders/[so_number]/route.ts` — same shape
-    - Any Sales hub / Purchasing dashboard that sums open SO line $
-    - Pattern: replace `qty_ordered * price` with `extended_price`, and `(qty_ordered - COALESCE(qty_shipped,0)) * price` with `unshipped_extended_price`. Both columns are already on the table; no schema work needed.
+10. ~~**Audit other `qty_ordered * price` usages and swap to `extended_price`**~~ — DONE (2026-05-27). All three confirmed-broken routes fixed: `app/api/sales/orders/[so_number]/route.ts`, `app/api/dispatch/orders/[so_number]/lines/route.ts`, `app/api/warehouse/orders/[so_number]/route.ts`. Both server-side SQL SELECTs and client-side `lineTotal` math updated. Spot-check against Agility "Ext" column to verify.
 11. **Hubbell daily check ingest** (Phase 3a/b/d LIVE 2026-05-21): Migration 0026 applied. Server-side write endpoints (`POST /api/admin/hubbell/checks/upload`, rewritten `/payments/import`) and read endpoints (`GET /api/hubbell/docs`, `GET /api/hubbell/checks`) all live. Phase 3c (Pi `hubbell_daily_checks.py` scraper) is owned by the PC/test agent — needs to be built and deployed to `/home/api/hubbell/` on the Pi. Phase 3e (`ALTER SCHEMA bids.hubbell_* → hubbell`) deferred until PC scripts retire. See the Hubbell PO/WO Daily Ingest section above for full detail.
 12. ~~**Apply 0027_report_subscriptions migration**~~ — DONE (2026-05-22). `bids.report_subscriptions` + `bids.report_subscription_log` are live. Hourly `/api/cron/report-subscriptions` cron is now sweeping. See "Report Email Subscriptions" section below.
-13. **Perf — god-file splits (deferred from PR #386)**: `DispatchClient.tsx` (2480 LOC, 7 chained `useEffect`s) is the highest-leverage refactor — extract `PodPhotoViewer` and `StopTimeline` into `app/dispatch/_components/`. Behavior-preserving, no perf-test cover available, so verify manually with a stop that has POD photos + timeline. `ForecastClient.tsx` (1096), `ManageBidClient.tsx` (972), `TopNav.tsx` (956) are lower priority — only touch if forced by a feature change. Skip `TakeoffCanvas.tsx` (988) — it has an active bug-fix branch (`claude/debug-taokeoff-errors-NngpH`).
-14. **Perf — cache audit on remaining ERP routes**: PR #386 only wrapped `/api/home` and `/api/sales/hub`. Other high-traffic ERP-read routes that should likely follow the same pattern (extract query into `src/lib/<domain>/queries.ts`, wrap with `erpCache()` keyed on every per-user input): scan all `app/api/**/route.ts` files that call `getErpSql()` / `getErpDb()` and aren't already using `erpCache`. Likely candidates: `/api/dispatch/*`, `/api/warehouse/*`, `/api/work-orders/*`, `/api/supervisor/*`. Don't blanket-cache mutation-adjacent endpoints — confirm read-only first.
+13. ~~**Perf — god-file splits (deferred from PR #386)**~~ — DONE (2026-05-27). `PodPhotoViewer` extracted to `src/components/dispatch/PodPhotoViewer.tsx` and `StopTimeline` to `src/components/dispatch/StopTimeline.tsx`. `DispatchClient.tsx` calls both via props. No state or fetching logic moved — pure presentational extraction. `ForecastClient.tsx` (1096), `ManageBidClient.tsx` (972), `TopNav.tsx` (956) still lower priority — only touch if forced by a feature change. Skip `TakeoffCanvas.tsx` (988) — it has an active bug-fix branch.
+14. ~~**Perf — cache audit on remaining ERP routes**~~ — DONE (2026-05-27). Full audit of all `getErpSql()` / `getErpDb()` callers completed. **Wrapped in `erpCache`**: `fetchSalesReports` (`src/lib/sales/reports-query.ts`), `fetchDeliveryReport` (`src/lib/ops/delivery-reporting-query.ts`), `fetchPickerStats` (new `src/lib/warehouse/picker-stats-query.ts`). **Deliberately NOT cached** (real-time operational data that refreshes every 30–60s): `/api/dispatch/init` (route/stop/truck assignments change as dispatchers manage the board), `/api/dispatch/kpis` (same), `/api/dispatch/deliveries` (driver stop status changes as deliveries happen), `/api/supervisor/pickers` (30s refresh, real-time picker status), `/api/work-orders/open` (assignment status changes in real-time), `/api/warehouse/stats` (warehouse board 60s refresh, open pick counts). Don't reopen unless a confirmed performance complaint surfaces on one of those routes.
 15. **Perf — `revalidateTag` taxonomy**: split the single `'erp'` tag into per-domain tags (`erp:scorecard`, `erp:home`, `erp:sales-hub`, etc.) once a real "stale dashboard after my own write" complaint surfaces. Currently three invalidation call sites, all in `app/management/rebates/actions.ts`. Adding finer tags lets bid/design/service mutations invalidate just the affected cache instead of nuking everything. Don't build speculatively.
-16. **Perf — UOM `$` audit (consolidates with item 10)**: PR #386 didn't touch the `qty_ordered * price` math; item 10 still tracks. Specific files confirmed as still using the broken math: `/api/sales/orders/[so_number]/route.ts`, `/api/dispatch/orders/[so_number]/lines/route.ts`, `/api/warehouse/orders/[so_number]/route.ts`. Pattern: swap to `extended_price` / `unshipped_extended_price` on `agility_so_lines` (columns already exist). Spot-check the order-detail page against Agility's "Ext" column to confirm parity.
+16. ~~**Perf — UOM `$` audit (consolidates with item 10)**~~ — DONE (2026-05-27, same PR as item 10).
 17. **Replenishment follow-ups** (2026-05-26): all 7 phases of the buyer-workspace plan shipped. Four follow-ups intentionally deferred and documented at `docs/agent-prompts/replenishment-handoff-2026-05-26.md` in leverage order: (a) daily engine-output snapshot table → unlocks sparklines + delta-since-yesterday on workspace hero tiles, (b) per-row unit cost on engine output → unlocks `estimatedValue` + supplier $ rollup on Buy Now tile, (c) `qty_on_hand` sync health investigation (operational, not code — 16/1366 stocked items at 20GR had positive QOH at build time), (d) item scorecard Replenishment card surfacing live engine output alongside override state. **Don't build speculatively** — wait for a real complaint after the user spends time with the live system.
 
 ## Buyer Workspace & Replenishment Engine (2026-05-22 → 2026-05-26)

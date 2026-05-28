@@ -740,6 +740,74 @@ export const movementNotes = bidsSchema.table(
 );
 
 // ============================================================
+// DISPATCH ROUTE-COMPLETION ALERTS
+// ============================================================
+// Configurable recipients per branch + send log for the alert that fires
+// when a driver finishes the final stop on a dispatch route. Hook lives in
+// app/api/dispatch/orders/[so_number]/deliver/route.ts; orchestrator in
+// src/lib/dispatch/route-completion.ts. See migration 0033.
+export const dispatchAlertRecipients = bidsSchema.table(
+  'dispatch_alert_recipients',
+  {
+    id:            uuid('id').primaryKey().defaultRandom(),
+    // Matches public.dispatch_routes.branch_code: '10FD'|'20GR'|'25BW'|'40CV'.
+    branchCode:    text('branch_code').notNull(),
+    name:          text('name').notNull(),
+    email:         text('email'),
+    // E.164 e.g. '+15155550123'.
+    phoneE164:     text('phone_e164'),
+    notifyEmail:   boolean('notify_email').notNull().default(true),
+    notifySms:     boolean('notify_sms').notNull().default(false),
+    isActive:      boolean('is_active').notNull().default(true),
+    createdAt:     timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt:     timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    index('dispatch_alert_recipients_branch_idx').on(table.branchCode, table.isActive),
+  ],
+);
+
+export const dispatchRouteCompletionLog = bidsSchema.table(
+  'dispatch_route_completion_log',
+  {
+    id:                 uuid('id').primaryKey().defaultRandom(),
+    // 'liveedge' = sourced from app/api/dispatch/orders/[so_number]/deliver
+    // 'agility'  = sourced from the Pi-side reconciler POSTing to
+    //              /api/dispatch/agility-route-complete
+    routeSource:        text('route_source').notNull().default('liveedge'),
+    // public.dispatch_routes.id — set when routeSource='liveedge', NULL otherwise.
+    routeId:            integer('route_id'),
+    branchCode:         text('branch_code').notNull(),
+    driverName:         text('driver_name'),
+    routeName:          text('route_name'),
+    completedSoNumber:  text('completed_so_number'),
+    completedAt:        timestamp('completed_at', { withTimezone: true }).notNull().defaultNow(),
+    // Agility-source columns (NULL when routeSource='liveedge').
+    systemId:           text('system_id'),
+    agilityRouteCode:   text('agility_route_code'),
+    agilityShipDate:    date('agility_ship_date'),
+    shipmentCount:      integer('shipment_count'),
+    recipientId:        uuid('recipient_id').references(() => dispatchAlertRecipients.id, { onDelete: 'set null' }),
+    recipientLabel:     text('recipient_label'),
+    channel:            text('channel').notNull(),      // 'email' | 'sms'
+    status:             text('status').notNull(),       // 'sent' | 'failed' | 'skipped_console'
+    error:              text('error'),
+    providerMessageId:  text('provider_message_id'),
+    sentAt:             timestamp('sent_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    index('dispatch_route_completion_log_recent_idx').on(table.sentAt),
+    index('dispatch_route_completion_log_route_idx').on(table.routeId, table.channel, table.status),
+    index('dispatch_route_completion_log_agility_idx').on(
+      table.systemId,
+      table.agilityShipDate,
+      table.agilityRouteCode,
+      table.driverName,
+    ),
+  ],
+);
+
+// ============================================================
 // RELATIONS
 // ============================================================
 export const bidsRelations = relations(bids, ({ one, many }) => ({
@@ -879,3 +947,7 @@ export type ItemPlanning = typeof itemPlanning.$inferSelect;
 export type NewItemPlanning = typeof itemPlanning.$inferInsert;
 export type MovementNote = typeof movementNotes.$inferSelect;
 export type NewMovementNote = typeof movementNotes.$inferInsert;
+export type DispatchAlertRecipient = typeof dispatchAlertRecipients.$inferSelect;
+export type NewDispatchAlertRecipient = typeof dispatchAlertRecipients.$inferInsert;
+export type DispatchRouteCompletionLog = typeof dispatchRouteCompletionLog.$inferSelect;
+export type NewDispatchRouteCompletionLog = typeof dispatchRouteCompletionLog.$inferInsert;

@@ -49,3 +49,20 @@ export function verifyHubbellUploadToken(req: NextRequest): NextResponse | null 
 
   return null;
 }
+
+// Bearer-token guard for the Pi-side dispatch reconciler →
+// /api/dispatch/agility-route-complete. Separate env var so the dispatch
+// sync can be rotated independently of Hubbell.
+export function verifyDispatchSyncToken(req: NextRequest): NextResponse | null {
+  const expected = process.env.DISPATCH_SYNC_TOKEN;
+  if (!expected) {
+    return NextResponse.json({ error: 'DISPATCH_SYNC_TOKEN not configured' }, { status: 500 });
+  }
+
+  const authHeader = req.headers.get('authorization');
+  if (authHeader !== `Bearer ${expected}`) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  }
+
+  return null;
+}
