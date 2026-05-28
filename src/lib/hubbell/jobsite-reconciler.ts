@@ -115,18 +115,28 @@ const PARENT_TO_SUBS: Record<string, readonly string[]> = {
   window: ['screen'],
 };
 
-// Door-subtype mismatch. SO references that specify a different door subtype
-// than the doc's line items are wrong-scope matches even when generic `door`
-// overlaps. Generalized 2026-05-28 from the narrow patio-only rule to a
-// symmetric subtype family match after Codex's Thorton Drive cluster
-// surfaced multiple "Exterior Doors" docs matched to "int. doors" / "Door
-// correction" SOs.
+// Door-subtype mismatch — two-tier model:
 //
-// Subtype families. Raw token (with optional trailing period) → canonical
-// subtype. Aliases collapse to the same family so "ext door" SO ↔ "Exterior
-// Doors" doc both resolve to {exterior} and match correctly.
+//   HARD subtypes (patio, scuttle): narrowly specific. SO ref has the
+//     keyword AND the doc doesn't share it → demote, regardless of whether
+//     the doc has any other subtype info. A doc that doesn't mention
+//     `patio` or `scuttle` is almost never patio/scuttle by accident.
+//
+//   FAMILY subtypes (interior, exterior): symmetric. BOTH sides have a
+//     subtype AND they don't share → demote. One-sided cases (one side has
+//     a subtype, other is generic) don't demote because generic refs match
+//     anything.
+//
+// History:
+//   PR #423 — narrow patio-only asymmetric rule
+//   PR #430 — generalized to interior/exterior family match (symmetric)
+//   PR #432 (this) — split into HARD + FAMILY tiers + add `scuttle` after
+//     Codex flagged Scuttle Doors SOs matching full-scope door packets
+const DOOR_SUBTYPE_HARD: Record<string, string> = {
+  patio:   'patio',
+  scuttle: 'scuttle',
+};
 const DOOR_SUBTYPE_FAMILY: Record<string, string> = {
-  patio:    'patio',
   ext:      'exterior',
   exterior: 'exterior',
   int:      'interior',
@@ -136,13 +146,14 @@ const DOOR_SUBTYPE_FAMILY: Record<string, string> = {
 // door material; correctly matches interior-doors POs — Codex consistently
 // accepts these).
 
-function extractDoorSubtypes(text: string | null | undefined): Set<string> {
-  if (!text) return new Set();
+function extractSubtypesFromMap(
+  text: string,
+  map: Record<string, string>,
+): Set<string> {
   const lower = text.toLowerCase();
   const out = new Set<string>();
-  for (const [raw, canonical] of Object.entries(DOOR_SUBTYPE_FAMILY)) {
-    // Accept `ext`, `ext.`, `int`, `int.`, `interior`, `exterior`, `patio` —
-    // optional trailing period to handle abbreviated forms.
+  for (const [raw, canonical] of Object.entries(map)) {
+    // Accept abbreviated forms with optional trailing period: ext., int.
     const re = new RegExp(`\\b${raw}\\.?\\b`);
     if (re.test(lower)) out.add(canonical);
   }
@@ -150,16 +161,28 @@ function extractDoorSubtypes(text: string | null | undefined): Set<string> {
 }
 
 // Returns a string describing the mismatch (for the audit reason), or null
-// if no mismatch. Mismatch fires when both sides specify a subtype AND they
-// share NO common subtype. One-sided cases (doc has subtype, SO doesn't or
-// vice versa) don't demote — generic refs match anything.
+// if no mismatch. HARD tier checks first (asymmetric), then FAMILY tier
+// (symmetric). Returns on first mismatch — the audit reason is informative
+// but not a complete list of all mismatches found.
 function hasDoorSubtypeMismatch(docText: string, refText: string | null | undefined): string | null {
   if (!refText) return null;
-  const docSubtypes = extractDoorSubtypes(docText);
-  const refSubtypes = extractDoorSubtypes(refText);
-  if (docSubtypes.size === 0 || refSubtypes.size === 0) return null;
-  for (const s of refSubtypes) if (docSubtypes.has(s)) return null;
-  return `${[...docSubtypes].sort().join(',')}!=${[...refSubtypes].sort().join(',')}`;
+
+  // HARD tier — SO has subtype, doc doesn't share it.
+  const refHard = extractSubtypesFromMap(refText, DOOR_SUBTYPE_HARD);
+  if (refHard.size > 0) {
+    const docHard = extractSubtypesFromMap(docText, DOOR_SUBTYPE_HARD);
+    for (const s of refHard) {
+      if (!docHard.has(s)) return `hard:${s}`;
+    }
+  }
+
+  // FAMILY tier — both sides have a subtype, no overlap.
+  const refFamily = extractSubtypesFromMap(refText, DOOR_SUBTYPE_FAMILY);
+  if (refFamily.size === 0) return null;
+  const docFamily = extractSubtypesFromMap(docText, DOOR_SUBTYPE_FAMILY);
+  if (docFamily.size === 0) return null;
+  for (const s of refFamily) if (docFamily.has(s)) return null;
+  return `${[...docFamily].sort().join(',')}!=${[...refFamily].sort().join(',')}`;
 }
 
 // Stem any scope keyword to its singular root for comparison
