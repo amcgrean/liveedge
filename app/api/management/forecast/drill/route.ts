@@ -101,13 +101,18 @@ export async function GET(req: NextRequest) {
         soh.system_id,
         soh.so_status,
         soh.sale_type,
-        soh.cust_name,
+        COALESCE(NULLIF(TRIM(soh.cust_name), ''), ac.cust_name) AS cust_name,
         soh.cust_code,
         soh.rep_1,
         soh.expect_date::text AS expect_date,
         COALESCE(v.ordered_value, 0)::text   AS ordered_value,
         COALESCE(v.unshipped_value, 0)::text AS unshipped_value
       FROM agility_so_header soh
+      LEFT JOIN LATERAL (
+        SELECT cust_name FROM agility_customers
+        WHERE cust_key = soh.cust_key AND is_deleted = false
+        LIMIT 1
+      ) ac ON true
       LEFT JOIN (
         SELECT system_id, so_id,
           SUM(extended_price)           AS ordered_value,

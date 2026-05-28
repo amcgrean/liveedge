@@ -61,33 +61,49 @@ async function _fetchSalesReports(params: SalesReportsQueryParams): Promise<Sale
     };
   };
 
+  // NOTE on cust_name fallback: ~75% of recent agility_so_header rows ship with a
+  // blank cust_name (header cust_name is unreliable — the actual name lives on
+  // agility_customers, joined via cust_key). Same pattern documented in CLAUDE.md
+  // for credit-memo handling. Without this LATERAL fallback the digest groups
+  // every blank-name row together and the email shows the top customer as
+  // "(unknown)" — that was the 2026-05-28 user-reported regression.
   const rows = await sql<ResultRow[]>`
     WITH filtered AS (
       SELECT
-        so_id,
-        created_date::date            AS order_date,
-        COALESCE(NULLIF(TRIM(sale_type), ''), 'UNKNOWN') AS sale_type,
-        COALESCE(NULLIF(TRIM(ship_via),  ''), 'UNKNOWN') AS ship_via,
-        cust_name,
-        UPPER(COALESCE(so_status, '')) AS so_status
-      FROM agility_so_header
-      WHERE is_deleted = false
-        ${branch ? sql`AND system_id = ${branch}` : sql``}
-        AND created_date >= ${since}::date
-        AND created_date <= CURRENT_DATE
-        AND UPPER(COALESCE(so_status, '')) != 'C'
+        soh.so_id,
+        soh.created_date::date            AS order_date,
+        COALESCE(NULLIF(TRIM(soh.sale_type), ''), 'UNKNOWN') AS sale_type,
+        COALESCE(NULLIF(TRIM(soh.ship_via),  ''), 'UNKNOWN') AS ship_via,
+        COALESCE(NULLIF(TRIM(soh.cust_name), ''), ac.cust_name) AS cust_name,
+        UPPER(COALESCE(soh.so_status, '')) AS so_status
+      FROM agility_so_header soh
+      LEFT JOIN LATERAL (
+        SELECT cust_name FROM agility_customers
+        WHERE cust_key = soh.cust_key AND is_deleted = false
+        LIMIT 1
+      ) ac ON true
+      WHERE soh.is_deleted = false
+        ${branch ? sql`AND soh.system_id = ${branch}` : sql``}
+        AND soh.created_date >= ${since}::date
+        AND soh.created_date <= CURRENT_DATE
+        AND UPPER(COALESCE(soh.so_status, '')) != 'C'
     ),
     prev_filtered AS (
       SELECT
-        so_id,
-        COALESCE(NULLIF(TRIM(sale_type), ''), 'UNKNOWN') AS sale_type,
-        cust_name
-      FROM agility_so_header
-      WHERE is_deleted = false
-        ${branch ? sql`AND system_id = ${branch}` : sql``}
-        AND created_date >= ${sincePrev}::date
-        AND created_date <= ${untilPrev}::date
-        AND UPPER(COALESCE(so_status, '')) != 'C'
+        soh.so_id,
+        COALESCE(NULLIF(TRIM(soh.sale_type), ''), 'UNKNOWN') AS sale_type,
+        COALESCE(NULLIF(TRIM(soh.cust_name), ''), ac.cust_name) AS cust_name
+      FROM agility_so_header soh
+      LEFT JOIN LATERAL (
+        SELECT cust_name FROM agility_customers
+        WHERE cust_key = soh.cust_key AND is_deleted = false
+        LIMIT 1
+      ) ac ON true
+      WHERE soh.is_deleted = false
+        ${branch ? sql`AND soh.system_id = ${branch}` : sql``}
+        AND soh.created_date >= ${sincePrev}::date
+        AND soh.created_date <= ${untilPrev}::date
+        AND UPPER(COALESCE(soh.so_status, '')) != 'C'
     )
     SELECT json_build_object(
       'daily_orders', (
