@@ -42,7 +42,23 @@ const DATE_TOLERANCE_DAYS = 90;
 // VPO`, `added trim`). Suppress these unless the doc's total also matches
 // (i.e. the document really is for the small partial-scope amount).
 const NEGATIVE_REF_PENALTY = 30;
-const NEGATIVE_REF_PATTERN = /\b(credit|cred|replacement|repl|vpo|added)\b/i;
+// Partial-scope SO references. Penalty waived when amount also matches (the
+// doc really is for the small partial-scope amount).
+//   `add(ed|on)?` — matches "add", "added", "addon" (Codex flagged "deck
+//     add" / "trim add" still leaking through the original `added`-only
+//     pattern, 23 candidates in the queue)
+//   `correction|correct` — added with PR #430
+//   `credit|cred|replacement|repl|vpo` — original rules
+const NEGATIVE_REF_PATTERN = /\b(credit|cred|replacement|repl|vpo|add(ed|on)?|correction|correct)\b/i;
+
+// Negative-total SO penalty. Credit-memo / return SOs (where
+// SUM(extended_price) < 0) represent work being un-delivered, not
+// delivered — almost never the right match for a real material PO/WO.
+// 161 candidates surfaced in the queue at writing; demote heavily to
+// push scope-only matches below the floor. Same magnitude as the
+// cancelled-SO penalty so a fully-corroborated genuine credit doc could
+// still surface for review.
+const NEGATIVE_TOTAL_PENALTY = 25;
 
 // SO statuses that are terminal-cancelled / closed-without-delivery. Backlog
 // matching against these is almost never right: across 33 surfaced candidates
@@ -112,34 +128,74 @@ const PARENT_TO_SUBS: Record<string, readonly string[]> = {
   window: ['screen'],
 };
 
-// Door-subtype mismatch. SO references that specify a different door subtype
-// than the doc's line items are wrong-scope matches even when generic `door`
-// overlaps. Codex flagged the patio-vs-interior case 3+ times across review
-// batches: a Hubbell "Interior Doors" PO surfaced as a match against an
-// "SP Patio Door" SO via the bare `door` keyword + amount corroboration.
+// Door-subtype mismatch — two-tier model:
 //
-// Narrow rule: when the SO ref contains one of these "distinct subtype"
-// keywords AND the doc's line items don't, demote the `door` scope to 0.
+//   HARD subtypes (patio, scuttle): narrowly specific. SO ref has the
+//     keyword AND the doc doesn't share it → demote, regardless of whether
+//     the doc has any other subtype info. A doc that doesn't mention
+//     `patio` or `scuttle` is almost never patio/scuttle by accident.
 //
-// Conservative on what counts as "distinct":
-//   - `patio` — confirmed false positive shape
-//   - NOT `dunnage` — that's the Hubbell-side word for rough-opening
-//     interior door material; matches interior-doors POs correctly
-//     (and Codex accepts them).
-//   - NOT `interior`/`exterior` — too noisy without bigram parsing
-// Extend the set only when a new subtype mismatch shows up 3+ times in
-// review batches.
-const DOOR_SUBTYPE_DISTINCT_KEYWORDS = ['patio'] as const;
+//   FAMILY subtypes (interior, exterior): symmetric. BOTH sides have a
+//     subtype AND they don't share → demote. One-sided cases (one side has
+//     a subtype, other is generic) don't demote because generic refs match
+//     anything.
+//
+// History:
+//   PR #423 — narrow patio-only asymmetric rule
+//   PR #430 — generalized to interior/exterior family match (symmetric)
+//   PR #432 (this) — split into HARD + FAMILY tiers + add `scuttle` after
+//     Codex flagged Scuttle Doors SOs matching full-scope door packets
+const DOOR_SUBTYPE_HARD: Record<string, string> = {
+  patio:   'patio',
+  scuttle: 'scuttle',
+};
+const DOOR_SUBTYPE_FAMILY: Record<string, string> = {
+  ext:      'exterior',
+  exterior: 'exterior',
+  int:      'interior',
+  interior: 'interior',
+};
+// NOT included: `dunnage` (Hubbell-side word for rough-opening interior-
+// door material; correctly matches interior-doors POs — Codex consistently
+// accepts these).
 
+function extractSubtypesFromMap(
+  text: string,
+  map: Record<string, string>,
+): Set<string> {
+  const lower = text.toLowerCase();
+  const out = new Set<string>();
+  for (const [raw, canonical] of Object.entries(map)) {
+    // Accept abbreviated forms with optional trailing period: ext., int.
+    const re = new RegExp(`\\b${raw}\\.?\\b`);
+    if (re.test(lower)) out.add(canonical);
+  }
+  return out;
+}
+
+// Returns a string describing the mismatch (for the audit reason), or null
+// if no mismatch. HARD tier checks first (asymmetric), then FAMILY tier
+// (symmetric). Returns on first mismatch — the audit reason is informative
+// but not a complete list of all mismatches found.
 function hasDoorSubtypeMismatch(docText: string, refText: string | null | undefined): string | null {
   if (!refText) return null;
-  const refLower = refText.toLowerCase();
-  const docLower = docText.toLowerCase();
-  for (const subtype of DOOR_SUBTYPE_DISTINCT_KEYWORDS) {
-    const re = new RegExp(`\\b${subtype}\\b`);
-    if (re.test(refLower) && !re.test(docLower)) return subtype;
+
+  // HARD tier — SO has subtype, doc doesn't share it.
+  const refHard = extractSubtypesFromMap(refText, DOOR_SUBTYPE_HARD);
+  if (refHard.size > 0) {
+    const docHard = extractSubtypesFromMap(docText, DOOR_SUBTYPE_HARD);
+    for (const s of refHard) {
+      if (!docHard.has(s)) return `hard:${s}`;
+    }
   }
-  return null;
+
+  // FAMILY tier — both sides have a subtype, no overlap.
+  const refFamily = extractSubtypesFromMap(refText, DOOR_SUBTYPE_FAMILY);
+  if (refFamily.size === 0) return null;
+  const docFamily = extractSubtypesFromMap(docText, DOOR_SUBTYPE_FAMILY);
+  if (docFamily.size === 0) return null;
+  for (const s of refFamily) if (docFamily.has(s)) return null;
+  return `${[...docFamily].sort().join(',')}!=${[...refFamily].sort().join(',')}`;
 }
 
 // Stem any scope keyword to its singular root for comparison
@@ -488,6 +544,18 @@ export function pairDocsToSos(
       if (so.so_status && CANCELLED_SO_STATUSES.has(so.so_status.toUpperCase())) {
         confidence -= CANCELLED_SO_PENALTY;
         reasons.push(`so_status:${so.so_status.toUpperCase()}_demote`);
+      }
+
+      // Negative-total SO demote — credit-memo / return SOs almost never
+      // match a real material doc. Applies to all match sources (a
+      // po_number_split into a credit SO is rare but possible if the SO
+      // was re-issued from a credit).
+      if (so.order_total !== null) {
+        const t = Number(so.order_total);
+        if (Number.isFinite(t) && t < 0) {
+          confidence -= NEGATIVE_TOTAL_PENALTY;
+          reasons.push('so_negative_total_demote');
+        }
       }
 
       // Jobsite-number mismatch — when the SO ref embeds a specific street

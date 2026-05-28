@@ -771,13 +771,22 @@ export const dispatchRouteCompletionLog = bidsSchema.table(
   'dispatch_route_completion_log',
   {
     id:                 uuid('id').primaryKey().defaultRandom(),
-    // public.dispatch_routes.id (integer). No cross-schema FK.
-    routeId:            integer('route_id').notNull(),
+    // 'liveedge' = sourced from app/api/dispatch/orders/[so_number]/deliver
+    // 'agility'  = sourced from the Pi-side reconciler POSTing to
+    //              /api/dispatch/agility-route-complete
+    routeSource:        text('route_source').notNull().default('liveedge'),
+    // public.dispatch_routes.id — set when routeSource='liveedge', NULL otherwise.
+    routeId:            integer('route_id'),
     branchCode:         text('branch_code').notNull(),
     driverName:         text('driver_name'),
     routeName:          text('route_name'),
     completedSoNumber:  text('completed_so_number'),
     completedAt:        timestamp('completed_at', { withTimezone: true }).notNull().defaultNow(),
+    // Agility-source columns (NULL when routeSource='liveedge').
+    systemId:           text('system_id'),
+    agilityRouteCode:   text('agility_route_code'),
+    agilityShipDate:    date('agility_ship_date'),
+    shipmentCount:      integer('shipment_count'),
     recipientId:        uuid('recipient_id').references(() => dispatchAlertRecipients.id, { onDelete: 'set null' }),
     recipientLabel:     text('recipient_label'),
     channel:            text('channel').notNull(),      // 'email' | 'sms'
@@ -789,6 +798,12 @@ export const dispatchRouteCompletionLog = bidsSchema.table(
   (table) => [
     index('dispatch_route_completion_log_recent_idx').on(table.sentAt),
     index('dispatch_route_completion_log_route_idx').on(table.routeId, table.channel, table.status),
+    index('dispatch_route_completion_log_agility_idx').on(
+      table.systemId,
+      table.agilityShipDate,
+      table.agilityRouteCode,
+      table.driverName,
+    ),
   ],
 );
 
