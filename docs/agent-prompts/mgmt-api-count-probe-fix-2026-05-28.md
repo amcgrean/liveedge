@@ -339,3 +339,69 @@ No LiveEdge code changes required at any step. If end-user timeouts
 recur during the window between Step 0 and the deploy, ping the
 LiveEdge agent — it can land a 300 s `maxDuration` band-aid on the
 scorecard routes as an interim, but only if asked.
+
+---
+
+## Update 2026-05-28 — `mgmt-api` is the Supabase MCP, not a deployed service
+
+After the Pi agent ran Step 0 and grepped both beisser-api and LiveEdge
+for `application_name` / `PGAPPNAME` / `mgmt-api` and turned up nothing,
+the LiveEdge agent verified the attribution by counter-bumping:
+
+1. Snapshot: `SELECT calls FROM pg_stat_statements WHERE queryid = -2186310581588620979;` → 33,531
+2. Run `select count(*) from customer_scorecard_fact;` via the Supabase
+   MCP from the LiveEdge debugging session.
+3. Re-snapshot the same queryid → 33,532.
+
+A single MCP-issued probe bumped the counter by one. **Conclusion: the
+33k + 52k `COUNT(*)` calls + the 70–78 s rep-attribution aggregates
+are accumulated agent traffic via the Supabase MCP** (this session's
+debugging work + Codex's TTM returns analysis + Hubbell work + earlier
+investigations). The Supabase MCP tags every connection
+`application_name='mgmt-api'`, which is what made it look like a
+deployed service from `pg_stat_activity` alone.
+
+`pg_stat_activity` during the storm also showed the only "live"
+`mgmt-api` IPv6 sessions came from AWS-East-1 (`2600:1f18:2a66:6e07:...`,
+`2600:1f18:2a66:6e01:...`) — that's the Supabase MCP's egress IP range,
+not the Pi (whose IPv6 would be on a residential prefix) and not
+Vercel-served LiveEdge backend traffic (which goes through Supavisor
+at a different IPv6 prefix and would be tagged differently).
+
+### What this means for this brief
+
+| Section | Status |
+|---|---|
+| Step 0 (verify single vs duplicate worker) | Still valid — duplicates confirmed independently |
+| Rec 3 (kill duplicate, harden killer) | **Still ship** — duplicate workers are real, found by `ps` on the Pi |
+| Rec 1 (probes → `reltuples`) | **Drop.** No deployed code on the Pi or in LiveEdge needs changing. The probes were agent-generated. |
+| Rec 2 (fingerprint guard in `PostgresMirrorWriter.upsert_rows()`) | **Still ship** — the 30M-updates-on-4.4M-rows churn comes from the Pi UPSERTs, independent of the MCP probes |
+
+The LiveEdge `/management` and `/scorecard` page timeouts were collateral
+damage: Codex's heavy rep-attribution joins evicted the buffer cache,
+LiveEdge's legit aggregates fell back to disk reads, and the Pi
+duplicate-worker UPSERT lock contention finished starving the budget.
+Both contributors are addressable — neither is a `Rec 1`-shaped fix.
+
+### Going forward — agent workflow rule (folded into LiveEdge CLAUDE.md)
+
+When an agent (any agent — me, Codex, future ones) needs to look up
+row counts on these hot tables via the Supabase MCP, use
+`reltuples`, not unguarded `COUNT(*)`. The hot tables to be careful
+about: `customer_scorecard_fact`, `agility_so_header`, `agility_so_lines`,
+`agility_picks`, `agility_shipments`. Pattern:
+
+```sql
+SELECT reltuples::bigint
+FROM pg_class
+WHERE oid = 'public.customer_scorecard_fact'::regclass;
+```
+
+Sub-millisecond. No buffer churn. For ballpark sizing or sanity checks
+this is always the right call. Use `COUNT(*) WHERE …` (with an
+indexable WHERE) when you need an exact subset count.
+
+After a heavy MCP analytical session, optionally run
+`SELECT pg_stat_statements_reset();` so the next investigation has a
+clean stat window — otherwise the cumulative totals from prior agent
+runs make it hard to attribute current load.

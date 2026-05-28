@@ -47,6 +47,23 @@ All data lives in one Supabase Postgres instance, split into two schemas:
 
 **Never run drizzle-kit against the `public` schema.** `drizzle.config.ts` has `schemaFilter: ['bids']` to enforce this.
 
+### Agent MCP queries against agility-api Supabase — use `reltuples`, not `COUNT(*)`
+
+When an agent (any agent — Claude Code, Codex, future ones) needs row counts on hot tables via the Supabase MCP, **use `pg_class.reltuples`, not unguarded `COUNT(*)`.** The Supabase MCP tags every connection `application_name='mgmt-api'`, so all agent-issued queries land in `pg_stat_statements` under that name and accumulate across sessions.
+
+A single `select count(*) from customer_scorecard_fact` reads the full 6.4 GB heap (~788 ms, ~5.7 MB of buffer reads). Repeated across analytical sessions this evicts the buffer cache used by LiveEdge's `/management` and `/scorecard` page queries — that's what produced the 2026-05-28 timeout incident (~12 hours of accumulated DB time + ~15.5 TB of disk reads across two probe queryids, traced to MCP traffic — see `docs/agent-prompts/mgmt-api-count-probe-fix-2026-05-28.md` for the full attribution).
+
+Hot tables to be careful about: `customer_scorecard_fact`, `agility_so_header`, `agility_so_lines`, `agility_picks`, `agility_shipments`. Pattern:
+
+```sql
+-- Ballpark row count, sub-millisecond, no scan
+SELECT reltuples::bigint
+FROM pg_class
+WHERE oid = 'public.customer_scorecard_fact'::regclass;
+```
+
+Use exact `COUNT(*) WHERE …` only when you actually need a subset count with an indexable predicate. After a heavy analytical session, consider `SELECT pg_stat_statements_reset();` so the next investigation has a clean stat window.
+
 ### ERP Table Layer — agility_* (2026-04-04)
 All LiveEdge API routes now query the optimized `agility_*` tables instead of the old `erp_mirror_*` tables. **Never write new queries against `erp_mirror_*` — use `agility_*`.**
 
