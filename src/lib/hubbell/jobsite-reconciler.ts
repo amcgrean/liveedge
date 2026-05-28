@@ -426,10 +426,21 @@ export async function fetchJobsiteData(normAddr: string): Promise<{ docs: DocRow
 
 // Pair docs with SOs inside a single jobsite. Returns one pairing per
 // (doc, SO) where confidence ≥ minConfidence.
+//
+// Default raised to 40 on 2026-05-28 (PR #443). At conf 30 (scope-only,
+// no amount), Codex was rejecting essentially every candidate at the
+// long tail — accept rate fell to 0% on the final batches because every
+// scope-only candidate was a partial-scope / wrong-amount / wrong-
+// subtype that the matcher could only weakly flag. Lifting the floor
+// auto-suppresses scope-only candidates and keeps the matcher focused
+// on its high-quality work (scope+amount=45, scope+date=40, scope+
+// amount+date=55). Any scope-only candidates can still be found by
+// humans via /admin/hubbell/jobs (jobsite-level browse) or by lowering
+// the floor on a targeted reconcile call.
 export function pairDocsToSos(
   docs: DocRow[],
   sos: SoRow[],
-  minConfidence = 30,
+  minConfidence = 40,
 ): JobsitePairing[] {
   const pairings: JobsitePairing[] = [];
 

@@ -12,7 +12,7 @@
 //   {
 //     "limit":           20,    // jobsites to process this call (default 20, max 50)
 //     "offset":          0,     // pagination through jobsite queue
-//     "min_confidence":  30,    // suppress weak pairings (default 30)
+//     "min_confidence":  40,    // suppress weak pairings (default 40)
 //     "norm_addrs":      [...]  // optional: process only these normalized addresses
 //   }
 // Response: { processed_jobsites, processed_docs, candidates_inserted,
@@ -54,7 +54,7 @@ export async function POST(req: NextRequest) {
 
   const limit = Math.min(Math.max(1, Number(body.limit ?? 20) || 20), 50);
   const offset = Math.max(0, Number(body.offset ?? 0) || 0);
-  const minConfidence = Math.max(0, Number(body.min_confidence ?? 30) || 0);
+  const minConfidence = Math.max(0, Number(body.min_confidence ?? 40) || 0);
   const explicitNorms = Array.isArray(body.norm_addrs)
     ? body.norm_addrs.filter((x): x is string => typeof x === 'string')
     : null;
