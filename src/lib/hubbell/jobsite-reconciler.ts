@@ -42,10 +42,23 @@ const DATE_TOLERANCE_DAYS = 90;
 // VPO`, `added trim`). Suppress these unless the doc's total also matches
 // (i.e. the document really is for the small partial-scope amount).
 const NEGATIVE_REF_PENALTY = 30;
-// Added `correction|correct` 2026-05-28: Codex flagged "Door correction"
-// $30 add-on SOs surfacing for $1000+ full-scope door PDFs — same shape
-// as the existing credit/added/VPO partial-scope traps.
-const NEGATIVE_REF_PATTERN = /\b(credit|cred|replacement|repl|vpo|added|correction|correct)\b/i;
+// Partial-scope SO references. Penalty waived when amount also matches (the
+// doc really is for the small partial-scope amount).
+//   `add(ed|on)?` — matches "add", "added", "addon" (Codex flagged "deck
+//     add" / "trim add" still leaking through the original `added`-only
+//     pattern, 23 candidates in the queue)
+//   `correction|correct` — added with PR #430
+//   `credit|cred|replacement|repl|vpo` — original rules
+const NEGATIVE_REF_PATTERN = /\b(credit|cred|replacement|repl|vpo|add(ed|on)?|correction|correct)\b/i;
+
+// Negative-total SO penalty. Credit-memo / return SOs (where
+// SUM(extended_price) < 0) represent work being un-delivered, not
+// delivered — almost never the right match for a real material PO/WO.
+// 161 candidates surfaced in the queue at writing; demote heavily to
+// push scope-only matches below the floor. Same magnitude as the
+// cancelled-SO penalty so a fully-corroborated genuine credit doc could
+// still surface for review.
+const NEGATIVE_TOTAL_PENALTY = 25;
 
 // SO statuses that are terminal-cancelled / closed-without-delivery. Backlog
 // matching against these is almost never right: across 33 surfaced candidates
@@ -531,6 +544,18 @@ export function pairDocsToSos(
       if (so.so_status && CANCELLED_SO_STATUSES.has(so.so_status.toUpperCase())) {
         confidence -= CANCELLED_SO_PENALTY;
         reasons.push(`so_status:${so.so_status.toUpperCase()}_demote`);
+      }
+
+      // Negative-total SO demote — credit-memo / return SOs almost never
+      // match a real material doc. Applies to all match sources (a
+      // po_number_split into a credit SO is rare but possible if the SO
+      // was re-issued from a credit).
+      if (so.order_total !== null) {
+        const t = Number(so.order_total);
+        if (Number.isFinite(t) && t < 0) {
+          confidence -= NEGATIVE_TOTAL_PENALTY;
+          reasons.push('so_negative_total_demote');
+        }
       }
 
       // Jobsite-number mismatch — when the SO ref embeds a specific street
