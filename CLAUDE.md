@@ -1000,6 +1000,45 @@ Three-Explore-agent audit on `claude/app-performance-issues-Hgx9B`. Plan in `/ro
 - Always partition cache keys on per-user scoping inputs. Two reps hitting `/api/sales/hub` must NOT share a cached payload.
 - The Codex P2 lesson: never put `.catch(() => fallback)` inside an `erpCache`-wrapped function — let it throw, apply the fallback at the call site.
 
+#### Dispatch route-completion alerts (2026-05-27 → 2026-05-28) — LIVE
+
+Email + SMS alert fires the moment a dispatch route's final stop is delivered, so dispatch can pre-stage the next load instead of catching it from a board refresh. Two trigger paths share one recipient table, one Resend/Twilio integration, and one audit log:
+
+| Source | Trigger | Hook |
+|---|---|---|
+| `liveedge` | `dispatch_route_stops.status` flips to `'delivered'` / `'skipped'` via the dispatch board | `POST /api/dispatch/orders/[so_number]/deliver` calls `notifyRouteCompletedIfLastStop()` after the UPDATE — PR #418 |
+| `agility` | Every shipment in an Agility `(system_id, ship_date, route_id_char, driver)` group flips `status_flag_delivery='D'` | Pi-side `agility_api/dispatch_completion.py::reconcile_completed_routes()` POSTs to `/api/dispatch/agility-route-complete` after each `agility_shipments` sync — PR #426 |
+
+The Agility path is what's actually in use today — dispatchers build routes in the **old POD system**, not the LiveEdge dispatch board, so `public.dispatch_route_stops` is empty/stale and the LiveEdge-source trigger never fires for real loads. The LiveEdge path exists for when/if dispatch starts using the LiveEdge board.
+
+**Recipients per branch** at `/admin/dispatch-alerts` (`admin.config.manage` capability). One row = one person/phone/inbox, with independent email + SMS toggles. Test-send button per row fires a sample alert without waiting for a real route.
+
+**Schema (bids):**
+- `dispatch_alert_recipients` (migration 0033) — `branch_code`, `name`, `email`, `phone_e164`, `notify_email`, `notify_sms`, `is_active`. CHECK constraint requires email present when email channel is on, phone present when SMS is on.
+- `dispatch_route_completion_log` (migration 0033 + 0034) — one row per send attempt. Columns: `route_source` ('liveedge' | 'agility'), LiveEdge identity (`route_id`), Agility identity (`system_id`, `agility_route_code`, `agility_ship_date`, `shipment_count`), `recipient_id`, `channel`, `status` ('sent' | 'failed' | 'skipped_console'), `provider_message_id`, `error`. Migration 0034 made `route_id` nullable and added a CHECK that enforces "one source identity must be present".
+
+**Dedupe** is purely audit-log lookup, no unique constraint:
+- LiveEdge source: `WHERE route_source='liveedge' AND route_id=$1`
+- Agility source: `WHERE route_source='agility' AND system_id=$1 AND agility_ship_date=$2 AND COALESCE(agility_route_code,'')=COALESCE($3,'') AND COALESCE(driver_name,'')=COALESCE($4,'')`
+
+Skip when any prior row for `(recipient_id, channel)` is `'sent'` or `'skipped_console'`. `'failed'` rows are retried on the next call. The Pi pre-checks the same tuple before POSTing to avoid unnecessary round-trips; LiveEdge double-checks server-side as belt-and-suspenders.
+
+**Env vars (Vercel):**
+- `RESEND_API_KEY` — reused from auth.
+- `TWILIO_ACCOUNT_SID` / `TWILIO_AUTH_TOKEN` / `TWILIO_FROM_NUMBER` — bring-your-own Twilio account, E.164 sender.
+- `DISPATCH_ALERTS_EMAIL_FROM` — defaults to `'LiveEdge Dispatch <noreply@app.beisser.cloud>'`.
+- `DISPATCH_ALERTS_CONSOLE=true` — dev fallback that logs payloads to server console instead of sending. Mirrors `AUTH_OTP_CONSOLE` / `REPORTS_EMAIL_CONSOLE`.
+- `DISPATCH_SYNC_TOKEN` — bearer for `/api/dispatch/agility-route-complete`. Matches `LIVEEDGE_DISPATCH_SYNC_TOKEN` in the Pi `.env`.
+
+**Pi-side handoff doc:** `docs/agent-prompts/dispatch-agility-route-completion-pi.md` — the brief used to wire up `agility_api/dispatch_completion.py`. Reference for future Pi-coupled features.
+
+**Pi topology (verified 2026-05-28 during the dispatch reconciler deploy — capture so future Pi-coupled features don't repeat the discovery):**
+- Env file: `/home/api/beisser-api/.env`
+- Worker: systemd `agility-api-sync.service` → `run_repo_worker.sh` → `python3 -m agility_api.worker --agility --exclude-family document`
+- Autodeploy: `scripts/pi_autodeploy.sh` via `api-user` cron `* * * * *`, hard-resets `/home/api/beisser-api` to `origin/pi` and restarts the worker
+- Deploy primitive: **moving `origin/pi` IS the deploy.** Worker restart is implicit. `systemctl restart` is unnecessary.
+- Branch tracking: `origin/pi` typically follows `main`. **Do not point `origin/pi` at a feature branch SHA** — the next autodeploy cycle would advance it and we'd lose track of what's deployed. Merge to main first, then `origin/pi` follows.
+
 #### Still Missing / Deferred
 - **WH-Tracker kiosk/TV/smart scan**: not appropriate for LiveEdge web app pattern — intentionally deferred
 - **Purchasing workflow** (tasks, approvals, exceptions, PO notes): verify `purchasing_tasks`, `purchasing_approvals`, etc. exist in `public` schema first
