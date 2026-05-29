@@ -1,8 +1,50 @@
 # Pi-side dispatch route-completion reconciler
 
 **Audience:** the agent working on `beisser-api` (Pi, `C:\Users\amcgrean\python\api`).
-**Status:** LiveEdge side shipped (PR follow-up to #418). Pi side to build.
+**Status:** LiveEdge side shipped (PR follow-up to #418). Pi side built but
+**emitting on the WRONG column** — see the correction below.
 **Branch suggestion:** `claude/dispatch-route-completion-reconciler` (or whatever fits your repo's convention).
+
+---
+
+## ⚠️ CORRECTION (2026-05-29) — read this first
+
+The original brief below told you to detect completion via
+`status_flag_delivery = 'D'`. **That column is blank (`''`) on every row in the
+synced `agility_shipments` mirror** — all branches, all days. The reconciler's
+completion condition therefore never becomes true, so **no real alert has ever
+fired** (only manual smoke tests on 2026-05-28).
+
+Confirmed in prod 2026-05-29: 6 routes at 20GR/25BW were fully delivered and
+should have alerted, but `status_flag_delivery` was `''` on all 123 of that
+day's shipments at those branches.
+
+**Use `status_flag` instead:**
+
+| `status_flag` | Meaning |
+|---|---|
+| `D` | Delivered |
+| `I` | Invoiced (terminal — comes after delivered) |
+| `S` | Staged (not yet delivered) |
+| `L` | Loaded |
+
+So a route group is **complete** when every row has
+`TRIM(status_flag) IN ('D','I')` (delivered, or invoiced/past-delivered) and
+`is_deleted = false`. Everywhere the brief below says
+`status_flag_delivery = 'D'`, substitute `TRIM(status_flag) IN ('D','I')`.
+
+**Backfill:** after the fix deploys, the next pass will detect today's already-
+completed routes and POST them; LiveEdge dedupes on
+`(system_id, ship_date, route_id_char, driver)` so each fires exactly once. If
+you'd rather skip same-day catch-up, gate the first post-deploy run to
+`ship_date >= <deploy date>`.
+
+**Lower-priority follow-up:** `status_flag_delivery` being entirely unpopulated
+is likely a `beisser_sync.py` mapping gap. Worth a look so it's not a future
+trap, but the alert fix does NOT depend on it — `status_flag` is the right
+signal regardless.
+
+---
 
 ## Context
 
@@ -20,7 +62,7 @@ In Agility, the natural grouping is the tuple:
 (system_id, ship_date, route_id_char, driver)
 ```
 
-on `agility_shipments`. `system_id` is the branch code (`10FD`/`20GR`/`25BW`/`40CV`), `route_id_char` is the dispatcher's route label (`"07"`, `"P1"`, etc.), `driver` is the assigned driver's name. The route is **complete** when every row in that group has `status_flag_delivery = 'D'` and `is_deleted = false`.
+on `agility_shipments`. `system_id` is the branch code (`10FD`/`20GR`/`25BW`/`40CV`), `route_id_char` is the dispatcher's route label (`"07"`, `"P1"`, etc.), `driver` is the assigned driver's name. The route is **complete** when every row in that group has `TRIM(status_flag) IN ('D','I')` and `is_deleted = false`. **(See the 2026-05-29 correction at the top — do NOT use `status_flag_delivery`, it's unpopulated.)**
 
 Credit memos count as stops — they're shipments with `sale_type = 'Credit'` and are part of the same load. Don't exclude them.
 
@@ -36,7 +78,8 @@ WITH groups AS (
     NULLIF(TRIM(sh.route_id_char), '')    AS route_id_char,
     NULLIF(TRIM(sh.driver), '')           AS driver,
     COUNT(*)                              AS total_shipments,
-    COUNT(*) FILTER (WHERE sh.status_flag_delivery = 'D') AS delivered_shipments,
+    -- Corrected 2026-05-29: status_flag_delivery is unpopulated; use status_flag.
+    COUNT(*) FILTER (WHERE TRIM(sh.status_flag) IN ('D','I')) AS delivered_shipments,
     ARRAY_AGG(sh.so_id::text ORDER BY sh.so_id) AS so_ids
   FROM agility_shipments sh
   WHERE sh.is_deleted = false

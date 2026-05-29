@@ -6,7 +6,9 @@ import { notifyAgilityRouteCompleted } from '../../../../src/lib/dispatch/route-
 //
 // Called by the Pi-side reconciler when every shipment in a
 // (system_id, ship_date, route_id_char, driver) group on agility_shipments
-// has flipped to status_flag_delivery='D'. LiveEdge fires the configured
+// is delivered. Completion is judged on status_flag IN ('D','I')
+// (D=delivered, I=invoiced/past-delivered) — NOT status_flag_delivery,
+// which is unpopulated in the mirror sync. LiveEdge fires the configured
 // per-branch alerts and writes one log row per (recipient, channel).
 //
 // Bearer auth via DISPATCH_SYNC_TOKEN env var.
