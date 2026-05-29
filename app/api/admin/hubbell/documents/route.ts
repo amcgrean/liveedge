@@ -14,6 +14,8 @@ import { requireCapability } from '../../../../../src/lib/access-control';
 import { getDb, schema } from '../../../../../db/index';
 
 export const runtime = 'nodejs';
+// List + count + status-counts run in parallel — stay well under serverless timeout.
+export const maxDuration = 15;
 
 const TABS = ['unmatched', 'auto_matched', 'confirmed', 'rejected', 'all'] as const;
 type Tab = (typeof TABS)[number];
@@ -55,45 +57,60 @@ export async function GET(req: NextRequest) {
 
   const where = and(...[statusFilter, typeFilter, searchFilter].filter(Boolean));
 
-  const rows = await db
+  // Pre-aggregate attach counts in a subquery so we do one JOIN instead of
+  // N correlated sub-selects (one per row). With an index on document_id this
+  // is an index-only GROUP BY — faster than 50 separate lookups.
+  const attachCounts = db
     .select({
-      id: schema.hubbellDocuments.id,
-      docType: schema.hubbellDocuments.docType,
-      docNumber: schema.hubbellDocuments.docNumber,
-      matchStatus: schema.hubbellDocuments.matchStatus,
-      extractedAddress: schema.hubbellDocuments.extractedAddress,
-      extractedCity: schema.hubbellDocuments.extractedCity,
-      extractedState: schema.hubbellDocuments.extractedState,
-      extractedZip: schema.hubbellDocuments.extractedZip,
-      extractedTotal: schema.hubbellDocuments.extractedTotal,
-      paymentStatus: schema.hubbellDocuments.paymentStatus,
-      paidAmountTotal: schema.hubbellDocuments.paidAmountTotal,
-      receivedAt: schema.hubbellDocuments.receivedAt,
-      attachedCount: dsql<number>`(
-        SELECT COUNT(*)::int FROM bids.hubbell_document_sos j
-        WHERE j.document_id = ${schema.hubbellDocuments.id}
-      )`,
+      documentId: schema.hubbellDocumentSos.documentId,
+      cnt: dsql<number>`COUNT(*)::int`.as('cnt'),
     })
-    .from(schema.hubbellDocuments)
-    .where(where)
-    .orderBy(desc(schema.hubbellDocuments.receivedAt))
-    .limit(limit)
-    .offset(offset);
+    .from(schema.hubbellDocumentSos)
+    .groupBy(schema.hubbellDocumentSos.documentId)
+    .as('ac');
 
-  const totalRow = await db
-    .select({ total: dsql<number>`COUNT(*)::int` })
-    .from(schema.hubbellDocuments)
-    .where(where);
+  // Run all three queries in parallel — reduces wall-clock time by ~2/3 and
+  // avoids holding the connection open for three sequential round-trips.
+  const [rows, totalRow, statusCounts] = await Promise.all([
+    db
+      .select({
+        id: schema.hubbellDocuments.id,
+        docType: schema.hubbellDocuments.docType,
+        docNumber: schema.hubbellDocuments.docNumber,
+        matchStatus: schema.hubbellDocuments.matchStatus,
+        extractedAddress: schema.hubbellDocuments.extractedAddress,
+        extractedCity: schema.hubbellDocuments.extractedCity,
+        extractedState: schema.hubbellDocuments.extractedState,
+        extractedZip: schema.hubbellDocuments.extractedZip,
+        extractedTotal: schema.hubbellDocuments.extractedTotal,
+        paymentStatus: schema.hubbellDocuments.paymentStatus,
+        paidAmountTotal: schema.hubbellDocuments.paidAmountTotal,
+        receivedAt: schema.hubbellDocuments.receivedAt,
+        attachedCount: dsql<number>`COALESCE(${attachCounts.cnt}, 0)`,
+      })
+      .from(schema.hubbellDocuments)
+      .leftJoin(attachCounts, eq(attachCounts.documentId, schema.hubbellDocuments.id))
+      .where(where)
+      .orderBy(desc(schema.hubbellDocuments.receivedAt))
+      .limit(limit)
+      .offset(offset),
+
+    db
+      .select({ total: dsql<number>`COUNT(*)::int` })
+      .from(schema.hubbellDocuments)
+      .where(where),
+
+    // Status counts ignore the active filters so tab badges stay stable.
+    db
+      .select({
+        matchStatus: schema.hubbellDocuments.matchStatus,
+        count: dsql<number>`COUNT(*)::int`,
+      })
+      .from(schema.hubbellDocuments)
+      .groupBy(schema.hubbellDocuments.matchStatus),
+  ]);
+
   const total = totalRow[0]?.total ?? 0;
-
-  // Status counts (always over all types/searches removed — just per status, ignoring q for tab accuracy).
-  const statusCounts = await db
-    .select({
-      matchStatus: schema.hubbellDocuments.matchStatus,
-      count: dsql<number>`COUNT(*)::int`,
-    })
-    .from(schema.hubbellDocuments)
-    .groupBy(schema.hubbellDocuments.matchStatus);
 
   const counts: Record<string, number> = {
     unmatched: 0,
