@@ -10,6 +10,7 @@ import {
   Image,
   Alert,
   Linking,
+  Platform,
 } from 'react-native';
 import { useLocalSearchParams, router } from 'expo-router';
 import { Icon } from '@/components/ui/Icon';
@@ -19,6 +20,9 @@ import { MapPlaceholder } from '@/components/ui/MapPlaceholder';
 import { C } from '@/theme/colors';
 import { findStop, stopIndex, MOCK_STOPS } from '@/data/mockRoute';
 import { usePhotos, photoStore } from '@/data/photoStore';
+import { useOnline } from '@/hooks/useOnline';
+import { outbox } from '@/storage/outbox';
+import { useToast } from '@/context/ToastContext';
 
 const MIN_PHOTOS = 2;
 
@@ -27,6 +31,8 @@ export default function DeliveryDetailsScreen() {
   const stop = findStop(soNumber);
   const idx = stopIndex(soNumber);
   const photos = usePhotos(soNumber);
+  const online = useOnline();
+  const { show } = useToast();
   const [notes, setNotes] = useState(stop?.notes || '');
 
   if (!stop) {
@@ -54,7 +60,16 @@ export default function DeliveryDetailsScreen() {
     }
   };
 
-  const handleMarkDelivered = () => {
+  const leaveStop = () => {
+    const isLast = idx === MOCK_STOPS.length - 1;
+    if (isLast) {
+      router.replace('/(app)/route-complete');
+    } else {
+      router.back();
+    }
+  };
+
+  const handleMarkDelivered = async () => {
     if (photos.length < MIN_PHOTOS) {
       Alert.alert(
         'Photos required',
@@ -63,40 +78,55 @@ export default function DeliveryDetailsScreen() {
       );
       return;
     }
-    Alert.alert(
-      'Mark Delivered',
-      `Confirm delivery to ${stop.name}?`,
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Confirm',
-          onPress: () => {
-            // TODO wire to dispatchAPI.markDelivered + sync queue
-            const isLast = idx === MOCK_STOPS.length - 1;
-            if (isLast) {
-              router.replace('/(app)/route-complete');
-            } else {
-              router.back();
-            }
-          },
-        },
-      ]
-    );
+    await outbox.enqueue({
+      soNumber,
+      type: 'deliver',
+      notes,
+      photoUris: photos,
+    });
+    show(online ? 'Delivery saved · syncing' : 'Saved offline · will sync later', 'success');
+    photoStore.clear(soNumber);
+    leaveStop();
+  };
+
+  const enqueueSkip = async (reason: string) => {
+    await outbox.enqueue({
+      soNumber,
+      type: 'skip',
+      notes: reason,
+      photoUris: [],
+    });
+    show(online ? 'Skip saved · syncing' : 'Skip saved offline · will sync later', 'success');
+    leaveStop();
   };
 
   const handleSkip = () => {
-    Alert.alert(
-      'Skip Stop',
-      `Skip ${stop.name}? You'll need to provide a reason.`,
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Skip',
-          style: 'destructive',
-          onPress: () => router.back(),
-        },
-      ]
-    );
+    if (Platform.OS === 'ios' && typeof Alert.prompt === 'function') {
+      Alert.prompt(
+        'Skip Stop',
+        `Why are you skipping ${stop.name}?`,
+        [
+          { text: 'Cancel', style: 'cancel' },
+          {
+            text: 'Skip',
+            style: 'destructive',
+            onPress: (reason?: string) => enqueueSkip(reason?.trim() || 'Skipped by driver'),
+          },
+        ],
+        'plain-text',
+        ''
+      );
+      return;
+    }
+
+    Alert.alert('Skip Stop', `Skip ${stop.name}?`, [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Skip',
+        style: 'destructive',
+        onPress: () => enqueueSkip('Skipped by driver'),
+      },
+    ]);
   };
 
   const handleAddPhoto = () => {

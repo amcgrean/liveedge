@@ -6,61 +6,122 @@ import {
   TouchableOpacity,
   StyleSheet,
   SafeAreaView,
+  Alert,
 } from 'react-native';
 import { router } from 'expo-router';
+import { format } from 'date-fns';
 import { AppStatusBar } from '@/components/ui/AppStatusBar';
 import { BigButton } from '@/components/ui/BigButton';
 import { Icon } from '@/components/ui/Icon';
-import { C } from '@/theme/colors';
+import { C, BRANCHES, BranchCode } from '@/theme/colors';
+import { findStop } from '@/data/mockRoute';
+import { useAuth } from '@/context/AuthContext';
+import { useOnline } from '@/hooks/useOnline';
+import { outbox, OutboxItem, useOutbox } from '@/storage/outbox';
+import { syncNow } from '@/storage/sync';
+import { deletePhoto } from '@/storage/photoFS';
 
 type ItemStatus = 'retrying' | 'failed' | 'queued';
 
-const MOCK_QUEUE: {
+interface QueueRow {
+  id: string;
   stop: string;
+  soNumber: string;
   name: string;
   time: string;
   photos: number;
   status: ItemStatus;
   tries: number;
-}[] = [
-  { stop: '04', name: 'Brenneman Residence', time: '11:42 AM', photos: 4, status: 'retrying', tries: 2 },
-  { stop: '03', name: 'M&B Roofing LLC', time: '10:08 AM', photos: 6, status: 'failed', tries: 3 },
-  { stop: '02', name: 'Greenway Homes — Lot 14', time: '8:51 AM', photos: 5, status: 'queued', tries: 0 },
-];
+  item: OutboxItem;
+}
 
 export default function SyncQueueScreen() {
+  const { user } = useAuth();
+  const online = useOnline();
+  const allItems = useOutbox();
+  const items = allItems.filter((item) => item.status !== 'synced');
+  const branchCode = (user?.branch || '20GR') as BranchCode;
+  const branch = BRANCHES.find((b) => b.code === branchCode);
+
+  const rows: QueueRow[] = items.map((item) => {
+    const stop = findStop(item.soNumber);
+    return {
+      id: item.id,
+      stop: stop?.n ?? '??',
+      soNumber: item.soNumber,
+      name: stop?.name ?? item.soNumber,
+      time: format(item.createdAt, 'h:mm a'),
+      photos: item.photoUris.length,
+      status: item.status === 'failed' ? 'failed' : item.status === 'retrying' ? 'retrying' : 'queued',
+      tries: item.attempts,
+      item,
+    };
+  });
+
+  const handleRetry = async (id: string) => {
+    await outbox.update(id, { status: 'queued', nextRetryAt: undefined, lastError: undefined });
+    syncNow();
+  };
+
+  const handleRetryAll = async () => {
+    await Promise.all(
+      items.map((item) =>
+        outbox.update(item.id, { status: 'queued', nextRetryAt: undefined, lastError: undefined })
+      )
+    );
+    syncNow();
+  };
+
+  const handleDiscard = (item: OutboxItem) => {
+    Alert.alert('Discard sync item?', 'This removes the pending action and its saved photos.', [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Discard',
+        style: 'destructive',
+        onPress: async () => {
+          await Promise.all(item.photoUris.map((uri) => deletePhoto(uri)));
+          await outbox.remove(item.id);
+        },
+      },
+    ]);
+  };
+
   return (
     <SafeAreaView style={styles.safe}>
       <AppStatusBar
-        branchLabel="20GR · Grimes"
-        branchDot={C.grimes}
-        online={false}
-        syncCount={3}
+        branchLabel={`${branchCode} · ${branch?.name}`}
+        branchDot={branch?.dot}
+        online={online}
+        syncCount={items.length}
         onMenu={() => router.back()}
       />
 
       <View style={styles.header}>
         <View style={styles.headerRow}>
           <Text style={styles.headerTitle}>Pending Sync</Text>
-          <Text style={styles.headerCount}>3 items</Text>
+          <Text style={styles.headerCount}>
+            {items.length} item{items.length === 1 ? '' : 's'}
+          </Text>
         </View>
         <View style={styles.headerSubRow}>
-          <Icon name="cloudOff" size={14} color={C.warn} strokeWidth={2.4} />
+          <Icon name={online ? 'wifi' : 'cloudOff'} size={14} color={online ? C.ok : C.warn} strokeWidth={2.4} />
           <Text style={styles.headerSub}>
-            Offline — will retry when signal returns. Last attempt 2 min ago.
+            {online
+              ? 'Online — queued items will sync automatically.'
+              : 'Offline — will retry when signal returns.'}
           </Text>
         </View>
       </View>
 
       <ScrollView contentContainerStyle={styles.list} showsVerticalScrollIndicator={false}>
-        {MOCK_QUEUE.map((it) => {
+        {rows.map((it) => {
           const isFailed = it.status === 'failed';
           const isRetrying = it.status === 'retrying';
           const accent = isFailed ? C.err : isRetrying ? C.warn : C.text3;
           const accentSoft = isFailed ? C.errSoft : isRetrying ? C.warnSoft : C.surface2;
 
           return (
-            <View key={it.stop} style={styles.card}>
+            <View key={it.id} style={styles.card}>
               <View style={styles.cardRow}>
                 <View style={[styles.stopChip, { backgroundColor: accentSoft }]}>
                   <Text style={[styles.stopChipText, { color: accent }]}>{it.stop}</Text>
@@ -95,13 +156,26 @@ export default function SyncQueueScreen() {
                       </View>
                     )}
                   </View>
+                  {it.item.lastError && (
+                    <Text style={styles.errorText} numberOfLines={2}>{it.item.lastError}</Text>
+                  )}
                 </View>
               </View>
               <View style={styles.cardActions}>
-                <TouchableOpacity style={[styles.cardAction, styles.cardActionBorder]}>
+                <TouchableOpacity
+                  style={[styles.cardAction, styles.cardActionBorder]}
+                  onPress={() => router.push(`/(app)/${it.soNumber}/details`)}
+                >
                   <Text style={styles.cardActionText}>View</Text>
                 </TouchableOpacity>
-                <TouchableOpacity style={styles.cardAction}>
+                <TouchableOpacity
+                  style={[styles.cardAction, styles.cardActionBorder]}
+                  onPress={() => handleDiscard(it.item)}
+                >
+                  <Icon name="x" size={14} color={C.err} strokeWidth={2.4} />
+                  <Text style={[styles.cardActionText, { color: C.err }]}>Discard</Text>
+                </TouchableOpacity>
+                <TouchableOpacity style={styles.cardAction} onPress={() => handleRetry(it.id)}>
                   <Icon name="refresh" size={14} color={C.green} strokeWidth={2.4} />
                   <Text style={[styles.cardActionText, { color: C.green, fontWeight: '700' }]}>
                     Retry
@@ -112,6 +186,14 @@ export default function SyncQueueScreen() {
           );
         })}
 
+        {rows.length === 0 && (
+          <View style={styles.empty}>
+            <Icon name="check" size={24} color={C.ok} strokeWidth={2.6} />
+            <Text style={styles.emptyTitle}>Everything is synced</Text>
+            <Text style={styles.emptySub}>Deliveries, skips, notes, and photos are up to date.</Text>
+          </View>
+        )}
+
         <View style={styles.tip}>
           <Icon name="info" size={18} color={C.text3} />
           <Text style={styles.tipText}>
@@ -121,7 +203,9 @@ export default function SyncQueueScreen() {
       </ScrollView>
 
       <View style={styles.footer}>
-        <BigButton kind="primary" icon="upload">Retry All</BigButton>
+        <BigButton kind="primary" icon="upload" onPress={handleRetryAll}>
+          Retry All
+        </BigButton>
       </View>
     </SafeAreaView>
   );
@@ -174,6 +258,7 @@ const styles = StyleSheet.create({
     borderRadius: 10,
   },
   statusChipText: { fontSize: 11, fontWeight: '700', letterSpacing: 0.4 },
+  errorText: { fontSize: 12, color: C.err, marginTop: 6 },
   cardActions: { flexDirection: 'row', borderTopWidth: 1, borderTopColor: C.lineSoft },
   cardAction: {
     flex: 1,
@@ -197,6 +282,17 @@ const styles = StyleSheet.create({
     marginTop: 4,
   },
   tipText: { flex: 1, fontSize: 13, color: C.text3, lineHeight: 18 },
+  empty: {
+    padding: 24,
+    backgroundColor: '#ffffff',
+    borderWidth: 1,
+    borderColor: C.line,
+    borderRadius: 14,
+    alignItems: 'center',
+    gap: 6,
+  },
+  emptyTitle: { fontSize: 16, fontWeight: '700', color: C.text },
+  emptySub: { fontSize: 13, color: C.text3, textAlign: 'center' },
   footer: {
     padding: 16,
     paddingBottom: 36,

@@ -15,6 +15,8 @@ import { Pill } from '@/components/ui/Pill';
 import { BigButton } from '@/components/ui/BigButton';
 import { Icon } from '@/components/ui/Icon';
 import { C, BRANCHES, BranchCode } from '@/theme/colors';
+import { useOnline } from '@/hooks/useOnline';
+import { useOutbox } from '@/storage/outbox';
 import { format } from 'date-fns';
 
 type StopStatus = 'pending' | 'delivered' | 'skipped' | 'inroute';
@@ -111,6 +113,9 @@ export default function RouteListScreen() {
   const { user } = useAuth();
   const [expandedId, setExpandedId] = useState<string | null>('04');
   const [refreshing, setRefreshing] = useState(false);
+  const online = useOnline();
+  const outboxItems = useOutbox();
+  const syncCount = outboxItems.filter((item) => item.status !== 'synced').length;
 
   const branchCode = (user?.branch || '20GR') as BranchCode;
   const branch = BRANCHES.find((b) => b.code === branchCode);
@@ -134,8 +139,8 @@ export default function RouteListScreen() {
       <AppStatusBar
         branchLabel={`${branchCode} · ${branch?.name}`}
         branchDot={branch?.dot}
-        online={true}
-        syncCount={0}
+        online={online}
+        syncCount={syncCount}
         onProfile={() => router.push('/(app)/profile')}
       />
 

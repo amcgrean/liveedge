@@ -1,5 +1,12 @@
-import client from './client';
+import client, { IS_DEV_MODE } from './client';
 import { Route, DeliveryStop, DeliveryUpdate } from '@/types';
+
+export interface DeliverBody {
+  type: 'deliver' | 'skip';
+  notes: string;
+  photoUris: string[];
+  timestamp: string;
+}
 
 /**
  * Fetch driver's route for a specific date
@@ -48,6 +55,16 @@ export async function updateDeliveryStatus(
     }
   );
   return response.data;
+}
+
+export async function markDelivered(soNumber: string, body: DeliverBody): Promise<void> {
+  if (IS_DEV_MODE) {
+    await new Promise((resolve) => setTimeout(resolve, 800));
+    if (Math.random() < 0.15) throw new Error('Simulated network error');
+    return;
+  }
+
+  await client.post(`/api/dispatch/orders/${soNumber}/deliver`, body);
 }
 
 /**
