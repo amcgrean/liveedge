@@ -37,10 +37,15 @@ import {
   buildDispatchAlertHtml,
   buildDispatchAlertSmsBody,
   sendDispatchAlertEmail,
+  type DispatchAlertStop,
 } from '../email/send-dispatch-alert';
 import { sendSms } from '../sms/send-twilio';
 
 // ─── Public types ───────────────────────────────────────────────────────────
+
+// Per-stop detail the Pi reconciler posts alongside the route summary. Deliveries
+// and credit memos (anticipated returns) are split out in the email body.
+export type AgilityRouteStop = DispatchAlertStop;
 
 export interface NotifyRouteCompletedInput {
   routeId:             number;
@@ -54,6 +59,7 @@ export interface NotifyAgilityRouteInput {
   driver:             string | null;// agility_shipments.driver
   soIds:              string[];     // shipments' so_ids — informational
   shipmentCount:      number;       // total shipments in the group
+  stops?:             AgilityRouteStop[]; // enriched per-stop detail (may be absent)
 }
 
 export type NotifyOutcome =
@@ -122,7 +128,7 @@ export async function notifyRouteCompletedIfLastStop(
 export async function notifyAgilityRouteCompleted(
   input: NotifyAgilityRouteInput,
 ): Promise<NotifyOutcome> {
-  const { systemId, agilityShipDate, agilityRouteCode, driver, soIds, shipmentCount } = input;
+  const { systemId, agilityShipDate, agilityRouteCode, driver, soIds, shipmentCount, stops } = input;
 
   const driverName = (driver ?? '').trim() || 'Driver';
   // route_id_char is e.g. "07" or "P1". Render with a label that's useful in
@@ -143,6 +149,7 @@ export async function notifyAgilityRouteCompleted(
     systemId,
     agilityShipDate,
     agilityRouteCode: agilityRouteCode ?? null,
+    stops,
   });
 }
 
@@ -163,6 +170,8 @@ interface RunNotificationContext {
   systemId?:        string;
   agilityShipDate?: string;
   agilityRouteCode?: string | null;
+  // Enriched per-stop detail (agility source only; absent on liveedge path)
+  stops?:           AgilityRouteStop[];
 }
 
 async function runNotification(ctx: RunNotificationContext): Promise<NotifyOutcome> {
@@ -192,6 +201,9 @@ async function runNotification(ctx: RunNotificationContext): Promise<NotifyOutco
 
   // 3. Compose payloads.
   const completedAtLocal = formatLocal(new Date().toISOString());
+  const creditCount = (ctx.stops ?? []).filter(
+    (s) => s.saleType.trim().toLowerCase() === 'credit',
+  ).length;
   const html = buildDispatchAlertHtml({
     driverName:    ctx.driverName,
     routeName:     ctx.routeName,
@@ -201,6 +213,7 @@ async function runNotification(ctx: RunNotificationContext): Promise<NotifyOutco
     completedSo:   ctx.completedSo,
     stopCount:     ctx.stopCount,
     completedAt:   completedAtLocal,
+    stops:         ctx.stops,
   });
   const smsBody = buildDispatchAlertSmsBody({
     driverName: ctx.driverName,
@@ -208,6 +221,7 @@ async function runNotification(ctx: RunNotificationContext): Promise<NotifyOutco
     branchCode: ctx.branchCode,
     truckId:    ctx.truckId,
     stopCount:  ctx.stopCount,
+    creditCount,
   });
   const subject = `Route complete: ${ctx.driverName} · ${ctx.routeName} (${ctx.branchCode})`;
 

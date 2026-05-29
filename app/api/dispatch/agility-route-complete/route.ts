@@ -35,7 +35,11 @@ interface AgilityRouteCompleteBody {
   driver?:       unknown;
   shipmentCount: unknown;
   soIds?:        unknown;
+  stops?:        unknown;
 }
+
+// Real routes are 1–30 stops; cap generously and ignore overflow.
+const MAX_STOPS = 200;
 
 export async function POST(req: NextRequest) {
   const authErr = verifyDispatchSyncToken(req);
@@ -59,6 +63,16 @@ export async function POST(req: NextRequest) {
   }
 }
 
+interface ValidatedStop {
+  soId:     string;
+  saleType: string;
+  customer: string;
+  address1: string;
+  city:     string;
+  state:    string;
+  zip:      string;
+}
+
 interface ValidatedPayload {
   systemId:         string;
   agilityShipDate:  string;
@@ -66,6 +80,14 @@ interface ValidatedPayload {
   driver:           string | null;
   shipmentCount:    number;
   soIds:            string[];
+  stops?:           ValidatedStop[];
+}
+
+// Coerce any value to a trimmed string; non-strings (numbers, null) become "".
+function asTrimmedString(v: unknown): string {
+  if (typeof v === 'string') return v.trim();
+  if (typeof v === 'number') return String(v);
+  return '';
 }
 
 function validate(
@@ -106,6 +128,35 @@ function validate(
     return { ok: false, error: 'Either routeIdChar or driver must be present' };
   }
 
+  // Optional enriched per-stop detail. Absent/empty on older Pi builds —
+  // the email falls back to the header-only layout in that case.
+  let stops: ValidatedStop[] | undefined;
+  if (body.stops !== undefined && body.stops !== null) {
+    if (!Array.isArray(body.stops)) {
+      return { ok: false, error: 'stops must be an array' };
+    }
+    if (body.stops.length > MAX_STOPS) {
+      return { ok: false, error: `stops cannot exceed ${MAX_STOPS} entries` };
+    }
+    const parsed: ValidatedStop[] = [];
+    for (const s of body.stops) {
+      if (typeof s !== 'object' || s === null) {
+        return { ok: false, error: 'each stop must be an object' };
+      }
+      const stop = s as Record<string, unknown>;
+      parsed.push({
+        soId:     asTrimmedString(stop.soId),
+        saleType: asTrimmedString(stop.saleType),
+        customer: asTrimmedString(stop.customer),
+        address1: asTrimmedString(stop.address1),
+        city:     asTrimmedString(stop.city),
+        state:    asTrimmedString(stop.state),
+        zip:      asTrimmedString(stop.zip),
+      });
+    }
+    stops = parsed;
+  }
+
   return {
     ok: true,
     value: {
@@ -115,6 +166,7 @@ function validate(
       driver,
       shipmentCount,
       soIds,
+      ...(stops ? { stops } : {}),
     },
   };
 }
