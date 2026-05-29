@@ -48,6 +48,7 @@ function createErpDb() {
   _erpSql = postgres(getErpConnectionString(), {
     max: 10,
     idle_timeout: 20,
+    max_lifetime: 60 * 10, // rotate sockets every 10 min so pgBouncer-reaped connections never linger
     connect_timeout: 10,
     prepare: false, // required for pgBouncer transaction mode
   });
@@ -72,6 +73,7 @@ export function getErpSql() {
     _erpSql = postgres(getErpConnectionString(), {
       max: 10,
       idle_timeout: 20,
+      max_lifetime: 60 * 10,
       connect_timeout: 10,
       prepare: false,
     });
