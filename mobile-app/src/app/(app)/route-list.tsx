@@ -108,7 +108,7 @@ function StopCard({ stop, expanded, onToggle }: { stop: MockStop; expanded: bool
 }
 
 export default function RouteListScreen() {
-  const { user, logout } = useAuth();
+  const { user } = useAuth();
   const [expandedId, setExpandedId] = useState<string | null>('04');
   const [refreshing, setRefreshing] = useState(false);
 

@@ -384,12 +384,14 @@ In iOS simulator with the app open:
 ## Files to create
 
 ```
-mobile-app/src/hooks/useOnline.ts                  NEW
-mobile-app/src/storage/photoFS.ts                  NEW
-mobile-app/src/storage/outbox.ts                   REWRITE (delete existing)
-mobile-app/src/storage/sync.ts                     REWRITE (delete existing)
-mobile-app/src/context/ToastContext.tsx            REWRITE (delete existing)
+mobile-app/src/hooks/useOnline.ts                  NEW (mkdir -p src/hooks first)
+mobile-app/src/storage/photoFS.ts                  NEW (mkdir -p src/storage first)
+mobile-app/src/storage/outbox.ts                   NEW (skeleton in §4.3)
+mobile-app/src/storage/sync.ts                     NEW (skeleton in §4.6)
+mobile-app/src/context/ToastContext.tsx            NEW (skeleton in §4.4)
 ```
+
+Note: the old versions of those files were dead stubs and have been deleted.
 
 ## Files to modify
 
@@ -419,7 +421,9 @@ mobile-app/src/api/dispatch.ts                     Add DEV_MODE mock with 15% fa
 
 1. **`expo-file-system` v19 changed its API.** Use `import * as FileSystem from 'expo-file-system/legacy'` for the old synchronous-ish API. The new API uses class-based `File` objects which would require a deeper rewrite.
 
-2. **The old `src/storage/outbox.ts`, `src/storage/sync.ts`, and `src/context/ToastContext.tsx` were scaffolded in a prior session but never actually used.** They reference types like `PendingDelivery` from `@/types` that no longer match what we want. **Delete and rewrite them** — don't try to evolve in place.
+2. **Dead stub files (`outbox.ts`, `sync.ts`, `ToastContext.tsx`, `SyncContext.tsx`, `useDeliveryUpdate.ts`, `usePhotoCapture.ts`, `Toast.tsx`, `PhotoCamera.tsx`, `PhotoGrid.tsx`, `SyncStatus.tsx`) have been deleted in commit `db6b5fa`.** Create the new versions from scratch using the skeletons in section 4.1–4.4 above.
+
+   The directory `src/storage/` and `src/hooks/` were removed when empty — recreate them with `mkdir -p` if you want to put files there, or pick a different home (e.g. `src/lib/`).
 
 3. **`@/types/index.ts` is shared with auth.** Keep `User`, `AuthSession` intact. You can add `OutboxItem` etc. in `src/storage/outbox.ts` itself rather than polluting the types barrel.
 
@@ -428,6 +432,8 @@ mobile-app/src/api/dispatch.ts                     Add DEV_MODE mock with 15% fa
 5. **Don't burn cycles on the MAP FAB or real maps.** That's Phase 5.
 
 6. **Don't connect to a real backend yet.** Dev mode mocks are sufficient for Phase 4. The whole point of this phase is to prove the offline-first plumbing works locally.
+
+   When you do hook up the real backend (Phase 5), note that `src/api/client.ts` now reads `EXPO_PUBLIC_BACKEND_URL` (Expo only inlines `EXPO_PUBLIC_*` envs), and `src/api/auth.ts` has TODO markers for the actual backend contract — currently the verify endpoint is a guess (`/api/auth/verify-otp`) because LiveEdge's NextAuth provider sets a cookie, not a JWT. A dedicated mobile auth endpoint will likely need to be added on the web side.
 
 7. **Camera permission flow already works** — don't re-implement it. Just make sure your awaited `photoStore.add(so, uri)` in `handleShutter` (camera.tsx) keeps the immediate visual feedback (thumbnail strip updates).
 

@@ -1,9 +1,13 @@
 import axios, { AxiosInstance } from 'axios';
 
-const API_TIMEOUT = parseInt(process.env.EXPO_API_TIMEOUT || '30000', 10);
-const BACKEND_URL = process.env.EXPO_BACKEND_URL || 'http://localhost:3000';
+// IMPORTANT: Expo only inlines env vars prefixed with EXPO_PUBLIC_* into the
+// client bundle. EXPO_BACKEND_URL would always be undefined in device builds.
+// Document: set EXPO_PUBLIC_BACKEND_URL in mobile-app/.env (e.g.
+// https://app.beisser.cloud) for production. Leave it unset to use dev-mode
+// mocks (see src/api/auth.ts).
+const API_TIMEOUT = parseInt(process.env.EXPO_PUBLIC_API_TIMEOUT || '30000', 10);
+const BACKEND_URL = process.env.EXPO_PUBLIC_BACKEND_URL || '';
 
-// Create axios instance with base config
 const client: AxiosInstance = axios.create({
   baseURL: BACKEND_URL,
   timeout: API_TIMEOUT,
@@ -12,22 +16,16 @@ const client: AxiosInstance = axios.create({
   },
 });
 
-// Add request interceptor to include auth token
-client.interceptors.request.use(async (config) => {
-  // Token will be added by caller or auth context if available
-  return config;
-});
+// Token will be attached by callers via headers; nothing to do here yet.
+client.interceptors.request.use(async (config) => config);
 
-// Add response interceptor for error handling
 client.interceptors.response.use(
   (response) => response,
   (error) => {
-    if (error.response?.status === 401) {
-      // Unauthorized - clear session and redirect to login
-      // This is handled by auth context in app
-    }
+    // 401 handling lives in the auth context (clears session + redirects).
     return Promise.reject(error);
   }
 );
 
+export const IS_DEV_MODE = !BACKEND_URL;
 export default client;
