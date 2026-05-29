@@ -1,6 +1,6 @@
 # Next Agent Prompt — Mobile App Phase 5 Real Backend Integration
 
-You are taking over PR #445 on branch `claude/mobile-app-mvp`.
+You are taking over PR #445 on branch `claude/mobile-app-mvp`. The latest relevant handoff/review commit at the time this prompt was prepared is `ed9725fa`.
 
 Your task is to start Phase 5 for `mobile-app/`: connect the Expo driver app to real LiveEdge backend data and auth while preserving the completed Phase 4 offline-first behavior.
 
@@ -28,6 +28,12 @@ Phase 1-4 is implemented:
 - NetInfo online/offline state
 - retry/backoff sync engine
 - real Sync Queue screen
+
+Recent review fixes already landed:
+
+- Deliver/Skip actions now guard against duplicate outbox enqueues from repeated taps.
+- Active photo hydration excludes photos already claimed by outbox items.
+- Sync Queue no longer claims there is a signature when signature capture is deferred.
 
 Dev mode is active when `EXPO_PUBLIC_BACKEND_URL` is unset:
 
@@ -84,8 +90,9 @@ In dev mode:
 - login with any username + `000000`
 - pick Grimes
 - capture 2 photos on stop `102-44947`
+- toggle offline or block network if possible
 - mark delivered
-- verify Sync Queue behavior
+- verify Sync Queue behavior and persistence after app restart
 
 ### 2. Mobile Auth Contract
 
@@ -101,6 +108,8 @@ Mobile files likely involved:
 - `mobile-app/src/api/auth.ts`
 - `mobile-app/src/context/AuthContext.tsx`
 - `mobile-app/src/types/index.ts`
+
+After auth is real, make sure `src/api/dispatch.ts` attaches the returned token to real dispatch/route/POD requests. Do not remove dev-mode behavior.
 
 ### 3. Route Data Hook
 
@@ -124,6 +133,7 @@ Pattern:
 - otherwise fetch `/api/dispatch/routes?date=YYYY-MM-DD&branch=CODE`
 - normalize real stops into the current UI stop shape
 - keep screens rendering a stable app-level type
+- handle loading, error, empty-route, and pull-to-refresh states explicitly
 
 ### 4. Delivery/POD Sync
 
@@ -136,6 +146,8 @@ Real sync likely needs:
 3. mark outbox item `synced` only after required server writes succeed
 
 Put this orchestration in `src/api/dispatch.ts` or a small helper called by `src/storage/sync.ts`. Keep `sync.ts` focused on retry/backoff/outbox iteration.
+
+Important: `sync.ts` currently does not know about auth tokens. Decide whether to pass the active session token into the sync layer, expose a token provider, or move server sync orchestration into a context that has auth access. Avoid importing React context directly into storage modules.
 
 ### 5. Reconciliation
 
@@ -181,4 +193,3 @@ feat(mobile-app): start Phase 5 real backend integration
 ```
 
 Push to `origin/claude/mobile-app-mvp` when complete.
-
