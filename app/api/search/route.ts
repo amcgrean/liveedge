@@ -80,7 +80,8 @@ export async function GET(req: NextRequest) {
     };
     const custRows = await sql<CustRow[]>`
       SELECT DISTINCT ON (cust_code)
-        cust_code, cust_name, system_id, city, state
+        cust_code, cust_name, system_id,
+        shipto_city AS city, shipto_state AS state
       FROM agility_customers
       WHERE is_deleted = false
         ${branchFilter ? sql`AND system_id = ${branchFilter}` : sql``}

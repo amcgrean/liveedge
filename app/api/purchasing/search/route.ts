@@ -17,7 +17,7 @@ export async function GET(req: NextRequest) {
     const sql = getErpSql();
     const rows = await sql<OpenPO[]>`
       SELECT
-        ph.po_id AS po_number,
+        ph.po_id::text AS po_number,
         ph.supplier_name,
         ph.supplier_code,
         ph.system_id,
@@ -30,7 +30,7 @@ export async function GET(req: NextRequest) {
         ON rh.system_id = ph.system_id AND rh.po_id = ph.po_id
       WHERE ph.is_deleted = false
         AND (
-          ph.po_id ILIKE ${like}
+          ph.po_id::text ILIKE ${like}
           OR ph.supplier_name ILIKE ${like}
           OR ph.supplier_code ILIKE ${like}
         )
