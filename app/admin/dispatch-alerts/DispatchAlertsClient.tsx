@@ -62,17 +62,28 @@ export default function DispatchAlertsClient() {
   const [form, setForm]             = useState({ ...emptyForm });
   const [testingId, setTestingId]   = useState<string | null>(null);
   const [testResult, setTestResult] = useState<string>('');
+  const [listError, setListError]   = useState('');
 
-  const fetchAll = useCallback(async () => {
-    setLoading(true);
+  const fetchAll = useCallback(async (opts?: { background?: boolean }) => {
+    if (!opts?.background) setLoading(true);
     try {
       const res = await fetch('/api/admin/dispatch-alerts');
       if (res.ok) {
         const json = await res.json();
         setRecipients(json.recipients ?? []);
         setRecentLog(json.recentLog ?? []);
+        setListError('');
+      } else {
+        // Don't wipe the list on a transient failure — keep what we have
+        // (including any record we just optimistically added) and tell the
+        // user the refresh didn't land rather than silently swallowing it.
+        setListError('Could not refresh from the server. Showing the last known data — reload to retry.');
       }
-    } finally { setLoading(false); }
+    } catch {
+      setListError('Could not refresh from the server. Showing the last known data — reload to retry.');
+    } finally {
+      if (!opts?.background) setLoading(false);
+    }
   }, []);
 
   useEffect(() => { fetchAll(); }, [fetchAll]);
@@ -105,24 +116,53 @@ export default function DispatchAlertsClient() {
     try {
       const url = editing ? `/api/admin/dispatch-alerts/${editing.id}` : '/api/admin/dispatch-alerts';
       const method = editing ? 'PATCH' : 'POST';
-      const res = await fetch(url, {
-        method,
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(form),
-      });
-      if (!res.ok) {
-        setFormError((await res.json().catch(() => ({ error: 'Save failed' }))).error ?? 'Save failed');
+      let res: Response;
+      try {
+        res = await fetch(url, {
+          method,
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(form),
+        });
+      } catch {
+        setFormError('Network error — could not reach the server. Please try again.');
         return;
       }
+      const json = await res.json().catch(() => ({} as { recipient?: Recipient; error?: string }));
+      if (!res.ok) {
+        setFormError(json.error ?? 'Save failed');
+        return;
+      }
+      // Reflect the saved record immediately from the response so it shows
+      // even if the background refresh below fails. Previously the UI relied
+      // solely on a follow-up GET, so a transient GET failure made a
+      // successfully-saved recipient silently disappear from the list.
+      const saved = json.recipient as Recipient | undefined;
+      if (saved) {
+        setRecipients((prev) => [...prev.filter((r) => r.id !== saved.id), saved]);
+      }
       setShowForm(false);
-      await fetchAll();
+      // Reconcile with the server in the background — non-fatal if it hiccups.
+      fetchAll({ background: true });
     } finally { setSaving(false); }
   };
 
   const handleDelete = async (r: Recipient) => {
     if (!confirm(`Delete dispatch alert recipient "${r.name}"?`)) return;
-    await fetch(`/api/admin/dispatch-alerts/${r.id}`, { method: 'DELETE' });
-    fetchAll();
+    // Optimistically remove, then reconcile. Restore on failure.
+    const prev = recipients;
+    setRecipients((cur) => cur.filter((x) => x.id !== r.id));
+    try {
+      const res = await fetch(`/api/admin/dispatch-alerts/${r.id}`, { method: 'DELETE' });
+      if (!res.ok) {
+        setRecipients(prev);
+        setListError('Delete failed — the recipient was restored.');
+        return;
+      }
+      fetchAll({ background: true });
+    } catch {
+      setRecipients(prev);
+      setListError('Delete failed — the recipient was restored.');
+    }
   };
 
   const handleTest = async (r: Recipient) => {
@@ -169,6 +209,15 @@ export default function DispatchAlertsClient() {
       {testResult && (
         <div className="mb-4 px-4 py-3 bg-slate-800/60 border border-slate-700 rounded-lg text-sm text-slate-200">
           {testResult}
+        </div>
+      )}
+
+      {listError && (
+        <div className="mb-4 px-4 py-3 bg-amber-900/30 border border-amber-700/50 rounded-lg text-sm text-amber-200 flex items-center justify-between gap-3">
+          <span>{listError}</span>
+          <button onClick={() => fetchAll()} className="text-amber-100 underline underline-offset-2 hover:text-white shrink-0">
+            Retry
+          </button>
         </div>
       )}
 
