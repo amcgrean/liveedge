@@ -13,9 +13,12 @@
 //                                 driver, soIds, shipmentCount })
 //     Agility-sourced. Called by app/api/dispatch/agility-route-complete
 //     when the Pi-side reconciler detects that every shipment in a
-//     (system_id, ship_date, route_id_char, driver) group has flipped to
-//     status_flag_delivery='D' in Agility. The Pi is the source of truth
-//     for "did this load complete?"; LiveEdge just dedupes and sends.
+//     (system_id, ship_date, route_id_char, driver) group is delivered in
+//     Agility. NOTE: completion is judged on agility_shipments.status_flag
+//     IN ('D','I') (D=delivered, I=invoiced/past-delivered) — NOT the
+//     status_flag_delivery column, which is unpopulated in the mirror sync.
+//     The Pi is the source of truth for "did this load complete?"; LiveEdge
+//     just dedupes and sends.
 //
 // Dedupe: before invoking the provider we look up prior log rows keyed on
 // (route_source, route identity, recipient_id, channel) and skip the channel
