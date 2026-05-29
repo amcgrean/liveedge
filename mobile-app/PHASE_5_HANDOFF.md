@@ -1,6 +1,6 @@
 # Phase 5 Handoff — Real Backend Integration
 
-> Handoff doc for the next coding agent. This is current as of commit `093e065d` on branch `claude/mobile-app-mvp`, PR #445.
+> Handoff doc for the next coding agent. This is current for branch `claude/mobile-app-mvp`, PR #445.
 
 ## Project Context
 
@@ -13,6 +13,7 @@ The mobile app uses Expo Router, TypeScript, React Native `StyleSheet`, SecureSt
 - Branch: `claude/mobile-app-mvp`
 - PR: #445
 - Latest relevant commits:
+  - `7054fff5 docs(mobile-app): add Phase 5 handoff`
   - `093e065d docs(mobile-app): refresh gameplan after offline sync`
   - `c416d009 feat(mobile-app): Phase 4 — offline sync engine + persistent outbox`
 - Working tree was clean when this handoff was created.
@@ -255,3 +256,6 @@ Phase 5 should be considered complete when:
 - dev mode still works with `EXPO_PUBLIC_BACKEND_URL` unset
 - `npm run type-check` passes
 
+## Ready-To-Use Prompt
+
+Use `docs/agent-prompts/mobile-app-phase-5-real-backend.md` when handing this work to the next agent.

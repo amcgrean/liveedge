@@ -30,6 +30,7 @@ interface QueueRow {
   name: string;
   time: string;
   photos: number;
+  type: OutboxItem['type'];
   status: ItemStatus;
   tries: number;
   item: OutboxItem;
@@ -52,6 +53,7 @@ export default function SyncQueueScreen() {
       name: stop?.name ?? item.soNumber,
       time: format(item.createdAt, 'h:mm a'),
       photos: item.photoUris.length,
+      type: item.type,
       status: item.status === 'failed' ? 'failed' : item.status === 'retrying' ? 'retrying' : 'queued',
       tries: item.attempts,
       item,
@@ -130,7 +132,9 @@ export default function SyncQueueScreen() {
                   <Text style={styles.cardName} numberOfLines={1}>{it.name}</Text>
                   <View style={styles.cardMetaRow}>
                     <Text style={styles.cardTime}>{it.time}</Text>
-                    <Text style={styles.cardMeta}>· {it.photos} photos · 1 sig</Text>
+                    <Text style={styles.cardMeta}>
+                      · {it.photos} photos · {it.type === 'skip' ? 'skip' : 'delivery'}
+                    </Text>
                   </View>
                   <View style={styles.statusRow}>
                     {isRetrying && (

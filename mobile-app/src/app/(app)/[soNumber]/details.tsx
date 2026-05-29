@@ -34,6 +34,7 @@ export default function DeliveryDetailsScreen() {
   const online = useOnline();
   const { show } = useToast();
   const [notes, setNotes] = useState(stop?.notes || '');
+  const [submitting, setSubmitting] = useState(false);
 
   if (!stop) {
     return (
@@ -70,6 +71,7 @@ export default function DeliveryDetailsScreen() {
   };
 
   const handleMarkDelivered = async () => {
+    if (submitting) return;
     if (photos.length < MIN_PHOTOS) {
       Alert.alert(
         'Photos required',
@@ -78,24 +80,39 @@ export default function DeliveryDetailsScreen() {
       );
       return;
     }
-    await outbox.enqueue({
-      soNumber,
-      type: 'deliver',
-      notes,
-      photoUris: photos,
-    });
+    setSubmitting(true);
+    try {
+      await outbox.enqueue({
+        soNumber,
+        type: 'deliver',
+        notes,
+        photoUris: photos,
+      });
+    } catch {
+      setSubmitting(false);
+      show('Could not save delivery. Try again.', 'error');
+      return;
+    }
     show(online ? 'Delivery saved · syncing' : 'Saved offline · will sync later', 'success');
     photoStore.clear(soNumber);
     leaveStop();
   };
 
   const enqueueSkip = async (reason: string) => {
-    await outbox.enqueue({
-      soNumber,
-      type: 'skip',
-      notes: reason,
-      photoUris: [],
-    });
+    if (submitting) return;
+    setSubmitting(true);
+    try {
+      await outbox.enqueue({
+        soNumber,
+        type: 'skip',
+        notes: reason,
+        photoUris: [],
+      });
+    } catch {
+      setSubmitting(false);
+      show('Could not save skip. Try again.', 'error');
+      return;
+    }
     show(online ? 'Skip saved · syncing' : 'Skip saved offline · will sync later', 'success');
     leaveStop();
   };
@@ -262,13 +279,14 @@ export default function DeliveryDetailsScreen() {
 
       {/* Action bar */}
       <View style={styles.actionBar}>
-        <BigButton kind="danger" onPress={handleSkip} style={styles.skipBtn}>
+        <BigButton kind="danger" onPress={handleSkip} disabled={submitting} style={styles.skipBtn}>
           Skip
         </BigButton>
         <BigButton
           kind="primary"
           icon="check"
           onPress={handleMarkDelivered}
+          loading={submitting}
           style={styles.deliverBtn}
         >
           Mark Delivered

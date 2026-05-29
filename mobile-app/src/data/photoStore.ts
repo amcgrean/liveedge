@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { MOCK_STOPS } from '@/data/mockRoute';
 import { deletePhoto, listSavedPhotos, savePhotoForStop } from '@/storage/photoFS';
+import { outbox } from '@/storage/outbox';
 
 type Listener = () => void;
 const subs = new Set<Listener>();
@@ -14,7 +15,9 @@ function notify() {
 
 async function hydrateStop(so: string): Promise<void> {
   if (hydrated.has(so)) return;
-  photosBySo[so] = await listSavedPhotos(so);
+  const [savedPhotos, outboxItems] = await Promise.all([listSavedPhotos(so), outbox.all()]);
+  const claimedPhotos = new Set(outboxItems.flatMap((item) => item.photoUris));
+  photosBySo[so] = savedPhotos.filter((uri) => !claimedPhotos.has(uri));
   hydrated.add(so);
   notify();
 }
