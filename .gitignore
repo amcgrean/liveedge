@@ -39,3 +39,11 @@ public/swe-worker-*.js.map
 .claude/
 AGENTS.md
 tmp/
+
+# Mobile app (Expo)
+mobile-app/node_modules/
+mobile-app/.expo/
+mobile-app/.expo-shared/
+mobile-app/dist/
+mobile-app/.env.local
+mobile-app/npm-debug.*

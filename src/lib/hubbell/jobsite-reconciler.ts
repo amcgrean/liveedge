@@ -52,15 +52,25 @@ const NEGATIVE_REF_PENALTY = 30;
 // `missing` added 2026-05-28: Codex flagged "Missing trim" / "missing window"
 // SO refs surfacing for full-scope packets. Same partial-scope shape as
 // credit/correction/added — penalty waived when amount corroborates.
-const NEGATIVE_REF_PATTERN = /\b(credit|cred|replacement|repl|vpo|add(ed|on)?|correction|correct|missing)\b/i;
+// `repair|change` added 2026-05-28 from Codex's 50/batch session.
+const NEGATIVE_REF_PATTERN = /\b(credit|cred|replacement|repl|vpo|add(ed|on)?|correction|correct|missing|repair|change)\b/i;
 
-// Negative-total SO penalty. Credit-memo / return SOs (where
-// SUM(extended_price) < 0) represent work being un-delivered, not
-// delivered — almost never the right match for a real material PO/WO.
-// 161 candidates surfaced in the queue at writing; demote heavily to
-// push scope-only matches below the floor. Same magnitude as the
-// cancelled-SO penalty so a fully-corroborated genuine credit doc could
-// still surface for review.
+// Construction-stage partial-scope SOs. "Final Lock" / "Construction Lock"
+// are the final-stage lock installation, separate from the original door
+// packet. They surface against full exterior-door PDFs because the PDF's
+// line items include "Construction Lock RCADJ SC-1" at $0.00 (the
+// temporary lock the door ships with), so the matcher's `lock` keyword
+// stems and overlaps. The doc is primarily about doors, not locks.
+// Same waiver as neg_ref — penalty doesn't fire when amount matches
+// (legit final-lock-only PDF would have a small total matching the
+// final-lock SO).
+const CONSTRUCTION_STAGE_PATTERN = /\b(final|construction)\s+lock\b/i;
+
+// Non-positive-total SO penalty. Credit-memo / return SOs (total < 0)
+// and zero-total service-only SOs (total = 0) both represent "no real
+// material delivery" and almost never match real material POs/WOs.
+// Extended 2026-05-28 to include zero from negative-only: Codex flagged
+// 28 zero-total candidates surfacing in a single 50-batch.
 const NEGATIVE_TOTAL_PENALTY = 25;
 
 // SO statuses that are terminal-cancelled / closed-without-delivery. Backlog
@@ -416,10 +426,21 @@ export async function fetchJobsiteData(normAddr: string): Promise<{ docs: DocRow
 
 // Pair docs with SOs inside a single jobsite. Returns one pairing per
 // (doc, SO) where confidence ≥ minConfidence.
+//
+// Default raised to 40 on 2026-05-28 (PR #443). At conf 30 (scope-only,
+// no amount), Codex was rejecting essentially every candidate at the
+// long tail — accept rate fell to 0% on the final batches because every
+// scope-only candidate was a partial-scope / wrong-amount / wrong-
+// subtype that the matcher could only weakly flag. Lifting the floor
+// auto-suppresses scope-only candidates and keeps the matcher focused
+// on its high-quality work (scope+amount=45, scope+date=40, scope+
+// amount+date=55). Any scope-only candidates can still be found by
+// humans via /admin/hubbell/jobs (jobsite-level browse) or by lowering
+// the floor on a targeted reconcile call.
 export function pairDocsToSos(
   docs: DocRow[],
   sos: SoRow[],
-  minConfidence = 30,
+  minConfidence = 40,
 ): JobsitePairing[] {
   const pairings: JobsitePairing[] = [];
 
@@ -574,6 +595,15 @@ export function pairDocsToSos(
           confidence -= NEGATIVE_REF_PENALTY;
           reasons.push('neg_ref');
         }
+
+        // Construction-stage partial-scope ("Final Lock" / "Construction
+        // Lock"). Same waiver as neg_ref — fires only when amount doesn't
+        // corroborate. Audit reason `construction_stage` so it's
+        // distinguishable from the broader neg_ref bucket.
+        if (so.reference && CONSTRUCTION_STAGE_PATTERN.test(so.reference) && !totalMatched) {
+          confidence -= NEGATIVE_REF_PENALTY;
+          reasons.push('construction_stage');
+        }
       }
 
       // Cancelled-SO penalty — applies to ALL match sources, including
@@ -596,7 +626,7 @@ export function pairDocsToSos(
       // was re-issued from a credit).
       if (so.order_total !== null) {
         const t = Number(so.order_total);
-        if (Number.isFinite(t) && t < 0) {
+        if (Number.isFinite(t) && t <= 0) {
           confidence -= NEGATIVE_TOTAL_PENALTY;
           reasons.push('so_negative_total_demote');
         }
