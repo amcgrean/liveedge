@@ -8,9 +8,9 @@ The **Beisser LiveEdge Driver App** is a React Native (Expo) mobile application 
 - Capture proof-of-delivery (POD) photos
 - Sync offline updates when connectivity returns
 
-**Tech Stack**: Expo (iOS + Android), React Native, TypeScript, Axios, NativeWind (Tailwind CSS)
+**Tech Stack**: Expo SDK 54 (iOS + Android), React Native, TypeScript, Axios, React Native `StyleSheet`
 
-**Status**: Phase 1-2 complete (Auth + Route Display)
+**Status**: Mobile MVP through Phase 4 is implemented on PR #445. The app currently runs primarily in dev/mock mode; Phase 5 is real backend integration.
 
 ---
 
@@ -28,7 +28,7 @@ The **Beisser LiveEdge Driver App** is a React Native (Expo) mobile application 
 cd mobile-app
 npm install
 cp .env.example .env.local
-# Edit .env.local if needed (default points to localhost:3000)
+# Leave EXPO_PUBLIC_BACKEND_URL unset for dev-mode mocks, or set it to a real LiveEdge API base URL.
 npm start
 ```
 
@@ -57,14 +57,17 @@ mobile-app/
 │   │   ├── splash.tsx            ← Loading screen
 │   │   ├── (auth)/               ← Auth-only routes
 │   │   │   ├── _layout.tsx
-│   │   │   └── login.tsx         ← OTP login screen
+│   │   │   ├── login.tsx         ← Username entry / OTP request
+│   │   │   ├── otp.tsx           ← Six-digit OTP entry
+│   │   │   └── branch-select.tsx ← Yard picker
 │   │   └── (app)/                ← Protected routes (require auth)
 │   │       ├── _layout.tsx
 │   │       ├── route-list.tsx    ← Today's deliveries list
 │   │       └── [soNumber]/       ← Dynamic delivery detail
 │   │           ├── _layout.tsx
-│   │           ├── details.tsx   ← Mark complete/skip
-│   │           └── photos.tsx    ← Photo capture (phase 4)
+│   │           ├── details.tsx   ← Mark delivered/skip, notes, POD photo grid
+│   │           ├── camera.tsx    ← Camera capture
+│   │           └── customer.tsx  ← Customer / site detail sheet
 │   │
 │   ├── api/                      ← API client modules
 │   │   ├── client.ts             ← Axios instance + interceptors
@@ -72,29 +75,30 @@ mobile-app/
 │   │   └── dispatch.ts           ← Route + delivery endpoints
 │   │
 │   ├── context/                  ← React Context providers
-│   │   └── AuthContext.tsx       ← Global auth state + session storage
+│   │   ├── AuthContext.tsx       ← Global auth state + session storage
+│   │   └── ToastContext.tsx      ← App-wide toast notifications
 │   │
-│   ├── storage/                  ← Local data persistence (future)
-│   │   ├── session.ts            ← Secure token storage
-│   │   ├── outbox.ts             ← Offline queue (phase 5)
-│   │   └── sync.ts               ← Sync engine (phase 5)
+│   ├── storage/                  ← Local persistence and sync
+│   │   ├── photoFS.ts            ← Persistent POD photo files
+│   │   ├── outbox.ts             ← AsyncStorage delivery outbox
+│   │   └── sync.ts               ← Retry/backoff sync engine
 │   │
 │   ├── hooks/                    ← Custom React hooks
-│   │   ├── useAuth.ts            ← AuthContext consumer
-│   │   ├── useRoute.ts           ← Fetch + refetch route
-│   │   └── useSync.ts            ← Background sync (phase 5)
+│   │   └── useOnline.ts          ← NetInfo online/offline state
 │   │
-│   ├── components/               ← Reusable UI components
-│   │   ├── DeliveryCard.tsx      ← Stop summary card
-│   │   ├── PhotoCamera.tsx       ← Camera wrapper (phase 4)
-│   │   └── Button.tsx            ← Shared button styles
+│   ├── components/ui/            ← Reusable UI primitives
+│   │   ├── AppStatusBar.tsx      ← Branch + online/offline + sync badge
+│   │   ├── BigButton.tsx         ← Primary action button
+│   │   ├── Icon.tsx              ← SVG icon wrapper
+│   │   ├── MapPlaceholder.tsx    ← Placeholder until real maps
+│   │   ├── Pill.tsx              ← Status pills
+│   │   └── Wordmark.tsx          ← LiveEdge wordmark
 │   │
 │   ├── types/                    ← TypeScript definitions
 │   │   └── index.ts              ← Core types (User, Route, DeliveryStop, etc.)
 │   │
 │   └── utils/                    ← Utilities
-│       ├── date.ts               ← Date formatting (date-fns)
-│       └── network.ts            ← Network status detection (phase 5)
+│       └── date.ts               ← Date formatting helpers
 │
 ├── app.json                      ← Expo config (permissions, icons, name)
 ├── eas.json                      ← EAS build config (App Store/Play Store)
@@ -111,18 +115,25 @@ mobile-app/
 Uses **Expo Router** (file-based routing, similar to Next.js):
 
 ### Auth Routes (Unauthenticated Users)
-- `/login` — OTP login screen
+- `/(auth)/login` — username entry / OTP request
+- `/(auth)/otp` — OTP entry
+- `/(auth)/branch-select` — yard picker
 
 ### App Routes (Authenticated Users)
-- `/route-list` — Today's deliveries
-- `/[soNumber]/details` — Delivery details + status buttons
-- `/[soNumber]/photos` — Photo gallery (phase 4)
+- `/(app)/route-list` — today's route
+- `/(app)/[soNumber]/details` — delivery details, notes, POD photos, status actions
+- `/(app)/[soNumber]/camera` — camera capture
+- `/(app)/[soNumber]/customer` — customer/site sheet
+- `/(app)/sync-queue` — persistent outbox status and retry controls
+- `/(app)/profile` — profile, settings, sync queue entry
+- `/(app)/route-complete` — route completion checklist
 
 **Navigation Flow**:
 1. App detects no session → show `/login`
 2. User logs in with OTP → stores token in SecureStore
-3. App redirects to `/(app)/route-list`
-4. Tap delivery → navigate to `/[soNumber]/details`
+3. User selects branch → app routes to `/(app)/route-list`
+4. Tap a delivery → navigate to `/(app)/[soNumber]/details`
+5. Mark delivered/skip → enqueue offline-first outbox item → auto-sync when online
 
 ---
 
@@ -130,20 +141,29 @@ Uses **Expo Router** (file-based routing, similar to Next.js):
 
 ### Authentication
 
-**OTP Login Flow**:
+**Current mode**
+
+If `EXPO_PUBLIC_BACKEND_URL` is unset, the app runs in dev mode:
+- any username can request a code
+- OTP code `000000` signs in as `Dev Driver`
+- dispatch sync is mocked with an intentional 15% simulated failure rate so retry UI can be tested
+
+Real backend integration is Phase 5. LiveEdge's current web auth is NextAuth cookie-oriented, so mobile likely needs a dedicated JWT-returning verify endpoint before production API mode is useful.
+
+**OTP Login Flow**
 
 ```typescript
 // Step 1: Request OTP
 POST /api/auth/send-otp
 {
-  "username": "john.doe@beisser.com"
+  "identifier": "john.doe@beisser.com"
 }
-→ { success: true, expiresIn: 600 }
+→ { ok: true }
 
 // Step 2: Verify OTP code
-POST /api/auth/send-otp
+POST /api/auth/verify-otp  // Phase 5 mobile endpoint placeholder
 {
-  "username": "john.doe@beisser.com",
+  "identifier": "john.doe@beisser.com",
   "code": "123456"
 }
 → {
@@ -153,10 +173,10 @@ POST /api/auth/send-otp
   }
 ```
 
-**Token Storage**:
+**Token Storage**
 - Stored in `expo-secure-store` (encrypted on device)
 - Attached to all API requests: `Authorization: Bearer {token}`
-- Refreshed before expiry (manual for MVP; auto-refresh in phase 5)
+- Refresh behavior is deferred until the Phase 5 backend contract is settled
 
 ### Dispatch Endpoints
 
@@ -202,10 +222,10 @@ Response: { so_number, customer_name, address, city, state, zip, status, updated
 ```
 POST /api/dispatch/orders/SO-12345/deliver
 {
-  "status": "delivered|skipped",
+  "type": "deliver|skip",
   "notes": "customer not ready",
   "timestamp": "2026-04-26T11:15:00Z",
-  "photo_count": 0
+  "photoUris": ["file:///.../pod-photos/SO-12345-...jpg"]
 }
 
 Response:
@@ -216,7 +236,7 @@ Response:
 }
 ```
 
-#### Upload POD Photos (Phase 4)
+#### Upload POD Photos (Phase 5 backend integration)
 ```
 POST /api/dispatch/orders/SO-12345/pod
 Content-Type: multipart/form-data
@@ -252,25 +272,28 @@ Response:
 - Delivery detail screen
 - Stop information display
 
-### ⏳ Phase 3: Delivery Status Update
+### ✅ Phase 3: Delivery Status Update
 - Mark Delivered / Skip buttons
-- Optimistic UI updates
 - Toast notifications
 - Basic error handling
 
-### ⏳ Phase 4: Photo Capture & Upload
+### ✅ Phase 4: Photo Capture + Offline Sync
 - `expo-camera` integration
-- Photo gallery
 - Multi-photo support per delivery
-- Upload to presigned R2 URL
-- Local photo queue until confirmed
-
-### ⏳ Phase 5: Offline Sync
 - `@react-native-community/netinfo` for connectivity detection
-- AsyncStorage outbox for pending deliveries + photos
-- Background sync service (expo-task-manager)
+- Persistent POD photo storage in the app document directory
+- AsyncStorage outbox for pending deliveries, skips, notes, and photo URIs
+- Toast notifications
+- Real sync queue screen with retry, view, and discard actions
 - Retry logic with exponential backoff
-- Conflict resolution (server wins)
+
+### ⏳ Phase 5: Real Backend Integration
+- Add/settle a mobile JWT auth endpoint for OTP verification
+- Replace mock route data with `GET /api/dispatch/routes`
+- Map API route/stop payloads into the current driver UI shape
+- Upload POD photos to the real `/pod` endpoint or a presigned R2 flow
+- Reconcile server-side delivery state after outbox sync
+- Add real map route/polyline support after live route data is available
 
 ### ⏳ Phase 6: Testing & Deployment
 - End-to-end testing
@@ -287,14 +310,12 @@ Create `.env.local` (copied from `.env.example`):
 
 ```env
 # Backend API URL
-EXPO_BACKEND_URL=http://localhost:3000
-# Or for production: https://liveedge.beisser.com
+# Leave unset for dev-mode mocks. Expo only inlines EXPO_PUBLIC_* variables.
+EXPO_PUBLIC_BACKEND_URL=http://localhost:3000
+# Or for production/staging: https://app.beisser.cloud
 
 # API request timeout (ms)
-EXPO_API_TIMEOUT=30000
-
-# Log level (info, debug, warn, error)
-EXPO_LOG_LEVEL=info
+EXPO_PUBLIC_API_TIMEOUT=30000
 ```
 
 ---
@@ -323,28 +344,29 @@ EXPO_LOG_LEVEL=info
   - [ ] Back button returns to route list
 
 - [ ] **Mark Delivery**
-  - [ ] Click "Mark Delivered" → status updates
-  - [ ] Click "Mark Skipped" → prompt for reason → skipped with note
-  - [ ] Auto-return to route list after update
-  - [ ] Route list reflects status change
+  - [ ] Capture at least 2 photos
+  - [ ] Tap "Mark Delivered" → outbox item is created
+  - [ ] Tap "Skip" → prompt for reason on iOS, default reason on Android
+  - [ ] Auto-return to route list after enqueue
+  - [ ] Sync badge reflects pending item count until sync succeeds
 
 - [ ] **Edge Cases**
-  - [ ] Network disconnected → error toast
-  - [ ] Token expired → redirect to login
-  - [ ] Empty route → show "no deliveries" message
-  - [ ] App backgrounded/foregrounded → state persists
+  - [ ] Network disconnected → online chip flips to OFFLINE
+  - [ ] Offline delivery → toast says "Saved offline · will sync later"
+  - [ ] App killed/reopened → outbox and active photos persist
+  - [ ] Manual retry/discard works from Sync Queue
 
 ### End-to-End Test Flow
 
 1. Fresh install → shows login
 2. Login with valid OTP → redirected to route list
-3. Fetch route with 5+ stops
+3. In dev mode, route list shows mock stops
 4. Tap first stop → see details
 5. Mark delivered → back to list, status updated
 6. Tap second stop
 7. Mark skipped with reason → back to list
-8. Pull-to-refresh → route re-fetches
-9. Kill app and restart → session persists, route list opens
+8. Open Profile → Sync Queue → verify pending/synced state
+9. Kill app and restart → session, active photos, and outbox persist
 10. Logout (if implemented) → back to login
 
 ---
@@ -395,10 +417,10 @@ npm start
 |-------|----------|
 | Build fails | `rm -rf node_modules && npm install` |
 | Expo won't start | `npx expo-cli@latest start --clear` |
-| API calls timeout | Check `EXPO_BACKEND_URL` in .env.local; verify backend is running |
+| API calls timeout | Check `EXPO_PUBLIC_BACKEND_URL` in `.env.local`; verify backend is running |
 | Token invalid | Clear storage: `npx expo-cli@latest start --clear` (clears simulator) |
-| Photos not working (phase 4) | Check iOS/Android permissions in `app.json`; ensure camera permission granted |
-| Sync not working (phase 5) | Verify `@react-native-community/netinfo` installed; check connectivity status |
+| Photos not working | Check iOS/Android permissions in `app.json`; ensure camera permission granted |
+| Sync not working | Verify `@react-native-community/netinfo` installed; check connectivity status and Sync Queue |
 
 ---
 
@@ -432,9 +454,9 @@ See `eas.json` for build profiles (development, preview, production).
 
 ## Performance Tips
 
-- **Image Optimization**: Compress photos before upload (phase 4)
+- **Image Optimization**: Compress photos before real backend upload
 - **Lazy Loading**: Load routes on-demand, not all at once
-- **Memory**: Unload photos from cache after sync (phase 5)
+- **Memory**: Unload or prune synced photos after backend confirms durable upload
 - **Bundle Size**: Use Metro bundler analyzer to identify large packages
 - **Network**: Implement request timeout + retry (already in client.ts)
 
