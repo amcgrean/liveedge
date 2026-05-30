@@ -86,7 +86,15 @@ export async function GET(req: NextRequest) {
         paymentStatus: schema.hubbellDocuments.paymentStatus,
         paidAmountTotal: schema.hubbellDocuments.paidAmountTotal,
         receivedAt: schema.hubbellDocuments.receivedAt,
+        lineItems: schema.hubbellDocuments.lineItems,
         attachedCount: dsql<number>`COALESCE(${attachCounts.cnt}, 0)`,
+        // True iff the buyer typed this doc# into an SO's po_number field.
+        // Drives the green PO# pill on the Documents tab.
+        hasPONumberSplit: dsql<boolean>`EXISTS (
+          SELECT 1 FROM bids.hubbell_document_sos j
+          WHERE j.document_id = ${schema.hubbellDocuments.id}
+            AND j.match_source = 'po_number_split'
+        )`,
       })
       .from(schema.hubbellDocuments)
       .leftJoin(attachCounts, eq(attachCounts.documentId, schema.hubbellDocuments.id))
