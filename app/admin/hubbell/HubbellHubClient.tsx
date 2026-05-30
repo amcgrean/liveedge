@@ -116,9 +116,8 @@ export default function HubbellHubClient() {
     router.push(`/admin/hubbell?${params.toString()}`);
   }
 
-  // Documents-tab counts come from the docs API so we hold them at the top so
-  // the tab pill can show its count even on the Checks/Jobs tabs.
-  const [docCounts, setDocCounts] = useState<Record<Tab, number> | null>(null);
+  // Documents-tab total comes from the docs API so the Documents tab pill can
+  // show its count even while the user is on Checks/Jobs.
   const [docTotal, setDocTotal] = useState<number | null>(null);
 
   return (
@@ -187,10 +186,7 @@ export default function HubbellHubClient() {
       <div className="p-5 max-w-[1600px] mx-auto">
         {section === 'documents' && (
           <DocumentsTab
-            onMeta={(counts, total) => {
-              setDocCounts(counts);
-              setDocTotal(total);
-            }}
+            onTotal={setDocTotal}
           />
         )}
         {section === 'checks' && <ChecksView minHeight={580} />}
@@ -210,9 +206,9 @@ const SUB_TABS: { key: Tab; label: string }[] = [
 ];
 
 function DocumentsTab({
-  onMeta,
+  onTotal,
 }: {
-  onMeta: (counts: Record<Tab, number>, total: number) => void;
+  onTotal: (total: number) => void;
 }) {
   const router = useRouter();
   const search = useSearchParams();
@@ -252,7 +248,7 @@ function DocumentsTab({
       .then((r) => r.json())
       .then((j: DocApi) => {
         setData(j);
-        onMeta(j.counts, j.total);
+        onTotal(j.total);
       })
       .finally(() => setLoading(false));
   }, [tab, docType, q, page]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -307,7 +303,7 @@ function DocumentsTab({
         r.json(),
       );
       setData(j);
-      onMeta(j.counts, j.total);
+      onTotal(j.total);
     } finally {
       setBusy(false);
     }
