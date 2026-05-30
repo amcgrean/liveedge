@@ -1017,6 +1017,25 @@ Three-Explore-agent audit on `claude/app-performance-issues-Hgx9B`. Plan in `/ro
 - Always partition cache keys on per-user scoping inputs. Two reps hitting `/api/sales/hub` must NOT share a cached payload.
 - The Codex P2 lesson: never put `.catch(() => fallback)` inside an `erpCache`-wrapped function — let it throw, apply the fallback at the call site.
 
+#### Scorecard Analytics Rollups (2026-05-30) — Tier 1 data-tier, IN PROGRESS
+
+Architecture-review Tier 1: **isolate analytical load from operational load.** Every scorecard/management dashboard load aggregates over `public.customer_scorecard_fact` (~4.4M rows, **6.4 GB** = 2.5 GB heap + **3.9 GB indexes**). Those analytical scans compete with operational reads for the single Supabase instance's shared-buffer cache — root cause of the 2026-05-28 timeout incident, and the project shows a live "exhausting resources" banner. Fix: pre-aggregated **daily** rollup materialized views in `bids` that the hot scans read instead of the fact.
+
+**Slice 1 LIVE (PR #459, migration `0035_scorecard_rollups.sql`):**
+- **`bids.rollup_customer_day`** — daily-grain (`d = invoice_date::date`), pre-split-measure MV over the fact. **505,472 rows / 89 MB** (~0.7% of the 12 GB DB) replaces 6.4 GB scans. Refreshed nightly via **pg_cron** `REFRESH MATERIALIZED VIEW CONCURRENTLY` (jobid 7, `10 9 * * *` UTC ≈ 04:10 Central, off-hours).
+- Rewired `_fetchCustomerList` + `_fetchAllCustomersAvg` in `src/lib/scorecard/queries.ts` to read the MV. The other functions still read the fact.
+- **`GET /api/admin/sync-health`** (`admin.config.manage`) — cheap Pi-sync + rollup freshness monitor. Uses indexed `MAX()` on the fact (only `customer_scorecard_fact` indexes `synced_at`/`source_updated_at`), `cron.job_run_details` for rollup refresh, `pg_class.reltuples` for operational-table row sanity. No full scans.
+
+**Design rules (the pattern — follow for every new rollup):**
+- **Daily grain, not monthly.** Live queries filter `invoice_date::date <= cutoff` (day-level YTD); monthly grain would be wrong for the partial current month. `EXTRACT(YEAR)=y AND date<=cutoff` → `d >= make_date(y,1,1) AND d <= cutoff::date`.
+- **Pre-split measure columns** (`sales_va`, `sales_ns`, `sales_cm`, …), never boolean-flags-as-grain — avoids row explosion.
+- MV filters `is_deleted=false AND invoice_date IS NOT NULL` (keeps the unique index — required by CONCURRENTLY — NULL-free; changes no result since consumers filter dates).
+- **Rule for new heavy scorecard $ aggregates: read the rollup, not the fact** — except the paths that genuinely can't: single-customer (`_fetchKpis`, `_fetchThreeYear` — already indexed, cheap, need exact distinct counts), distinct-count-exact paths, `_searchCustomers`, `_fetchDaysToPay`, `_fetchProductOrders`, item-level product drill (item grain ≈ fact cardinality), and **rep-scoped aggregates** (`_fetchAggregateKpis` joins `agility_so_header` on `rep_1`/`rep_3`; `rep` isn't in the fact, so a customer/product rollup can't serve rep scope — split company/branch vs rep).
+- **Validation bar: match the live fact to the cent** via bounded MCP diffs (one branch/year + a partial-month YTD cross-year case), all deltas `0.0000`, before merging. Keep slices bounded (no unguarded `COUNT(*)` on the fact).
+- Migrations applied manually in Supabase **off-hours** (initial `CREATE … WITH DATA` does one full fact scan). The "destructive operation" warning is expected — it's the `DROP MATERIALIZED VIEW IF EXISTS` (derived cache) + `cron.unschedule`; nothing touches source data.
+
+**Remaining (next slices — handoff at `docs/agent-prompts/scorecard-rollups-next-slice-2026-05-30.md`):** `rollup_product_day` + `rollup_saletype_day` (fact-sourced; rewire `_fetchProductMajors/Minors`, `_fetchSaleTypes`, major/minor product-drill funcs); aggregate management paths (company/branch only — rep stays live); `rollup_vendor_day` (reads `agility_receiving_*`+`agility_po_header`, not the fact — most care); alerting on `/api/admin/sync-health`.
+
 #### Dispatch route-completion alerts (2026-05-27 → 2026-05-28) — LIVE
 
 Email + SMS alert fires the moment a dispatch route's final stop is delivered, so dispatch can pre-stage the next load instead of catching it from a board refresh. Two trigger paths share one recipient table, one Resend/Twilio integration, and one audit log:
