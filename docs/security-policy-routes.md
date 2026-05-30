@@ -14,6 +14,7 @@ This policy defines authorization expectations for `app/api/**/route.ts`.
   "public": [
     "app/api/auth/request-otp/route.ts",
     "app/api/auth/send-otp/route.ts",
+    "app/api/auth/mobile/verify-otp/route.ts",
     "app/api/ops-login/route.ts"
   ],
   "serviceAuth": [
@@ -35,6 +36,7 @@ This policy defines authorization expectations for `app/api/**/route.ts`.
   "guardPatterns": [
     "requireCapability(",
     "requirePageAccess(",
+    "requireSessionOrMobile(",
     "await auth(",
     "verifyCronSignature(",
     "verifyInternalToken(",
