@@ -97,7 +97,11 @@ App views backed by agility_ tables (via the old erp_mirror_ as of 2026-04-04 �
 - `db/index.ts` — App DB. Uses `postgres.js` + `drizzle-orm/postgres-js`. Resolves `BIDS_DATABASE_URL` → `POSTGRES_URL_NON_POOLING` → `POSTGRES_URL`. All tables in `bids` schema.
 - `db/supabase.ts` — ERP reads. Same Supabase instance, `public` schema. Exports `getErpDb()`, `getErpSql()`, `isErpConfigured()`.
 
-Both connections use `prepare: false` and `max: 1` (serverless-safe, pgBouncer-compatible).
+ERP pool (`db/supabase.ts`) uses `prepare: false`, `max: 10`, `idle_timeout: 20`, `max_lifetime: 600` (10 min). **`max_lifetime` is load-bearing** — without it, a connection that keeps seeing traffic past `idle_timeout` never rotates, and pgBouncer-reaped or network-stale sockets surface as `write ETIMEDOUT` (errno -110) on the next write. Don't drop below ~5 min (kills warm-pool benefit) or raise above ~30 min (defeats rotation). Added in PR #446 (2026-05-29). App pool (`db/index.ts`) is `prepare: false`, pgBouncer-compatible.
+
+**SQL gotcha — `ILIKE` on `agility_*` integer columns**: `po_id`, `so_id`, `wo_id`, `source_id` are all INTEGER in the mirror. Direct `ILIKE` fails with `operator does not exist: integer ~~* unknown`. Always `::text` cast first — see `src/lib/purchasing/workspace-aggregator.ts` for the established pattern. (`/api/purchasing/search` shipped without the cast and 503'd silently in prod for ~2 weeks before PR #452 fixed it on 2026-05-29.)
+
+**SQL gotcha — `agility_customers` address columns**: there is no `city` / `state` — it carries `shipto_city` / `shipto_state` (one row per ship-to). Same PR #452 fixed `/api/search` which assumed `city` / `state`.
 
 ### Schema Files
 - `db/schema.ts` — UUID-based tables in `bids` schema. Drizzle-managed via `drizzle-kit`. Exports `bidsSchema` (the `pgSchema('bids')` instance).
