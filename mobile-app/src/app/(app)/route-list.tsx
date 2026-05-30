@@ -125,6 +125,7 @@ export default function RouteListScreen() {
         online={online}
         syncCount={syncCount}
         onProfile={() => router.push('/(app)/profile')}
+        onSearch={() => router.push('/(app)/lookup')}
       />
 
       {/* Sub header: date + progress */}

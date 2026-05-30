@@ -9,6 +9,106 @@ export interface DeliverBody {
   timestamp: string;
 }
 
+export interface OrderLookupStop {
+  id: number;
+  route_id: number;
+  shipment_num: number;
+  status: string;
+  notes: string | null;
+  route_date?: string;
+  route_name?: string;
+  branch_code?: string;
+}
+
+export interface OrderLookupResponse {
+  so: {
+    so_id: string;
+    branch_code: string;
+    customer_name: string | null;
+    cust_code: string | null;
+    address_1: string | null;
+    city: string | null;
+    state: string | null;
+    zip: string | null;
+    reference: string | null;
+    po_number: string | null;
+    ship_via: string | null;
+    so_status: string | null;
+    sale_type: string | null;
+    created_date: string | null;
+    shipto_seq_num: number | null;
+    line_count: number;
+    ext_total: number | null;
+  };
+  existing_stop: OrderLookupStop | null;
+}
+
+/**
+ * Look up an SO by number. Returns header data plus an existing dispatch
+ * stop if the SO is already scheduled. The mobile app uses this to power
+ * the search-by-SO# flow from the top bar.
+ */
+export async function lookupOrder(soNumber: string): Promise<OrderLookupResponse> {
+  if (IS_DEV_MODE) {
+    await new Promise((resolve) => setTimeout(resolve, 400));
+    // Dev mode: synthesize a plausible response so the UI can be exercised.
+    return {
+      so: {
+        so_id: soNumber,
+        branch_code: '20GR',
+        customer_name: 'Dev Customer ' + soNumber,
+        cust_code: 'DEV1000',
+        address_1: '1 Dev Lane',
+        city: 'Grimes',
+        state: 'IA',
+        zip: '50111',
+        reference: 'DEV-' + soNumber,
+        po_number: null,
+        ship_via: 'TRUCK',
+        so_status: 'O',
+        sale_type: 'Direct',
+        created_date: new Date().toISOString().slice(0, 10),
+        shipto_seq_num: 1,
+        line_count: 0,
+        ext_total: null,
+      },
+      existing_stop: null,
+    };
+  }
+  const res = await client.get<OrderLookupResponse>(`/api/dispatch/orders/${encodeURIComponent(soNumber)}`);
+  return res.data;
+}
+
+export interface ClaimOrderResponse {
+  claimed: boolean;
+  already_existed: boolean;
+  stop: OrderLookupStop;
+}
+
+/**
+ * Claim an SO so the caller can submit POD photos and mark it delivered.
+ * Server creates a per-user-per-day ad-hoc dispatch_route_stops row if
+ * the SO isn't already on a route.
+ */
+export async function claimOrder(
+  soNumber: string,
+  body: { branchCode?: string; shipmentNum?: number; notes?: string } = {}
+): Promise<ClaimOrderResponse> {
+  if (IS_DEV_MODE) {
+    await new Promise((resolve) => setTimeout(resolve, 400));
+    return {
+      claimed: true,
+      already_existed: false,
+      stop: { id: 9999, route_id: 9998, shipment_num: 1, status: 'pending', notes: 'dev claim' },
+    };
+  }
+  const res = await client.post<ClaimOrderResponse>(
+    `/api/dispatch/orders/${encodeURIComponent(soNumber)}/claim`,
+    body
+  );
+  return res.data;
+}
+
 interface PresignResponse {
   url: string;
   key: string;

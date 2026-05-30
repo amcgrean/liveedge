@@ -12,6 +12,7 @@ interface AppStatusBarProps {
   initials?: string;
   onMenu?: () => void;
   onProfile?: () => void;
+  onSearch?: () => void;
   showMenu?: boolean;
 }
 
@@ -24,6 +25,7 @@ export function AppStatusBar({
   initials = 'DM',
   onMenu,
   onProfile,
+  onSearch,
   showMenu = true,
 }: AppStatusBarProps) {
   return (
@@ -74,6 +76,11 @@ export function AppStatusBar({
           </View>
         )}
       </View>
+      {onSearch && (
+        <TouchableOpacity onPress={onSearch} style={styles.iconButton} accessibilityLabel="Look up SO#">
+          <Icon name="search" size={20} color={C.text} strokeWidth={2.2} />
+        </TouchableOpacity>
+      )}
       <TouchableOpacity onPress={onProfile} style={styles.avatar}>
         <Text style={styles.avatarText}>{initials}</Text>
       </TouchableOpacity>

@@ -18,40 +18,81 @@ import { BigButton } from '@/components/ui/BigButton';
 import { Pill } from '@/components/ui/Pill';
 import { MapPlaceholder } from '@/components/ui/MapPlaceholder';
 import { C } from '@/theme/colors';
-import { useDriverRoute } from '@/hooks/useDriverRoute';
+import { useStopOrLookup } from '@/hooks/useStopOrLookup';
 import { usePhotos, photoStore } from '@/data/photoStore';
 import { useOnline } from '@/hooks/useOnline';
 import { outbox } from '@/storage/outbox';
 import { useToast } from '@/context/ToastContext';
+import { claimOrder } from '@/api/dispatch';
 
 const MIN_PHOTOS = 2;
 
 export default function DeliveryDetailsScreen() {
-  const { soNumber } = useLocalSearchParams<{ soNumber: string }>();
-  const { stops } = useDriverRoute();
-  const stop = stops.find((s) => s.so === soNumber);
-  const idx = stops.findIndex((s) => s.so === soNumber);
+  const { soNumber, claimable } = useLocalSearchParams<{ soNumber: string; claimable?: string }>();
+  const { stop, source, loading: stopLoading, total, idx, refresh: refreshStop } = useStopOrLookup(soNumber);
   const photos = usePhotos(soNumber);
   const online = useOnline();
   const { show } = useToast();
   const [notes, setNotes] = useState(stop?.notes || '');
   const [submitting, setSubmitting] = useState(false);
 
-  if (!stop) {
+  // Claim state. Started "claimed" when:
+  //   - we got here through route mode (the stop is already on the route), OR
+  //   - the lookup returned an existing_stop (server has a row already).
+  // Started "unclaimed" when lookup explicitly flagged claimable=1.
+  const [claimed, setClaimed] = useState<boolean>(() => {
+    if (source === 'route') return true;
+    if (claimable === '1') return false;
+    return true;
+  });
+  const [claiming, setClaiming] = useState(false);
+
+  // Keep notes synced if stop loads after first render (lookup mode).
+  React.useEffect(() => {
+    if (stop?.notes && !notes) setNotes(stop.notes);
+    // Once we know the source, re-evaluate claimed state. Lookup that returns
+    // existing_stop means already claimed; absence means user must claim.
+    if (source === 'route') setClaimed(true);
+    else if (source === 'lookup') setClaimed(stop?.stopId != null);
+  }, [source, stop?.stopId]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  if (stopLoading || !stop) {
     return (
       <SafeAreaView style={styles.safe}>
         <View style={styles.notFound}>
-          <Text style={styles.notFoundTitle}>Stop not found</Text>
+          <Text style={styles.notFoundTitle}>
+            {stopLoading ? 'Looking up SO…' : 'Stop not found'}
+          </Text>
           <Text style={styles.notFoundSub}>SO# {soNumber}</Text>
           <View style={{ marginTop: 16 }}>
             <BigButton kind="primary" onPress={() => router.back()}>
-              Back to route
+              Back
             </BigButton>
           </View>
         </View>
       </SafeAreaView>
     );
   }
+
+  const handleClaim = async () => {
+    if (claiming) return;
+    setClaiming(true);
+    try {
+      const res = await claimOrder(soNumber, {
+        branchCode: stop.branchCode,
+        shipmentNum: stop.shipmentNum,
+      });
+      setClaimed(true);
+      show(res.already_existed ? 'Stop was already on a route' : 'Stop claimed · you can now record POD', 'success');
+      // Re-fetch so the server-side stopId is reflected in local data.
+      await refreshStop();
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Claim failed';
+      show(msg, 'error');
+    } finally {
+      setClaiming(false);
+    }
+  };
 
   const pillKind = stop.status;
   const pillLabel = stop.status === 'inroute' ? 'IN ROUTE' : stop.status.toUpperCase();
@@ -63,7 +104,10 @@ export default function DeliveryDetailsScreen() {
   };
 
   const leaveStop = () => {
-    const isLast = idx === stops.length - 1;
+    // Only auto-jump to route-complete when this stop is the last on the
+    // driver's planned route — never for SO lookups, which aren't part
+    // of the planned route at all.
+    const isLast = source === 'route' && idx >= 0 && idx === total - 1;
     if (isLast) {
       router.replace('/(app)/route-complete');
     } else {
@@ -73,6 +117,10 @@ export default function DeliveryDetailsScreen() {
 
   const handleMarkDelivered = async () => {
     if (submitting) return;
+    if (!claimed) {
+      Alert.alert('Claim required', 'Tap "Take this stop" first to record POD for this SO.');
+      return;
+    }
     if (photos.length < MIN_PHOTOS) {
       Alert.alert(
         'Photos required',
@@ -119,6 +167,10 @@ export default function DeliveryDetailsScreen() {
   };
 
   const handleSkip = () => {
+    if (!claimed) {
+      Alert.alert('Claim required', 'Tap "Take this stop" first if you want to record a skip.');
+      return;
+    }
     if (Platform.OS === 'ios' && typeof Alert.prompt === 'function') {
       Alert.prompt(
         'Skip Stop',
@@ -170,7 +222,11 @@ export default function DeliveryDetailsScreen() {
           <Text style={styles.backText}>Route</Text>
         </TouchableOpacity>
         <Text style={styles.backTitle}>
-          Stop {stop.n} of {stops.length.toString().padStart(2, '0')}
+          {source === 'route'
+            ? `Stop ${stop.n} of ${total.toString().padStart(2, '0')}`
+            : claimed
+              ? `SO Lookup · Claimed`
+              : `SO Lookup`}
         </Text>
         <Pill kind={pillKind}>{pillLabel}</Pill>
       </View>
@@ -195,6 +251,30 @@ export default function DeliveryDetailsScreen() {
             )}
           </View>
         </View>
+
+        {/* Claim banner — only when this SO was opened via lookup and the
+            caller hasn't claimed it yet. POD actions stay disabled until
+            the claim POST succeeds. */}
+        {source === 'lookup' && !claimed && (
+          <View style={styles.claimBox}>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.claimTitle}>Not on your route</Text>
+              <Text style={styles.claimBody}>
+                Claim this stop to record POD photos and mark delivered. Other actions are read-only until you claim.
+              </Text>
+            </View>
+            <BigButton
+              kind="primary"
+              icon="checkBold"
+              fullWidth={false}
+              onPress={handleClaim}
+              disabled={claiming}
+              style={{ minWidth: 140 }}
+            >
+              {claiming ? 'Claiming…' : 'Take this stop'}
+            </BigButton>
+          </View>
+        )}
 
         {/* Map */}
         <MapPlaceholder height={180} distance={stop.eta ? '1.2 mi · 5 min' : undefined} />
@@ -298,6 +378,20 @@ export default function DeliveryDetailsScreen() {
 }
 
 const styles = StyleSheet.create({
+  claimBox: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    backgroundColor: C.greenSoft,
+    borderColor: C.green,
+    borderWidth: 1.5,
+    borderRadius: 14,
+    padding: 14,
+    marginHorizontal: 16,
+    marginTop: 12,
+  },
+  claimTitle: { fontSize: 15, fontWeight: '700', color: C.text },
+  claimBody: { fontSize: 13, color: C.text2, marginTop: 2 },
   safe: { flex: 1, backgroundColor: C.surface },
   notFound: { flex: 1, justifyContent: 'center', alignItems: 'center', padding: 24 },
   notFoundTitle: { fontSize: 20, fontWeight: '700', color: C.text },
