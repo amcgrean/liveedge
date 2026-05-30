@@ -103,28 +103,31 @@ async function _fetchCustomerList(
     branch_ids: string[];
   };
 
+  // Reads bids.rollup_customer_day (daily pre-aggregated) instead of the 6.4 GB
+  // fact — this is an "all customers over a year range" scan, the hottest of the
+  // buffer-cache offenders. Daily grain reproduces the day-level cutoff exactly;
+  // `d` is invoice_date::date so every predicate maps 1:1. See migration 0035.
   const rows = branchIds.length > 0
     ? await sql<Row[]>`
         SELECT
           customer_id,
           MAX(customer_name) AS customer_name,
           SUM(sales_amount) FILTER (
-            WHERE invoice_date >= make_date(${baseYear}, 1, 1)
-              AND invoice_date::date <= ${baseCutoff}::date
+            WHERE d >= make_date(${baseYear}, 1, 1)
+              AND d <= ${baseCutoff}::date
           )::numeric(18,2)::text AS sales_base,
           SUM(sales_amount) FILTER (
-            WHERE invoice_date >= make_date(${compareYear}, 1, 1)
-              AND invoice_date::date <= ${compareCutoff}::date
+            WHERE d >= make_date(${compareYear}, 1, 1)
+              AND d <= ${compareCutoff}::date
           )::numeric(18,2)::text AS sales_compare,
           SUM(gross_profit) FILTER (
-            WHERE invoice_date >= make_date(${baseYear}, 1, 1)
-              AND invoice_date::date <= ${baseCutoff}::date
+            WHERE d >= make_date(${baseYear}, 1, 1)
+              AND d <= ${baseCutoff}::date
           )::numeric(18,2)::text AS gp_base,
           array_agg(DISTINCT branch_id) FILTER (WHERE branch_id IS NOT NULL) AS branch_ids
-        FROM customer_scorecard_fact
-        WHERE is_deleted = false
-          AND invoice_date >= ${dateFrom}::timestamp
-          AND invoice_date < ${dateTo}::timestamp
+        FROM bids.rollup_customer_day
+        WHERE d >= ${dateFrom}::date
+          AND d < ${dateTo}::date
           AND branch_id = ANY(${branchIds}::text[])
           AND (
             ${search} = ''
@@ -133,8 +136,8 @@ async function _fetchCustomerList(
           )
         GROUP BY customer_id
         ORDER BY SUM(sales_amount) FILTER (
-          WHERE invoice_date >= make_date(${baseYear}, 1, 1)
-            AND invoice_date::date <= ${baseCutoff}::date
+          WHERE d >= make_date(${baseYear}, 1, 1)
+            AND d <= ${baseCutoff}::date
         ) DESC NULLS LAST
         LIMIT ${limit}
       `
@@ -143,22 +146,21 @@ async function _fetchCustomerList(
           customer_id,
           MAX(customer_name) AS customer_name,
           SUM(sales_amount) FILTER (
-            WHERE invoice_date >= make_date(${baseYear}, 1, 1)
-              AND invoice_date::date <= ${baseCutoff}::date
+            WHERE d >= make_date(${baseYear}, 1, 1)
+              AND d <= ${baseCutoff}::date
           )::numeric(18,2)::text AS sales_base,
           SUM(sales_amount) FILTER (
-            WHERE invoice_date >= make_date(${compareYear}, 1, 1)
-              AND invoice_date::date <= ${compareCutoff}::date
+            WHERE d >= make_date(${compareYear}, 1, 1)
+              AND d <= ${compareCutoff}::date
           )::numeric(18,2)::text AS sales_compare,
           SUM(gross_profit) FILTER (
-            WHERE invoice_date >= make_date(${baseYear}, 1, 1)
-              AND invoice_date::date <= ${baseCutoff}::date
+            WHERE d >= make_date(${baseYear}, 1, 1)
+              AND d <= ${baseCutoff}::date
           )::numeric(18,2)::text AS gp_base,
           array_agg(DISTINCT branch_id) FILTER (WHERE branch_id IS NOT NULL) AS branch_ids
-        FROM customer_scorecard_fact
-        WHERE is_deleted = false
-          AND invoice_date >= ${dateFrom}::timestamp
-          AND invoice_date < ${dateTo}::timestamp
+        FROM bids.rollup_customer_day
+        WHERE d >= ${dateFrom}::date
+          AND d < ${dateTo}::date
           AND (
             ${search} = ''
             OR customer_name ILIKE ${'%' + search + '%'}
@@ -166,8 +168,8 @@ async function _fetchCustomerList(
           )
         GROUP BY customer_id
         ORDER BY SUM(sales_amount) FILTER (
-          WHERE invoice_date >= make_date(${baseYear}, 1, 1)
-            AND invoice_date::date <= ${baseCutoff}::date
+          WHERE d >= make_date(${baseYear}, 1, 1)
+            AND d <= ${baseCutoff}::date
         ) DESC NULLS LAST
         LIMIT ${limit}
       `;
@@ -380,57 +382,55 @@ async function _fetchAllCustomersAvg(params: ScorecardParams): Promise<CustomerA
     total_ns_sales: string | null;
   };
 
+  // Reads bids.rollup_customer_day (see migration 0035). The fact's
+  // FILTER (… AND is_value_add_major) / (… AND is_non_stock) splits map to the
+  // pre-split sales_va / sales_ns measure columns. `EXTRACT(YEAR)=base AND date
+  // <= cutoff` is equivalent to `d >= base-01-01 AND d <= cutoff`.
   const [r] = params.branchIds.length > 0
     ? await sql<Row[]>`
         SELECT
           SUM(sales_amount) FILTER (
-            WHERE EXTRACT(YEAR FROM invoice_date)::int = ${params.baseYear}
-              AND invoice_date::date <= ${baseCutoff}::date
+            WHERE d >= make_date(${params.baseYear}, 1, 1)
+              AND d <= ${baseCutoff}::date
           )::text AS total_sales,
           SUM(gross_profit) FILTER (
-            WHERE EXTRACT(YEAR FROM invoice_date)::int = ${params.baseYear}
-              AND invoice_date::date <= ${baseCutoff}::date
+            WHERE d >= make_date(${params.baseYear}, 1, 1)
+              AND d <= ${baseCutoff}::date
           )::text AS total_gp,
-          SUM(sales_amount) FILTER (
-            WHERE EXTRACT(YEAR FROM invoice_date)::int = ${params.baseYear}
-              AND invoice_date::date <= ${baseCutoff}::date
-              AND is_value_add_major
+          SUM(sales_va) FILTER (
+            WHERE d >= make_date(${params.baseYear}, 1, 1)
+              AND d <= ${baseCutoff}::date
           )::text AS total_va_sales,
-          SUM(sales_amount) FILTER (
-            WHERE EXTRACT(YEAR FROM invoice_date)::int = ${params.baseYear}
-              AND invoice_date::date <= ${baseCutoff}::date
-              AND is_non_stock
+          SUM(sales_ns) FILTER (
+            WHERE d >= make_date(${params.baseYear}, 1, 1)
+              AND d <= ${baseCutoff}::date
           )::text AS total_ns_sales
-        FROM customer_scorecard_fact
-        WHERE is_deleted = false
-          AND invoice_date >= ${dateFrom}::timestamp
-          AND invoice_date < ${dateTo}::timestamp
+        FROM bids.rollup_customer_day
+        WHERE d >= ${dateFrom}::date
+          AND d < ${dateTo}::date
           AND branch_id = ANY(${params.branchIds}::text[])
       `
     : await sql<Row[]>`
         SELECT
           SUM(sales_amount) FILTER (
-            WHERE EXTRACT(YEAR FROM invoice_date)::int = ${params.baseYear}
-              AND invoice_date::date <= ${baseCutoff}::date
+            WHERE d >= make_date(${params.baseYear}, 1, 1)
+              AND d <= ${baseCutoff}::date
           )::text AS total_sales,
           SUM(gross_profit) FILTER (
-            WHERE EXTRACT(YEAR FROM invoice_date)::int = ${params.baseYear}
-              AND invoice_date::date <= ${baseCutoff}::date
+            WHERE d >= make_date(${params.baseYear}, 1, 1)
+              AND d <= ${baseCutoff}::date
           )::text AS total_gp,
-          SUM(sales_amount) FILTER (
-            WHERE EXTRACT(YEAR FROM invoice_date)::int = ${params.baseYear}
-              AND invoice_date::date <= ${baseCutoff}::date
-              AND is_value_add_major
+          SUM(sales_va) FILTER (
+            WHERE d >= make_date(${params.baseYear}, 1, 1)
+              AND d <= ${baseCutoff}::date
           )::text AS total_va_sales,
-          SUM(sales_amount) FILTER (
-            WHERE EXTRACT(YEAR FROM invoice_date)::int = ${params.baseYear}
-              AND invoice_date::date <= ${baseCutoff}::date
-              AND is_non_stock
+          SUM(sales_ns) FILTER (
+            WHERE d >= make_date(${params.baseYear}, 1, 1)
+              AND d <= ${baseCutoff}::date
           )::text AS total_ns_sales
-        FROM customer_scorecard_fact
-        WHERE is_deleted = false
-          AND invoice_date >= ${dateFrom}::timestamp
-          AND invoice_date < ${dateTo}::timestamp
+        FROM bids.rollup_customer_day
+        WHERE d >= ${dateFrom}::date
+          AND d < ${dateTo}::date
       `;
 
   const sales = toNum(r?.total_sales);
