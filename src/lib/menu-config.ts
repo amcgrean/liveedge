@@ -106,7 +106,7 @@ export const MENU: readonly MenuGroup[] = [
       { label: 'ERP Sync',       href: '/admin/erp',           requires: [CAPABILITIES.ADMIN_CONFIG_MANAGE] },
       { label: 'Page Analytics', href: '/admin/analytics',     requires: [CAPABILITIES.ADMIN_CONFIG_MANAGE] },
       { label: 'Job Review',     href: '/admin/jobs',          requires: [CAPABILITIES.ADMIN_JOBS_REVIEW] },
-      { label: 'Hubbell Email',  href: '/admin/hubbell',       requires: [CAPABILITIES.HUBBELL_REVIEW] },
+      { label: 'Hubbell',        href: '/admin/hubbell',       requires: [CAPABILITIES.HUBBELL_REVIEW] },
     ],
   },
 ];
