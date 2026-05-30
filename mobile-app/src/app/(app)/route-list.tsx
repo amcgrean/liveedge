@@ -17,7 +17,8 @@ import { Icon } from '@/components/ui/Icon';
 import { C, BRANCHES, BranchCode } from '@/theme/colors';
 import { useOnline } from '@/hooks/useOnline';
 import { useOutbox } from '@/storage/outbox';
-import { MOCK_STOPS, MockStop, StopStatus } from '@/data/mockRoute';
+import { MockStop, StopStatus } from '@/data/mockRoute';
+import { useDriverRoute } from '@/hooks/useDriverRoute';
 import { format } from 'date-fns';
 
 const PILL_LABEL: Record<StopStatus, string> = {
@@ -93,22 +94,27 @@ export default function RouteListScreen() {
   const online = useOnline();
   const outboxItems = useOutbox();
   const syncCount = outboxItems.filter((item) => item.status !== 'synced').length;
+  const { stops, refresh } = useDriverRoute();
 
   const branchCode = (user?.branch || '20GR') as BranchCode;
   const branch = BRANCHES.find((b) => b.code === branchCode);
   const today = format(new Date(), "EEE · MMM d");
 
-  const delivered = MOCK_STOPS.filter((s) => s.status === 'delivered').length;
-  const inRoute = MOCK_STOPS.filter((s) => s.status === 'inroute').length;
-  const skipped = MOCK_STOPS.filter((s) => s.status === 'skipped').length;
-  const total = MOCK_STOPS.length;
+  const delivered = stops.filter((s) => s.status === 'delivered').length;
+  const inRoute = stops.filter((s) => s.status === 'inroute').length;
+  const skipped = stops.filter((s) => s.status === 'skipped').length;
+  const total = Math.max(stops.length, 1);
   const pctDelivered = (delivered / total) * 100;
   const pctInRoute = (inRoute / total) * 100;
   const pctSkipped = (skipped / total) * 100;
 
-  const handleRefresh = () => {
+  const handleRefresh = async () => {
     setRefreshing(true);
-    setTimeout(() => setRefreshing(false), 800);
+    try {
+      await refresh();
+    } finally {
+      setRefreshing(false);
+    }
   };
 
   return (
@@ -161,7 +167,7 @@ export default function RouteListScreen() {
           <RefreshControl refreshing={refreshing} onRefresh={handleRefresh} tintColor={C.green} />
         }
       >
-        {MOCK_STOPS.map((s) => (
+        {stops.map((s) => (
           <StopCard
             key={s.n}
             stop={s}

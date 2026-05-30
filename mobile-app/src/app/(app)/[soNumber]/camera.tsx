@@ -13,12 +13,13 @@ import Svg, { Line } from 'react-native-svg';
 import { Icon } from '@/components/ui/Icon';
 import { BigButton } from '@/components/ui/BigButton';
 import { C } from '@/theme/colors';
-import { findStop } from '@/data/mockRoute';
+import { useDriverRoute } from '@/hooks/useDriverRoute';
 import { photoStore, usePhotos } from '@/data/photoStore';
 
 export default function CameraScreen() {
   const { soNumber } = useLocalSearchParams<{ soNumber: string }>();
-  const stop = findStop(soNumber);
+  const { stops } = useDriverRoute();
+  const stop = stops.find((s) => s.so === soNumber);
   const photos = usePhotos(soNumber);
   const [permission, requestPermission] = useCameraPermissions();
   const [flash, setFlash] = useState<FlashMode>('off');

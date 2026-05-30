@@ -14,7 +14,7 @@ import { AppStatusBar } from '@/components/ui/AppStatusBar';
 import { BigButton } from '@/components/ui/BigButton';
 import { Icon } from '@/components/ui/Icon';
 import { C, BRANCHES, BranchCode } from '@/theme/colors';
-import { findStop } from '@/data/mockRoute';
+import { useDriverRoute } from '@/hooks/useDriverRoute';
 import { useAuth } from '@/context/AuthContext';
 import { useOnline } from '@/hooks/useOnline';
 import { outbox, OutboxItem, useOutbox } from '@/storage/outbox';
@@ -43,9 +43,10 @@ export default function SyncQueueScreen() {
   const items = allItems.filter((item) => item.status !== 'synced');
   const branchCode = (user?.branch || '20GR') as BranchCode;
   const branch = BRANCHES.find((b) => b.code === branchCode);
+  const { stops } = useDriverRoute();
 
   const rows: QueueRow[] = items.map((item) => {
-    const stop = findStop(item.soNumber);
+    const stop = stops.find((s) => s.so === item.soNumber);
     return {
       id: item.id,
       stop: stop?.n ?? '??',

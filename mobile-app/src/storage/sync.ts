@@ -32,12 +32,10 @@ async function syncItem(item: OutboxItem, now: number): Promise<void> {
   await outbox.update(item.id, { status: item.attempts > 0 ? 'retrying' : 'queued' });
 
   try {
-    await markDelivered(item.soNumber, {
-      type: item.type,
-      notes: item.notes,
-      photoUris: item.photoUris,
-      timestamp: new Date().toISOString(),
-    });
+    // Re-read the item so any photoUploads progress persisted by a prior
+    // partial run is picked up (resumable upload).
+    const fresh = (await outbox.all()).find((it) => it.id === item.id) ?? item;
+    await markDelivered(fresh);
     const synced = { ...item, status: 'synced' as const, syncedAt: Date.now(), lastError: undefined, nextRetryAt: undefined };
     // Clean up: delete local photo files (server now has them) and remove the
     // outbox record. Without this, every successful delivery leaves orphan

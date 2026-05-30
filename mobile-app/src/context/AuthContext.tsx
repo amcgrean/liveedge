@@ -2,6 +2,7 @@ import React, { createContext, useContext, useState, useEffect, ReactNode } from
 import * as SecureStore from 'expo-secure-store';
 import { AuthSession, User } from '@/types';
 import * as authAPI from '@/api/auth';
+import { setAuthToken } from '@/api/authToken';
 
 interface AuthContextType {
   session: AuthSession | null;
@@ -35,9 +36,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         // Check if token is still valid
         if (parsed.expiresAt > Date.now()) {
           setSession(parsed);
+          setAuthToken(parsed.token);
         } else {
           // Token expired, clear it
           await SecureStore.deleteItemAsync(AUTH_SESSION_KEY);
+          setAuthToken(null);
         }
       }
     } catch (error) {
@@ -57,6 +60,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const verifyOTP = async (username: string, code: string) => {
     const newSession = await authAPI.verifyOTP({ username, code });
     setSession(newSession);
+    setAuthToken(newSession.token);
     // Store in secure storage
     await SecureStore.setItemAsync(AUTH_SESSION_KEY, JSON.stringify(newSession));
   };
@@ -80,6 +84,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       await authAPI.logout(session.token);
     }
     setSession(null);
+    setAuthToken(null);
     await SecureStore.deleteItemAsync(AUTH_SESSION_KEY);
   };
 

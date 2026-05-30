@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '../../../../../../auth';
+import { getMobileSession } from '../../../../../../src/lib/mobile-auth';
 import { agilityApi, isAgilityConfigured, BRANCH_MAP, AgilityApiError } from '../../../../../../src/lib/agility-api';
 
 /**
@@ -27,7 +28,8 @@ interface PodBody {
 }
 
 export async function POST(req: NextRequest, context: RouteContext) {
-  const session = await auth();
+  const mobile = await getMobileSession(req);
+  const session = mobile ?? (await auth());
   if (!session?.user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
   if (!isAgilityConfigured()) {
