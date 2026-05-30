@@ -47,14 +47,12 @@ export async function requestOTP(username: string): Promise<OTPResponse> {
 /**
  * Verify an OTP code and return a session.
  *
- * Real backend contract (LiveEdge NextAuth credentials provider):
- *   POST /api/auth/callback/credentials { identifier, code }
- *   → 200 with Set-Cookie session, or 401 on failure
+ * Real backend contract:
+ *   POST /api/auth/mobile/verify-otp { identifier, code }
+ *   → { user, token, expiresIn } on success, 401 on bad code
  *
- * For the mobile client we'll need a dedicated verify endpoint that returns
- * a JWT + user payload (Phase 5 backend work). For now this is dev-mock only.
- * When you wire up the real endpoint, update both the URL and the response
- * shape mapping below.
+ * The token is a JWT signed with the same AUTH_SECRET as NextAuth, so all
+ * existing capability helpers (hasCapability, requireMobileAuth) accept it.
  */
 export async function verifyOTP(req: VerifyOTPRequest): Promise<AuthSession> {
   if (IS_DEV_MODE) {
@@ -78,9 +76,7 @@ export async function verifyOTP(req: VerifyOTPRequest): Promise<AuthSession> {
     };
   }
 
-  // Phase 5: replace with whichever endpoint the LiveEdge backend exposes for
-  // JWT-style mobile sessions (likely a new /api/auth/mobile/verify route).
-  const response = await client.post<VerifyOTPResponse>('/api/auth/verify-otp', {
+  const response = await client.post<VerifyOTPResponse>('/api/auth/mobile/verify-otp', {
     identifier: req.username,
     code: req.code,
   });

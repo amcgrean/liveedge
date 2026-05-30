@@ -1,4 +1,5 @@
 import axios, { AxiosInstance } from 'axios';
+import { getAuthToken } from './authToken';
 
 // IMPORTANT: Expo only inlines env vars prefixed with EXPO_PUBLIC_* into the
 // client bundle. EXPO_BACKEND_URL would always be undefined in device builds.
@@ -16,8 +17,16 @@ const client: AxiosInstance = axios.create({
   },
 });
 
-// Token will be attached by callers via headers; nothing to do here yet.
-client.interceptors.request.use(async (config) => config);
+// Attach Bearer token to every request when present. Callers can still
+// pass an explicit Authorization header to override (e.g. service-token paths).
+client.interceptors.request.use(async (config) => {
+  const token = getAuthToken();
+  if (token && !config.headers?.Authorization && !config.headers?.authorization) {
+    config.headers = config.headers ?? {};
+    (config.headers as Record<string, string>).Authorization = `Bearer ${token}`;
+  }
+  return config;
+});
 
 client.interceptors.response.use(
   (response) => response,
