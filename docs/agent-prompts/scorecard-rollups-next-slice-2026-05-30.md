@@ -20,12 +20,27 @@ timeout incident; the project also shows a live "exhausting resources" banner).
 **Use slice 1 as the exact template.** Read migration `0035` and the two rewired
 functions before starting.
 
+## Status (updated 2026-05-30)
+
+- **Slice 2a — DONE & LIVE (PR #462, migration `0036`).** `rollup_product_day` +
+  `rollup_saletype_day` built; customer + product-drill major/minor functions
+  rewired. `_fetchProductKpis` distinct counts stay on a bounded live query
+  (can't SUM per-day distincts).
+- **Slice 2b — DONE & LIVE (PR #468, no new migration).** Aggregate/management
+  company-branch functions rewired; rep scope stays live. `_fetchAggregateKpis`
+  splits additive→rollup / distinct→bounded-live via `fetchAggregateDistinctCounts`.
+- **0036 was rewritten to single-scan** (one `MATERIALIZED` CTE per MV; coarser
+  grains derived from it) — the original UNION form did 5 full fact scans and
+  timed out. **The Supabase MCP has a hard 60s cap; apply these in the SQL
+  editor / direct psql with `statement_timeout=0`, off-hours.**
+- **Remaining: Slice 2c (vendor) + sync-health alerting only.**
+
 ## Your task — extend the same pattern
 
 Build the remaining fact-sourced rollups and rewire the additive query functions.
 Recommended order (each is its own PR, smallest/lowest-risk first):
 
-### Slice 2a — product + sale-type rollups (fact-sourced, low risk)
+### Slice 2a — product + sale-type rollups (fact-sourced, low risk) — ✅ DONE (PR #462)
 1. **`bids.rollup_product_day`** — grain `(branch_id, product_major_code,
    product_minor_code, d)`. Measures: `sales_amount`, `gross_profit`, `weight`,
    `qty_shipped`, plus any flag-split columns the consumers need (mirror the
@@ -47,7 +62,7 @@ Recommended order (each is its own PR, smallest/lowest-risk first):
    variants (item scorecard) CANNOT use a major/minor rollup — leave them live
    (item grain ≈ fact cardinality, no win).
 
-### Slice 2b — aggregate management dashboards (fact-sourced)
+### Slice 2b — aggregate management dashboards (fact-sourced) — ✅ DONE (PR #468)
 Rewire the company/branch aggregate functions: `_fetchAggregateThreeYear`,
 `_fetchAggregateProductMajors`, `_fetchAggregateProductMinors`,
 `_fetchAggregateSaleTypes`, and the **company/branch scope of**
@@ -60,7 +75,7 @@ customer/product rollup cannot serve rep-scoped queries. Split the function:
 company/branch scope → rollup; rep scope → unchanged live fact+join. Do not
 break the rep scorecard.
 
-### Slice 2c — vendor rollup (DIFFERENT source, most care)
+### Slice 2c — vendor rollup (DIFFERENT source, most care) — ⏳ NOT STARTED
 `src/lib/vendor-scorecard/queries.ts` reads `agility_receiving_*` +
 `agility_po_header`, **NOT** `customer_scorecard_fact`. A `rollup_vendor_day`
 would group `(system_id, supplier_key, ship_from_seq, d=receive_date)` with

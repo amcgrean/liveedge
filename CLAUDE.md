@@ -1021,7 +1021,7 @@ Three-Explore-agent audit on `claude/app-performance-issues-Hgx9B`. Plan in `/ro
 - Always partition cache keys on per-user scoping inputs. Two reps hitting `/api/sales/hub` must NOT share a cached payload.
 - The Codex P2 lesson: never put `.catch(() => fallback)` inside an `erpCache`-wrapped function — let it throw, apply the fallback at the call site.
 
-#### Scorecard Analytics Rollups (2026-05-30) — Tier 1 data-tier, IN PROGRESS
+#### Scorecard Analytics Rollups (2026-05-30) — Tier 1 data-tier, slices 1/2a/2b LIVE
 
 Architecture-review Tier 1: **isolate analytical load from operational load.** Every scorecard/management dashboard load aggregates over `public.customer_scorecard_fact` (~4.4M rows, **6.4 GB** = 2.5 GB heap + **3.9 GB indexes**). Those analytical scans compete with operational reads for the single Supabase instance's shared-buffer cache — root cause of the 2026-05-28 timeout incident, and the project shows a live "exhausting resources" banner. Fix: pre-aggregated **daily** rollup materialized views in `bids` that the hot scans read instead of the fact.
 
@@ -1029,6 +1029,18 @@ Architecture-review Tier 1: **isolate analytical load from operational load.** E
 - **`bids.rollup_customer_day`** — daily-grain (`d = invoice_date::date`), pre-split-measure MV over the fact. **505,472 rows / 89 MB** (~0.7% of the 12 GB DB) replaces 6.4 GB scans. Refreshed nightly via **pg_cron** `REFRESH MATERIALIZED VIEW CONCURRENTLY` (jobid 7, `10 9 * * *` UTC ≈ 04:10 Central, off-hours).
 - Rewired `_fetchCustomerList` + `_fetchAllCustomersAvg` in `src/lib/scorecard/queries.ts` to read the MV. The other functions still read the fact.
 - **`GET /api/admin/sync-health`** (`admin.config.manage`) — cheap Pi-sync + rollup freshness monitor. Uses indexed `MAX()` on the fact (only `customer_scorecard_fact` indexes `synced_at`/`source_updated_at`), `cron.job_run_details` for rollup refresh, `pg_class.reltuples` for operational-table row sanity. No full scans.
+
+**Slice 2a LIVE (PR #462, migration `0036_scorecard_product_saletype_rollups.sql`):**
+- **`bids.rollup_product_day`** — daily product rollup, `(branch_id, customer_id, product_level['major'|'minor'], product_major_code, product_minor_code, d)` grain, pre-split measures. **3.28M rows / 861 MB.** Refresh `15 9 * * *`.
+- **`bids.rollup_saletype_day`** — daily sale-type rollup with three `rollup_scope` partitions (`customer` / `product_major` / `product_minor`); keeps raw `sale_type` so HOLD/DOORHOLD stay literal buckets. **1.91M rows / 431 MB.** Refresh `20 9 * * *`.
+- Rewired customer-scorecard `_fetchProductMajors` / `_fetchProductMinors` / `_fetchSaleTypes` (in `queries.ts`) and the **major/minor** variants of `fetchProductKpis` / `ThreeYear` / `TopCustomers` / `BranchMix` / `SaleTypes` (in `product-drill-queries.ts`). Item-level product drill stays live.
+- **`_fetchProductKpis` distinct counts (orders/credits/ship-tos) stay on a bounded live fact query** — you cannot SUM per-day distinct counts (inflates ~+69% on ship-tos). Only additive $/weight measures come from the rollup. This is the canonical split; copy it for any KPI path.
+
+**Slice 2b LIVE (PR #468, no new migration — reuses 0035 + 0036):**
+- Rewired the company/branch scope of the aggregate/management functions in `queries.ts`: `_fetchAggregateThreeYear` + `_fetchAggregateKpis` → `rollup_customer_day`; `_fetchAggregateProductMajors`/`Minors` → `rollup_product_day`; `_fetchAggregateSaleTypes` → `rollup_saletype_day`.
+- `_fetchAggregateKpis` uses the same split as `_fetchProductKpis`: additive measures + branch list from the rollup, distinct counts via `fetchAggregateDistinctCounts()` (bounded live fact). **Rep-scoped branches of all five functions are unchanged/live** — rep isn't on the fact/rollup.
+
+**Single-scan MV construction (the 0036 timeout learning — apply to every multi-grain rollup):** the first 0036 built each MV as a `UNION ALL` of independent fact aggregations (2 scans for product, 3 for sale-type). Five full 6.4 GB scans across two statements blew the timeout on apply. Fix: build each MV from **one `WITH base AS MATERIALIZED (…)` CTE at the finest grain**, then derive coarser grains by re-aggregating that CTE (all measures additive; `MAX(NULLIF(label,'Unknown'))` to keep display labels from being relabelled 'Unknown'). One fact scan per MV, and nightly REFRESH drops 2–3× too. **The Supabase MCP `execute_sql`/`apply_migration` has a hard 60s cap that a single full-fact scan exceeds — these migrations MUST be applied in the Supabase SQL editor (or direct psql with `SET statement_timeout=0`), off-hours.** Don't try to apply a full-fact-scan migration via the MCP.
 
 **Design rules (the pattern — follow for every new rollup):**
 - **Daily grain, not monthly.** Live queries filter `invoice_date::date <= cutoff` (day-level YTD); monthly grain would be wrong for the partial current month. `EXTRACT(YEAR)=y AND date<=cutoff` → `d >= make_date(y,1,1) AND d <= cutoff::date`.
@@ -1038,7 +1050,7 @@ Architecture-review Tier 1: **isolate analytical load from operational load.** E
 - **Validation bar: match the live fact to the cent** via bounded MCP diffs (one branch/year + a partial-month YTD cross-year case), all deltas `0.0000`, before merging. Keep slices bounded (no unguarded `COUNT(*)` on the fact).
 - Migrations applied manually in Supabase **off-hours** (initial `CREATE … WITH DATA` does one full fact scan). The "destructive operation" warning is expected — it's the `DROP MATERIALIZED VIEW IF EXISTS` (derived cache) + `cron.unschedule`; nothing touches source data.
 
-**Remaining (next slices — handoff at `docs/agent-prompts/scorecard-rollups-next-slice-2026-05-30.md`):** `rollup_product_day` + `rollup_saletype_day` (fact-sourced; rewire `_fetchProductMajors/Minors`, `_fetchSaleTypes`, major/minor product-drill funcs); aggregate management paths (company/branch only — rep stays live); `rollup_vendor_day` (reads `agility_receiving_*`+`agility_po_header`, not the fact — most care); alerting on `/api/admin/sync-health`.
+**Remaining (handoff at `docs/agent-prompts/scorecard-rollups-next-slice-2026-05-30.md`):** Slice 2c — `rollup_vendor_day` (reads `agility_receiving_*`+`agility_po_header`, NOT the fact — most care; only build if vendor pages are slow); and alerting on `/api/admin/sync-health`. Slices 2a/2b are done. All three MVs are populated and the nightly pg_cron refreshes (`10/15/20 9 * * *`) are active.
 
 #### Dispatch route-completion alerts (2026-05-27 → 2026-05-28) — LIVE
 
