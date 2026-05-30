@@ -1,261 +1,157 @@
-# Phase 5 Handoff — Real Backend Integration
+# Mobile App — Phase 5 Complete, Phase 6 Handoff
 
-> Handoff doc for the next coding agent. This is current for branch `claude/mobile-app-mvp`, PR #445.
+> Current as of 2026-05-30 after PR #456 (Phase 5 — real backend wiring).
+> Replaces the prior Phase 5 handoff. The full Phase 1–4 history is in
+> `PHASE_4_HANDOFF.md`.
 
-## Project Context
+## TL;DR
 
-`mobile-app/` is an Expo SDK 54 React Native driver app inside the LiveEdge monorepo. It is intentionally independent from the root Next.js app, but Phase 5 will likely require small, explicit Next.js API work because the mobile app needs a JWT-style auth contract and real route/POD endpoints. Do not touch the root web app casually; only modify it when implementing a concrete mobile backend contract.
+Phases 1–5 are all in `main`. The Expo driver app talks to real LiveEdge
+backend endpoints for auth, route fetching, and POD upload while keeping
+the Phase 4 offline outbox intact. Dev mode (`000000` login, `MOCK_STOPS`)
+still works when `EXPO_PUBLIC_BACKEND_URL` is unset.
 
-The mobile app uses Expo Router, TypeScript, React Native `StyleSheet`, SecureStore for auth session persistence, AsyncStorage for the offline outbox, and `expo-file-system/legacy` for persistent POD photo files. UI primitives live in `src/components/ui/`. Colors live in `src/theme/colors.ts`.
+Phase 6 is real maps + GPS-aware ETAs.
 
-## Current Branch State
+## What's Live (Phases 1–5)
 
-- Branch: `claude/mobile-app-mvp`
-- PR: #445
-- Latest relevant commits:
-  - `7054fff5 docs(mobile-app): add Phase 5 handoff`
-  - `093e065d docs(mobile-app): refresh gameplan after offline sync`
-  - `c416d009 feat(mobile-app): Phase 4 — offline sync engine + persistent outbox`
-- Working tree was clean when this handoff was created.
+| Phase | Status | Notes |
+|---|---|---|
+| 1 — Scaffolding & dev OTP auth | ✅ | Expo SDK 54, Expo Router, TS, SecureStore session |
+| 2 — Mock route + delivery details | ✅ | `route-list`, `[soNumber]/details`, `[soNumber]/customer` |
+| 3 — Mark delivered/skipped | ✅ | toasts, Sync Queue, photoStore |
+| 4 — Offline outbox + sync engine | ✅ | AsyncStorage outbox, 5-attempt backoff, post-sync cleanup |
+| 5 — Real backend wiring | ✅ (PR #456) | JWT auth, real routes, two-phase POD upload, reconciliation |
 
-## What Is Complete
+### Phase 5 — what landed
 
-Phase 1-4 mobile MVP is implemented:
+**Backend (Next.js app):**
+- `POST /api/auth/mobile/verify-otp` — validates the OTP against `otp_codes`, returns `{ user, token, expiresIn }` where `token` is an HS256 JWT signed with `AUTH_SECRET` (same secret as NextAuth). Added to the route-guards `public` allowlist.
+- `src/lib/mobile-auth.ts` — ships `signMobileToken` / `verifyMobileToken` / `getMobileSession` / `requireSessionOrMobile`. The combined guard accepts EITHER a NextAuth cookie OR a Bearer JWT and enforces capabilities exactly like `requireCapability`. Added to `guardPatterns` in `docs/security-policy-routes.md`.
+- `GET /api/dispatch/routes` — accepts Bearer; new `?include=stops` query embeds stops with denormalized customer/address from `agility_so_header`.
+- `POST /api/dispatch/orders/[so]/deliver` — accepts Bearer; handles the mobile body shape `{ type, status, notes, timestamp, photo_keys[] }`; falls back to session branch + server-side stop lookup when caller is mobile.
+- `POST /api/dispatch/orders/[so]/pod` — accepts Bearer (Agility signature push, unchanged otherwise).
+- **NEW** `POST /api/dispatch/orders/[so]/pod/upload-url` — returns a 10-minute presigned R2 PUT URL keyed under `pod/<so>/<ts>-<rand>.<ext>`. Server-derived keys keep clients from overwriting existing objects.
 
-- OTP-style dev auth flow:
-  - `src/app/(auth)/login.tsx`
-  - `src/app/(auth)/otp.tsx`
-  - `src/app/(auth)/branch-select.tsx`
-  - `src/context/AuthContext.tsx`
-  - `src/api/auth.ts`
-- Mock route list and delivery details:
-  - `src/data/mockRoute.ts`
-  - `src/app/(app)/route-list.tsx`
-  - `src/app/(app)/[soNumber]/details.tsx`
-  - `src/app/(app)/[soNumber]/customer.tsx`
-- Camera and persisted POD photos:
-  - `src/app/(app)/[soNumber]/camera.tsx`
-  - `src/app/(app)/[soNumber]/photos.tsx`
-  - `src/data/photoStore.ts`
-  - `src/storage/photoFS.ts`
-- Offline sync:
-  - `src/hooks/useOnline.ts`
-  - `src/storage/outbox.ts`
-  - `src/storage/sync.ts`
-  - `src/context/ToastContext.tsx`
-  - `src/app/(app)/sync-queue.tsx`
-- Profile and route complete screens:
-  - `src/app/(app)/profile.tsx`
-  - `src/app/(app)/route-complete.tsx`
+**Mobile (Expo app):**
+- `src/api/authToken.ts` — standalone token holder. AuthContext pushes on bootstrap/login/logout; axios interceptor attaches `Authorization: Bearer` to every request.
+- `src/api/auth.ts` — `verifyOTP` now hits `/api/auth/mobile/verify-otp`. Dev mode unchanged.
+- `src/data/routeMapper.ts` + `src/hooks/useDriverRoute.ts` — fetch + map. In dev mode the hook returns `MOCK_STOPS`. Otherwise it fetches `/api/dispatch/routes?date=…&branch=…&include=stops` and flattens to the `MockStop[]` shape. Server stops carry their backend ids via `stopId/routeId/shipmentNum/branchCode` for the deliver call.
+- Six screens swapped off `findStop()`/`MOCK_STOPS`: `route-list`, `[soNumber]/details`, `/customer`, `/camera`, `/photos`, `sync-queue`.
+- `mobile-app/src/storage/outbox.ts` — `OutboxItem.photoUploads?: { uri, remoteKey?, uploaded }[]`. Seeded on enqueue. Persisted incrementally as each photo PUT lands.
+- `mobile-app/src/api/dispatch.ts` — `markDelivered(item: OutboxItem)` now runs the two-phase flow:
+  1. for each `photoUploads[i].uploaded === false`, POST `/pod/upload-url`, then PUT the local file:// bytes; persist `remoteKey` immediately.
+  2. POST `/deliver` with `{ type, status, notes, timestamp, photo_keys[] }`.
+- `mobile-app/src/storage/sync.ts` — re-reads the outbox row before each attempt so resumed retries pick up partial progress. Photo cleanup still gated on the deliver 2xx, unchanged.
+- Reconciliation overlay in `useDriverRoute`: pending outbox rows flip a server-side pending stop to delivered/skipped optimistically. Server-confirmed terminal states (`delivered`/`skipped`) are authoritative. Synced rows are removed by `sync.ts` so the hook never has to.
 
-When `EXPO_PUBLIC_BACKEND_URL` is unset, dev mode is active:
+### Phase 5 — verification status
 
-- any username can request OTP
-- code `000000` signs in
-- dispatch sync is mocked with 800 ms latency and an intentional 15% failure rate
+- `cd mobile-app && npm run type-check` — clean ✅
+- Backend `npx tsc --noEmit` (filtered for pre-existing unrelated errors) — clean ✅
+- CI `check-route-guards` — passing 228/228 after policy update ✅
+- **End-to-end smoke test on a real device with prod-like backend** — NOT YET RUN. Needs user-driven testing.
 
-## Current Verification
+## Phase 5 Follow-ups (small, incremental)
 
-The last verification run:
+These were discovered during Phase 5 implementation. None are blockers for shipping the PR.
 
-```bash
-cd mobile-app
-npm run type-check
-```
+1. **POD photo persistence on the backend.** `/deliver` currently `console.log`s the received `photo_keys[]` and treats them as audit-only — there's no `pod_photos` table yet. Decide whether to:
+   - Add a `bids.pod_photos` table with `{ so_number, stop_id, r2_key, uploaded_at, uploaded_by }` and let dispatch view them, OR
+   - Push them into Agility via `podSignatureCreate` (currently signature-only) once Agility's POD photo API surface is understood.
+2. **Mobile dispatch capability for non-admin drivers.** `ROLE_DEFAULTS.driver` already includes `dispatch.view`. Confirm in `app_users` that real driver accounts have the `driver` role assigned. If not, either add it or grant via `granted_capabilities`.
+3. **Branch handling for drivers without a branch.** `useDriverRoute` defaults to `'20GR'` if `user.branch` is unset. The backend `requireSessionOrMobile` + dispatch routes derive branch from session. For a multi-branch driver, today's UX shows one branch at a time — the existing branch-select screen handles the switch.
+4. **`MockStop.items` is hardcoded to 0 in real mode.** Server response doesn't carry line counts. Either join `agility_so_lines` for a count on the route fetch or fetch lazily per-stop when the user expands a card.
+5. **Per-photo upload concurrency.** Currently sequential. With 5 photos × 2 MB the slowest path is ~5–10 s on a marginal LTE connection. Could parallelize 2–3 at a time later.
+6. **Photo size cap / compression.** `expo-camera` produces full-resolution JPEGs (~3–5 MB each). Consider an in-app compress-before-upload step (`expo-image-manipulator`) to keep PUT durations bounded.
 
-passed.
+## Phase 6 — Real Maps + GPS-Aware ETAs
 
-`npm run lint` is not currently a useful gate because the mobile package has no ESLint config.
+Defer until Phase 5 is verified in production with at least one real driver day.
 
-## Phase 5 Goal
+### Goal
 
-Make the mobile app consume real LiveEdge backend data and submit real delivery/POD updates while preserving the Phase 4 offline-first behavior.
+Replace the `MapPlaceholder` and "MAP" FAB with a working map showing:
+- the driver's current GPS position
+- all today's stops as pins, color-coded by status
+- a polyline for the planned route (next pending stop highlighted)
+- per-stop ETA computed from current position + remaining stops + branch warehouse return
 
-Phase 5 should not replace the offline outbox. The outbox remains the delivery action source of truth while offline or while a sync is pending.
+### Open decisions
 
-## Main Blocker
+| Question | Options | Lean |
+|---|---|---|
+| Map provider | Mapbox · Google Maps · Apple MapKit (iOS) + Google (Android) · OSM tiles | **react-native-maps** (Apple+Google native) is the lowest-friction; defer Mapbox until styling/offline are real needs |
+| Stop coords | Geocode on the backend at route-generation time, stash in `dispatch_route_stops` · Or geocode on the mobile client | **Backend** — Pi geocoder already produces `agility_customers.lat/lon`; the routes API just needs to expose them per stop |
+| GPS source | Expo `expo-location` foreground · `expo-task-manager` background tracking | **Foreground only** for v6; background tracking requires App Store privacy disclosures we don't have yet |
+| ETA math | Straight-line haversine + ~30 mph constant · Google Distance Matrix API · Mapbox Directions | **Haversine first** (zero deps, instant). Upgrade if it's noticeably off |
 
-The current web auth flow is NextAuth cookie-oriented. The mobile app needs a dedicated mobile auth response:
+### Recommended implementation order
 
-```ts
-{
-  user: {
-    id: string;
-    username?: string;
-    email: string;
-    name: string;
-    roles: string[];
-    branch?: string;
-  };
-  token: string;
-  expiresIn: number;
-}
-```
+1. **Backend** — extend `/api/dispatch/routes?include=stops` to return `lat`/`lon` per stop (already on `agility_customers`). LiveEdge web already uses these on the dispatch map.
+2. **Mobile** — install `react-native-maps`, replace `MapPlaceholder` with a real map. Pin component reuses the existing status colors.
+3. **GPS** — `expo-location` foreground permission flow. Surface "GPS off" + "GPS unavailable" states inline. Don't auto-track location for a driver who hasn't opted in.
+4. **ETA** — write a pure helper (`src/lib/eta.ts`) that takes `{ currentPos, remainingStops, returnTo }` and returns per-stop ETAs. Display next-stop ETA on the route-list header (replacing the static "Est. complete" line).
+5. **MAP FAB** — open a full-screen map modal that pans/zooms to fit all stops. Tap a pin to navigate to that stop.
 
-Current placeholder in `src/api/auth.ts` calls:
+### Phase 6 non-goals
 
-```ts
-POST /api/auth/verify-otp
-```
+- Background location tracking (privacy + App Store review)
+- Turn-by-turn navigation (defer to native maps app handoff)
+- Optimal route reordering (dispatch decides order; mobile renders it)
 
-That endpoint is a guess and likely does not exist with this response shape. Do not assume mobile production auth works until the web API contract is implemented and tested.
+## Phase 7+ Backlog (intentionally deferred)
 
-## Recommended Implementation Order
+These are in `README.md`'s "Future / Deferred" list. Re-evaluate after Phase 6 ships.
 
-### 1. Confirm Phase 4 Manually
-
-Before backend work, run the app in dev mode and test:
-
-- login with any username + `000000`
-- pick Grimes
-- capture 2 photos for stop `102-44947`
-- mark delivered offline
-- verify Sync Queue has one item
-- kill/reopen app
-- verify outbox and photos persist
-- reconnect network
-- verify queued item syncs or retries
-
-This catches device/runtime issues that TypeScript cannot.
-
-### 2. Add Mobile Auth Endpoint
-
-Likely root app work:
-
-- add a dedicated mobile OTP verify API route
-- verify the OTP against the same backing store as web auth
-- return a bearer token/JWT and user payload
-- preserve existing web auth behavior
-
-Mobile files to update:
-
-- `mobile-app/src/api/auth.ts`
-- `mobile-app/src/context/AuthContext.tsx` only if the session shape changes
-- `mobile-app/src/types/index.ts` only if the user/session shape needs a small extension
-
-Keep dev mode working when `EXPO_PUBLIC_BACKEND_URL` is unset.
-
-### 3. Replace Mock Route Data
-
-Current app uses `src/data/mockRoute.ts`. The first real-data pass should introduce a mapping layer instead of spreading API payload assumptions through screens.
-
-Suggested files:
-
-```text
-mobile-app/src/api/dispatch.ts
-mobile-app/src/data/routeMapper.ts          NEW
-mobile-app/src/hooks/useDriverRoute.ts      NEW
-mobile-app/src/app/(app)/route-list.tsx
-mobile-app/src/app/(app)/[soNumber]/details.tsx
-mobile-app/src/app/(app)/[soNumber]/customer.tsx
-mobile-app/src/app/(app)/sync-queue.tsx
-mobile-app/src/data/mockRoute.ts            keep as dev fallback
-```
-
-Recommended pattern:
-
-- `useDriverRoute()` fetches `/api/dispatch/routes?date=YYYY-MM-DD&branch=CODE`
-- if `IS_DEV_MODE`, return `MOCK_STOPS`
-- normalize API stops into the current `MockStop`-like UI shape
-- keep screens rendering one stable stop type
-- only remove or rename `MockStop` after real shape stabilizes
-
-### 4. Wire Delivery Sync To Real Endpoints
-
-Current `markDelivered()` dev mock accepts:
-
-```ts
-{
-  type: 'deliver' | 'skip';
-  notes: string;
-  photoUris: string[];
-  timestamp: string;
-}
-```
-
-Real backend likely needs two steps:
-
-1. upload POD photos via `/api/dispatch/orders/[so]/pod`
-2. mark delivery status via `/api/dispatch/orders/[so]/deliver`
-
-Decide the server contract explicitly. Do not send local `file://` URIs to the server as if they were useful server-side paths.
-
-Recommended mobile approach:
-
-- `sync.ts` stays outbox-oriented
-- `dispatch.ts` exposes one high-level `syncDeliveryAction(item, token)` or equivalent
-- that function handles photo upload then status update
-- outbox item marks `synced` only after all required server writes succeed
-- failed photo upload should keep the item pending unless product explicitly allows status-only completion
-
-### 5. Reconcile Server State
-
-After successful sync:
-
-- mark outbox item synced
-- refresh route data when online
-- make route list status reflect server state plus pending local overrides
-
-Avoid showing a stop as fully synced if the server still reports pending.
-
-### 6. Real Maps
-
-Defer until real route data is available. Current map UI is placeholder:
-
-- `src/components/ui/MapPlaceholder.tsx`
-- MAP FAB in `route-list.tsx`
-- map area in `details.tsx`
-
-Real maps need route coordinates or geocoded stop addresses. Do not build a map-only shell without real location data.
+- **Per-job site contacts** (foreman, gate codes, hours, site access). Needs a new `job_contacts` table on the web side. Mobile screens already null-guard the optional fields.
+- **Signature capture at door.** Currently the `/pod` endpoint accepts a signature blob but the app doesn't capture one. UX TBD — separate "Get signature" step before photos, or after delivered.
+- **Barcode/QR scan.** For yard pickup and SO confirmation. `expo-camera` already in the app.
+- **Push notifications.** Dispatch-initiated route updates ("stop added", "rerouted").
+- **Driver chat with dispatch.** Lower priority than maps.
 
 ## Files To Avoid Unless Needed
 
 - `src/components/ui/*` — design primitives are stable
-- `src/theme/colors.ts` — keep palette stable
-- `(auth)/*` screens — only change if auth contract requires it
-- root Next.js app — only for concrete Phase 5 API endpoints
-
-## Known Stale Or Deferred Items
-
-- `mobile-app/TEST_PLAN.md` is broader than current automated coverage and includes some future backend/photo-upload expectations.
-- `mobile-app/DEBUG_*`, `TEST_ENTRY_POINT*`, and `SESSION_COMPLETE.txt` are historical debugging artifacts.
-- Per-job site contacts are intentionally deferred. See `mobile-app/README.md`.
-- Signature capture is deferred.
-- Barcode scanning is deferred.
+- `src/theme/colors.ts` — palette is stable
+- `(auth)/*` screens — auth contract is stable post-Phase 5
+- Root Next.js app — only for concrete contract changes; Phase 6 will need one (`?include=stops` returning lat/lon)
 
 ## Commands
 
-Use these from `mobile-app/`:
-
+From `mobile-app/`:
 ```bash
 npm run type-check
-npm start
-npm run ios
-npm run android
+npm start                                       # alias: npx expo start
+EXPO_PUBLIC_BACKEND_URL=http://localhost:3000 npm start    # real backend mode
 ```
 
-Use this from repo root before committing:
-
+From repo root before committing:
 ```bash
 git status --short
 git diff --check
+npm run check:route-guards     # any new app/api/**/route.ts must satisfy this
 ```
 
-## Completion Criteria For Phase 5
+## Known Stale / Historical Docs
 
-Phase 5 should be considered complete when:
+- `mobile-app/TEST_PLAN.md` — broader than current automated coverage.
+- `mobile-app/DEBUG_*`, `TEST_ENTRY_POINT*`, `SESSION_COMPLETE.txt` — historical artifacts from Phase 4 debug sessions; safe to ignore.
+- `mobile-app/PHASE_4_HANDOFF.md` — superseded by Phase 5's completion but kept for the outbox/sync architecture detail.
+- `docs/agent-prompts/mobile-app-phase-5-real-backend.md` — the prompt that produced this work. Superseded by this doc.
 
-- mobile can request OTP against real backend
-- mobile can verify OTP and receive a bearer token/JWT
-- route list loads real assigned stops for the selected branch/date
-- detail/customer screens render real stop data without relying on Brenneman-only mock fields
-- delivered/skipped actions sync to real backend
-- POD photos upload durably
-- offline outbox still works across app restarts
-- sync queue accurately shows pending/retrying/failed actions
-- dev mode still works with `EXPO_PUBLIC_BACKEND_URL` unset
-- `npm run type-check` passes
+## Completion Criteria — Phase 5 ✅
 
-## Ready-To-Use Prompt
+All met as of PR #456:
 
-Use `docs/agent-prompts/mobile-app-phase-5-real-backend.md` when handing this work to the next agent.
+- ✅ mobile can request OTP against real backend (`/api/auth/send-otp`)
+- ✅ mobile can verify OTP and receive a JWT (`/api/auth/mobile/verify-otp`)
+- ✅ route list loads real assigned stops for the selected branch/date
+- ✅ detail/customer screens render real stop data without Brenneman-only mock fields
+- ✅ delivered/skipped actions sync to real backend
+- ✅ POD photos upload durably via presigned R2 PUTs (resumable)
+- ✅ offline outbox still works across app restarts
+- ✅ sync queue accurately shows pending/retrying/failed actions
+- ✅ dev mode still works with `EXPO_PUBLIC_BACKEND_URL` unset
+- ✅ `npm run type-check` passes
+- ✅ `npm run check:route-guards` passes

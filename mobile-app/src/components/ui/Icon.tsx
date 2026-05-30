@@ -15,7 +15,7 @@ export type IconName =
   | 'refresh' | 'truck' | 'user' | 'menu' | 'wifi' | 'wifiOff'
   | 'cloud' | 'cloudOff' | 'arrowRight' | 'arrowLeft' | 'flash' | 'flashOff'
   | 'logout' | 'settings' | 'mail' | 'lock' | 'info' | 'list' | 'plus'
-  | 'package' | 'alert' | 'clock' | 'upload';
+  | 'package' | 'alert' | 'clock' | 'upload' | 'search';
 
 interface IconProps {
   name: IconName;
@@ -214,6 +214,12 @@ export function Icon({ name, size = 24, color = '#000', strokeWidth = 2 }: IconP
           <Path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
           <Polyline points="17 8 12 3 7 8" />
           <Line x1="12" y1="3" x2="12" y2="15" />
+        </G>
+      );
+      case 'search': return (
+        <G>
+          <Circle cx="11" cy="11" r="7" />
+          <Line x1="21" y1="21" x2="16.65" y2="16.65" />
         </G>
       );
       default: return null;

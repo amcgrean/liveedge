@@ -12,6 +12,7 @@ export default function AppLayout() {
       <Stack.Screen name="[soNumber]" />
       <Stack.Screen name="profile" />
       <Stack.Screen name="sync-queue" />
+      <Stack.Screen name="lookup" options={{ presentation: 'modal', animation: 'slide_from_bottom' }} />
       <Stack.Screen name="route-complete" options={{ animation: 'fade' }} />
     </Stack>
   );
