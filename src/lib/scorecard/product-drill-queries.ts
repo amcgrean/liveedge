@@ -160,6 +160,11 @@ type KpiRow = {
   branch_ids: string[]; ship_to_count: string | null;
 };
 
+type ProductDistinctKpiCounts = Pick<
+  KpiRow,
+  'so_count_base' | 'so_count_compare' | 'cm_count_base' | 'cm_count_compare' | 'ship_to_count'
+>;
+
 async function _fetchProductKpis(
   params: ProductDrillParams,
   displayTitle: string,
@@ -215,79 +220,47 @@ async function _fetchProductKpis(
   } else if (f.level === 'minor') {
     rows = hasBranches
       ? await sql<KpiRow[]>`
-          WITH src AS (
-            SELECT sales_amount, gross_profit, weight, sales_order_number,
-              is_credit_memo, is_value_add_major, is_non_stock, ship_to_id, branch_id,
-              (EXTRACT(YEAR FROM invoice_date)::int = ${params.baseYear}
-                AND invoice_date::date <= ${baseCutoff}::date) AS is_base,
-              (EXTRACT(YEAR FROM invoice_date)::int = ${params.compareYear}
-                AND invoice_date::date <= ${compareCutoff}::date) AS is_compare
-            FROM customer_scorecard_fact
-            WHERE is_deleted = false
-              AND product_major_code = ${f.majorCode}
-              AND product_minor_code = ${f.minorCode}
-              AND invoice_date >= ${dateFrom}::timestamp
-              AND invoice_date < ${dateTo}::timestamp
-              AND branch_id = ANY(${params.branchIds}::text[])
-          )
-          ${sql.unsafe(kpiSelect())}
+          ${sql.unsafe(productRollupKpiSelect(params.baseYear, params.compareYear, baseCutoff, compareCutoff))}
+          WHERE product_level = 'minor'
+            AND product_major_code = ${f.majorCode}
+            AND product_minor_code = ${f.minorCode}
+            AND d >= ${dateFrom}::date
+            AND d < ${dateTo}::date
+            AND branch_id = ANY(${params.branchIds}::text[])
         `
       : await sql<KpiRow[]>`
-          WITH src AS (
-            SELECT sales_amount, gross_profit, weight, sales_order_number,
-              is_credit_memo, is_value_add_major, is_non_stock, ship_to_id, branch_id,
-              (EXTRACT(YEAR FROM invoice_date)::int = ${params.baseYear}
-                AND invoice_date::date <= ${baseCutoff}::date) AS is_base,
-              (EXTRACT(YEAR FROM invoice_date)::int = ${params.compareYear}
-                AND invoice_date::date <= ${compareCutoff}::date) AS is_compare
-            FROM customer_scorecard_fact
-            WHERE is_deleted = false
-              AND product_major_code = ${f.majorCode}
-              AND product_minor_code = ${f.minorCode}
-              AND invoice_date >= ${dateFrom}::timestamp
-              AND invoice_date < ${dateTo}::timestamp
-          )
-          ${sql.unsafe(kpiSelect())}
+          ${sql.unsafe(productRollupKpiSelect(params.baseYear, params.compareYear, baseCutoff, compareCutoff))}
+          WHERE product_level = 'minor'
+            AND product_major_code = ${f.majorCode}
+            AND product_minor_code = ${f.minorCode}
+            AND d >= ${dateFrom}::date
+            AND d < ${dateTo}::date
         `;
   } else {
     // major
     rows = hasBranches
       ? await sql<KpiRow[]>`
-          WITH src AS (
-            SELECT sales_amount, gross_profit, weight, sales_order_number,
-              is_credit_memo, is_value_add_major, is_non_stock, ship_to_id, branch_id,
-              (EXTRACT(YEAR FROM invoice_date)::int = ${params.baseYear}
-                AND invoice_date::date <= ${baseCutoff}::date) AS is_base,
-              (EXTRACT(YEAR FROM invoice_date)::int = ${params.compareYear}
-                AND invoice_date::date <= ${compareCutoff}::date) AS is_compare
-            FROM customer_scorecard_fact
-            WHERE is_deleted = false
-              AND product_major_code = ${f.majorCode}
-              AND invoice_date >= ${dateFrom}::timestamp
-              AND invoice_date < ${dateTo}::timestamp
-              AND branch_id = ANY(${params.branchIds}::text[])
-          )
-          ${sql.unsafe(kpiSelect())}
+          ${sql.unsafe(productRollupKpiSelect(params.baseYear, params.compareYear, baseCutoff, compareCutoff))}
+          WHERE product_level = 'major'
+            AND product_major_code = ${f.majorCode}
+            AND d >= ${dateFrom}::date
+            AND d < ${dateTo}::date
+            AND branch_id = ANY(${params.branchIds}::text[])
         `
       : await sql<KpiRow[]>`
-          WITH src AS (
-            SELECT sales_amount, gross_profit, weight, sales_order_number,
-              is_credit_memo, is_value_add_major, is_non_stock, ship_to_id, branch_id,
-              (EXTRACT(YEAR FROM invoice_date)::int = ${params.baseYear}
-                AND invoice_date::date <= ${baseCutoff}::date) AS is_base,
-              (EXTRACT(YEAR FROM invoice_date)::int = ${params.compareYear}
-                AND invoice_date::date <= ${compareCutoff}::date) AS is_compare
-            FROM customer_scorecard_fact
-            WHERE is_deleted = false
-              AND product_major_code = ${f.majorCode}
-              AND invoice_date >= ${dateFrom}::timestamp
-              AND invoice_date < ${dateTo}::timestamp
-          )
-          ${sql.unsafe(kpiSelect())}
+          ${sql.unsafe(productRollupKpiSelect(params.baseYear, params.compareYear, baseCutoff, compareCutoff))}
+          WHERE product_level = 'major'
+            AND product_major_code = ${f.majorCode}
+            AND d >= ${dateFrom}::date
+            AND d < ${dateTo}::date
         `;
   }
 
   const r = rows[0] ?? ({} as KpiRow);
+  const distinctCounts = f.level === 'item'
+    ? null
+    : await fetchProductDistinctKpiCounts(params, baseCutoff, compareCutoff, dateFrom, dateTo);
+  const countSource = (distinctCounts ?? r) as Record<string, unknown>;
   const mkSet = (sfx: 'base' | 'compare'): KpiSet => ({
     sales: toNum((r as Record<string, unknown>)[`sales_${sfx}`]),
     gp: toNum((r as Record<string, unknown>)[`gp_${sfx}`]),
@@ -296,16 +269,170 @@ async function _fetchProductKpis(
     nsGp: toNum((r as Record<string, unknown>)[`ns_gp_${sfx}`]),
     grossSales: toNum((r as Record<string, unknown>)[`gross_sales_${sfx}`]),
     cmSales: toNum((r as Record<string, unknown>)[`cm_sales_${sfx}`]),
-    soCount: toInt((r as Record<string, unknown>)[`so_count_${sfx}`]),
-    cmCount: toInt((r as Record<string, unknown>)[`cm_count_${sfx}`]),
+    soCount: toInt(countSource[`so_count_${sfx}`]),
+    cmCount: toInt(countSource[`cm_count_${sfx}`]),
     totalWeight: toNum((r as Record<string, unknown>)[`weight_${sfx}`]),
   });
   return {
     base: mkSet('base'),
     compare: mkSet('compare'),
     branchIds: r.branch_ids ?? [],
-    shipToCount: toInt(r.ship_to_count) ?? 0,
+    shipToCount: toInt(distinctCounts?.ship_to_count ?? r.ship_to_count) ?? 0,
     customerName: displayTitle,
+  };
+}
+
+async function fetchProductDistinctKpiCounts(
+  params: ProductDrillParams,
+  baseCutoff: string,
+  compareCutoff: string,
+  dateFrom: string,
+  dateTo: string,
+): Promise<ProductDistinctKpiCounts> {
+  const sql = getErpSql();
+  const f = params.productFilter;
+  const hasBranches = params.branchIds.length > 0;
+
+  if (f.level === 'minor') {
+    const [row] = hasBranches
+      ? await sql<ProductDistinctKpiCounts[]>`
+          SELECT
+            COUNT(DISTINCT sales_order_number) FILTER (
+              WHERE invoice_date >= make_date(${params.baseYear}, 1, 1)
+                AND invoice_date::date <= ${baseCutoff}::date
+                AND NOT is_credit_memo
+            )::text AS so_count_base,
+            COUNT(DISTINCT sales_order_number) FILTER (
+              WHERE invoice_date >= make_date(${params.compareYear}, 1, 1)
+                AND invoice_date::date <= ${compareCutoff}::date
+                AND NOT is_credit_memo
+            )::text AS so_count_compare,
+            COUNT(DISTINCT sales_order_number) FILTER (
+              WHERE invoice_date >= make_date(${params.baseYear}, 1, 1)
+                AND invoice_date::date <= ${baseCutoff}::date
+                AND is_credit_memo
+            )::text AS cm_count_base,
+            COUNT(DISTINCT sales_order_number) FILTER (
+              WHERE invoice_date >= make_date(${params.compareYear}, 1, 1)
+                AND invoice_date::date <= ${compareCutoff}::date
+                AND is_credit_memo
+            )::text AS cm_count_compare,
+            COUNT(DISTINCT ship_to_id)::text AS ship_to_count
+          FROM customer_scorecard_fact
+          WHERE is_deleted = false
+            AND product_major_code = ${f.majorCode}
+            AND product_minor_code = ${f.minorCode}
+            AND invoice_date >= ${dateFrom}::timestamp
+            AND invoice_date < ${dateTo}::timestamp
+            AND branch_id = ANY(${params.branchIds}::text[])
+        `
+      : await sql<ProductDistinctKpiCounts[]>`
+          SELECT
+            COUNT(DISTINCT sales_order_number) FILTER (
+              WHERE invoice_date >= make_date(${params.baseYear}, 1, 1)
+                AND invoice_date::date <= ${baseCutoff}::date
+                AND NOT is_credit_memo
+            )::text AS so_count_base,
+            COUNT(DISTINCT sales_order_number) FILTER (
+              WHERE invoice_date >= make_date(${params.compareYear}, 1, 1)
+                AND invoice_date::date <= ${compareCutoff}::date
+                AND NOT is_credit_memo
+            )::text AS so_count_compare,
+            COUNT(DISTINCT sales_order_number) FILTER (
+              WHERE invoice_date >= make_date(${params.baseYear}, 1, 1)
+                AND invoice_date::date <= ${baseCutoff}::date
+                AND is_credit_memo
+            )::text AS cm_count_base,
+            COUNT(DISTINCT sales_order_number) FILTER (
+              WHERE invoice_date >= make_date(${params.compareYear}, 1, 1)
+                AND invoice_date::date <= ${compareCutoff}::date
+                AND is_credit_memo
+            )::text AS cm_count_compare,
+            COUNT(DISTINCT ship_to_id)::text AS ship_to_count
+          FROM customer_scorecard_fact
+          WHERE is_deleted = false
+            AND product_major_code = ${f.majorCode}
+            AND product_minor_code = ${f.minorCode}
+            AND invoice_date >= ${dateFrom}::timestamp
+            AND invoice_date < ${dateTo}::timestamp
+        `;
+    return row ?? emptyProductDistinctKpiCounts();
+  }
+
+  if (f.level === 'major') {
+    const [row] = hasBranches
+      ? await sql<ProductDistinctKpiCounts[]>`
+          SELECT
+            COUNT(DISTINCT sales_order_number) FILTER (
+              WHERE invoice_date >= make_date(${params.baseYear}, 1, 1)
+                AND invoice_date::date <= ${baseCutoff}::date
+                AND NOT is_credit_memo
+            )::text AS so_count_base,
+            COUNT(DISTINCT sales_order_number) FILTER (
+              WHERE invoice_date >= make_date(${params.compareYear}, 1, 1)
+                AND invoice_date::date <= ${compareCutoff}::date
+                AND NOT is_credit_memo
+            )::text AS so_count_compare,
+            COUNT(DISTINCT sales_order_number) FILTER (
+              WHERE invoice_date >= make_date(${params.baseYear}, 1, 1)
+                AND invoice_date::date <= ${baseCutoff}::date
+                AND is_credit_memo
+            )::text AS cm_count_base,
+            COUNT(DISTINCT sales_order_number) FILTER (
+              WHERE invoice_date >= make_date(${params.compareYear}, 1, 1)
+                AND invoice_date::date <= ${compareCutoff}::date
+                AND is_credit_memo
+            )::text AS cm_count_compare,
+            COUNT(DISTINCT ship_to_id)::text AS ship_to_count
+          FROM customer_scorecard_fact
+          WHERE is_deleted = false
+            AND product_major_code = ${f.majorCode}
+            AND invoice_date >= ${dateFrom}::timestamp
+            AND invoice_date < ${dateTo}::timestamp
+            AND branch_id = ANY(${params.branchIds}::text[])
+        `
+      : await sql<ProductDistinctKpiCounts[]>`
+          SELECT
+            COUNT(DISTINCT sales_order_number) FILTER (
+              WHERE invoice_date >= make_date(${params.baseYear}, 1, 1)
+                AND invoice_date::date <= ${baseCutoff}::date
+                AND NOT is_credit_memo
+            )::text AS so_count_base,
+            COUNT(DISTINCT sales_order_number) FILTER (
+              WHERE invoice_date >= make_date(${params.compareYear}, 1, 1)
+                AND invoice_date::date <= ${compareCutoff}::date
+                AND NOT is_credit_memo
+            )::text AS so_count_compare,
+            COUNT(DISTINCT sales_order_number) FILTER (
+              WHERE invoice_date >= make_date(${params.baseYear}, 1, 1)
+                AND invoice_date::date <= ${baseCutoff}::date
+                AND is_credit_memo
+            )::text AS cm_count_base,
+            COUNT(DISTINCT sales_order_number) FILTER (
+              WHERE invoice_date >= make_date(${params.compareYear}, 1, 1)
+                AND invoice_date::date <= ${compareCutoff}::date
+                AND is_credit_memo
+            )::text AS cm_count_compare,
+            COUNT(DISTINCT ship_to_id)::text AS ship_to_count
+          FROM customer_scorecard_fact
+          WHERE is_deleted = false
+            AND product_major_code = ${f.majorCode}
+            AND invoice_date >= ${dateFrom}::timestamp
+            AND invoice_date < ${dateTo}::timestamp
+        `;
+    return row ?? emptyProductDistinctKpiCounts();
+  }
+
+  return emptyProductDistinctKpiCounts();
+}
+
+function emptyProductDistinctKpiCounts(): ProductDistinctKpiCounts {
+  return {
+    so_count_base: '0',
+    so_count_compare: '0',
+    cm_count_base: '0',
+    cm_count_compare: '0',
+    ship_to_count: '0',
   };
 }
 
@@ -335,6 +462,72 @@ function kpiSelect(): string {
       array_agg(DISTINCT branch_id) FILTER (WHERE branch_id IS NOT NULL) AS branch_ids,
       COUNT(DISTINCT ship_to_id)::text AS ship_to_count
     FROM src
+  `;
+}
+
+function productRollupKpiSelect(
+  baseYear: number,
+  compareYear: number,
+  baseCutoff: string,
+  compareCutoff: string,
+): string {
+  return `
+    SELECT
+      SUM(sales_amount) FILTER (
+        WHERE d >= make_date(${baseYear}, 1, 1) AND d <= '${baseCutoff}'::date
+      )::text AS sales_base,
+      SUM(sales_amount) FILTER (
+        WHERE d >= make_date(${compareYear}, 1, 1) AND d <= '${compareCutoff}'::date
+      )::text AS sales_compare,
+      SUM(gross_profit) FILTER (
+        WHERE d >= make_date(${baseYear}, 1, 1) AND d <= '${baseCutoff}'::date
+      )::text AS gp_base,
+      SUM(gross_profit) FILTER (
+        WHERE d >= make_date(${compareYear}, 1, 1) AND d <= '${compareCutoff}'::date
+      )::text AS gp_compare,
+      SUM(sales_va) FILTER (
+        WHERE d >= make_date(${baseYear}, 1, 1) AND d <= '${baseCutoff}'::date
+      )::text AS va_sales_base,
+      SUM(sales_va) FILTER (
+        WHERE d >= make_date(${compareYear}, 1, 1) AND d <= '${compareCutoff}'::date
+      )::text AS va_sales_compare,
+      SUM(sales_ns) FILTER (
+        WHERE d >= make_date(${baseYear}, 1, 1) AND d <= '${baseCutoff}'::date
+      )::text AS ns_sales_base,
+      SUM(sales_ns) FILTER (
+        WHERE d >= make_date(${compareYear}, 1, 1) AND d <= '${compareCutoff}'::date
+      )::text AS ns_sales_compare,
+      SUM(gp_ns) FILTER (
+        WHERE d >= make_date(${baseYear}, 1, 1) AND d <= '${baseCutoff}'::date
+      )::text AS ns_gp_base,
+      SUM(gp_ns) FILTER (
+        WHERE d >= make_date(${compareYear}, 1, 1) AND d <= '${compareCutoff}'::date
+      )::text AS ns_gp_compare,
+      SUM(sales_gross) FILTER (
+        WHERE d >= make_date(${baseYear}, 1, 1) AND d <= '${baseCutoff}'::date
+      )::text AS gross_sales_base,
+      SUM(sales_gross) FILTER (
+        WHERE d >= make_date(${compareYear}, 1, 1) AND d <= '${compareCutoff}'::date
+      )::text AS gross_sales_compare,
+      SUM(sales_cm) FILTER (
+        WHERE d >= make_date(${baseYear}, 1, 1) AND d <= '${baseCutoff}'::date
+      )::text AS cm_sales_base,
+      SUM(sales_cm) FILTER (
+        WHERE d >= make_date(${compareYear}, 1, 1) AND d <= '${compareCutoff}'::date
+      )::text AS cm_sales_compare,
+      NULL::text AS so_count_base,
+      NULL::text AS so_count_compare,
+      NULL::text AS cm_count_base,
+      NULL::text AS cm_count_compare,
+      SUM(weight_noncm) FILTER (
+        WHERE d >= make_date(${baseYear}, 1, 1) AND d <= '${baseCutoff}'::date
+      )::text AS weight_base,
+      SUM(weight_noncm) FILTER (
+        WHERE d >= make_date(${compareYear}, 1, 1) AND d <= '${compareCutoff}'::date
+      )::text AS weight_compare,
+      array_agg(DISTINCT branch_id) FILTER (WHERE branch_id IS NOT NULL) AS branch_ids,
+      NULL::text AS ship_to_count
+    FROM bids.rollup_product_day
   `;
 }
 
@@ -390,6 +583,33 @@ async function _fetchProductThreeYear(params: ProductDrillParams): Promise<Three
     )::text AS py2_gp
   `);
 
+  const rollupProjection = sql.unsafe(`
+    SUM(sales_amount) FILTER (
+      WHERE d >= make_date(${params.baseYear}, 1, 1)
+        AND d <= '${baseCutoff}'::date
+    )::text AS cy_sales,
+    SUM(gross_profit) FILTER (
+      WHERE d >= make_date(${params.baseYear}, 1, 1)
+        AND d <= '${baseCutoff}'::date
+    )::text AS cy_gp,
+    SUM(sales_amount) FILTER (
+      WHERE d >= make_date(${prior1}, 1, 1)
+        AND d <= '${prior1Cutoff}'::date
+    )::text AS py1_sales,
+    SUM(gross_profit) FILTER (
+      WHERE d >= make_date(${prior1}, 1, 1)
+        AND d <= '${prior1Cutoff}'::date
+    )::text AS py1_gp,
+    SUM(sales_amount) FILTER (
+      WHERE d >= make_date(${prior2}, 1, 1)
+        AND d <= '${prior2Cutoff}'::date
+    )::text AS py2_sales,
+    SUM(gross_profit) FILTER (
+      WHERE d >= make_date(${prior2}, 1, 1)
+        AND d <= '${prior2Cutoff}'::date
+    )::text AS py2_gp
+  `);
+
   let rows: Row[];
   if (f.level === 'item') {
     rows = hasBranches
@@ -409,34 +629,34 @@ async function _fetchProductThreeYear(params: ProductDrillParams): Promise<Three
   } else if (f.level === 'minor') {
     rows = hasBranches
       ? await sql<Row[]>`
-          SELECT ${projection}
-          FROM customer_scorecard_fact
-          WHERE is_deleted = false
+          SELECT ${rollupProjection}
+          FROM bids.rollup_product_day
+          WHERE product_level = 'minor'
             AND product_major_code = ${f.majorCode} AND product_minor_code = ${f.minorCode}
-            AND invoice_date >= ${dateFrom}::timestamp AND invoice_date < ${dateTo}::timestamp
+            AND d >= ${dateFrom}::date AND d < ${dateTo}::date
             AND branch_id = ANY(${params.branchIds}::text[])
         `
       : await sql<Row[]>`
-          SELECT ${projection}
-          FROM customer_scorecard_fact
-          WHERE is_deleted = false
+          SELECT ${rollupProjection}
+          FROM bids.rollup_product_day
+          WHERE product_level = 'minor'
             AND product_major_code = ${f.majorCode} AND product_minor_code = ${f.minorCode}
-            AND invoice_date >= ${dateFrom}::timestamp AND invoice_date < ${dateTo}::timestamp
+            AND d >= ${dateFrom}::date AND d < ${dateTo}::date
         `;
   } else {
     rows = hasBranches
       ? await sql<Row[]>`
-          SELECT ${projection}
-          FROM customer_scorecard_fact
-          WHERE is_deleted = false AND product_major_code = ${f.majorCode}
-            AND invoice_date >= ${dateFrom}::timestamp AND invoice_date < ${dateTo}::timestamp
+          SELECT ${rollupProjection}
+          FROM bids.rollup_product_day
+          WHERE product_level = 'major' AND product_major_code = ${f.majorCode}
+            AND d >= ${dateFrom}::date AND d < ${dateTo}::date
             AND branch_id = ANY(${params.branchIds}::text[])
         `
       : await sql<Row[]>`
-          SELECT ${projection}
-          FROM customer_scorecard_fact
-          WHERE is_deleted = false AND product_major_code = ${f.majorCode}
-            AND invoice_date >= ${dateFrom}::timestamp AND invoice_date < ${dateTo}::timestamp
+          SELECT ${rollupProjection}
+          FROM bids.rollup_product_day
+          WHERE product_level = 'major' AND product_major_code = ${f.majorCode}
+            AND d >= ${dateFrom}::date AND d < ${dateTo}::date
         `;
   }
 
@@ -491,10 +711,36 @@ async function _fetchProductTopCustomers(
     array_agg(DISTINCT branch_id) FILTER (WHERE branch_id IS NOT NULL) AS branch_ids
   `);
 
+  const rollupProjection = sql.unsafe(`
+    customer_id,
+    MAX(customer_name) AS customer_name,
+    SUM(sales_amount) FILTER (
+      WHERE d >= make_date(${params.baseYear}, 1, 1)
+        AND d <= '${baseCutoff}'::date
+    )::text AS sales_base,
+    SUM(sales_amount) FILTER (
+      WHERE d >= make_date(${params.compareYear}, 1, 1)
+        AND d <= '${compareCutoff}'::date
+    )::text AS sales_compare,
+    SUM(gross_profit) FILTER (
+      WHERE d >= make_date(${params.baseYear}, 1, 1)
+        AND d <= '${baseCutoff}'::date
+    )::text AS gp_base,
+    array_agg(DISTINCT branch_id) FILTER (WHERE branch_id IS NOT NULL) AS branch_ids
+  `);
+
   const orderBy = sql.unsafe(`
     ORDER BY COALESCE(SUM(sales_amount) FILTER (
       WHERE invoice_date >= make_date(${params.baseYear}, 1, 1)
         AND invoice_date::date <= '${baseCutoff}'::date
+    ), 0) DESC
+    LIMIT ${Math.max(1, Math.floor(limit))}
+  `);
+
+  const rollupOrderBy = sql.unsafe(`
+    ORDER BY COALESCE(SUM(sales_amount) FILTER (
+      WHERE d >= make_date(${params.baseYear}, 1, 1)
+        AND d <= '${baseCutoff}'::date
     ), 0) DESC
     LIMIT ${Math.max(1, Math.floor(limit))}
   `);
@@ -522,42 +768,42 @@ async function _fetchProductTopCustomers(
   } else if (f.level === 'minor') {
     rows = hasBranches
       ? await sql<Row[]>`
-          SELECT ${projection}
-          FROM customer_scorecard_fact
-          WHERE is_deleted = false
+          SELECT ${rollupProjection}
+          FROM bids.rollup_product_day
+          WHERE product_level = 'minor'
             AND product_major_code = ${f.majorCode} AND product_minor_code = ${f.minorCode}
-            AND invoice_date >= ${dateFrom}::timestamp AND invoice_date < ${dateTo}::timestamp
+            AND d >= ${dateFrom}::date AND d < ${dateTo}::date
             AND branch_id = ANY(${params.branchIds}::text[])
           GROUP BY customer_id
-          ${orderBy}
+          ${rollupOrderBy}
         `
       : await sql<Row[]>`
-          SELECT ${projection}
-          FROM customer_scorecard_fact
-          WHERE is_deleted = false
+          SELECT ${rollupProjection}
+          FROM bids.rollup_product_day
+          WHERE product_level = 'minor'
             AND product_major_code = ${f.majorCode} AND product_minor_code = ${f.minorCode}
-            AND invoice_date >= ${dateFrom}::timestamp AND invoice_date < ${dateTo}::timestamp
+            AND d >= ${dateFrom}::date AND d < ${dateTo}::date
           GROUP BY customer_id
-          ${orderBy}
+          ${rollupOrderBy}
         `;
   } else {
     rows = hasBranches
       ? await sql<Row[]>`
-          SELECT ${projection}
-          FROM customer_scorecard_fact
-          WHERE is_deleted = false AND product_major_code = ${f.majorCode}
-            AND invoice_date >= ${dateFrom}::timestamp AND invoice_date < ${dateTo}::timestamp
+          SELECT ${rollupProjection}
+          FROM bids.rollup_product_day
+          WHERE product_level = 'major' AND product_major_code = ${f.majorCode}
+            AND d >= ${dateFrom}::date AND d < ${dateTo}::date
             AND branch_id = ANY(${params.branchIds}::text[])
           GROUP BY customer_id
-          ${orderBy}
+          ${rollupOrderBy}
         `
       : await sql<Row[]>`
-          SELECT ${projection}
-          FROM customer_scorecard_fact
-          WHERE is_deleted = false AND product_major_code = ${f.majorCode}
-            AND invoice_date >= ${dateFrom}::timestamp AND invoice_date < ${dateTo}::timestamp
+          SELECT ${rollupProjection}
+          FROM bids.rollup_product_day
+          WHERE product_level = 'major' AND product_major_code = ${f.majorCode}
+            AND d >= ${dateFrom}::date AND d < ${dateTo}::date
           GROUP BY customer_id
-          ${orderBy}
+          ${rollupOrderBy}
         `;
   }
 
@@ -614,12 +860,42 @@ async function _fetchProductBranchMix(params: ProductDrillParams): Promise<Produ
     COUNT(DISTINCT customer_id)::text AS customer_count
   `);
 
+  const rollupProjection = sql.unsafe(`
+    branch_id,
+    SUM(sales_amount) FILTER (
+      WHERE d >= make_date(${params.baseYear}, 1, 1)
+        AND d <= '${baseCutoff}'::date
+    )::text AS sales_base,
+    SUM(sales_amount) FILTER (
+      WHERE d >= make_date(${params.compareYear}, 1, 1)
+        AND d <= '${compareCutoff}'::date
+    )::text AS sales_compare,
+    SUM(gross_profit) FILTER (
+      WHERE d >= make_date(${params.baseYear}, 1, 1)
+        AND d <= '${baseCutoff}'::date
+    )::text AS gp_base,
+    SUM(gross_profit) FILTER (
+      WHERE d >= make_date(${params.compareYear}, 1, 1)
+        AND d <= '${compareCutoff}'::date
+    )::text AS gp_compare,
+    COUNT(DISTINCT customer_id)::text AS customer_count
+  `);
+
   const tail = sql.unsafe(`
     GROUP BY branch_id
     HAVING branch_id IS NOT NULL
     ORDER BY COALESCE(SUM(sales_amount) FILTER (
       WHERE invoice_date >= make_date(${params.baseYear}, 1, 1)
         AND invoice_date::date <= '${baseCutoff}'::date
+    ), 0) DESC
+  `);
+
+  const rollupTail = sql.unsafe(`
+    GROUP BY branch_id
+    HAVING branch_id IS NOT NULL
+    ORDER BY COALESCE(SUM(sales_amount) FILTER (
+      WHERE d >= make_date(${params.baseYear}, 1, 1)
+        AND d <= '${baseCutoff}'::date
     ), 0) DESC
   `);
 
@@ -644,38 +920,38 @@ async function _fetchProductBranchMix(params: ProductDrillParams): Promise<Produ
   } else if (f.level === 'minor') {
     rows = hasBranches
       ? await sql<Row[]>`
-          SELECT ${projection}
-          FROM customer_scorecard_fact
-          WHERE is_deleted = false
+          SELECT ${rollupProjection}
+          FROM bids.rollup_product_day
+          WHERE product_level = 'minor'
             AND product_major_code = ${f.majorCode} AND product_minor_code = ${f.minorCode}
-            AND invoice_date >= ${dateFrom}::timestamp AND invoice_date < ${dateTo}::timestamp
+            AND d >= ${dateFrom}::date AND d < ${dateTo}::date
             AND branch_id = ANY(${params.branchIds}::text[])
-          ${tail}
+          ${rollupTail}
         `
       : await sql<Row[]>`
-          SELECT ${projection}
-          FROM customer_scorecard_fact
-          WHERE is_deleted = false
+          SELECT ${rollupProjection}
+          FROM bids.rollup_product_day
+          WHERE product_level = 'minor'
             AND product_major_code = ${f.majorCode} AND product_minor_code = ${f.minorCode}
-            AND invoice_date >= ${dateFrom}::timestamp AND invoice_date < ${dateTo}::timestamp
-          ${tail}
+            AND d >= ${dateFrom}::date AND d < ${dateTo}::date
+          ${rollupTail}
         `;
   } else {
     rows = hasBranches
       ? await sql<Row[]>`
-          SELECT ${projection}
-          FROM customer_scorecard_fact
-          WHERE is_deleted = false AND product_major_code = ${f.majorCode}
-            AND invoice_date >= ${dateFrom}::timestamp AND invoice_date < ${dateTo}::timestamp
+          SELECT ${rollupProjection}
+          FROM bids.rollup_product_day
+          WHERE product_level = 'major' AND product_major_code = ${f.majorCode}
+            AND d >= ${dateFrom}::date AND d < ${dateTo}::date
             AND branch_id = ANY(${params.branchIds}::text[])
-          ${tail}
+          ${rollupTail}
         `
       : await sql<Row[]>`
-          SELECT ${projection}
-          FROM customer_scorecard_fact
-          WHERE is_deleted = false AND product_major_code = ${f.majorCode}
-            AND invoice_date >= ${dateFrom}::timestamp AND invoice_date < ${dateTo}::timestamp
-          ${tail}
+          SELECT ${rollupProjection}
+          FROM bids.rollup_product_day
+          WHERE product_level = 'major' AND product_major_code = ${f.majorCode}
+            AND d >= ${dateFrom}::date AND d < ${dateTo}::date
+          ${rollupTail}
         `;
   }
 
@@ -730,11 +1006,40 @@ async function _fetchProductSaleTypes(params: ProductDrillParams): Promise<SaleT
     )::text AS gp_compare
   `);
 
+  const rollupProjection = sql.unsafe(`
+    COALESCE(NULLIF(sale_type_reporting_category, ''), 'Other') AS category,
+    BOOL_OR(is_sale_type_excluded) AS is_excluded,
+    SUM(sales_amount) FILTER (
+      WHERE d >= make_date(${params.baseYear}, 1, 1)
+        AND d <= '${baseCutoff}'::date
+    )::text AS sales_base,
+    SUM(gross_profit) FILTER (
+      WHERE d >= make_date(${params.baseYear}, 1, 1)
+        AND d <= '${baseCutoff}'::date
+    )::text AS gp_base,
+    SUM(sales_amount) FILTER (
+      WHERE d >= make_date(${params.compareYear}, 1, 1)
+        AND d <= '${compareCutoff}'::date
+    )::text AS sales_compare,
+    SUM(gross_profit) FILTER (
+      WHERE d >= make_date(${params.compareYear}, 1, 1)
+        AND d <= '${compareCutoff}'::date
+    )::text AS gp_compare
+  `);
+
   const tail = sql.unsafe(`
     GROUP BY sale_type_reporting_category
     ORDER BY COALESCE(SUM(sales_amount) FILTER (
       WHERE invoice_date >= make_date(${params.baseYear}, 1, 1)
         AND invoice_date::date <= '${baseCutoff}'::date
+    ), 0) DESC
+  `);
+
+  const rollupTail = sql.unsafe(`
+    GROUP BY sale_type_reporting_category
+    ORDER BY COALESCE(SUM(sales_amount) FILTER (
+      WHERE d >= make_date(${params.baseYear}, 1, 1)
+        AND d <= '${baseCutoff}'::date
     ), 0) DESC
   `);
 
@@ -759,38 +1064,38 @@ async function _fetchProductSaleTypes(params: ProductDrillParams): Promise<SaleT
   } else if (f.level === 'minor') {
     rows = hasBranches
       ? await sql<Row[]>`
-          SELECT ${projection}
-          FROM customer_scorecard_fact
-          WHERE is_deleted = false
+          SELECT ${rollupProjection}
+          FROM bids.rollup_saletype_day
+          WHERE rollup_scope = 'product_minor'
             AND product_major_code = ${f.majorCode} AND product_minor_code = ${f.minorCode}
-            AND invoice_date >= ${dateFrom}::timestamp AND invoice_date < ${dateTo}::timestamp
+            AND d >= ${dateFrom}::date AND d < ${dateTo}::date
             AND branch_id = ANY(${params.branchIds}::text[])
-          ${tail}
+          ${rollupTail}
         `
       : await sql<Row[]>`
-          SELECT ${projection}
-          FROM customer_scorecard_fact
-          WHERE is_deleted = false
+          SELECT ${rollupProjection}
+          FROM bids.rollup_saletype_day
+          WHERE rollup_scope = 'product_minor'
             AND product_major_code = ${f.majorCode} AND product_minor_code = ${f.minorCode}
-            AND invoice_date >= ${dateFrom}::timestamp AND invoice_date < ${dateTo}::timestamp
-          ${tail}
+            AND d >= ${dateFrom}::date AND d < ${dateTo}::date
+          ${rollupTail}
         `;
   } else {
     rows = hasBranches
       ? await sql<Row[]>`
-          SELECT ${projection}
-          FROM customer_scorecard_fact
-          WHERE is_deleted = false AND product_major_code = ${f.majorCode}
-            AND invoice_date >= ${dateFrom}::timestamp AND invoice_date < ${dateTo}::timestamp
+          SELECT ${rollupProjection}
+          FROM bids.rollup_saletype_day
+          WHERE rollup_scope = 'product_major' AND product_major_code = ${f.majorCode}
+            AND d >= ${dateFrom}::date AND d < ${dateTo}::date
             AND branch_id = ANY(${params.branchIds}::text[])
-          ${tail}
+          ${rollupTail}
         `
       : await sql<Row[]>`
-          SELECT ${projection}
-          FROM customer_scorecard_fact
-          WHERE is_deleted = false AND product_major_code = ${f.majorCode}
-            AND invoice_date >= ${dateFrom}::timestamp AND invoice_date < ${dateTo}::timestamp
-          ${tail}
+          SELECT ${rollupProjection}
+          FROM bids.rollup_saletype_day
+          WHERE rollup_scope = 'product_major' AND product_major_code = ${f.majorCode}
+            AND d >= ${dateFrom}::date AND d < ${dateTo}::date
+          ${rollupTail}
         `;
   }
 
