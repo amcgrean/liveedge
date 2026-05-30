@@ -1,7 +1,32 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import { Stack } from 'expo-router';
 import { View, ActivityIndicator, StyleSheet } from 'react-native';
 import { AuthProvider, useAuth } from '@/context/AuthContext';
+import { ToastProvider, useToast } from '@/context/ToastContext';
+import { photoStore } from '@/data/photoStore';
+import { outbox } from '@/storage/outbox';
+import { initSyncEngine, subscribeSyncEvents } from '@/storage/sync';
+
+function AppBootstrap() {
+  const { show } = useToast();
+
+  useEffect(() => {
+    outbox.init();
+    photoStore.init();
+    const stopSync = initSyncEngine();
+    const unsubEvents = subscribeSyncEvents((event) => {
+      if (event.type === 'synced') {
+        show('Synced ✓', 'success');
+      }
+    });
+    return () => {
+      unsubEvents();
+      stopSync();
+    };
+  }, [show]);
+
+  return null;
+}
 
 function RootStack() {
   const { isLoading } = useAuth();
@@ -25,9 +50,12 @@ function RootStack() {
 
 export default function RootLayout() {
   return (
-    <AuthProvider>
-      <RootStack />
-    </AuthProvider>
+    <ToastProvider>
+      <AuthProvider>
+        <AppBootstrap />
+        <RootStack />
+      </AuthProvider>
+    </ToastProvider>
   );
 }
 

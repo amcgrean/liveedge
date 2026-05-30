@@ -15,31 +15,10 @@ import { Pill } from '@/components/ui/Pill';
 import { BigButton } from '@/components/ui/BigButton';
 import { Icon } from '@/components/ui/Icon';
 import { C, BRANCHES, BranchCode } from '@/theme/colors';
+import { useOnline } from '@/hooks/useOnline';
+import { useOutbox } from '@/storage/outbox';
+import { MOCK_STOPS, MockStop, StopStatus } from '@/data/mockRoute';
 import { format } from 'date-fns';
-
-type StopStatus = 'pending' | 'delivered' | 'skipped' | 'inroute';
-
-interface MockStop {
-  n: string;
-  name: string;
-  addr1: string;
-  addr2: string;
-  so: string;
-  status: StopStatus;
-  items: number;
-  eta?: string;
-}
-
-const MOCK_STOPS: MockStop[] = [
-  { n: '01', name: 'Holstead Construction', addr1: '4220 NW 86th St', addr2: 'Urbandale, IA 50322', so: '102-44918', status: 'delivered', items: 12 },
-  { n: '02', name: 'Greenway Homes — Lot 14', addr1: '1840 Aspen Ridge Dr', addr2: 'Waukee, IA 50263', so: '102-44922', status: 'delivered', items: 8 },
-  { n: '03', name: 'M&B Roofing LLC', addr1: '512 SE 14th St', addr2: 'Des Moines, IA 50315', so: '102-44930', status: 'delivered', items: 24 },
-  { n: '04', name: 'Brenneman Residence', addr1: '3402 Hickory Ln', addr2: 'Clive, IA 50325', so: '102-44947', status: 'inroute', items: 6, eta: '11:20 AM' },
-  { n: '05', name: 'Hawkeye Framing Co.', addr1: '7711 University Ave', addr2: 'West Des Moines, IA', so: '102-44951', status: 'pending', items: 18 },
-  { n: '06', name: 'Stadler Lot — 22', addr1: '928 Cypress Dr', addr2: 'Johnston, IA 50131', so: '102-44958', status: 'pending', items: 4 },
-  { n: '07', name: 'Riverbend Decks', addr1: '210 NW 70th Ave', addr2: 'Ankeny, IA 50023', so: '102-44963', status: 'skipped', items: 9 },
-  { n: '08', name: 'Cardinal Carpentry', addr1: '1500 30th St NW', addr2: 'Bondurant, IA 50035', so: '102-44970', status: 'pending', items: 15 },
-];
 
 const PILL_LABEL: Record<StopStatus, string> = {
   pending: 'PENDING',
@@ -111,6 +90,9 @@ export default function RouteListScreen() {
   const { user } = useAuth();
   const [expandedId, setExpandedId] = useState<string | null>('04');
   const [refreshing, setRefreshing] = useState(false);
+  const online = useOnline();
+  const outboxItems = useOutbox();
+  const syncCount = outboxItems.filter((item) => item.status !== 'synced').length;
 
   const branchCode = (user?.branch || '20GR') as BranchCode;
   const branch = BRANCHES.find((b) => b.code === branchCode);
@@ -134,8 +116,8 @@ export default function RouteListScreen() {
       <AppStatusBar
         branchLabel={`${branchCode} · ${branch?.name}`}
         branchDot={branch?.dot}
-        online={true}
-        syncCount={0}
+        online={online}
+        syncCount={syncCount}
         onProfile={() => router.push('/(app)/profile')}
       />
 

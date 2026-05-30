@@ -14,6 +14,8 @@ import { useAuth } from '@/context/AuthContext';
 import { AppStatusBar } from '@/components/ui/AppStatusBar';
 import { Icon, IconName } from '@/components/ui/Icon';
 import { C, BRANCHES, BranchCode } from '@/theme/colors';
+import { useOnline } from '@/hooks/useOnline';
+import { useOutbox } from '@/storage/outbox';
 
 interface ProfileRowProps {
   icon: IconName;
@@ -57,6 +59,9 @@ function ProfileRow({ icon, label, detail, danger, last, onPress }: ProfileRowPr
 
 export default function ProfileScreen() {
   const { user, logout } = useAuth();
+  const online = useOnline();
+  const outboxItems = useOutbox();
+  const syncCount = outboxItems.filter((item) => item.status !== 'synced').length;
   const branchCode = (user?.branch || '20GR') as BranchCode;
   const branch = BRANCHES.find((b) => b.code === branchCode);
 
@@ -88,7 +93,8 @@ export default function ProfileScreen() {
         title="Profile"
         branchLabel={`${branchCode} · ${branch?.name}`}
         branchDot={branch?.dot}
-        online={true}
+        online={online}
+        syncCount={syncCount}
         initials={initials}
       />
 
@@ -139,7 +145,7 @@ export default function ProfileScreen() {
           <ProfileRow
             icon="cloud"
             label="Sync Queue"
-            detail="0 pending"
+            detail={`${syncCount} pending`}
             onPress={() => router.push('/(app)/sync-queue')}
           />
           <ProfileRow icon="settings" label="App Settings" />

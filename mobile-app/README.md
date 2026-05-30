@@ -63,8 +63,9 @@ src/
 - ✅ OTP Login
 - ✅ View daily route + delivery stops
 - ✅ Mark deliveries complete/skipped
-- ⏳ Proof-of-delivery photo capture (Phase 4)
-- ⏳ Offline sync (Phase 5)
+- ✅ Proof-of-delivery photo capture
+- ✅ Offline outbox and auto-sync retry loop
+- ⏳ Real backend route/auth/POD integration
 
 ## API Integration
 
@@ -91,20 +92,23 @@ See [../docs/MOBILE_APP.md](../docs/MOBILE_APP.md) for full API docs.
 - Delivery details screen
 - Pull-to-refresh
 
-### Phase 3: Delivery Status Update (Next)
+### Phase 3: Delivery Status Update ✅
 - Mark delivered/skipped buttons
-- Optimistic UI updates
 - Toast notifications
 
-### Phase 4: Photo Capture (Later)
+### Phase 4: Photo Capture + Offline Sync ✅
 - Camera integration
 - Local photo storage
-- Photo upload to R2
-
-### Phase 5: Offline Sync (Later)
 - AsyncStorage queue
 - Background sync
-- Conflict resolution
+- Retry/discard controls in Sync Queue
+
+### Phase 5: Real Backend Integration (Next)
+- Add/settle JWT-style mobile OTP verification endpoint
+- Replace mock route data with `/api/dispatch/routes`
+- Upload POD photos to the real `/pod` endpoint or presigned R2 flow
+- Reconcile synced deliveries with server state
+- Add real maps after live route data is available
 
 ## Testing
 
@@ -120,7 +124,7 @@ See [../docs/MOBILE_APP.md](../docs/MOBILE_APP.md) for full API docs.
 
 ### Test Accounts
 
-(To be provided by backend team)
+Dev mode is active when `EXPO_PUBLIC_BACKEND_URL` is unset. Use any username with OTP code `000000`.
 
 ## Build & Deployment
 
@@ -142,7 +146,7 @@ eas build --platform all   # Builds for App Store + Play Store
 - Clear Expo cache: `npx expo-cli@latest start --clear`
 
 ### API Calls Fail
-- Check `EXPO_BACKEND_URL` in .env.local
+- Check `EXPO_PUBLIC_BACKEND_URL` in `.env.local`
 - Verify backend is running
 - Check network connectivity
 - Review console logs: `npm start` shows all logs

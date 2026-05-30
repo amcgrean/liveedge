@@ -2,6 +2,8 @@
 
 > Handoff doc for the next coding agent (Codex or another Claude session). Self-contained — you don't need to read prior chat history.
 
+> Status update: Phase 4 was implemented in commit `c416d009` on `claude/mobile-app-mvp`. Keep this file as historical implementation context; use `docs/MOBILE_APP.md` and `mobile-app/README.md` for the current gameplan.
+
 ---
 
 ## Project context (one paragraph)

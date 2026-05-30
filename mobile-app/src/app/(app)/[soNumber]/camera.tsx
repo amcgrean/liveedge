@@ -62,7 +62,7 @@ export default function CameraScreen() {
         skipProcessing: false,
       });
       if (photo?.uri) {
-        photoStore.add(soNumber, photo.uri);
+        await photoStore.add(soNumber, photo.uri);
       }
     } catch (err) {
       console.error('[CAMERA] capture failed', err);
