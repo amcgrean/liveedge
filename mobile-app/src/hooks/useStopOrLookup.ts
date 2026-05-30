@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useDriverRoute, DriverStop } from './useDriverRoute';
 import { lookupOrder, OrderLookupResponse } from '@/api/dispatch';
 import { StopStatus } from '@/data/mockRoute';
@@ -56,14 +56,23 @@ function mapLookupToStop(payload: OrderLookupResponse): DriverStop {
 
 export function useStopOrLookup(soNumber: string): UseStopOrLookupResult {
   const { stops, loading: routeLoading } = useDriverRoute();
-  const onRoute = stops.find((s) => s.so === soNumber);
+
+  // Memoize on the stable SO key + a stable stops-identity (length+first-id
+  // are enough for our purposes). Without this, `stops.find` returns a fresh
+  // reference every render and the effect below loops forever.
+  const onRoute = useMemo(
+    () => stops.find((s) => s.so === soNumber),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [soNumber, stops.length, stops[0]?.so]
+  );
   const idx = onRoute ? stops.findIndex((s) => s.so === soNumber) : -1;
+  const isOnRoute = Boolean(onRoute);
 
   const [lookupStop, setLookupStop] = useState<DriverStop | null>(null);
   const [lookupLoading, setLookupLoading] = useState(false);
   const [lookupError, setLookupError] = useState<string | null>(null);
 
-  const fetchLookup = async () => {
+  const fetchLookup = useCallback(async () => {
     setLookupLoading(true);
     setLookupError(null);
     try {
@@ -75,19 +84,18 @@ export function useStopOrLookup(soNumber: string): UseStopOrLookupResult {
     } finally {
       setLookupLoading(false);
     }
-  };
+  }, [soNumber]);
 
   useEffect(() => {
     // Only do a lookup once the route load has settled AND the SO isn't on it.
     if (routeLoading) return;
-    if (onRoute) {
+    if (isOnRoute) {
       setLookupStop(null);
       setLookupError(null);
       return;
     }
     fetchLookup();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [routeLoading, soNumber, onRoute]);
+  }, [routeLoading, isOnRoute, fetchLookup]);
 
   if (onRoute) {
     return {
