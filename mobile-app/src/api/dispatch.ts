@@ -20,6 +20,17 @@ export interface OrderLookupStop {
   branch_code?: string;
 }
 
+export interface AgilityShipmentInfo {
+  shipment_num: number;
+  ship_date: string | null;
+  expect_date: string | null;
+  /** Single-char ERP status: B=Open, K=Picked, S=Staged, P=Picked-up, D=Delivered, I=Invoiced, C=Cancelled */
+  status_flag: string | null;
+  status_flag_delivery: string | null;
+  route_id_char: string | null;
+  driver: string | null;
+}
+
 export interface OrderLookupResponse {
   so: {
     so_id: string;
@@ -41,6 +52,7 @@ export interface OrderLookupResponse {
     ext_total: number | null;
   };
   existing_stop: OrderLookupStop | null;
+  agility_shipment: AgilityShipmentInfo | null;
 }
 
 /**
@@ -73,6 +85,7 @@ export async function lookupOrder(soNumber: string): Promise<OrderLookupResponse
         ext_total: null,
       },
       existing_stop: null,
+      agility_shipment: null,
     };
   }
   const res = await client.get<OrderLookupResponse>(`/api/dispatch/orders/${encodeURIComponent(soNumber)}`);

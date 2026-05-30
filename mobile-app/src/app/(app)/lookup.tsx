@@ -17,6 +17,7 @@ import { BigButton } from '@/components/ui/BigButton';
 import { Pill } from '@/components/ui/Pill';
 import { C } from '@/theme/colors';
 import { lookupOrder, OrderLookupResponse } from '@/api/dispatch';
+import { describeAssignment, AssignmentSummary } from '@/lib/orderAssignment';
 
 export default function LookupScreen() {
   const [soInput, setSoInput] = useState('');
@@ -49,14 +50,17 @@ export default function LookupScreen() {
 
   const handleOpenDetails = () => {
     if (!result) return;
-    router.replace({
+    const summary = describeAssignment(result);
+    // dismiss the modal first, then push details. router.replace inside a
+    // modal-presentation screen leaves the modal stack half-popped and
+    // wedges the navigator on some Expo Router versions.
+    router.dismissTo('/(app)/route-list');
+    router.push({
       pathname: '/(app)/[soNumber]/details',
       params: {
         soNumber: result.so.so_id,
-        // Pass the lookup payload through so details can render without a
-        // second fetch. Marked claimable when there's no existing stop.
         lookup: '1',
-        claimable: result.existing_stop ? '0' : '1',
+        claimable: summary.canClaim ? '1' : '0',
       },
     });
   };
@@ -116,61 +120,55 @@ export default function LookupScreen() {
             </View>
           )}
 
-          {result && !loading && (
-            <View style={styles.resultCard}>
-              <View style={styles.resultHeader}>
-                <Text style={styles.soNum}>SO# {result.so.so_id}</Text>
-                {result.existing_stop ? (
-                  <Pill kind={result.existing_stop.status as 'pending' | 'delivered' | 'skipped' | 'inroute'}>
-                    {result.existing_stop.status.toUpperCase()}
-                  </Pill>
-                ) : (
-                  <Pill kind="pending">UNCLAIMED</Pill>
+          {result && !loading && (() => {
+            const summary = describeAssignment(result);
+            return (
+              <View style={styles.resultCard}>
+                <View style={styles.resultHeader}>
+                  <Text style={styles.soNum}>SO# {result.so.so_id}</Text>
+                  <Pill kind={summary.statusKind}>{summary.statusLabel}</Pill>
+                </View>
+                <Text style={styles.customerName}>
+                  {result.so.customer_name ?? result.so.cust_code ?? '—'}
+                </Text>
+                {result.so.address_1 && (
+                  <Text style={styles.addr}>{result.so.address_1}</Text>
                 )}
+                {(result.so.city || result.so.state) && (
+                  <Text style={styles.addr}>
+                    {[result.so.city, result.so.state, result.so.zip].filter(Boolean).join(', ')}
+                  </Text>
+                )}
+                <View style={styles.metaRow}>
+                  <Text style={styles.metaChip}>Branch {result.so.branch_code}</Text>
+                  {result.so.reference && (
+                    <Text style={styles.metaChip}>Ref {result.so.reference}</Text>
+                  )}
+                  {result.so.po_number && (
+                    <Text style={styles.metaChip}>PO# {result.so.po_number}</Text>
+                  )}
+                  <Text style={styles.metaChip}>
+                    {result.so.line_count} {result.so.line_count === 1 ? 'line' : 'lines'}
+                  </Text>
+                </View>
+                {summary.assignmentLine ? (
+                  <Text style={styles.routeLine}>{summary.assignmentLine}</Text>
+                ) : summary.canClaim ? (
+                  <Text style={styles.routeLine}>
+                    No driver assigned — you can claim this stop on the next screen.
+                  </Text>
+                ) : null}
+                <BigButton
+                  kind="primary"
+                  onPress={handleOpenDetails}
+                  style={{ marginTop: 16 }}
+                  icon="arrowRight"
+                >
+                  {summary.canClaim ? 'Open & claim' : 'Open delivery'}
+                </BigButton>
               </View>
-              <Text style={styles.customerName}>
-                {result.so.customer_name ?? result.so.cust_code ?? '—'}
-              </Text>
-              {result.so.address_1 && (
-                <Text style={styles.addr}>{result.so.address_1}</Text>
-              )}
-              {(result.so.city || result.so.state) && (
-                <Text style={styles.addr}>
-                  {[result.so.city, result.so.state, result.so.zip].filter(Boolean).join(', ')}
-                </Text>
-              )}
-              <View style={styles.metaRow}>
-                <Text style={styles.metaChip}>Branch {result.so.branch_code}</Text>
-                {result.so.reference && (
-                  <Text style={styles.metaChip}>Ref {result.so.reference}</Text>
-                )}
-                {result.so.po_number && (
-                  <Text style={styles.metaChip}>PO# {result.so.po_number}</Text>
-                )}
-                <Text style={styles.metaChip}>
-                  {result.so.line_count} {result.so.line_count === 1 ? 'line' : 'lines'}
-                </Text>
-              </View>
-              {result.existing_stop && (
-                <Text style={styles.routeLine}>
-                  On route: {result.existing_stop.route_name ?? '—'} ({result.existing_stop.route_date ?? '—'})
-                </Text>
-              )}
-              {!result.existing_stop && (
-                <Text style={styles.routeLine}>
-                  Not on a dispatch route — you can claim it on the next screen to record POD.
-                </Text>
-              )}
-              <BigButton
-                kind="primary"
-                onPress={handleOpenDetails}
-                style={{ marginTop: 16 }}
-                icon="arrowRight"
-              >
-                {result.existing_stop ? 'Open delivery' : 'Open & claim'}
-              </BigButton>
-            </View>
-          )}
+            );
+          })()}
         </View>
       </KeyboardAvoidingView>
     </SafeAreaView>

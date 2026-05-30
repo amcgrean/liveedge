@@ -126,6 +126,37 @@ export async function GET(
     `;
     const existingStop = stops[0] ?? null;
 
+    // Agility-side dispatch reality. Beisser dispatchers actually build
+    // routes in Agility (old POD system), so dispatch_route_stops is
+    // usually empty for real loads. agility_shipments is the source of
+    // truth for "is a driver carrying this today?" Use the most recent
+    // non-deleted shipment for the SO.
+    type AgilityShipmentRow = {
+      shipment_num: number;
+      ship_date: string | null;
+      expect_date: string | null;
+      status_flag: string | null;
+      status_flag_delivery: string | null;
+      route_id_char: string | null;
+      driver: string | null;
+    };
+    const shipments = await sql<AgilityShipmentRow[]>`
+      SELECT shipment_num,
+             ship_date::text   AS ship_date,
+             expect_date::text AS expect_date,
+             status_flag,
+             status_flag_delivery,
+             route_id_char,
+             driver
+      FROM agility_shipments
+      WHERE so_id = ${soNumber}
+        AND system_id = ${h.system_id}
+        AND is_deleted = false
+      ORDER BY ship_date DESC NULLS LAST, shipment_num DESC
+      LIMIT 1
+    `;
+    const agilityShipment = shipments[0] ?? null;
+
     return NextResponse.json({
       so: {
         so_id: h.so_id,
@@ -156,6 +187,17 @@ export async function GET(
             route_date: existingStop.route_date,
             route_name: existingStop.route_name,
             branch_code: existingStop.branch_code,
+          }
+        : null,
+      agility_shipment: agilityShipment
+        ? {
+            shipment_num: agilityShipment.shipment_num,
+            ship_date: agilityShipment.ship_date,
+            expect_date: agilityShipment.expect_date,
+            status_flag: agilityShipment.status_flag?.trim() || null,
+            status_flag_delivery: agilityShipment.status_flag_delivery?.trim() || null,
+            route_id_char: agilityShipment.route_id_char?.trim() || null,
+            driver: agilityShipment.driver?.trim() || null,
           }
         : null,
     });
