@@ -578,31 +578,31 @@ async function _fetchProductMajors(params: ScorecardParams): Promise<ProductMajo
           COALESCE(product_major_code, '') AS product_major_code,
           COALESCE(product_major, 'Unknown') AS product_major,
           SUM(sales_amount) FILTER (
-            WHERE invoice_date >= make_date(${params.baseYear}, 1, 1)
-              AND invoice_date::date <= ${baseCutoff}::date
+            WHERE d >= make_date(${params.baseYear}, 1, 1)
+              AND d <= ${baseCutoff}::date
           )::text AS sales_base,
           SUM(gross_profit) FILTER (
-            WHERE invoice_date >= make_date(${params.baseYear}, 1, 1)
-              AND invoice_date::date <= ${baseCutoff}::date
+            WHERE d >= make_date(${params.baseYear}, 1, 1)
+              AND d <= ${baseCutoff}::date
           )::text AS gp_base,
           SUM(sales_amount) FILTER (
-            WHERE invoice_date >= make_date(${params.compareYear}, 1, 1)
-              AND invoice_date::date <= ${compareCutoff}::date
+            WHERE d >= make_date(${params.compareYear}, 1, 1)
+              AND d <= ${compareCutoff}::date
           )::text AS sales_compare,
           SUM(gross_profit) FILTER (
-            WHERE invoice_date >= make_date(${params.compareYear}, 1, 1)
-              AND invoice_date::date <= ${compareCutoff}::date
+            WHERE d >= make_date(${params.compareYear}, 1, 1)
+              AND d <= ${compareCutoff}::date
           )::text AS gp_compare
-        FROM customer_scorecard_fact
-        WHERE is_deleted = false
+        FROM bids.rollup_product_day
+        WHERE product_level = 'major'
           AND customer_id = ${params.customerId}
-          AND invoice_date >= ${dateFrom}::timestamp
-          AND invoice_date < ${dateTo}::timestamp
+          AND d >= ${dateFrom}::date
+          AND d < ${dateTo}::date
           AND branch_id = ANY(${params.branchIds}::text[])
         GROUP BY product_major_code, product_major
         ORDER BY COALESCE(SUM(sales_amount) FILTER (
-          WHERE invoice_date >= make_date(${params.baseYear}, 1, 1)
-            AND invoice_date::date <= ${baseCutoff}::date
+          WHERE d >= make_date(${params.baseYear}, 1, 1)
+            AND d <= ${baseCutoff}::date
         ), 0) DESC
       `
     : await sql<Row[]>`
@@ -610,30 +610,30 @@ async function _fetchProductMajors(params: ScorecardParams): Promise<ProductMajo
           COALESCE(product_major_code, '') AS product_major_code,
           COALESCE(product_major, 'Unknown') AS product_major,
           SUM(sales_amount) FILTER (
-            WHERE invoice_date >= make_date(${params.baseYear}, 1, 1)
-              AND invoice_date::date <= ${baseCutoff}::date
+            WHERE d >= make_date(${params.baseYear}, 1, 1)
+              AND d <= ${baseCutoff}::date
           )::text AS sales_base,
           SUM(gross_profit) FILTER (
-            WHERE invoice_date >= make_date(${params.baseYear}, 1, 1)
-              AND invoice_date::date <= ${baseCutoff}::date
+            WHERE d >= make_date(${params.baseYear}, 1, 1)
+              AND d <= ${baseCutoff}::date
           )::text AS gp_base,
           SUM(sales_amount) FILTER (
-            WHERE invoice_date >= make_date(${params.compareYear}, 1, 1)
-              AND invoice_date::date <= ${compareCutoff}::date
+            WHERE d >= make_date(${params.compareYear}, 1, 1)
+              AND d <= ${compareCutoff}::date
           )::text AS sales_compare,
           SUM(gross_profit) FILTER (
-            WHERE invoice_date >= make_date(${params.compareYear}, 1, 1)
-              AND invoice_date::date <= ${compareCutoff}::date
+            WHERE d >= make_date(${params.compareYear}, 1, 1)
+              AND d <= ${compareCutoff}::date
           )::text AS gp_compare
-        FROM customer_scorecard_fact
-        WHERE is_deleted = false
+        FROM bids.rollup_product_day
+        WHERE product_level = 'major'
           AND customer_id = ${params.customerId}
-          AND invoice_date >= ${dateFrom}::timestamp
-          AND invoice_date < ${dateTo}::timestamp
+          AND d >= ${dateFrom}::date
+          AND d < ${dateTo}::date
         GROUP BY product_major_code, product_major
         ORDER BY COALESCE(SUM(sales_amount) FILTER (
-          WHERE invoice_date >= make_date(${params.baseYear}, 1, 1)
-            AND invoice_date::date <= ${baseCutoff}::date
+          WHERE d >= make_date(${params.baseYear}, 1, 1)
+            AND d <= ${baseCutoff}::date
         ), 0) DESC
       `;
 
@@ -679,32 +679,32 @@ async function _fetchProductMinors(
           COALESCE(product_minor_code, '') AS product_minor_code,
           COALESCE(product_minor, 'Unknown') AS product_minor,
           SUM(sales_amount) FILTER (
-            WHERE invoice_date >= make_date(${params.baseYear}, 1, 1)
-              AND invoice_date::date <= ${baseCutoff}::date
+            WHERE d >= make_date(${params.baseYear}, 1, 1)
+              AND d <= ${baseCutoff}::date
           )::text AS sales_base,
           SUM(gross_profit) FILTER (
-            WHERE invoice_date >= make_date(${params.baseYear}, 1, 1)
-              AND invoice_date::date <= ${baseCutoff}::date
+            WHERE d >= make_date(${params.baseYear}, 1, 1)
+              AND d <= ${baseCutoff}::date
           )::text AS gp_base,
           SUM(sales_amount) FILTER (
-            WHERE invoice_date >= make_date(${params.compareYear}, 1, 1)
-              AND invoice_date::date <= ${compareCutoff}::date
+            WHERE d >= make_date(${params.compareYear}, 1, 1)
+              AND d <= ${compareCutoff}::date
           )::text AS sales_compare,
           SUM(gross_profit) FILTER (
-            WHERE invoice_date >= make_date(${params.compareYear}, 1, 1)
-              AND invoice_date::date <= ${compareCutoff}::date
+            WHERE d >= make_date(${params.compareYear}, 1, 1)
+              AND d <= ${compareCutoff}::date
           )::text AS gp_compare
-        FROM customer_scorecard_fact
-        WHERE is_deleted = false
+        FROM bids.rollup_product_day
+        WHERE product_level = 'minor'
           AND customer_id = ${params.customerId}
           AND product_major_code = ${majorCode}
-          AND invoice_date >= ${dateFrom}::timestamp
-          AND invoice_date < ${dateTo}::timestamp
+          AND d >= ${dateFrom}::date
+          AND d < ${dateTo}::date
           AND branch_id = ANY(${params.branchIds}::text[])
         GROUP BY product_minor_code, product_minor
         ORDER BY COALESCE(SUM(sales_amount) FILTER (
-          WHERE invoice_date >= make_date(${params.baseYear}, 1, 1)
-            AND invoice_date::date <= ${baseCutoff}::date
+          WHERE d >= make_date(${params.baseYear}, 1, 1)
+            AND d <= ${baseCutoff}::date
         ), 0) DESC
       `
     : await sql<Row[]>`
@@ -712,31 +712,31 @@ async function _fetchProductMinors(
           COALESCE(product_minor_code, '') AS product_minor_code,
           COALESCE(product_minor, 'Unknown') AS product_minor,
           SUM(sales_amount) FILTER (
-            WHERE invoice_date >= make_date(${params.baseYear}, 1, 1)
-              AND invoice_date::date <= ${baseCutoff}::date
+            WHERE d >= make_date(${params.baseYear}, 1, 1)
+              AND d <= ${baseCutoff}::date
           )::text AS sales_base,
           SUM(gross_profit) FILTER (
-            WHERE invoice_date >= make_date(${params.baseYear}, 1, 1)
-              AND invoice_date::date <= ${baseCutoff}::date
+            WHERE d >= make_date(${params.baseYear}, 1, 1)
+              AND d <= ${baseCutoff}::date
           )::text AS gp_base,
           SUM(sales_amount) FILTER (
-            WHERE invoice_date >= make_date(${params.compareYear}, 1, 1)
-              AND invoice_date::date <= ${compareCutoff}::date
+            WHERE d >= make_date(${params.compareYear}, 1, 1)
+              AND d <= ${compareCutoff}::date
           )::text AS sales_compare,
           SUM(gross_profit) FILTER (
-            WHERE invoice_date >= make_date(${params.compareYear}, 1, 1)
-              AND invoice_date::date <= ${compareCutoff}::date
+            WHERE d >= make_date(${params.compareYear}, 1, 1)
+              AND d <= ${compareCutoff}::date
           )::text AS gp_compare
-        FROM customer_scorecard_fact
-        WHERE is_deleted = false
+        FROM bids.rollup_product_day
+        WHERE product_level = 'minor'
           AND customer_id = ${params.customerId}
           AND product_major_code = ${majorCode}
-          AND invoice_date >= ${dateFrom}::timestamp
-          AND invoice_date < ${dateTo}::timestamp
+          AND d >= ${dateFrom}::date
+          AND d < ${dateTo}::date
         GROUP BY product_minor_code, product_minor
         ORDER BY COALESCE(SUM(sales_amount) FILTER (
-          WHERE invoice_date >= make_date(${params.baseYear}, 1, 1)
-            AND invoice_date::date <= ${baseCutoff}::date
+          WHERE d >= make_date(${params.baseYear}, 1, 1)
+            AND d <= ${baseCutoff}::date
         ), 0) DESC
       `;
 
@@ -776,65 +776,65 @@ async function _fetchSaleTypes(params: ScorecardParams): Promise<SaleTypeRow[]> 
   const rows = params.branchIds.length > 0
     ? await sql<Row[]>`
         SELECT
-          CASE WHEN sale_type IN ('HOLD','DOORHOLD') THEN sale_type ELSE COALESCE(sale_type_reporting_category, 'Other') END AS category,
+          CASE WHEN sale_type IN ('HOLD','DOORHOLD') THEN sale_type ELSE COALESCE(NULLIF(sale_type_reporting_category, ''), 'Other') END AS category,
           BOOL_OR(is_sale_type_excluded AND sale_type NOT IN ('HOLD','DOORHOLD')) AS is_excluded,
           SUM(sales_amount) FILTER (
-            WHERE invoice_date >= make_date(${params.baseYear}, 1, 1)
-              AND invoice_date::date <= ${baseCutoff}::date
+            WHERE d >= make_date(${params.baseYear}, 1, 1)
+              AND d <= ${baseCutoff}::date
           )::text AS sales_base,
           SUM(gross_profit) FILTER (
-            WHERE invoice_date >= make_date(${params.baseYear}, 1, 1)
-              AND invoice_date::date <= ${baseCutoff}::date
+            WHERE d >= make_date(${params.baseYear}, 1, 1)
+              AND d <= ${baseCutoff}::date
           )::text AS gp_base,
           SUM(sales_amount) FILTER (
-            WHERE invoice_date >= make_date(${params.compareYear}, 1, 1)
-              AND invoice_date::date <= ${compareCutoff}::date
+            WHERE d >= make_date(${params.compareYear}, 1, 1)
+              AND d <= ${compareCutoff}::date
           )::text AS sales_compare,
           SUM(gross_profit) FILTER (
-            WHERE invoice_date >= make_date(${params.compareYear}, 1, 1)
-              AND invoice_date::date <= ${compareCutoff}::date
+            WHERE d >= make_date(${params.compareYear}, 1, 1)
+              AND d <= ${compareCutoff}::date
           )::text AS gp_compare
-        FROM customer_scorecard_fact
-        WHERE is_deleted = false
+        FROM bids.rollup_saletype_day
+        WHERE rollup_scope = 'customer'
           AND customer_id = ${params.customerId}
-          AND invoice_date >= ${dateFrom}::timestamp
-          AND invoice_date < ${dateTo}::timestamp
+          AND d >= ${dateFrom}::date
+          AND d < ${dateTo}::date
           AND branch_id = ANY(${params.branchIds}::text[])
         GROUP BY 1
         ORDER BY COALESCE(SUM(sales_amount) FILTER (
-          WHERE invoice_date >= make_date(${params.baseYear}, 1, 1)
-            AND invoice_date::date <= ${baseCutoff}::date
+          WHERE d >= make_date(${params.baseYear}, 1, 1)
+            AND d <= ${baseCutoff}::date
         ), 0) DESC
       `
     : await sql<Row[]>`
         SELECT
-          CASE WHEN sale_type IN ('HOLD','DOORHOLD') THEN sale_type ELSE COALESCE(sale_type_reporting_category, 'Other') END AS category,
+          CASE WHEN sale_type IN ('HOLD','DOORHOLD') THEN sale_type ELSE COALESCE(NULLIF(sale_type_reporting_category, ''), 'Other') END AS category,
           BOOL_OR(is_sale_type_excluded AND sale_type NOT IN ('HOLD','DOORHOLD')) AS is_excluded,
           SUM(sales_amount) FILTER (
-            WHERE invoice_date >= make_date(${params.baseYear}, 1, 1)
-              AND invoice_date::date <= ${baseCutoff}::date
+            WHERE d >= make_date(${params.baseYear}, 1, 1)
+              AND d <= ${baseCutoff}::date
           )::text AS sales_base,
           SUM(gross_profit) FILTER (
-            WHERE invoice_date >= make_date(${params.baseYear}, 1, 1)
-              AND invoice_date::date <= ${baseCutoff}::date
+            WHERE d >= make_date(${params.baseYear}, 1, 1)
+              AND d <= ${baseCutoff}::date
           )::text AS gp_base,
           SUM(sales_amount) FILTER (
-            WHERE invoice_date >= make_date(${params.compareYear}, 1, 1)
-              AND invoice_date::date <= ${compareCutoff}::date
+            WHERE d >= make_date(${params.compareYear}, 1, 1)
+              AND d <= ${compareCutoff}::date
           )::text AS sales_compare,
           SUM(gross_profit) FILTER (
-            WHERE invoice_date >= make_date(${params.compareYear}, 1, 1)
-              AND invoice_date::date <= ${compareCutoff}::date
+            WHERE d >= make_date(${params.compareYear}, 1, 1)
+              AND d <= ${compareCutoff}::date
           )::text AS gp_compare
-        FROM customer_scorecard_fact
-        WHERE is_deleted = false
+        FROM bids.rollup_saletype_day
+        WHERE rollup_scope = 'customer'
           AND customer_id = ${params.customerId}
-          AND invoice_date >= ${dateFrom}::timestamp
-          AND invoice_date < ${dateTo}::timestamp
+          AND d >= ${dateFrom}::date
+          AND d < ${dateTo}::date
         GROUP BY 1
         ORDER BY COALESCE(SUM(sales_amount) FILTER (
-          WHERE invoice_date >= make_date(${params.baseYear}, 1, 1)
-            AND invoice_date::date <= ${baseCutoff}::date
+          WHERE d >= make_date(${params.baseYear}, 1, 1)
+            AND d <= ${baseCutoff}::date
         ), 0) DESC
       `;
 
