@@ -65,7 +65,7 @@ src/
 - ✅ Mark deliveries complete/skipped
 - ✅ Proof-of-delivery photo capture
 - ✅ Offline outbox and auto-sync retry loop
-- ⏳ Real backend route/auth/POD integration
+- ✅ Real backend route/auth/POD integration (Phase 5)
 
 ## API Integration
 
@@ -73,10 +73,12 @@ src/
 
 All requests require `Authorization: Bearer {token}` header.
 
-- `POST /api/auth/send-otp` — Request OTP code
-- `GET /api/dispatch/routes?date=YYYY-MM-DD&branch=CODE` — Fetch route + stops
-- `POST /api/dispatch/orders/{SO}/deliver` — Update delivery status
-- `POST /api/dispatch/orders/{SO}/pod` — Upload POD photos
+- `POST /api/auth/send-otp` — Request OTP code (`{ identifier }`)
+- `POST /api/auth/mobile/verify-otp` — Verify code, returns `{ user, token, expiresIn }` (JWT)
+- `GET /api/dispatch/routes?date=YYYY-MM-DD&branch=CODE&include=stops` — Fetch route + stops
+- `POST /api/dispatch/orders/{SO}/pod/upload-url` — Get presigned R2 PUT URL for POD photo
+- `POST /api/dispatch/orders/{SO}/deliver` — Mark delivered/skipped (accepts `photo_keys[]`)
+- `POST /api/dispatch/orders/{SO}/pod` — POD signature push (existing, Agility-bound)
 
 See [../docs/MOBILE_APP.md](../docs/MOBILE_APP.md) for full API docs.
 
@@ -103,12 +105,17 @@ See [../docs/MOBILE_APP.md](../docs/MOBILE_APP.md) for full API docs.
 - Background sync
 - Retry/discard controls in Sync Queue
 
-### Phase 5: Real Backend Integration (Next)
-- Add/settle JWT-style mobile OTP verification endpoint
-- Replace mock route data with `/api/dispatch/routes`
-- Upload POD photos to the real `/pod` endpoint or presigned R2 flow
-- Reconcile synced deliveries with server state
-- Add real maps after live route data is available
+### Phase 5: Real Backend Integration ✅
+- JWT-signed mobile OTP verify endpoint (`/api/auth/mobile/verify-otp`)
+- Dispatch + POD routes accept Bearer tokens alongside the NextAuth cookie
+- `useDriverRoute()` hook + route mapper feed every screen from real data
+- Two-phase delivery sync: presigned R2 PUT per photo, then deliver POST with R2 keys
+- `OutboxItem.photoUploads[]` makes uploads resumable so retries don't re-upload completed photos
+- Pending outbox rows overlay server data for optimistic-UI reconciliation
+
+### Phase 6: Real Maps + GPS (Next)
+- Map polyline + multi-stop overview from live coords
+- GPS-aware ETAs and "next stop" hints
 
 ## Testing
 

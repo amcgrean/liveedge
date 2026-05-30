@@ -3,12 +3,30 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 
 export type OutboxItemStatus = 'queued' | 'retrying' | 'failed' | 'synced';
 
+/**
+ * Tracks per-photo upload state so retries can resume mid-batch instead of
+ * re-uploading already-completed photos. Initialized when an item is enqueued
+ * (all uploaded: false). `remoteKey` is the R2 key the backend returned from
+ * the presign endpoint — present once the PUT succeeds.
+ */
+export interface PhotoUploadState {
+  uri: string;
+  remoteKey?: string;
+  uploaded: boolean;
+}
+
 export interface OutboxItem {
   id: string;
   soNumber: string;
   type: 'deliver' | 'skip';
   notes: string;
   photoUris: string[];
+  /**
+   * Per-photo upload progress. Optional for backwards compatibility with
+   * outbox rows written before Phase 5 — sync code seeds it on first attempt
+   * when missing.
+   */
+  photoUploads?: PhotoUploadState[];
   createdAt: number;
   status: OutboxItemStatus;
   attempts: number;
@@ -50,7 +68,7 @@ export const outbox = {
     return [...cache].sort((a, b) => b.createdAt - a.createdAt);
   },
 
-  async enqueue(item: Omit<OutboxItem, 'id' | 'createdAt' | 'status' | 'attempts'>): Promise<OutboxItem> {
+  async enqueue(item: Omit<OutboxItem, 'id' | 'createdAt' | 'status' | 'attempts' | 'photoUploads'>): Promise<OutboxItem> {
     await load();
     const newItem: OutboxItem = {
       ...item,
@@ -58,6 +76,7 @@ export const outbox = {
       createdAt: Date.now(),
       status: 'queued',
       attempts: 0,
+      photoUploads: item.photoUris.map((uri) => ({ uri, uploaded: false })),
     };
     cache = [newItem, ...cache];
     await persist();
