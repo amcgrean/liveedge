@@ -1002,87 +1002,63 @@ async function _fetchAggregateKpis(
           FROM f
         `;
   } else {
-    // No rep filter â€” direct fact table
-    rows = params.branchIds.length > 0
+    // Company / branch scope: additive measures + branch list from the daily
+    // customer rollup; distinct counts (orders / credits / ship-tos) cannot be
+    // summed from a daily rollup, so they come from a bounded live fact query —
+    // the same split used by the product KPI path. For branch scope the count
+    // query is branch-bounded; company-wide it is the one remaining fact read.
+    const [additive] = params.branchIds.length > 0
       ? await sql<Row[]>`
-          WITH f AS (
-            SELECT sales_amount, gross_profit, weight,
-              sales_order_number, is_credit_memo, is_value_add_major, is_non_stock,
-              ship_to_id, branch_id,
-              (EXTRACT(YEAR FROM invoice_date)::int = ${params.baseYear}
-                AND invoice_date::date <= ${baseCutoff}::date) AS is_base,
-              (EXTRACT(YEAR FROM invoice_date)::int = ${params.compareYear}
-                AND invoice_date::date <= ${compareCutoff}::date) AS is_compare
-            FROM customer_scorecard_fact
-            WHERE is_deleted = false
-              AND invoice_date >= ${dateFrom}::timestamp
-              AND invoice_date < ${dateTo}::timestamp
-              AND branch_id = ANY(${params.branchIds}::text[])
-          )
           SELECT
-            SUM(sales_amount) FILTER (WHERE is_base)::text AS sales_base,
-            SUM(sales_amount) FILTER (WHERE is_compare)::text AS sales_compare,
-            SUM(gross_profit) FILTER (WHERE is_base)::text AS gp_base,
-            SUM(gross_profit) FILTER (WHERE is_compare)::text AS gp_compare,
-            SUM(sales_amount) FILTER (WHERE is_base AND is_value_add_major)::text AS va_sales_base,
-            SUM(sales_amount) FILTER (WHERE is_compare AND is_value_add_major)::text AS va_sales_compare,
-            SUM(sales_amount) FILTER (WHERE is_base AND is_non_stock)::text AS ns_sales_base,
-            SUM(sales_amount) FILTER (WHERE is_compare AND is_non_stock)::text AS ns_sales_compare,
-            SUM(gross_profit) FILTER (WHERE is_base AND is_non_stock)::text AS ns_gp_base,
-            SUM(gross_profit) FILTER (WHERE is_compare AND is_non_stock)::text AS ns_gp_compare,
-            SUM(sales_amount) FILTER (WHERE is_base AND NOT is_credit_memo)::text AS gross_sales_base,
-            SUM(sales_amount) FILTER (WHERE is_compare AND NOT is_credit_memo)::text AS gross_sales_compare,
-            SUM(sales_amount) FILTER (WHERE is_base AND is_credit_memo)::text AS cm_sales_base,
-            SUM(sales_amount) FILTER (WHERE is_compare AND is_credit_memo)::text AS cm_sales_compare,
-            COUNT(DISTINCT CASE WHEN is_base AND NOT is_credit_memo THEN sales_order_number END)::text AS so_count_base,
-            COUNT(DISTINCT CASE WHEN is_compare AND NOT is_credit_memo THEN sales_order_number END)::text AS so_count_compare,
-            COUNT(DISTINCT CASE WHEN is_base AND is_credit_memo THEN sales_order_number END)::text AS cm_count_base,
-            COUNT(DISTINCT CASE WHEN is_compare AND is_credit_memo THEN sales_order_number END)::text AS cm_count_compare,
-            SUM(weight) FILTER (WHERE is_base AND NOT is_credit_memo)::text AS weight_base,
-            SUM(weight) FILTER (WHERE is_compare AND NOT is_credit_memo)::text AS weight_compare,
-            array_agg(DISTINCT branch_id) FILTER (WHERE branch_id IS NOT NULL) AS branch_ids,
-            COUNT(DISTINCT ship_to_id)::text AS ship_to_count
-          FROM f
+            SUM(sales_amount) FILTER (WHERE d >= make_date(${params.baseYear}, 1, 1) AND d <= ${baseCutoff}::date)::text AS sales_base,
+            SUM(sales_amount) FILTER (WHERE d >= make_date(${params.compareYear}, 1, 1) AND d <= ${compareCutoff}::date)::text AS sales_compare,
+            SUM(gross_profit) FILTER (WHERE d >= make_date(${params.baseYear}, 1, 1) AND d <= ${baseCutoff}::date)::text AS gp_base,
+            SUM(gross_profit) FILTER (WHERE d >= make_date(${params.compareYear}, 1, 1) AND d <= ${compareCutoff}::date)::text AS gp_compare,
+            SUM(sales_va) FILTER (WHERE d >= make_date(${params.baseYear}, 1, 1) AND d <= ${baseCutoff}::date)::text AS va_sales_base,
+            SUM(sales_va) FILTER (WHERE d >= make_date(${params.compareYear}, 1, 1) AND d <= ${compareCutoff}::date)::text AS va_sales_compare,
+            SUM(sales_ns) FILTER (WHERE d >= make_date(${params.baseYear}, 1, 1) AND d <= ${baseCutoff}::date)::text AS ns_sales_base,
+            SUM(sales_ns) FILTER (WHERE d >= make_date(${params.compareYear}, 1, 1) AND d <= ${compareCutoff}::date)::text AS ns_sales_compare,
+            SUM(gp_ns) FILTER (WHERE d >= make_date(${params.baseYear}, 1, 1) AND d <= ${baseCutoff}::date)::text AS ns_gp_base,
+            SUM(gp_ns) FILTER (WHERE d >= make_date(${params.compareYear}, 1, 1) AND d <= ${compareCutoff}::date)::text AS ns_gp_compare,
+            SUM(sales_gross) FILTER (WHERE d >= make_date(${params.baseYear}, 1, 1) AND d <= ${baseCutoff}::date)::text AS gross_sales_base,
+            SUM(sales_gross) FILTER (WHERE d >= make_date(${params.compareYear}, 1, 1) AND d <= ${compareCutoff}::date)::text AS gross_sales_compare,
+            SUM(sales_cm) FILTER (WHERE d >= make_date(${params.baseYear}, 1, 1) AND d <= ${baseCutoff}::date)::text AS cm_sales_base,
+            SUM(sales_cm) FILTER (WHERE d >= make_date(${params.compareYear}, 1, 1) AND d <= ${compareCutoff}::date)::text AS cm_sales_compare,
+            SUM(weight_noncm) FILTER (WHERE d >= make_date(${params.baseYear}, 1, 1) AND d <= ${baseCutoff}::date)::text AS weight_base,
+            SUM(weight_noncm) FILTER (WHERE d >= make_date(${params.compareYear}, 1, 1) AND d <= ${compareCutoff}::date)::text AS weight_compare,
+            array_agg(DISTINCT branch_id) FILTER (WHERE branch_id IS NOT NULL) AS branch_ids
+          FROM bids.rollup_customer_day
+          WHERE d >= ${dateFrom}::date
+            AND d < ${dateTo}::date
+            AND branch_id = ANY(${params.branchIds}::text[])
         `
       : await sql<Row[]>`
-          WITH f AS (
-            SELECT sales_amount, gross_profit, weight,
-              sales_order_number, is_credit_memo, is_value_add_major, is_non_stock,
-              ship_to_id, branch_id,
-              (EXTRACT(YEAR FROM invoice_date)::int = ${params.baseYear}
-                AND invoice_date::date <= ${baseCutoff}::date) AS is_base,
-              (EXTRACT(YEAR FROM invoice_date)::int = ${params.compareYear}
-                AND invoice_date::date <= ${compareCutoff}::date) AS is_compare
-            FROM customer_scorecard_fact
-            WHERE is_deleted = false
-              AND invoice_date >= ${dateFrom}::timestamp
-              AND invoice_date < ${dateTo}::timestamp
-          )
           SELECT
-            SUM(sales_amount) FILTER (WHERE is_base)::text AS sales_base,
-            SUM(sales_amount) FILTER (WHERE is_compare)::text AS sales_compare,
-            SUM(gross_profit) FILTER (WHERE is_base)::text AS gp_base,
-            SUM(gross_profit) FILTER (WHERE is_compare)::text AS gp_compare,
-            SUM(sales_amount) FILTER (WHERE is_base AND is_value_add_major)::text AS va_sales_base,
-            SUM(sales_amount) FILTER (WHERE is_compare AND is_value_add_major)::text AS va_sales_compare,
-            SUM(sales_amount) FILTER (WHERE is_base AND is_non_stock)::text AS ns_sales_base,
-            SUM(sales_amount) FILTER (WHERE is_compare AND is_non_stock)::text AS ns_sales_compare,
-            SUM(gross_profit) FILTER (WHERE is_base AND is_non_stock)::text AS ns_gp_base,
-            SUM(gross_profit) FILTER (WHERE is_compare AND is_non_stock)::text AS ns_gp_compare,
-            SUM(sales_amount) FILTER (WHERE is_base AND NOT is_credit_memo)::text AS gross_sales_base,
-            SUM(sales_amount) FILTER (WHERE is_compare AND NOT is_credit_memo)::text AS gross_sales_compare,
-            SUM(sales_amount) FILTER (WHERE is_base AND is_credit_memo)::text AS cm_sales_base,
-            SUM(sales_amount) FILTER (WHERE is_compare AND is_credit_memo)::text AS cm_sales_compare,
-            COUNT(DISTINCT CASE WHEN is_base AND NOT is_credit_memo THEN sales_order_number END)::text AS so_count_base,
-            COUNT(DISTINCT CASE WHEN is_compare AND NOT is_credit_memo THEN sales_order_number END)::text AS so_count_compare,
-            COUNT(DISTINCT CASE WHEN is_base AND is_credit_memo THEN sales_order_number END)::text AS cm_count_base,
-            COUNT(DISTINCT CASE WHEN is_compare AND is_credit_memo THEN sales_order_number END)::text AS cm_count_compare,
-            SUM(weight) FILTER (WHERE is_base AND NOT is_credit_memo)::text AS weight_base,
-            SUM(weight) FILTER (WHERE is_compare AND NOT is_credit_memo)::text AS weight_compare,
-            array_agg(DISTINCT branch_id) FILTER (WHERE branch_id IS NOT NULL) AS branch_ids,
-            COUNT(DISTINCT ship_to_id)::text AS ship_to_count
-          FROM f
+            SUM(sales_amount) FILTER (WHERE d >= make_date(${params.baseYear}, 1, 1) AND d <= ${baseCutoff}::date)::text AS sales_base,
+            SUM(sales_amount) FILTER (WHERE d >= make_date(${params.compareYear}, 1, 1) AND d <= ${compareCutoff}::date)::text AS sales_compare,
+            SUM(gross_profit) FILTER (WHERE d >= make_date(${params.baseYear}, 1, 1) AND d <= ${baseCutoff}::date)::text AS gp_base,
+            SUM(gross_profit) FILTER (WHERE d >= make_date(${params.compareYear}, 1, 1) AND d <= ${compareCutoff}::date)::text AS gp_compare,
+            SUM(sales_va) FILTER (WHERE d >= make_date(${params.baseYear}, 1, 1) AND d <= ${baseCutoff}::date)::text AS va_sales_base,
+            SUM(sales_va) FILTER (WHERE d >= make_date(${params.compareYear}, 1, 1) AND d <= ${compareCutoff}::date)::text AS va_sales_compare,
+            SUM(sales_ns) FILTER (WHERE d >= make_date(${params.baseYear}, 1, 1) AND d <= ${baseCutoff}::date)::text AS ns_sales_base,
+            SUM(sales_ns) FILTER (WHERE d >= make_date(${params.compareYear}, 1, 1) AND d <= ${compareCutoff}::date)::text AS ns_sales_compare,
+            SUM(gp_ns) FILTER (WHERE d >= make_date(${params.baseYear}, 1, 1) AND d <= ${baseCutoff}::date)::text AS ns_gp_base,
+            SUM(gp_ns) FILTER (WHERE d >= make_date(${params.compareYear}, 1, 1) AND d <= ${compareCutoff}::date)::text AS ns_gp_compare,
+            SUM(sales_gross) FILTER (WHERE d >= make_date(${params.baseYear}, 1, 1) AND d <= ${baseCutoff}::date)::text AS gross_sales_base,
+            SUM(sales_gross) FILTER (WHERE d >= make_date(${params.compareYear}, 1, 1) AND d <= ${compareCutoff}::date)::text AS gross_sales_compare,
+            SUM(sales_cm) FILTER (WHERE d >= make_date(${params.baseYear}, 1, 1) AND d <= ${baseCutoff}::date)::text AS cm_sales_base,
+            SUM(sales_cm) FILTER (WHERE d >= make_date(${params.compareYear}, 1, 1) AND d <= ${compareCutoff}::date)::text AS cm_sales_compare,
+            SUM(weight_noncm) FILTER (WHERE d >= make_date(${params.baseYear}, 1, 1) AND d <= ${baseCutoff}::date)::text AS weight_base,
+            SUM(weight_noncm) FILTER (WHERE d >= make_date(${params.compareYear}, 1, 1) AND d <= ${compareCutoff}::date)::text AS weight_compare,
+            array_agg(DISTINCT branch_id) FILTER (WHERE branch_id IS NOT NULL) AS branch_ids
+          FROM bids.rollup_customer_day
+          WHERE d >= ${dateFrom}::date
+            AND d < ${dateTo}::date
         `;
+    const counts = await fetchAggregateDistinctCounts(
+      params, baseCutoff, compareCutoff, dateFrom, dateTo,
+    );
+    rows = [{ ...((additive ?? {}) as Row), ...counts }];
   }
 
   const r = rows[0] ?? {};
@@ -1105,6 +1081,56 @@ async function _fetchAggregateKpis(
     branchIds: (r as Row).branch_ids ?? [],
     shipToCount: toInt((r as Row).ship_to_count) ?? 0,
     customerName: displayTitle,
+  };
+}
+
+type AggregateDistinctCounts = {
+  so_count_base: string | null; so_count_compare: string | null;
+  cm_count_base: string | null; cm_count_compare: string | null;
+  ship_to_count: string | null;
+};
+
+// Company / branch distinct counts for _fetchAggregateKpis. Distinct counts
+// (orders / credits / ship-tos) can't be summed from the daily rollup, so they
+// are computed live over the fact, bounded by date (+ branch when scoped). Same
+// approach as fetchProductDistinctKpiCounts in product-drill-queries.ts.
+async function fetchAggregateDistinctCounts(
+  params: AggregateParams,
+  baseCutoff: string,
+  compareCutoff: string,
+  dateFrom: string,
+  dateTo: string,
+): Promise<AggregateDistinctCounts> {
+  const sql = getErpSql();
+  const [row] = params.branchIds.length > 0
+    ? await sql<AggregateDistinctCounts[]>`
+        SELECT
+          COUNT(DISTINCT sales_order_number) FILTER (WHERE invoice_date >= make_date(${params.baseYear}, 1, 1) AND invoice_date::date <= ${baseCutoff}::date AND NOT is_credit_memo)::text AS so_count_base,
+          COUNT(DISTINCT sales_order_number) FILTER (WHERE invoice_date >= make_date(${params.compareYear}, 1, 1) AND invoice_date::date <= ${compareCutoff}::date AND NOT is_credit_memo)::text AS so_count_compare,
+          COUNT(DISTINCT sales_order_number) FILTER (WHERE invoice_date >= make_date(${params.baseYear}, 1, 1) AND invoice_date::date <= ${baseCutoff}::date AND is_credit_memo)::text AS cm_count_base,
+          COUNT(DISTINCT sales_order_number) FILTER (WHERE invoice_date >= make_date(${params.compareYear}, 1, 1) AND invoice_date::date <= ${compareCutoff}::date AND is_credit_memo)::text AS cm_count_compare,
+          COUNT(DISTINCT ship_to_id)::text AS ship_to_count
+        FROM customer_scorecard_fact
+        WHERE is_deleted = false
+          AND invoice_date >= ${dateFrom}::timestamp
+          AND invoice_date < ${dateTo}::timestamp
+          AND branch_id = ANY(${params.branchIds}::text[])
+      `
+    : await sql<AggregateDistinctCounts[]>`
+        SELECT
+          COUNT(DISTINCT sales_order_number) FILTER (WHERE invoice_date >= make_date(${params.baseYear}, 1, 1) AND invoice_date::date <= ${baseCutoff}::date AND NOT is_credit_memo)::text AS so_count_base,
+          COUNT(DISTINCT sales_order_number) FILTER (WHERE invoice_date >= make_date(${params.compareYear}, 1, 1) AND invoice_date::date <= ${compareCutoff}::date AND NOT is_credit_memo)::text AS so_count_compare,
+          COUNT(DISTINCT sales_order_number) FILTER (WHERE invoice_date >= make_date(${params.baseYear}, 1, 1) AND invoice_date::date <= ${baseCutoff}::date AND is_credit_memo)::text AS cm_count_base,
+          COUNT(DISTINCT sales_order_number) FILTER (WHERE invoice_date >= make_date(${params.compareYear}, 1, 1) AND invoice_date::date <= ${compareCutoff}::date AND is_credit_memo)::text AS cm_count_compare,
+          COUNT(DISTINCT ship_to_id)::text AS ship_to_count
+        FROM customer_scorecard_fact
+        WHERE is_deleted = false
+          AND invoice_date >= ${dateFrom}::timestamp
+          AND invoice_date < ${dateTo}::timestamp
+      `;
+  return row ?? {
+    so_count_base: '0', so_count_compare: '0',
+    cm_count_base: '0', cm_count_compare: '0', ship_to_count: '0',
   };
 }
 
@@ -1209,69 +1235,56 @@ async function _fetchAggregateThreeYear(
             AND soh.${sql(repCol)} = ${params.repCode}
         `;
   } else {
+    // Company / branch scope: read the daily customer rollup (additive $ only).
     [r] = params.branchIds.length > 0
       ? await sql<Row[]>`
           SELECT
             SUM(sales_amount) FILTER (
-              WHERE invoice_date >= make_date(${params.baseYear}, 1, 1)
-                AND invoice_date::date <= ${baseCutoff}::date
+              WHERE d >= make_date(${params.baseYear}, 1, 1) AND d <= ${baseCutoff}::date
             )::text AS cy_sales,
             SUM(gross_profit) FILTER (
-              WHERE invoice_date >= make_date(${params.baseYear}, 1, 1)
-                AND invoice_date::date <= ${baseCutoff}::date
+              WHERE d >= make_date(${params.baseYear}, 1, 1) AND d <= ${baseCutoff}::date
             )::text AS cy_gp,
             SUM(sales_amount) FILTER (
-              WHERE invoice_date >= make_date(${prior1}, 1, 1)
-                AND invoice_date::date <= ${prior1Cutoff}::date
+              WHERE d >= make_date(${prior1}, 1, 1) AND d <= ${prior1Cutoff}::date
             )::text AS py1_sales,
             SUM(gross_profit) FILTER (
-              WHERE invoice_date >= make_date(${prior1}, 1, 1)
-                AND invoice_date::date <= ${prior1Cutoff}::date
+              WHERE d >= make_date(${prior1}, 1, 1) AND d <= ${prior1Cutoff}::date
             )::text AS py1_gp,
             SUM(sales_amount) FILTER (
-              WHERE invoice_date >= make_date(${prior2}, 1, 1)
-                AND invoice_date::date <= ${prior2Cutoff}::date
+              WHERE d >= make_date(${prior2}, 1, 1) AND d <= ${prior2Cutoff}::date
             )::text AS py2_sales,
             SUM(gross_profit) FILTER (
-              WHERE invoice_date >= make_date(${prior2}, 1, 1)
-                AND invoice_date::date <= ${prior2Cutoff}::date
+              WHERE d >= make_date(${prior2}, 1, 1) AND d <= ${prior2Cutoff}::date
             )::text AS py2_gp
-          FROM customer_scorecard_fact
-          WHERE is_deleted = false
-            AND invoice_date >= ${dateFrom}::timestamp
-            AND invoice_date < ${dateTo}::timestamp
+          FROM bids.rollup_customer_day
+          WHERE d >= ${dateFrom}::date
+            AND d < ${dateTo}::date
             AND branch_id = ANY(${params.branchIds}::text[])
         `
       : await sql<Row[]>`
           SELECT
             SUM(sales_amount) FILTER (
-              WHERE invoice_date >= make_date(${params.baseYear}, 1, 1)
-                AND invoice_date::date <= ${baseCutoff}::date
+              WHERE d >= make_date(${params.baseYear}, 1, 1) AND d <= ${baseCutoff}::date
             )::text AS cy_sales,
             SUM(gross_profit) FILTER (
-              WHERE invoice_date >= make_date(${params.baseYear}, 1, 1)
-                AND invoice_date::date <= ${baseCutoff}::date
+              WHERE d >= make_date(${params.baseYear}, 1, 1) AND d <= ${baseCutoff}::date
             )::text AS cy_gp,
             SUM(sales_amount) FILTER (
-              WHERE invoice_date >= make_date(${prior1}, 1, 1)
-                AND invoice_date::date <= ${prior1Cutoff}::date
+              WHERE d >= make_date(${prior1}, 1, 1) AND d <= ${prior1Cutoff}::date
             )::text AS py1_sales,
             SUM(gross_profit) FILTER (
-              WHERE invoice_date >= make_date(${prior1}, 1, 1)
-                AND invoice_date::date <= ${prior1Cutoff}::date
+              WHERE d >= make_date(${prior1}, 1, 1) AND d <= ${prior1Cutoff}::date
             )::text AS py1_gp,
             SUM(sales_amount) FILTER (
-              WHERE invoice_date >= make_date(${prior2}, 1, 1)
-                AND invoice_date::date <= ${prior2Cutoff}::date
+              WHERE d >= make_date(${prior2}, 1, 1) AND d <= ${prior2Cutoff}::date
             )::text AS py2_sales,
             SUM(gross_profit) FILTER (
-              WHERE invoice_date >= make_date(${prior2}, 1, 1)
-                AND invoice_date::date <= ${prior2Cutoff}::date
+              WHERE d >= make_date(${prior2}, 1, 1) AND d <= ${prior2Cutoff}::date
             )::text AS py2_gp
-          FROM customer_scorecard_fact
-          WHERE is_deleted = false
-            AND invoice_date >= ${dateFrom}::timestamp
-            AND invoice_date < ${dateTo}::timestamp
+          FROM bids.rollup_customer_day
+          WHERE d >= ${dateFrom}::date
+            AND d < ${dateTo}::date
         `;
   }
 
@@ -1341,35 +1354,36 @@ async function _fetchAggregateProductMajors(
           ORDER BY COALESCE(SUM(csf.sales_amount) FILTER (WHERE csf.invoice_date >= make_date(${params.baseYear}, 1, 1) AND csf.invoice_date::date <= ${baseCutoff}::date), 0) DESC
         `;
   } else {
+    // Company / branch scope: read the daily product rollup (major rows).
     rows = params.branchIds.length > 0
       ? await sql<Row[]>`
-          SELECT COALESCE(product_major_code, '') AS product_major_code,
-            COALESCE(product_major, 'Unknown') AS product_major,
-            SUM(sales_amount) FILTER (WHERE invoice_date >= make_date(${params.baseYear}, 1, 1) AND invoice_date::date <= ${baseCutoff}::date)::text AS sales_base,
-            SUM(gross_profit)  FILTER (WHERE invoice_date >= make_date(${params.baseYear}, 1, 1) AND invoice_date::date <= ${baseCutoff}::date)::text AS gp_base,
-            SUM(sales_amount) FILTER (WHERE invoice_date >= make_date(${params.compareYear}, 1, 1) AND invoice_date::date <= ${compareCutoff}::date)::text AS sales_compare,
-            SUM(gross_profit)  FILTER (WHERE invoice_date >= make_date(${params.compareYear}, 1, 1) AND invoice_date::date <= ${compareCutoff}::date)::text AS gp_compare
-          FROM customer_scorecard_fact
-          WHERE is_deleted = false
-            AND invoice_date >= ${dateFrom}::timestamp
-            AND invoice_date < ${dateTo}::timestamp
+          SELECT product_major_code,
+            MAX(product_major) AS product_major,
+            SUM(sales_amount) FILTER (WHERE d >= make_date(${params.baseYear}, 1, 1) AND d <= ${baseCutoff}::date)::text AS sales_base,
+            SUM(gross_profit)  FILTER (WHERE d >= make_date(${params.baseYear}, 1, 1) AND d <= ${baseCutoff}::date)::text AS gp_base,
+            SUM(sales_amount) FILTER (WHERE d >= make_date(${params.compareYear}, 1, 1) AND d <= ${compareCutoff}::date)::text AS sales_compare,
+            SUM(gross_profit)  FILTER (WHERE d >= make_date(${params.compareYear}, 1, 1) AND d <= ${compareCutoff}::date)::text AS gp_compare
+          FROM bids.rollup_product_day
+          WHERE product_level = 'major'
+            AND d >= ${dateFrom}::date
+            AND d < ${dateTo}::date
             AND branch_id = ANY(${params.branchIds}::text[])
-          GROUP BY product_major_code, product_major
-          ORDER BY COALESCE(SUM(sales_amount) FILTER (WHERE invoice_date >= make_date(${params.baseYear}, 1, 1) AND invoice_date::date <= ${baseCutoff}::date), 0) DESC
+          GROUP BY product_major_code
+          ORDER BY COALESCE(SUM(sales_amount) FILTER (WHERE d >= make_date(${params.baseYear}, 1, 1) AND d <= ${baseCutoff}::date), 0) DESC
         `
       : await sql<Row[]>`
-          SELECT COALESCE(product_major_code, '') AS product_major_code,
-            COALESCE(product_major, 'Unknown') AS product_major,
-            SUM(sales_amount) FILTER (WHERE invoice_date >= make_date(${params.baseYear}, 1, 1) AND invoice_date::date <= ${baseCutoff}::date)::text AS sales_base,
-            SUM(gross_profit)  FILTER (WHERE invoice_date >= make_date(${params.baseYear}, 1, 1) AND invoice_date::date <= ${baseCutoff}::date)::text AS gp_base,
-            SUM(sales_amount) FILTER (WHERE invoice_date >= make_date(${params.compareYear}, 1, 1) AND invoice_date::date <= ${compareCutoff}::date)::text AS sales_compare,
-            SUM(gross_profit)  FILTER (WHERE invoice_date >= make_date(${params.compareYear}, 1, 1) AND invoice_date::date <= ${compareCutoff}::date)::text AS gp_compare
-          FROM customer_scorecard_fact
-          WHERE is_deleted = false
-            AND invoice_date >= ${dateFrom}::timestamp
-            AND invoice_date < ${dateTo}::timestamp
-          GROUP BY product_major_code, product_major
-          ORDER BY COALESCE(SUM(sales_amount) FILTER (WHERE invoice_date >= make_date(${params.baseYear}, 1, 1) AND invoice_date::date <= ${baseCutoff}::date), 0) DESC
+          SELECT product_major_code,
+            MAX(product_major) AS product_major,
+            SUM(sales_amount) FILTER (WHERE d >= make_date(${params.baseYear}, 1, 1) AND d <= ${baseCutoff}::date)::text AS sales_base,
+            SUM(gross_profit)  FILTER (WHERE d >= make_date(${params.baseYear}, 1, 1) AND d <= ${baseCutoff}::date)::text AS gp_base,
+            SUM(sales_amount) FILTER (WHERE d >= make_date(${params.compareYear}, 1, 1) AND d <= ${compareCutoff}::date)::text AS sales_compare,
+            SUM(gross_profit)  FILTER (WHERE d >= make_date(${params.compareYear}, 1, 1) AND d <= ${compareCutoff}::date)::text AS gp_compare
+          FROM bids.rollup_product_day
+          WHERE product_level = 'major'
+            AND d >= ${dateFrom}::date
+            AND d < ${dateTo}::date
+          GROUP BY product_major_code
+          ORDER BY COALESCE(SUM(sales_amount) FILTER (WHERE d >= make_date(${params.baseYear}, 1, 1) AND d <= ${baseCutoff}::date), 0) DESC
         `;
   }
 
@@ -1443,37 +1457,38 @@ async function _fetchAggregateProductMinors(
           ORDER BY COALESCE(SUM(csf.sales_amount) FILTER (WHERE csf.invoice_date >= make_date(${params.baseYear}, 1, 1) AND csf.invoice_date::date <= ${baseCutoff}::date), 0) DESC
         `;
   } else {
+    // Company / branch scope: read the daily product rollup (minor rows).
     rows = params.branchIds.length > 0
       ? await sql<Row[]>`
-          SELECT COALESCE(product_minor_code, '') AS product_minor_code,
-            COALESCE(product_minor, 'Unknown') AS product_minor,
-            SUM(sales_amount) FILTER (WHERE invoice_date >= make_date(${params.baseYear}, 1, 1) AND invoice_date::date <= ${baseCutoff}::date)::text AS sales_base,
-            SUM(gross_profit)  FILTER (WHERE invoice_date >= make_date(${params.baseYear}, 1, 1) AND invoice_date::date <= ${baseCutoff}::date)::text AS gp_base,
-            SUM(sales_amount) FILTER (WHERE invoice_date >= make_date(${params.compareYear}, 1, 1) AND invoice_date::date <= ${compareCutoff}::date)::text AS sales_compare,
-            SUM(gross_profit)  FILTER (WHERE invoice_date >= make_date(${params.compareYear}, 1, 1) AND invoice_date::date <= ${compareCutoff}::date)::text AS gp_compare
-          FROM customer_scorecard_fact
-          WHERE is_deleted = false
+          SELECT product_minor_code,
+            MAX(product_minor) AS product_minor,
+            SUM(sales_amount) FILTER (WHERE d >= make_date(${params.baseYear}, 1, 1) AND d <= ${baseCutoff}::date)::text AS sales_base,
+            SUM(gross_profit)  FILTER (WHERE d >= make_date(${params.baseYear}, 1, 1) AND d <= ${baseCutoff}::date)::text AS gp_base,
+            SUM(sales_amount) FILTER (WHERE d >= make_date(${params.compareYear}, 1, 1) AND d <= ${compareCutoff}::date)::text AS sales_compare,
+            SUM(gross_profit)  FILTER (WHERE d >= make_date(${params.compareYear}, 1, 1) AND d <= ${compareCutoff}::date)::text AS gp_compare
+          FROM bids.rollup_product_day
+          WHERE product_level = 'minor'
             AND product_major_code = ${majorCode}
-            AND invoice_date >= ${dateFrom}::timestamp
-            AND invoice_date < ${dateTo}::timestamp
+            AND d >= ${dateFrom}::date
+            AND d < ${dateTo}::date
             AND branch_id = ANY(${params.branchIds}::text[])
-          GROUP BY product_minor_code, product_minor
-          ORDER BY COALESCE(SUM(sales_amount) FILTER (WHERE invoice_date >= make_date(${params.baseYear}, 1, 1) AND invoice_date::date <= ${baseCutoff}::date), 0) DESC
+          GROUP BY product_minor_code
+          ORDER BY COALESCE(SUM(sales_amount) FILTER (WHERE d >= make_date(${params.baseYear}, 1, 1) AND d <= ${baseCutoff}::date), 0) DESC
         `
       : await sql<Row[]>`
-          SELECT COALESCE(product_minor_code, '') AS product_minor_code,
-            COALESCE(product_minor, 'Unknown') AS product_minor,
-            SUM(sales_amount) FILTER (WHERE invoice_date >= make_date(${params.baseYear}, 1, 1) AND invoice_date::date <= ${baseCutoff}::date)::text AS sales_base,
-            SUM(gross_profit)  FILTER (WHERE invoice_date >= make_date(${params.baseYear}, 1, 1) AND invoice_date::date <= ${baseCutoff}::date)::text AS gp_base,
-            SUM(sales_amount) FILTER (WHERE invoice_date >= make_date(${params.compareYear}, 1, 1) AND invoice_date::date <= ${compareCutoff}::date)::text AS sales_compare,
-            SUM(gross_profit)  FILTER (WHERE invoice_date >= make_date(${params.compareYear}, 1, 1) AND invoice_date::date <= ${compareCutoff}::date)::text AS gp_compare
-          FROM customer_scorecard_fact
-          WHERE is_deleted = false
+          SELECT product_minor_code,
+            MAX(product_minor) AS product_minor,
+            SUM(sales_amount) FILTER (WHERE d >= make_date(${params.baseYear}, 1, 1) AND d <= ${baseCutoff}::date)::text AS sales_base,
+            SUM(gross_profit)  FILTER (WHERE d >= make_date(${params.baseYear}, 1, 1) AND d <= ${baseCutoff}::date)::text AS gp_base,
+            SUM(sales_amount) FILTER (WHERE d >= make_date(${params.compareYear}, 1, 1) AND d <= ${compareCutoff}::date)::text AS sales_compare,
+            SUM(gross_profit)  FILTER (WHERE d >= make_date(${params.compareYear}, 1, 1) AND d <= ${compareCutoff}::date)::text AS gp_compare
+          FROM bids.rollup_product_day
+          WHERE product_level = 'minor'
             AND product_major_code = ${majorCode}
-            AND invoice_date >= ${dateFrom}::timestamp
-            AND invoice_date < ${dateTo}::timestamp
-          GROUP BY product_minor_code, product_minor
-          ORDER BY COALESCE(SUM(sales_amount) FILTER (WHERE invoice_date >= make_date(${params.baseYear}, 1, 1) AND invoice_date::date <= ${baseCutoff}::date), 0) DESC
+            AND d >= ${dateFrom}::date
+            AND d < ${dateTo}::date
+          GROUP BY product_minor_code
+          ORDER BY COALESCE(SUM(sales_amount) FILTER (WHERE d >= make_date(${params.baseYear}, 1, 1) AND d <= ${baseCutoff}::date), 0) DESC
         `;
   }
 
@@ -1860,35 +1875,36 @@ async function _fetchAggregateSaleTypes(
           ORDER BY COALESCE(SUM(csf.sales_amount) FILTER (WHERE csf.invoice_date >= make_date(${params.baseYear}, 1, 1) AND csf.invoice_date::date <= ${baseCutoff}::date), 0) DESC
         `;
   } else {
+    // Company / branch scope: read the daily sale-type rollup (customer scope).
     rows = params.branchIds.length > 0
       ? await sql<Row[]>`
-          SELECT CASE WHEN sale_type IN ('HOLD','DOORHOLD') THEN sale_type ELSE COALESCE(sale_type_reporting_category, 'Other') END AS category,
+          SELECT CASE WHEN sale_type IN ('HOLD','DOORHOLD') THEN sale_type ELSE COALESCE(NULLIF(sale_type_reporting_category, ''), 'Other') END AS category,
             BOOL_OR(is_sale_type_excluded AND sale_type NOT IN ('HOLD','DOORHOLD')) AS is_excluded,
-            SUM(sales_amount) FILTER (WHERE invoice_date >= make_date(${params.baseYear}, 1, 1) AND invoice_date::date <= ${baseCutoff}::date)::text AS sales_base,
-            SUM(gross_profit)  FILTER (WHERE invoice_date >= make_date(${params.baseYear}, 1, 1) AND invoice_date::date <= ${baseCutoff}::date)::text AS gp_base,
-            SUM(sales_amount) FILTER (WHERE invoice_date >= make_date(${params.compareYear}, 1, 1) AND invoice_date::date <= ${compareCutoff}::date)::text AS sales_compare,
-            SUM(gross_profit)  FILTER (WHERE invoice_date >= make_date(${params.compareYear}, 1, 1) AND invoice_date::date <= ${compareCutoff}::date)::text AS gp_compare
-          FROM customer_scorecard_fact
-          WHERE is_deleted = false
-            AND invoice_date >= ${dateFrom}::timestamp
-            AND invoice_date < ${dateTo}::timestamp
+            SUM(sales_amount) FILTER (WHERE d >= make_date(${params.baseYear}, 1, 1) AND d <= ${baseCutoff}::date)::text AS sales_base,
+            SUM(gross_profit)  FILTER (WHERE d >= make_date(${params.baseYear}, 1, 1) AND d <= ${baseCutoff}::date)::text AS gp_base,
+            SUM(sales_amount) FILTER (WHERE d >= make_date(${params.compareYear}, 1, 1) AND d <= ${compareCutoff}::date)::text AS sales_compare,
+            SUM(gross_profit)  FILTER (WHERE d >= make_date(${params.compareYear}, 1, 1) AND d <= ${compareCutoff}::date)::text AS gp_compare
+          FROM bids.rollup_saletype_day
+          WHERE rollup_scope = 'customer'
+            AND d >= ${dateFrom}::date
+            AND d < ${dateTo}::date
             AND branch_id = ANY(${params.branchIds}::text[])
           GROUP BY 1
-          ORDER BY COALESCE(SUM(sales_amount) FILTER (WHERE invoice_date >= make_date(${params.baseYear}, 1, 1) AND invoice_date::date <= ${baseCutoff}::date), 0) DESC
+          ORDER BY COALESCE(SUM(sales_amount) FILTER (WHERE d >= make_date(${params.baseYear}, 1, 1) AND d <= ${baseCutoff}::date), 0) DESC
         `
       : await sql<Row[]>`
-          SELECT CASE WHEN sale_type IN ('HOLD','DOORHOLD') THEN sale_type ELSE COALESCE(sale_type_reporting_category, 'Other') END AS category,
+          SELECT CASE WHEN sale_type IN ('HOLD','DOORHOLD') THEN sale_type ELSE COALESCE(NULLIF(sale_type_reporting_category, ''), 'Other') END AS category,
             BOOL_OR(is_sale_type_excluded AND sale_type NOT IN ('HOLD','DOORHOLD')) AS is_excluded,
-            SUM(sales_amount) FILTER (WHERE invoice_date >= make_date(${params.baseYear}, 1, 1) AND invoice_date::date <= ${baseCutoff}::date)::text AS sales_base,
-            SUM(gross_profit)  FILTER (WHERE invoice_date >= make_date(${params.baseYear}, 1, 1) AND invoice_date::date <= ${baseCutoff}::date)::text AS gp_base,
-            SUM(sales_amount) FILTER (WHERE invoice_date >= make_date(${params.compareYear}, 1, 1) AND invoice_date::date <= ${compareCutoff}::date)::text AS sales_compare,
-            SUM(gross_profit)  FILTER (WHERE invoice_date >= make_date(${params.compareYear}, 1, 1) AND invoice_date::date <= ${compareCutoff}::date)::text AS gp_compare
-          FROM customer_scorecard_fact
-          WHERE is_deleted = false
-            AND invoice_date >= ${dateFrom}::timestamp
-            AND invoice_date < ${dateTo}::timestamp
+            SUM(sales_amount) FILTER (WHERE d >= make_date(${params.baseYear}, 1, 1) AND d <= ${baseCutoff}::date)::text AS sales_base,
+            SUM(gross_profit)  FILTER (WHERE d >= make_date(${params.baseYear}, 1, 1) AND d <= ${baseCutoff}::date)::text AS gp_base,
+            SUM(sales_amount) FILTER (WHERE d >= make_date(${params.compareYear}, 1, 1) AND d <= ${compareCutoff}::date)::text AS sales_compare,
+            SUM(gross_profit)  FILTER (WHERE d >= make_date(${params.compareYear}, 1, 1) AND d <= ${compareCutoff}::date)::text AS gp_compare
+          FROM bids.rollup_saletype_day
+          WHERE rollup_scope = 'customer'
+            AND d >= ${dateFrom}::date
+            AND d < ${dateTo}::date
           GROUP BY 1
-          ORDER BY COALESCE(SUM(sales_amount) FILTER (WHERE invoice_date >= make_date(${params.baseYear}, 1, 1) AND invoice_date::date <= ${baseCutoff}::date), 0) DESC
+          ORDER BY COALESCE(SUM(sales_amount) FILTER (WHERE d >= make_date(${params.baseYear}, 1, 1) AND d <= ${baseCutoff}::date), 0) DESC
         `;
   }
 
