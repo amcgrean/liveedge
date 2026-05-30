@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '../../../../../../auth';
+import { getMobileSession } from '../../../../../../src/lib/mobile-auth';
 import { agilityApi, isAgilityConfigured, BRANCH_MAP, AgilityApiError } from '../../../../../../src/lib/agility-api';
 import { getErpSql } from '../../../../../../db/supabase';
 import { notifyRouteCompletedIfLastStop } from '../../../../../../src/lib/dispatch/route-completion';
@@ -22,16 +23,25 @@ import { notifyRouteCompletedIfLastStop } from '../../../../../../src/lib/dispat
 type RouteContext = { params: Promise<{ so_number: string }> };
 
 interface DeliverBody {
-  branchCode: string;
-  shipmentNum: number | string;
-  stopId: number | string;
+  branchCode?: string;
+  shipmentNum?: number | string;
+  stopId?: number | string;
+  // Web payload uses `status: 'delivered'|'skipped'`. Mobile app uses
+  // `type: 'deliver'|'skip'`. Both map to the same stop status.
   status?: 'delivered' | 'skipped';
+  type?: 'deliver' | 'skip';
   shipDate?: string;
   notes?: string;
+  // Mobile-only — R2 keys for already-uploaded POD photos. Logged for audit;
+  // not currently persisted server-side until a pod_photos table exists.
+  photo_keys?: string[];
+  timestamp?: string;
 }
 
 export async function POST(req: NextRequest, context: RouteContext) {
-  const session = await auth();
+  // Accept both NextAuth cookies (web) and mobile Bearer tokens.
+  const mobile = await getMobileSession(req);
+  const session = mobile ?? (await auth());
   if (!session?.user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
   const { so_number: soNumber } = await context.params;
@@ -43,12 +53,44 @@ export async function POST(req: NextRequest, context: RouteContext) {
     return NextResponse.json({ error: 'Invalid request body' }, { status: 400 });
   }
 
-  if (!body.branchCode || !body.stopId) {
-    return NextResponse.json({ error: 'branchCode and stopId are required' }, { status: 400 });
+  // Branch: take from body if web caller supplied it, else fall back to the
+  // signed-in user's branch (mobile drivers never see other branches).
+  const branchCode = body.branchCode || session.user.branch || '';
+  if (!branchCode) {
+    return NextResponse.json({ error: 'branchCode is required' }, { status: 400 });
   }
 
-  const stopStatus = body.status === 'skipped' ? 'skipped' : 'delivered';
-  const agilityBranch = BRANCH_MAP[body.branchCode] ?? body.branchCode;
+  // stopId: web supplies it; mobile only knows the SO number, so resolve the
+  // most recent matching dispatch_route_stops row for this branch.
+  let stopId: number | null = body.stopId ? Number(body.stopId) : null;
+  if (!stopId) {
+    try {
+      const sql = getErpSql();
+      const rows = await sql<{ id: number }[]>`
+        SELECT s.id
+        FROM dispatch_route_stops s
+        JOIN dispatch_routes r ON r.id = s.route_id
+        WHERE s.so_id = ${soNumber}
+          AND r.branch_code = ${branchCode}
+        ORDER BY r.route_date DESC, s.id DESC
+        LIMIT 1
+      `;
+      stopId = rows[0]?.id ?? null;
+    } catch (err) {
+      console.error(`[deliver/${soNumber}] stop lookup failed:`, err);
+    }
+  }
+  if (!stopId) {
+    return NextResponse.json({ error: 'No matching stop found for SO' }, { status: 404 });
+  }
+
+  if (body.photo_keys && Array.isArray(body.photo_keys) && body.photo_keys.length > 0) {
+    console.log(`[deliver/${soNumber}] received ${body.photo_keys.length} POD photo key(s) from ${mobile ? 'mobile' : 'web'} caller`);
+  }
+
+  const requestedStatus = body.status ?? (body.type === 'skip' ? 'skipped' : body.type === 'deliver' ? 'delivered' : undefined);
+  const stopStatus = requestedStatus === 'skipped' ? 'skipped' : 'delivered';
+  const agilityBranch = BRANCH_MAP[branchCode] ?? branchCode;
   let agilitySuccess = false;
   let agilityError = '';
 
@@ -77,7 +119,7 @@ export async function POST(req: NextRequest, context: RouteContext) {
       UPDATE dispatch_route_stops
       SET status = ${stopStatus},
           notes  = COALESCE(${body.notes ?? null}, notes)
-      WHERE id = ${Number(body.stopId)}
+      WHERE id = ${stopId}
       RETURNING route_id
     `;
     routeId = updated[0]?.route_id ?? null;
