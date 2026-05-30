@@ -1,6 +1,7 @@
 import NetInfo from '@react-native-community/netinfo';
 import { markDelivered } from '@/api/dispatch';
 import { outbox, OutboxItem } from '@/storage/outbox';
+import { deletePhoto } from '@/storage/photoFS';
 
 type SyncEvent = { type: 'synced'; item: OutboxItem } | { type: 'failed'; item: OutboxItem; error: string };
 type SyncListener = (event: SyncEvent) => void;
@@ -38,7 +39,14 @@ async function syncItem(item: OutboxItem, now: number): Promise<void> {
       timestamp: new Date().toISOString(),
     });
     const synced = { ...item, status: 'synced' as const, syncedAt: Date.now(), lastError: undefined, nextRetryAt: undefined };
-    await outbox.update(item.id, synced);
+    // Clean up: delete local photo files (server now has them) and remove the
+    // outbox record. Without this, every successful delivery leaves orphan
+    // photo files on disk + an inert AsyncStorage record forever — at one
+    // delivery per day that's noticeable bloat over a year of field use.
+    // Phase 5 reminder: this assumes the backend has accepted the photoUris;
+    // when wiring real upload, only delete after presigned PUTs confirm.
+    await Promise.all(item.photoUris.map((uri) => deletePhoto(uri)));
+    await outbox.remove(item.id);
     emit({ type: 'synced', item: synced });
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Sync failed';

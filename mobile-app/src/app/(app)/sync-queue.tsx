@@ -60,15 +60,28 @@ export default function SyncQueueScreen() {
     };
   });
 
+  // Manual retry resets attempts so the user gets a fresh 5-attempt budget.
+  // Without this, items already at attempts >= 5 are permanently stuck and the
+  // Retry button would only give them one more try before failing again.
   const handleRetry = async (id: string) => {
-    await outbox.update(id, { status: 'queued', nextRetryAt: undefined, lastError: undefined });
+    await outbox.update(id, {
+      status: 'queued',
+      attempts: 0,
+      nextRetryAt: undefined,
+      lastError: undefined,
+    });
     syncNow();
   };
 
   const handleRetryAll = async () => {
     await Promise.all(
       items.map((item) =>
-        outbox.update(item.id, { status: 'queued', nextRetryAt: undefined, lastError: undefined })
+        outbox.update(item.id, {
+          status: 'queued',
+          attempts: 0,
+          nextRetryAt: undefined,
+          lastError: undefined,
+        })
       )
     );
     syncNow();
