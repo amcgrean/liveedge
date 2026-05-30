@@ -11,11 +11,12 @@ import {
 import { useLocalSearchParams, router } from 'expo-router';
 import { Icon } from '@/components/ui/Icon';
 import { C } from '@/theme/colors';
-import { findStop } from '@/data/mockRoute';
+import { useDriverRoute } from '@/hooks/useDriverRoute';
 
 export default function CustomerSheetScreen() {
   const { soNumber } = useLocalSearchParams<{ soNumber: string }>();
-  const stop = findStop(soNumber);
+  const { stops } = useDriverRoute();
+  const stop = stops.find((s) => s.so === soNumber);
 
   if (!stop) {
     return null;

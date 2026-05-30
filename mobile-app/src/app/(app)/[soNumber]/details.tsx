@@ -18,7 +18,7 @@ import { BigButton } from '@/components/ui/BigButton';
 import { Pill } from '@/components/ui/Pill';
 import { MapPlaceholder } from '@/components/ui/MapPlaceholder';
 import { C } from '@/theme/colors';
-import { findStop, stopIndex, MOCK_STOPS } from '@/data/mockRoute';
+import { useDriverRoute } from '@/hooks/useDriverRoute';
 import { usePhotos, photoStore } from '@/data/photoStore';
 import { useOnline } from '@/hooks/useOnline';
 import { outbox } from '@/storage/outbox';
@@ -28,8 +28,9 @@ const MIN_PHOTOS = 2;
 
 export default function DeliveryDetailsScreen() {
   const { soNumber } = useLocalSearchParams<{ soNumber: string }>();
-  const stop = findStop(soNumber);
-  const idx = stopIndex(soNumber);
+  const { stops } = useDriverRoute();
+  const stop = stops.find((s) => s.so === soNumber);
+  const idx = stops.findIndex((s) => s.so === soNumber);
   const photos = usePhotos(soNumber);
   const online = useOnline();
   const { show } = useToast();
@@ -62,7 +63,7 @@ export default function DeliveryDetailsScreen() {
   };
 
   const leaveStop = () => {
-    const isLast = idx === MOCK_STOPS.length - 1;
+    const isLast = idx === stops.length - 1;
     if (isLast) {
       router.replace('/(app)/route-complete');
     } else {
@@ -169,7 +170,7 @@ export default function DeliveryDetailsScreen() {
           <Text style={styles.backText}>Route</Text>
         </TouchableOpacity>
         <Text style={styles.backTitle}>
-          Stop {stop.n} of {MOCK_STOPS.length.toString().padStart(2, '0')}
+          Stop {stop.n} of {stops.length.toString().padStart(2, '0')}
         </Text>
         <Pill kind={pillKind}>{pillLabel}</Pill>
       </View>

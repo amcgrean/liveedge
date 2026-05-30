@@ -12,12 +12,13 @@ import { router, useLocalSearchParams } from 'expo-router';
 import { BigButton } from '@/components/ui/BigButton';
 import { Icon } from '@/components/ui/Icon';
 import { usePhotos, photoStore } from '@/data/photoStore';
-import { findStop } from '@/data/mockRoute';
+import { useDriverRoute } from '@/hooks/useDriverRoute';
 import { C } from '@/theme/colors';
 
 export default function PhotosScreen() {
   const { soNumber = '' } = useLocalSearchParams<{ soNumber: string }>();
-  const stop = findStop(soNumber);
+  const { stops } = useDriverRoute();
+  const stop = stops.find((s) => s.so === soNumber);
   const photos = usePhotos(soNumber);
 
   const handleAddPhoto = () => {
