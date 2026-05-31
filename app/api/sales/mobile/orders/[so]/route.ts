@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { requireSessionOrMobile } from '../../../../../../src/lib/mobile-auth';
+import { hasCapability } from '../../../../../../src/lib/access-control';
 import { getErpSql } from '../../../../../../db/supabase';
 import {
   deriveMobileStatus,
@@ -27,8 +28,14 @@ export async function GET(
 ) {
   const authResult = await requireSessionOrMobile(req, 'sales.view');
   if (authResult instanceof NextResponse) return authResult;
+  const session = authResult;
 
   const { so } = await params;
+
+  // Branch-scope non-admins so an SO# from another branch can't be read by
+  // guessing — matches the order-list endpoint.
+  const isAdmin = hasCapability(session, 'branch.all');
+  const branch = isAdmin ? '' : (session.user.branch ?? '');
 
   try {
     const sql = getErpSql();
@@ -70,6 +77,7 @@ export async function GET(
         soh.shipto_state
       FROM agility_so_header soh
       WHERE soh.is_deleted = false AND soh.so_id::text = ${so}
+        ${branch ? sql`AND soh.system_id = ${branch}` : sql``}
       LIMIT 1
     `;
 
