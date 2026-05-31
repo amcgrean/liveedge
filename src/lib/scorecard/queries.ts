@@ -1943,34 +1943,33 @@ async function _fetchBranchSummaries(
     SELECT
       branch_id,
       SUM(sales_amount) FILTER (
-        WHERE invoice_date >= make_date(${baseYear}, 1, 1)
-          AND invoice_date::date <= ${baseCutoff}::date
+        WHERE d >= make_date(${baseYear}, 1, 1)
+          AND d <= ${baseCutoff}::date
       )::text AS sales_base,
       SUM(sales_amount) FILTER (
-        WHERE invoice_date >= make_date(${compareYear}, 1, 1)
-          AND invoice_date::date <= ${compareCutoff}::date
+        WHERE d >= make_date(${compareYear}, 1, 1)
+          AND d <= ${compareCutoff}::date
       )::text AS sales_compare,
       SUM(gross_profit) FILTER (
-        WHERE invoice_date >= make_date(${baseYear}, 1, 1)
-          AND invoice_date::date <= ${baseCutoff}::date
+        WHERE d >= make_date(${baseYear}, 1, 1)
+          AND d <= ${baseCutoff}::date
       )::text AS gp_base,
       SUM(gross_profit) FILTER (
-        WHERE invoice_date >= make_date(${compareYear}, 1, 1)
-          AND invoice_date::date <= ${compareCutoff}::date
+        WHERE d >= make_date(${compareYear}, 1, 1)
+          AND d <= ${compareCutoff}::date
       )::text AS gp_compare,
       COUNT(DISTINCT customer_id) FILTER (
-        WHERE invoice_date >= make_date(${baseYear}, 1, 1)
-          AND invoice_date::date <= ${baseCutoff}::date
+        WHERE d >= make_date(${baseYear}, 1, 1)
+          AND d <= ${baseCutoff}::date
       )::text AS customer_count
-    FROM customer_scorecard_fact
-    WHERE is_deleted = false
-      AND invoice_date >= ${dateFrom}::timestamp
-      AND invoice_date < ${dateTo}::timestamp
+    FROM bids.rollup_customer_day
+    WHERE d >= ${dateFrom}::date
+      AND d < ${dateTo}::date
       AND branch_id IS NOT NULL
     GROUP BY branch_id
     ORDER BY COALESCE(SUM(sales_amount) FILTER (
-      WHERE invoice_date >= make_date(${baseYear}, 1, 1)
-        AND invoice_date::date <= ${baseCutoff}::date
+      WHERE d >= make_date(${baseYear}, 1, 1)
+        AND d <= ${baseCutoff}::date
     ), 0) DESC
   `;
 
@@ -2247,42 +2246,109 @@ function mapProdMinorRow(r: ProdRow): ProductScorecardMinorRow {
   };
 }
 
+// Additive measures (sales / gp / qty) for the product-scorecard page, read
+// from bids.rollup_product_day. Distinct SO/credit counts are NOT here — they
+// come from fetchProductScorecardCounts (bounded live), same split as the
+// product KPI path. codeCol is the rollup column ('product_major_code' or
+// 'product_minor_code'); labelCol the display name column.
+function buildProdRollupSelect(
+  codeCol: string,
+  labelCol: string,
+  baseCutoff: string,
+  compareCutoff: string,
+  baseYear: number,
+  compareYear: number,
+) {
+  return `
+    ${codeCol} AS code,
+    MAX(${labelCol}) AS label,
+    SUM(sales_amount) FILTER (WHERE d >= make_date(${baseYear}, 1, 1) AND d <= '${baseCutoff}'::date)::text AS sales_base,
+    SUM(gross_profit) FILTER (WHERE d >= make_date(${baseYear}, 1, 1) AND d <= '${baseCutoff}'::date)::text AS gp_base,
+    SUM(qty_shipped)  FILTER (WHERE d >= make_date(${baseYear}, 1, 1) AND d <= '${baseCutoff}'::date)::text AS qty_base,
+    SUM(sales_amount) FILTER (WHERE d >= make_date(${compareYear}, 1, 1) AND d <= '${compareCutoff}'::date)::text AS sales_compare,
+    SUM(gross_profit) FILTER (WHERE d >= make_date(${compareYear}, 1, 1) AND d <= '${compareCutoff}'::date)::text AS gp_compare,
+    SUM(qty_shipped)  FILTER (WHERE d >= make_date(${compareYear}, 1, 1) AND d <= '${compareCutoff}'::date)::text AS qty_compare
+  `;
+}
+
+type ProdDistinctCounts = {
+  code: string;
+  so_count_base: string | null;
+  so_count_compare: string | null;
+  credit_count_base: string | null;
+};
+
+// Exact distinct SO / credit-memo counts per product code, grouped live over the
+// fact (can't be summed from a daily rollup). Bounded by date (+ branch, + major
+// for minors). Returned as a Map keyed by code for merge into the rollup rows.
+async function fetchProductScorecardCounts(
+  codeCol: 'product_major_code' | 'product_minor_code',
+  majorCode: string | null,
+  params: AggregateParams,
+  baseCutoff: string,
+  compareCutoff: string,
+  dateFrom: string,
+  dateTo: string,
+): Promise<Map<string, ProdDistinctCounts>> {
+  const sql = getErpSql();
+  const hasBranches = params.branchIds.length > 0;
+  const minorClause = majorCode !== null;
+  const rows = await sql<ProdDistinctCounts[]>`
+    SELECT
+      COALESCE(${sql(codeCol)}, '') AS code,
+      COUNT(DISTINCT sales_order_number) FILTER (WHERE invoice_date >= make_date(${params.baseYear}, 1, 1) AND invoice_date::date <= ${baseCutoff}::date AND is_credit_memo IS NOT TRUE)::text AS so_count_base,
+      COUNT(DISTINCT sales_order_number) FILTER (WHERE invoice_date >= make_date(${params.compareYear}, 1, 1) AND invoice_date::date <= ${compareCutoff}::date AND is_credit_memo IS NOT TRUE)::text AS so_count_compare,
+      COUNT(DISTINCT sales_order_number) FILTER (WHERE invoice_date >= make_date(${params.baseYear}, 1, 1) AND invoice_date::date <= ${baseCutoff}::date AND is_credit_memo = true)::text AS credit_count_base
+    FROM customer_scorecard_fact
+    WHERE is_deleted = false
+      AND invoice_date >= ${dateFrom}::timestamp
+      AND invoice_date < ${dateTo}::timestamp
+      ${minorClause ? sql`AND COALESCE(product_major_code, '') = ${majorCode}` : sql``}
+      ${hasBranches ? sql`AND branch_id = ANY(${params.branchIds}::text[])` : sql``}
+    GROUP BY COALESCE(${sql(codeCol)}, '')
+  `;
+  return new Map(rows.map((r) => [r.code, r]));
+}
+
 async function _fetchProductScorecardMajors(
   params: AggregateParams,
 ): Promise<ProductScorecardMajorRow[]> {
   const sql = getErpSql();
   const { baseCutoff, compareCutoff } = getCutoffs(params.baseYear, params.compareYear, params.cutoffDate, params.period);
   const { dateFrom, dateTo } = yearRange(params.baseYear, params.compareYear);
-  const sel = buildProdSelect('product_major_code', 'product_major', baseCutoff, compareCutoff, params.baseYear, params.compareYear);
+  const sel = buildProdRollupSelect('product_major_code', 'product_major', baseCutoff, compareCutoff, params.baseYear, params.compareYear);
 
-  const rows = params.branchIds.length > 0
+  const additive = params.branchIds.length > 0
     ? await sql<ProdRow[]>`
         SELECT ${sql.unsafe(sel)}
-        FROM customer_scorecard_fact
-        WHERE is_deleted = false
-          AND invoice_date >= ${dateFrom}::timestamp
-          AND invoice_date < ${dateTo}::timestamp
+        FROM bids.rollup_product_day
+        WHERE product_level = 'major'
+          AND d >= ${dateFrom}::date
+          AND d < ${dateTo}::date
           AND branch_id = ANY(${params.branchIds}::text[])
-        GROUP BY product_major_code, product_major
+        GROUP BY product_major_code
         ORDER BY COALESCE(SUM(sales_amount) FILTER (
-          WHERE invoice_date >= make_date(${params.baseYear}, 1, 1)
-            AND invoice_date::date <= ${baseCutoff}::date
+          WHERE d >= make_date(${params.baseYear}, 1, 1)
+            AND d <= ${baseCutoff}::date
         ), 0) DESC
       `
     : await sql<ProdRow[]>`
         SELECT ${sql.unsafe(sel)}
-        FROM customer_scorecard_fact
-        WHERE is_deleted = false
-          AND invoice_date >= ${dateFrom}::timestamp
-          AND invoice_date < ${dateTo}::timestamp
-        GROUP BY product_major_code, product_major
+        FROM bids.rollup_product_day
+        WHERE product_level = 'major'
+          AND d >= ${dateFrom}::date
+          AND d < ${dateTo}::date
+        GROUP BY product_major_code
         ORDER BY COALESCE(SUM(sales_amount) FILTER (
-          WHERE invoice_date >= make_date(${params.baseYear}, 1, 1)
-            AND invoice_date::date <= ${baseCutoff}::date
+          WHERE d >= make_date(${params.baseYear}, 1, 1)
+            AND d <= ${baseCutoff}::date
         ), 0) DESC
       `;
 
-  return rows.map(mapProdMajorRow);
+  const counts = await fetchProductScorecardCounts(
+    'product_major_code', null, params, baseCutoff, compareCutoff, dateFrom, dateTo,
+  );
+  return additive.map((r) => mapProdMajorRow({ ...r, ...(counts.get(r.code ?? '') ?? {}) }));
 }
 
 async function _fetchProductScorecardMinors(
@@ -2292,38 +2358,41 @@ async function _fetchProductScorecardMinors(
   const sql = getErpSql();
   const { baseCutoff, compareCutoff } = getCutoffs(params.baseYear, params.compareYear, params.cutoffDate, params.period);
   const { dateFrom, dateTo } = yearRange(params.baseYear, params.compareYear);
-  const sel = buildProdSelect('product_minor_code', 'product_minor', baseCutoff, compareCutoff, params.baseYear, params.compareYear);
+  const sel = buildProdRollupSelect('product_minor_code', 'product_minor', baseCutoff, compareCutoff, params.baseYear, params.compareYear);
 
-  const rows = params.branchIds.length > 0
+  const additive = params.branchIds.length > 0
     ? await sql<ProdRow[]>`
         SELECT ${sql.unsafe(sel)}
-        FROM customer_scorecard_fact
-        WHERE is_deleted = false
-          AND COALESCE(product_major_code, '') = ${majorCode}
-          AND invoice_date >= ${dateFrom}::timestamp
-          AND invoice_date < ${dateTo}::timestamp
+        FROM bids.rollup_product_day
+        WHERE product_level = 'minor'
+          AND product_major_code = ${majorCode}
+          AND d >= ${dateFrom}::date
+          AND d < ${dateTo}::date
           AND branch_id = ANY(${params.branchIds}::text[])
-        GROUP BY product_minor_code, product_minor
+        GROUP BY product_minor_code
         ORDER BY COALESCE(SUM(sales_amount) FILTER (
-          WHERE invoice_date >= make_date(${params.baseYear}, 1, 1)
-            AND invoice_date::date <= ${baseCutoff}::date
+          WHERE d >= make_date(${params.baseYear}, 1, 1)
+            AND d <= ${baseCutoff}::date
         ), 0) DESC
       `
     : await sql<ProdRow[]>`
         SELECT ${sql.unsafe(sel)}
-        FROM customer_scorecard_fact
-        WHERE is_deleted = false
-          AND COALESCE(product_major_code, '') = ${majorCode}
-          AND invoice_date >= ${dateFrom}::timestamp
-          AND invoice_date < ${dateTo}::timestamp
-        GROUP BY product_minor_code, product_minor
+        FROM bids.rollup_product_day
+        WHERE product_level = 'minor'
+          AND product_major_code = ${majorCode}
+          AND d >= ${dateFrom}::date
+          AND d < ${dateTo}::date
+        GROUP BY product_minor_code
         ORDER BY COALESCE(SUM(sales_amount) FILTER (
-          WHERE invoice_date >= make_date(${params.baseYear}, 1, 1)
-            AND invoice_date::date <= ${baseCutoff}::date
+          WHERE d >= make_date(${params.baseYear}, 1, 1)
+            AND d <= ${baseCutoff}::date
         ), 0) DESC
       `;
 
-  return rows.map(mapProdMinorRow);
+  const counts = await fetchProductScorecardCounts(
+    'product_minor_code', majorCode, params, baseCutoff, compareCutoff, dateFrom, dateTo,
+  );
+  return additive.map((r) => mapProdMinorRow({ ...r, ...(counts.get(r.code ?? '') ?? {}) }));
 }
 
 async function _fetchProductScorecardItems(
