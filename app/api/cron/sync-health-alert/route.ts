@@ -41,14 +41,17 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ healthy: true, alerted: false });
   }
 
-  // In test mode against a healthy system, inject a sample issue so the email
-  // renders; otherwise email the real issue list.
-  const healthForEmail = isTest && health.healthy
+  // Sample mode = a ?test=1 run against an ACTUALLY-HEALTHY system: inject a
+  // synthetic issue so the email renders, and mark it [TEST]. If ?test=1 is run
+  // while the sync is genuinely stale, this is NOT a sample — send the real
+  // alert with no [TEST] prefix, so a true outage is never disguised as a test.
+  const sampleMode = isTest && health.healthy;
+  const healthForEmail = sampleMode
     ? { ...health, issues: ['[TEST] Sample alert — the sync is actually healthy. This confirms email delivery + rendering.'] }
     : health;
 
-  // Stale (or test): always log (visible in Vercel logs even if email isn't configured).
-  console.warn(`[sync-health-alert]${isTest ? ' (test)' : ' STALE:'} ${healthForEmail.issues.join(' | ')}`);
+  // Always log (visible in Vercel logs even if email isn't configured).
+  console.warn(`[sync-health-alert]${sampleMode ? ' (test)' : ' STALE:'} ${healthForEmail.issues.join(' | ')}`);
 
   const to = recipients();
   if (to.length === 0) {
@@ -62,7 +65,7 @@ export async function GET(req: NextRequest) {
 
   const result = await sendSyncAlertEmail({
     to,
-    subject: `${isTest ? '[TEST] ' : ''}⚠️ LiveEdge data sync stale — ${healthForEmail.issues.length} issue${healthForEmail.issues.length === 1 ? '' : 's'}`,
+    subject: `${sampleMode ? '[TEST] ' : ''}⚠️ LiveEdge data sync stale — ${healthForEmail.issues.length} issue${healthForEmail.issues.length === 1 ? '' : 's'}`,
     html: buildSyncAlertHtml(healthForEmail),
   });
 
@@ -72,7 +75,7 @@ export async function GET(req: NextRequest) {
 
   return NextResponse.json({
     healthy: health.healthy,
-    test: isTest,
+    test: sampleMode,
     alerted: result.ok,
     consoleOnly: result.consoleOnly ?? false,
     recipients: to.length,
