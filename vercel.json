@@ -35,6 +35,10 @@
     {
       "path": "/api/cron/report-subscriptions",
       "schedule": "0 * * * *"
+    },
+    {
+      "path": "/api/cron/sync-health-alert",
+      "schedule": "0 10 * * *"
     }
   ]
 }

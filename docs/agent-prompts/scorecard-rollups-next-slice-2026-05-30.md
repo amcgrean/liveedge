@@ -33,7 +33,21 @@ functions before starting.
   grains derived from it) — the original UNION form did 5 full fact scans and
   timed out. **The Supabase MCP has a hard 60s cap; apply these in the SQL
   editor / direct psql with `statement_timeout=0`, off-hours.**
-- **Remaining: Slice 2c (vendor) + sync-health alerting only.**
+- **Fact-gap closeout + alerting — DONE (PR #471).** A completeness sweep moved
+  `_fetchBranchSummaries` + `_fetchProductScorecardMajors/Minors` (the
+  `/scorecard/product` page) off the fact onto the rollups (additive→rollup,
+  exact distinct counts→bounded live). `computeSyncHealth()` extracted + expanded
+  to all 3 rollups; daily `GET /api/cron/sync-health-alert` emails
+  `SYNC_HEALTH_ALERT_TO` when anything is stale.
+- **Slice 2c (vendor rollup) — DEFERRED by measurement (not a gap).** The vendor
+  source (`agility_receiving_*` + `agility_po_*`) is ~600 MB and well-indexed vs
+  the 6.4 GB fact; it was never the contention path. Build `rollup_vendor_day`
+  only if vendor scorecard pages measurably slow. If/when you do: grain
+  `(system_id, supplier_key, ship_from_seq, d=receive_date)` + `is_on_time`;
+  watch the `TRIM(supplier_key)`, no-`supplier_key`-on-receiving-header, and
+  `LMC1000` `<key>::<seq>` namespacing notes below.
+- **Tier 1 is otherwise COMPLETE.** Only the Pi 5 + SSD migration + recovery
+  runbook remain (hardware/ops, owner/Pi-agent — not LiveEdge code).
 
 ## Your task — extend the same pattern
 
