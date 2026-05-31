@@ -8,6 +8,8 @@ export interface User {
   roles?: string[];
   branch?: string;
   branchId?: number;
+  // Effective capability strings from /api/auth/mobile/verify-otp (e.g. 'sales.view').
+  capabilities?: string[];
   permissions?: Record<string, boolean>;
 }
 

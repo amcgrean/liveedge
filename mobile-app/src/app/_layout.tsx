@@ -2,6 +2,7 @@ import React, { useEffect } from 'react';
 import { Stack } from 'expo-router';
 import { View, ActivityIndicator, StyleSheet } from 'react-native';
 import { AuthProvider, useAuth } from '@/context/AuthContext';
+import { RoleProvider } from '@/context/RoleContext';
 import { ToastProvider, useToast } from '@/context/ToastContext';
 import { photoStore } from '@/data/photoStore';
 import { outbox } from '@/storage/outbox';
@@ -44,6 +45,8 @@ function RootStack() {
       <Stack.Screen name="index" />
       <Stack.Screen name="(auth)" />
       <Stack.Screen name="(app)" />
+      <Stack.Screen name="(sales)" />
+      <Stack.Screen name="role-switch" options={{ animation: 'fade' }} />
     </Stack>
   );
 }
@@ -52,8 +55,10 @@ export default function RootLayout() {
   return (
     <ToastProvider>
       <AuthProvider>
-        <AppBootstrap />
-        <RootStack />
+        <RoleProvider>
+          <AppBootstrap />
+          <RootStack />
+        </RoleProvider>
       </AuthProvider>
     </ToastProvider>
   );
