@@ -24,6 +24,11 @@ export async function GET(req: NextRequest) {
   const authError = verifyCronSignature(req);
   if (authError) return authError;
 
+  // ?test=1 forces a sample alert send (even when healthy) so the email path can
+  // be verified on demand without waiting for a real outage. Still auth-gated.
+  const isTest = req.nextUrl.searchParams.get('test') === '1'
+    || req.nextUrl.searchParams.get('test') === 'true';
+
   let health;
   try {
     health = await computeSyncHealth();
@@ -32,27 +37,33 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: 'compute failed' }, { status: 500 });
   }
 
-  if (health.healthy) {
+  if (health.healthy && !isTest) {
     return NextResponse.json({ healthy: true, alerted: false });
   }
 
-  // Stale: always log (visible in Vercel logs even if email isn't configured).
-  console.warn(`[sync-health-alert] STALE: ${health.issues.join(' | ')}`);
+  // In test mode against a healthy system, inject a sample issue so the email
+  // renders; otherwise email the real issue list.
+  const healthForEmail = isTest && health.healthy
+    ? { ...health, issues: ['[TEST] Sample alert — the sync is actually healthy. This confirms email delivery + rendering.'] }
+    : health;
+
+  // Stale (or test): always log (visible in Vercel logs even if email isn't configured).
+  console.warn(`[sync-health-alert]${isTest ? ' (test)' : ' STALE:'} ${healthForEmail.issues.join(' | ')}`);
 
   const to = recipients();
   if (to.length === 0) {
     return NextResponse.json({
-      healthy: false,
+      healthy: health.healthy,
       alerted: false,
       reason: 'SYNC_HEALTH_ALERT_TO not configured',
-      issues: health.issues,
+      issues: healthForEmail.issues,
     });
   }
 
   const result = await sendSyncAlertEmail({
     to,
-    subject: `⚠️ LiveEdge data sync stale — ${health.issues.length} issue${health.issues.length === 1 ? '' : 's'}`,
-    html: buildSyncAlertHtml(health),
+    subject: `${isTest ? '[TEST] ' : ''}⚠️ LiveEdge data sync stale — ${healthForEmail.issues.length} issue${healthForEmail.issues.length === 1 ? '' : 's'}`,
+    html: buildSyncAlertHtml(healthForEmail),
   });
 
   if (!result.ok) {
@@ -60,11 +71,12 @@ export async function GET(req: NextRequest) {
   }
 
   return NextResponse.json({
-    healthy: false,
+    healthy: health.healthy,
+    test: isTest,
     alerted: result.ok,
     consoleOnly: result.consoleOnly ?? false,
     recipients: to.length,
-    issues: health.issues,
+    issues: healthForEmail.issues,
     error: result.ok ? undefined : result.error,
   });
 }
