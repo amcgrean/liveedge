@@ -15,8 +15,6 @@ import {
 } from '@/data/salesMock';
 import { format } from 'date-fns';
 
-const ACCENT: Record<string, string> = { green: C.green, draft: S.draft, blue: S.blue };
-
 function ActionButton({ icon, label, primary, onPress }: { icon: IconName; label: string; primary?: boolean; onPress?: () => void }) {
   return (
     <TouchableOpacity

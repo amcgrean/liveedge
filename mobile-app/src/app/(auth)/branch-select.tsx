@@ -36,11 +36,14 @@ export default function BranchSelectScreen() {
     try {
       setLoading(true);
       await setBranch(selected);
-      router.replace('/(app)/route-list');
     } catch {
-      router.replace('/(app)/route-list'); // dev mode falls through
+      // dev mode falls through
     } finally {
       setLoading(false);
+      // Re-enter via the central router so the destination respects the
+      // user's active role (Sales vs Driver) and onboarding state — rather
+      // than always landing on the driver route list.
+      router.replace('/');
     }
   };
 

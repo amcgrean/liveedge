@@ -11,37 +11,46 @@ const ACTIVE_ROLE_KEY = 'active_role';
 /**
  * Which experiences is this user entitled to?
  *
- * Source of truth is the JWT `roles[]` (and `permissions`) the web side
- * returns from /api/auth/mobile/verify-otp. Until that wiring lands
- * (Phase 5 on the web), dev/mock sessions expose BOTH so the role
- * switcher is exercisable.
- *
- * Web capability mapping (see CLAUDE.md access-control):
+ * Source of truth is the **effective capability list** the web side returns
+ * from /api/auth/mobile/verify-otp as `user.capabilities` (computed via
+ * `effectiveCapabilities(roles, granted, revoked)` server-side). The
+ * capability → experience mapping (see CLAUDE.md access-control):
  *   - `sales.view`    → sales experience
  *   - `dispatch.view` → driver experience
+ *
+ * `roles[]` / `permissions` are only consulted as a secondary signal (older
+ * payloads / tests). A dev/mock session with NO entitlement signal at all
+ * gets BOTH so the role switcher stays demonstrable before the backend lands.
  */
 export function availableRoles(user: {
   roles?: string[];
+  capabilities?: string[];
   permissions?: Record<string, boolean>;
 } | null): AppRole[] {
   if (!user) return [];
+  const caps = user.capabilities || [];
   const roles = (user.roles || []).map((r) => r.toLowerCase());
   const perms = user.permissions || {};
+  const hasCap = (c: string) => caps.includes(c) || perms[c] === true;
+
+  // True when the payload carried any entitlement signal we can read.
+  const hasSignal = caps.length > 0 || roles.length > 0 || Object.keys(perms).length > 0;
 
   const canSales =
-    roles.some((r) => ['sales', 'estimator', 'commercial_estimator', 'admin'].includes(r)) ||
-    perms['sales.view'] === true;
+    hasCap('sales.view') ||
+    roles.some((r) => ['sales', 'estimator', 'commercial_estimator', 'admin'].includes(r));
   const canDriver =
-    roles.some((r) => ['driver', 'dispatch', 'admin'].includes(r)) ||
-    perms['dispatch.view'] === true;
+    hasCap('dispatch.view') ||
+    roles.some((r) => ['driver', 'dispatch', 'admin'].includes(r));
 
   const out: AppRole[] = [];
   if (canSales) out.push('sales');
   if (canDriver) out.push('driver');
 
-  // Dev / mock sessions (no roles resolved yet) get both so the
-  // architecture is demonstrable end-to-end before the backend lands.
-  if (out.length === 0) return ['sales', 'driver'];
+  // Only fall back to dual-role when the session carried NO signal at all
+  // (dev/mock). A real user with capabilities but neither sales.view nor
+  // dispatch.view legitimately resolves to no app role.
+  if (out.length === 0 && !hasSignal) return ['sales', 'driver'];
   return out;
 }
 

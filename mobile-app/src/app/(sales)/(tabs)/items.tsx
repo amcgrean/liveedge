@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { View, Text, ScrollView, StyleSheet, SafeAreaView, TouchableOpacity } from 'react-native';
 import { router } from 'expo-router';
 import { useAuth } from '@/context/AuthContext';
-import { C, BRANCHES, BranchCode } from '@/theme/colors';
+import { C, BranchCode } from '@/theme/colors';
 import { Icon } from '@/components/ui/Icon';
 import { SalesTopBar, SearchBar, LiveBadge, SkelRow, MONO } from '@/components/sales/kit';
 import { fetchItems, SalesItem, StockState } from '@/data/salesMock';
