@@ -15,7 +15,12 @@ export type IconName =
   | 'refresh' | 'truck' | 'user' | 'menu' | 'wifi' | 'wifiOff'
   | 'cloud' | 'cloudOff' | 'arrowRight' | 'arrowLeft' | 'flash' | 'flashOff'
   | 'logout' | 'settings' | 'mail' | 'lock' | 'info' | 'list' | 'plus'
-  | 'package' | 'alert' | 'clock' | 'upload' | 'search';
+  | 'package' | 'alert' | 'clock' | 'upload' | 'search'
+  // sales glyphs
+  | 'minus' | 'plusCircle' | 'building' | 'users' | 'box' | 'grid' | 'tag'
+  | 'dollar' | 'fileText' | 'clipboard' | 'calendar' | 'filter' | 'sliders'
+  | 'edit' | 'trash' | 'history' | 'star' | 'more' | 'swap' | 'zap' | 'send'
+  | 'home';
 
 interface IconProps {
   name: IconName;
@@ -220,6 +225,134 @@ export function Icon({ name, size = 24, color = '#000', strokeWidth = 2 }: IconP
         <G>
           <Circle cx="11" cy="11" r="7" />
           <Line x1="21" y1="21" x2="16.65" y2="16.65" />
+        </G>
+      );
+      // ── sales glyphs ──
+      case 'minus': return <Line x1="5" y1="12" x2="19" y2="12" />;
+      case 'plusCircle': return (
+        <G>
+          <Circle cx="12" cy="12" r="10" />
+          <Line x1="12" y1="8" x2="12" y2="16" />
+          <Line x1="8" y1="12" x2="16" y2="12" />
+        </G>
+      );
+      case 'building': return (
+        <G>
+          <Rect x="4" y="3" width="16" height="18" rx="1.5" />
+          <Line x1="9" y1="7" x2="9" y2="7.01" /><Line x1="15" y1="7" x2="15" y2="7.01" />
+          <Line x1="9" y1="11" x2="9" y2="11.01" /><Line x1="15" y1="11" x2="15" y2="11.01" />
+          <Line x1="9" y1="15" x2="9" y2="15.01" /><Line x1="15" y1="15" x2="15" y2="15.01" />
+          <Path d="M9 21v-3h6v3" />
+        </G>
+      );
+      case 'users': return (
+        <G>
+          <Path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
+          <Circle cx="9" cy="7" r="4" />
+          <Path d="M23 21v-2a4 4 0 0 0-3-3.87" />
+          <Path d="M16 3.13a4 4 0 0 1 0 7.75" />
+        </G>
+      );
+      case 'box': return (
+        <G>
+          <Path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z" />
+          <Polyline points="3.27 6.96 12 12.01 20.73 6.96" />
+          <Line x1="12" y1="22.08" x2="12" y2="12" />
+        </G>
+      );
+      case 'grid': return (
+        <G>
+          <Rect x="3" y="3" width="7" height="7" /><Rect x="14" y="3" width="7" height="7" />
+          <Rect x="14" y="14" width="7" height="7" /><Rect x="3" y="14" width="7" height="7" />
+        </G>
+      );
+      case 'tag': return (
+        <G>
+          <Path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z" />
+          <Line x1="7" y1="7" x2="7.01" y2="7" />
+        </G>
+      );
+      case 'dollar': return (
+        <G>
+          <Line x1="12" y1="1" x2="12" y2="23" />
+          <Path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6" />
+        </G>
+      );
+      case 'fileText': return (
+        <G>
+          <Path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+          <Polyline points="14 2 14 8 20 8" />
+          <Line x1="16" y1="13" x2="8" y2="13" /><Line x1="16" y1="17" x2="8" y2="17" />
+          <Line x1="10" y1="9" x2="8" y2="9" />
+        </G>
+      );
+      case 'clipboard': return (
+        <G>
+          <Path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2" />
+          <Rect x="8" y="2" width="8" height="4" rx="1" />
+        </G>
+      );
+      case 'calendar': return (
+        <G>
+          <Rect x="3" y="4" width="18" height="18" rx="2" />
+          <Line x1="16" y1="2" x2="16" y2="6" /><Line x1="8" y1="2" x2="8" y2="6" />
+          <Line x1="3" y1="10" x2="21" y2="10" />
+        </G>
+      );
+      case 'filter': return <Polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3" />;
+      case 'sliders': return (
+        <G>
+          <Line x1="4" y1="21" x2="4" y2="14" /><Line x1="4" y1="10" x2="4" y2="3" />
+          <Line x1="12" y1="21" x2="12" y2="12" /><Line x1="12" y1="8" x2="12" y2="3" />
+          <Line x1="20" y1="21" x2="20" y2="16" /><Line x1="20" y1="12" x2="20" y2="3" />
+          <Line x1="1" y1="14" x2="7" y2="14" /><Line x1="9" y1="8" x2="15" y2="8" />
+          <Line x1="17" y1="16" x2="23" y2="16" />
+        </G>
+      );
+      case 'edit': return (
+        <G>
+          <Path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
+          <Path d="M18.5 2.5a2.12 2.12 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
+        </G>
+      );
+      case 'trash': return (
+        <G>
+          <Polyline points="3 6 5 6 21 6" />
+          <Path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+        </G>
+      );
+      case 'history': return (
+        <G>
+          <Path d="M3 3v5h5" />
+          <Path d="M3.05 13A9 9 0 1 0 6 5.3L3 8" />
+          <Polyline points="12 7 12 12 15 14" />
+        </G>
+      );
+      case 'star': return <Polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" />;
+      case 'more': return (
+        <G>
+          <Circle cx="5" cy="12" r="1.6" /><Circle cx="12" cy="12" r="1.6" /><Circle cx="19" cy="12" r="1.6" />
+        </G>
+      );
+      case 'swap': return (
+        <G>
+          <Polyline points="17 1 21 5 17 9" />
+          <Path d="M3 11V9a4 4 0 0 1 4-4h14" />
+          <Polyline points="7 23 3 19 7 15" />
+          <Path d="M21 13v2a4 4 0 0 1-4 4H3" />
+        </G>
+      );
+      case 'zap': return <Polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2" />;
+      case 'send': return (
+        <G>
+          <Line x1="22" y1="2" x2="11" y2="13" />
+          <Polygon points="22 2 15 22 11 13 2 9 22 2" />
+        </G>
+      );
+      case 'home': return (
+        <G>
+          <Path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />
+          <Polyline points="9 22 9 12 15 12 15 22" />
         </G>
       );
       default: return null;

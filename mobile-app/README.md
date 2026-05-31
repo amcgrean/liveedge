@@ -1,6 +1,42 @@
-# Beisser LiveEdge Driver App
+# Beisser LiveEdge Mobile App
 
-Mobile app for drivers to complete deliveries with proof-of-delivery photo capture.
+One Expo binary, **two role-gated experiences** that share login, branch
+selection, theme, and the offline outbox:
+
+- **Driver** — daily route + proof-of-delivery photo capture (the original app).
+- **Sales** — customer/order/item lookups + quote/order creation, leaning on
+  the live Agility ERP for fast single-record reads.
+
+## Role-based entry
+
+`src/context/RoleContext.tsx` reads the signed-in user's entitlements
+(`availableRoles()` — driven by the JWT `roles[]` / `permissions`, mapping
+`sales.view` → sales and `dispatch.view` → driver) and `src/app/index.tsx`
+routes accordingly:
+
+```
+not signed in       → (auth)/login
+no branch chosen     → (auth)/branch-select
+dual-role, no choice → /role-switch          (pick Sales or Driver)
+active role 'driver' → (app)/route-list       (driver stack)
+active role 'sales'  → (sales)/home           (sales stack)
+```
+
+The active choice persists across launches; dual-role users can flip from
+either profile screen. Single-role users skip the switcher entirely.
+
+## Sales section (`src/app/(sales)/`)
+
+5-tab shell (Home · Customers · Orders · Items · Me) plus pushed detail/create
+screens, built from the Claude Design handoff. **Screens currently read the
+mock layer in `src/data/salesMock.ts`** — same mock-first pattern the driver
+app used before its Phase 5 backend wiring. The `fetch*` helpers there are the
+seam to replace with real Agility-backed calls. Shared sales UI lives in
+`src/components/sales/kit.tsx`; sales-specific color tokens are `S` in
+`src/theme/colors.ts`.
+
+Backend wiring (live ERP reads + quote/order writeback) is specced in
+`docs/agent-prompts/mobile-app-sales-backend.md` (repo root).
 
 ## Future / Deferred
 

@@ -30,6 +30,21 @@ export const C = {
   coralville: '#64748b',
 };
 
+// Sales-specific palette — order lifecycle + quote/write states + live cues.
+// Mirrors the `S` tokens from the Sales design handoff. Layers on top of C.
+export const S = {
+  // order lifecycle — a 5-stop scale from placed → closed
+  open: '#64748b', openSoft: '#eef1f5', // slate · just placed
+  picking: '#d97706', pickingSoft: '#fef3c7', // amber · being pulled at yard
+  staged: '#0a8a4a', stagedSoft: '#e3f5ea', // bright green · ready
+  delivery: '#006834', deliverySoft: '#e7f0ec', // green · on the truck
+  invoiced: '#475569', invoicedSoft: '#f1f5f9', // dark slate · closed
+  // quote / write states
+  draft: '#9e8635', draftSoft: '#fcf5dd',
+  live: '#0a8a4a', liveSoft: '#e3f5ea',
+  blue: '#2563eb', blueSoft: '#eaf1fe',
+};
+
 export const FONT = {
   body: undefined, // System default (San Francisco on iOS)
   mono: 'Menlo', // iOS monospace
