@@ -17,8 +17,14 @@
 // <Label>:
 //   {
 //     "document_id": "<uuid>",          // OR doc_type + doc_number (resolved
-//     "doc_type": "po" | "wo",          //   server-side; must be unambiguous)
+//     "doc_type": "po" | "wo",          //   server-side)
 //     "doc_number": "1612",
+//     "ship_to_address_hint": "1618 Garland Ave", // optional — disambiguates
+//                                       //   reused doc numbers by matching each
+//                                       //   candidate's extracted_address (via
+//                                       //   bids.hubbell_normalize_address). If
+//                                       //   it matches none, the row errors
+//                                       //   rather than guessing.
 //     "so_id": 16028,                   // required
 //     "label": "accept"|"reject"|"skip",// required
 //     "source": "cash_app_gui",         // required — which review loop
@@ -31,10 +37,15 @@
 //     "suggestion_id": "<uuid>"         // optional provenance link
 //   }
 //
+// Response: { ok, failed, warnings, results: [{ index, status, document_id?,
+//   so_id?, error?, warning? }] }. A `warning` row still saved but flags a
+//   data-quality concern (e.g. the address hint disagreed with the resolved
+//   doc, or duplicate docs were collapsed). 422 only when every row failed.
+//
 // Idempotent — upserts on (document_id, so_id, source).
 
 import { NextRequest, NextResponse } from 'next/server';
-import { and, eq } from 'drizzle-orm';
+import { and, eq, asc, sql as dsql } from 'drizzle-orm';
 import { requireCapability } from '../../../../../src/lib/access-control';
 import { verifyHubbellUploadToken } from '../../../../../src/lib/service-auth';
 import { getDb, schema } from '../../../../../db/index';
@@ -58,7 +69,101 @@ type RowResult = {
   document_id?: string;
   so_id?: number;
   error?: string;
+  warning?: string;
 };
+
+type ResolveResult = { documentId: string; warning?: string } | { error: string };
+
+// Resolve a label to a single hubbell_documents.id. Handles the doc-number
+// reuse problem: when (doc_type, doc_number) maps to multiple historical docs,
+// an optional ship_to_address_hint is matched against each candidate's
+// extracted_address via bids.hubbell_normalize_address (Dr↔Drive, Cir↔Circle,
+// etc.). The hint both *recovers* reused-number docs AND *guards* against bad
+// matches: if it agrees with none of the candidate addresses, we refuse rather
+// than guess (the doc for that jobsite isn't in our system). When a doc is
+// resolved but a provided hint disagrees with its address, we still save but
+// flag a warning so the corpus quality issue is visible.
+async function resolveDocument(
+  db: ReturnType<typeof getDb>,
+  opts: { documentId?: string; docType?: string; docNumber?: string; hint?: string | null },
+): Promise<ResolveResult> {
+  const hint = opts.hint && opts.hint.trim() ? opts.hint.trim() : null;
+  const mismatch = (docNorm: string | null, hintNorm: string | null): boolean =>
+    !!hintNorm && !!docNorm && docNorm !== hintNorm;
+
+  if (opts.documentId) {
+    if (!/^[0-9a-f-]{36}$/i.test(opts.documentId)) return { error: 'document_id must be a uuid' };
+    const rows = await db
+      .select({
+        id: schema.hubbellDocuments.id,
+        norm: dsql<string | null>`bids.hubbell_normalize_address(${schema.hubbellDocuments.extractedAddress})`,
+        hintNorm: dsql<string>`bids.hubbell_normalize_address(${hint})`,
+      })
+      .from(schema.hubbellDocuments)
+      .where(eq(schema.hubbellDocuments.id, opts.documentId))
+      .limit(1);
+    if (rows.length === 0) return { error: 'document_id not found' };
+    return {
+      documentId: rows[0].id,
+      warning: mismatch(rows[0].norm, rows[0].hintNorm)
+        ? 'ship_to_address_hint disagrees with the document extracted_address'
+        : undefined,
+    };
+  }
+
+  const docType = String(opts.docType ?? '').trim().toLowerCase();
+  const docNumber = String(opts.docNumber ?? '').trim();
+  if (!docType || !docNumber) return { error: 'supply document_id, or doc_type + doc_number' };
+
+  const rows = await db
+    .select({
+      id: schema.hubbellDocuments.id,
+      address: schema.hubbellDocuments.extractedAddress,
+      norm: dsql<string | null>`bids.hubbell_normalize_address(${schema.hubbellDocuments.extractedAddress})`,
+      hintNorm: dsql<string>`bids.hubbell_normalize_address(${hint})`,
+    })
+    .from(schema.hubbellDocuments)
+    .where(
+      and(
+        eq(schema.hubbellDocuments.docType, docType),
+        eq(schema.hubbellDocuments.docNumber, docNumber),
+      ),
+    )
+    .orderBy(asc(schema.hubbellDocuments.receivedAt), asc(schema.hubbellDocuments.id));
+
+  if (rows.length === 0) return { error: `no document for ${docType} ${docNumber}` };
+  if (rows.length === 1) {
+    return {
+      documentId: rows[0].id,
+      warning: mismatch(rows[0].norm, rows[0].hintNorm)
+        ? 'ship_to_address_hint disagrees with the document extracted_address'
+        : undefined,
+    };
+  }
+
+  // ambiguous — need a hint to disambiguate
+  if (!hint) {
+    return {
+      error: `ambiguous (${docType} ${docNumber}) — multiple docs — supply document_id or ship_to_address_hint`,
+    };
+  }
+  const hintNorm = rows[0].hintNorm;
+  const matches = rows.filter((r) => r.norm && hintNorm && r.norm === hintNorm);
+  if (matches.length === 1) return { documentId: matches[0].id };
+  if (matches.length > 1) {
+    // genuine duplicate uploads at the same address — collapse to the earliest
+    // received (rows are ordered received_at asc, id asc).
+    return {
+      documentId: matches[0].id,
+      warning: `${matches.length} duplicate docs at this address — used earliest received`,
+    };
+  }
+  // hint matched none — refuse rather than poison the corpus
+  const addrs = Array.from(new Set(rows.map((r) => r.address).filter(Boolean)));
+  return {
+    error: `ambiguous (${docType} ${docNumber}) — ship_to_address_hint "${hint}" matched none of: ${addrs.join(' | ')}`,
+  };
+}
 
 export async function POST(req: NextRequest) {
   // Dual auth: bearer for PC/local translators, session for UI.
@@ -101,6 +206,7 @@ export async function POST(req: NextRequest) {
   const results: RowResult[] = [];
   let ok = 0;
   let failed = 0;
+  let warnings = 0;
 
   for (let i = 0; i < rawLabels.length; i++) {
     const row = rawLabels[i];
@@ -126,45 +232,17 @@ export async function POST(req: NextRequest) {
         confidence = c as MatchLabelConfidence;
       }
 
-      // ── resolve document_id (direct, or via doc_type + doc_number) ───────
-      let documentId = typeof row.document_id === 'string' ? row.document_id.trim() : '';
-      if (!documentId) {
-        const docType = String(row.doc_type ?? '').trim().toLowerCase();
-        const docNumber = String(row.doc_number ?? '').trim();
-        if (!docType || !docNumber) {
-          throw new Error('supply document_id, or doc_type + doc_number');
-        }
-        const matches = await db
-          .select({ id: schema.hubbellDocuments.id })
-          .from(schema.hubbellDocuments)
-          .where(
-            and(
-              eq(schema.hubbellDocuments.docType, docType),
-              eq(schema.hubbellDocuments.docNumber, docNumber),
-            ),
-          )
-          .limit(2);
-        if (matches.length === 0) {
-          throw new Error(`no document for ${docType} ${docNumber}`);
-        }
-        if (matches.length > 1) {
-          // doc numbers are reused across jobs — refuse to guess.
-          throw new Error(
-            `ambiguous ${docType} ${docNumber} (multiple docs) — supply document_id`,
-          );
-        }
-        documentId = matches[0].id;
-      } else if (!/^[0-9a-f-]{36}$/i.test(documentId)) {
-        throw new Error('document_id must be a uuid');
-      } else {
-        // Confirm the doc exists so the FK upsert doesn't blow up the batch.
-        const exists = await db
-          .select({ id: schema.hubbellDocuments.id })
-          .from(schema.hubbellDocuments)
-          .where(eq(schema.hubbellDocuments.id, documentId))
-          .limit(1);
-        if (exists.length === 0) throw new Error('document_id not found');
-      }
+      // ── resolve document_id (direct, doc_type+doc_number, or hint-narrowed) ─
+      const hint = typeof row.ship_to_address_hint === 'string' ? row.ship_to_address_hint : null;
+      const resolved = await resolveDocument(db, {
+        documentId: typeof row.document_id === 'string' ? row.document_id.trim() : undefined,
+        docType: typeof row.doc_type === 'string' ? row.doc_type : undefined,
+        docNumber:
+          row.doc_number != null ? String(row.doc_number) : undefined,
+        hint,
+      });
+      if ('error' in resolved) throw new Error(resolved.error);
+      const documentId = resolved.documentId;
 
       const reviewer =
         (typeof row.reviewer === 'string' && row.reviewer.trim()) || defaultReviewer;
@@ -192,8 +270,15 @@ export async function POST(req: NextRequest) {
         suggestionId,
       });
 
-      results.push({ index: i, status: 'ok', document_id: documentId, so_id: soId });
+      results.push({
+        index: i,
+        status: 'ok',
+        document_id: documentId,
+        so_id: soId,
+        warning: resolved.warning,
+      });
       ok++;
+      if (resolved.warning) warnings++;
     } catch (err) {
       results.push({
         index: i,
@@ -204,5 +289,8 @@ export async function POST(req: NextRequest) {
     }
   }
 
-  return NextResponse.json({ ok, failed, results }, { status: failed > 0 && ok === 0 ? 422 : 200 });
+  return NextResponse.json(
+    { ok, failed, warnings, results },
+    { status: failed > 0 && ok === 0 ? 422 : 200 },
+  );
 }
