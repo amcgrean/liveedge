@@ -7,6 +7,7 @@ import { getReport, type ReportKey } from '../../../../src/lib/reports/registry'
 import { computeNextRunAt } from '../../../../src/lib/reports/schedule';
 import { renderDigest } from '../../../../src/lib/reports/dispatch';
 import { sendReportEmail, buildReportEmailHtml } from '../../../../src/lib/email/send-report';
+import { log } from '../../../../src/lib/log';
 
 // Hourly cron — sweeps subscriptions due for delivery, renders + emails them,
 // then advances next_run_at. Hard-caps the batch so one tick never times out
@@ -139,7 +140,7 @@ async function processOne(
     }
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
-    console.error(`[cron/report-subscriptions] subscription ${sub.id} failed:`, err);
+    log.error('cron.report_subscriptions.send_failed', err, { subscriptionId: sub.id });
     await logSend(sub.id, 'failed', msg, null, Date.now() - started);
     await advanceSchedule(sub, now);
     return 'failed';

@@ -2,6 +2,7 @@ import NextAuth from 'next-auth';
 import Credentials from 'next-auth/providers/credentials';
 import { z } from 'zod';
 import { effectiveCapabilities } from './src/lib/access-control';
+import { log } from './src/lib/log';
 
 // ─── Input schema ─────────────────────────────────────────────────────────────
 // All users authenticate via OTP — identifier can be a username or email,
@@ -85,7 +86,7 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
           `;
 
           if (userRows.length === 0) {
-            console.warn('[auth/otp] user not found in app_users for', input);
+            log.warn('auth.otp.user_not_found', { identifier: input });
             return null;
           }
 
@@ -104,12 +105,12 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
           `;
 
           if (otpRows.length === 0) {
-            console.warn('[auth/otp] no valid code for', email);
+            log.warn('auth.otp.no_valid_code', { email });
             return null;
           }
 
           if (otpRows[0].code !== otp_code.trim()) {
-            console.warn('[auth/otp] code mismatch for', email);
+            log.warn('auth.otp.code_mismatch', { email });
             return null;
           }
 
@@ -135,7 +136,7 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
             capabilities,
           };
         } catch (err) {
-          console.error('[auth] authorize error:', err);
+          log.error('auth.authorize.failed', err);
           return null;
         }
       },

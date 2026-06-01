@@ -10,6 +10,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { verifyCronSignature } from '../../../../src/lib/service-auth';
 import { computeSyncHealth } from '../../../../src/lib/admin/sync-health';
 import { sendSyncAlertEmail, buildSyncAlertHtml } from '../../../../src/lib/email/send-sync-alert';
+import { log } from '../../../../src/lib/log';
 
 export const runtime = 'nodejs';
 
@@ -33,7 +34,7 @@ export async function GET(req: NextRequest) {
   try {
     health = await computeSyncHealth();
   } catch (err) {
-    console.error('[sync-health-alert] compute failed', err);
+    log.error('cron.sync_health.compute_failed', err);
     return NextResponse.json({ error: 'compute failed' }, { status: 500 });
   }
 
@@ -51,7 +52,10 @@ export async function GET(req: NextRequest) {
     : health;
 
   // Always log (visible in Vercel logs even if email isn't configured).
-  console.warn(`[sync-health-alert]${sampleMode ? ' (test)' : ' STALE:'} ${healthForEmail.issues.join(' | ')}`);
+  log.warn('cron.sync_health.stale', {
+    sampleMode,
+    issues: healthForEmail.issues,
+  });
 
   const to = recipients();
   if (to.length === 0) {
@@ -70,7 +74,7 @@ export async function GET(req: NextRequest) {
   });
 
   if (!result.ok) {
-    console.error('[sync-health-alert] email send failed', result.error);
+    log.error('cron.sync_health.email_failed', result.error ?? new Error('email send failed'));
   }
 
   return NextResponse.json({

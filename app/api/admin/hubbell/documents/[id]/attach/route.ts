@@ -21,6 +21,7 @@ import { getDb, schema } from '../../../../../../../db/index';
 import { getErpSql } from '../../../../../../../db/supabase';
 import { agilityApi, AgilityApiError } from '../../../../../../../src/lib/agility-api';
 import { parsePoNumberField, normalizeDocNumber } from '../../../../../../../src/lib/hubbell/po-number-parser';
+import { log } from '../../../../../../../src/lib/log';
 
 export const runtime = 'nodejs';
 
@@ -91,10 +92,10 @@ export async function POST(
       currentPoNumber = rows[0].po_number ?? null;
       headerLookupOk = true;
     } else {
-      console.warn(`[hubbell attach] SO ${soId} not found in agility_so_header mirror`);
+      log.warn('hubbell.attach.so_not_found', { soId });
     }
   } catch (err) {
-    console.error('[hubbell attach] SO header lookup failed', err);
+    log.error('hubbell.attach.header_lookup_failed', err, { soId });
   }
 
   // Need the Hubbell doc_number to append to Agility's customer-PO field.
@@ -218,7 +219,12 @@ export async function POST(
           } else {
             agilityWriteback.success = false;
             agilityWriteback.error = `RC ${res.ReturnCode}: ${res.MessageText || '(no message)'}`;
-            console.warn('[hubbell attach] Agility writeback non-zero RC', res);
+            log.warn('hubbell.attach.writeback_rc_nonzero', {
+              soId,
+              docId: id,
+              returnCode: res.ReturnCode,
+              message: res.MessageText,
+            });
           }
         } catch (err) {
           agilityWriteback.success = false;
@@ -228,7 +234,7 @@ export async function POST(
               : err instanceof Error
                 ? err.message
                 : String(err);
-          console.error('[hubbell attach] Agility writeback failed', err);
+          log.error('hubbell.attach.writeback_failed', err, { soId, docId: id });
         }
       }
     }

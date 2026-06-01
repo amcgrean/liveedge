@@ -23,6 +23,8 @@
  *   AGILITY_BRANCH       — default branch code (e.g. "20GR") — optional, falls back to login default
  */
 
+import { log } from './log';
+
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
@@ -323,7 +325,7 @@ async function callApi<T = Record<string, unknown>>(
   }
 
   if (ReturnCode === 1) {
-    console.warn(`[AgilityAPI] ${service}/${method} warning (RC 1): ${MessageText}`);
+    log.warn('agility.rc1', { service, method, message: MessageText });
   }
 
   return data.response as T & { ReturnCode: number; MessageText: string };
