@@ -61,7 +61,7 @@ const styles = StyleSheet.create({
   card: { backgroundColor: '#fff', borderWidth: 1, borderColor: C.line, borderRadius: 14, padding: 14 },
   row: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   date: { color: C.text3, fontSize: 12, fontFamily: MONO },
-  body: { marginTop: 10, fontSize: 15, lineHeight: 21, fontWeight: '650', color: C.text },
+  body: { marginTop: 10, fontSize: 15, lineHeight: 21, fontWeight: '600', color: C.text },
   meta: { marginTop: 8, fontSize: 12.5, color: C.text3 },
   foot: { marginTop: 10, flexDirection: 'row', gap: 5, alignItems: 'center' },
   photo: { fontSize: 12, color: C.text4, fontWeight: '700' },
