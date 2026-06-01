@@ -4,17 +4,17 @@ import { router } from 'expo-router';
 import { C, S } from '@/theme/colors';
 import { Icon } from '@/components/ui/Icon';
 import { BigButton } from '@/components/ui/BigButton';
-import { SalesTopBar, SearchBar, StepHeader, LiveBadge, Monogram, MONO } from '@/components/sales/kit';
+import { SalesTopBar, StepHeader, LiveBadge, Monogram, EmptyState, MONO } from '@/components/sales/kit';
 import { useToast } from '@/context/ToastContext';
 import { IS_DEV_MODE } from '@/api/client';
 import { salesApi } from '@/api/sales';
+import { useDraft, DraftLine } from '@/context/DraftContext';
 
-interface DraftLine { qty: number; uom: string; code: string; desc: string; price: number }
-
-// TODO(Phase 3 follow-up): the customer + lines are still seeded from the
-// design mock. Wire a real customer picker + item-search add into these
-// screens; the submit path below already posts whatever's in state.
-const DRAFT_CUSTOMER = 'C-10428';
+// Parse a display price string ('4.18' / '—') to a number for subtotal math.
+function priceNum(p: string): number {
+  const n = parseFloat(p);
+  return Number.isFinite(n) ? n : 0;
+}
 
 export function CustomerChip({ mono, name, sub, onChange }: { mono: string; name: string; sub: string; onChange?: () => void }) {
   return (
@@ -29,35 +29,46 @@ export function CustomerChip({ mono, name, sub, onChange }: { mono: string; name
   );
 }
 
-export default function NewQuoteScreen() {
-  const [lines, setLines] = useState<DraftLine[]>([
-    { qty: 24, uom: 'EA', code: 'SPF2X4-92', desc: 'SPF 2×4 92⅝" Stud', price: 4.18 },
-    { qty: 18, uom: 'SHT', code: 'OSB-716-4X8', desc: 'OSB Sheathing 7/16" 4×8', price: 18.40 },
-    { qty: 8, uom: 'EA', code: 'LVL-11875', desc: 'LVL 1¾×11⅞ × 16′', price: 92.10 },
-  ]);
+// Empty "pick a customer" prompt shown before one is chosen.
+function PickCustomerCard() {
+  return (
+    <TouchableOpacity activeOpacity={0.85} onPress={() => router.push('/(sales)/pick-customer')} style={styles.pickCustomer}>
+      <View style={styles.pickIcon}><Icon name="users" size={22} color={C.green} strokeWidth={2.2} /></View>
+      <View style={{ flex: 1 }}>
+        <Text style={styles.pickTitle}>Choose a customer</Text>
+        <Text style={styles.pickSub}>Search by name or account #</Text>
+      </View>
+      <Icon name="chevronRight" size={20} color={C.text4} />
+    </TouchableOpacity>
+  );
+}
 
+export default function NewQuoteScreen() {
+  const { customer, lines, setQty, removeLine, clear } = useDraft();
   const { show } = useToast();
   const [submitting, setSubmitting] = useState(false);
 
-  const subtotal = lines.reduce((s, l) => s + l.qty * l.price, 0);
-  const setQty = (i: number, delta: number) => setLines((ls) => ls.map((l, idx) => idx === i ? { ...l, qty: Math.max(1, l.qty + delta) } : l));
-  const remove = (i: number) => setLines((ls) => ls.filter((_, idx) => idx !== i));
+  const subtotal = lines.reduce((s, l) => s + l.qty * priceNum(l.price), 0);
+  const canSubmit = !!customer && lines.length > 0;
 
   const submit = async () => {
+    if (!customer) { show('Choose a customer first', 'error'); return; }
+    if (lines.length === 0) { show('Add at least one item', 'error'); return; }
     // Dev mode (no backend): keep the design demo flow.
-    if (IS_DEV_MODE) { router.push('/(sales)/submitted?kind=quote'); return; }
+    if (IS_DEV_MODE) { clear(); router.push('/(sales)/submitted?kind=quote'); return; }
     setSubmitting(true);
     try {
       const res = await salesApi.createQuote({
-        customer: DRAFT_CUSTOMER,
+        customer: customer.code,
         lines: lines.map((l) => ({ itemId: l.code, quantity: l.qty, uom: l.uom })),
       });
       if (!res.written) {
-        // Writeback flag is off — surface clearly rather than faking success.
         show(res.reason || 'Quote writeback is disabled', 'error');
         return;
       }
-      router.replace(`/(sales)/submitted?kind=quote&erpId=${encodeURIComponent(res.erpId ?? '')}`);
+      const erpId = res.erpId ?? '';
+      clear();
+      router.replace(`/(sales)/submitted?kind=quote&erpId=${encodeURIComponent(erpId)}`);
     } catch (e: any) {
       show(e?.response?.data?.error || 'Could not create quote', 'error');
     } finally {
@@ -68,51 +79,65 @@ export default function NewQuoteScreen() {
   return (
     <SafeAreaView style={styles.safe}>
       <SalesTopBar back="Cancel" title="New Quote" onBack={() => router.back()} />
-      {/* draft-saving banner */}
-      <View style={styles.draftBanner}>
-        <Icon name="check" size={14} color={S.draft} strokeWidth={3} />
-        <Text style={styles.draftText}>Draft saved · Q-2026-0488 · auto-saves as you go</Text>
-      </View>
-      <View style={styles.stepWrap}><StepHeader steps={['Customer', 'Items', 'Review']} current={1} /></View>
+      <View style={styles.stepWrap}><StepHeader steps={['Customer', 'Items', 'Review']} current={customer ? 1 : 0} /></View>
 
       <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
-        <CustomerChip mono="HC" name="Holstead Construction" sub="C-10428 · Urbandale, IA" onChange={() => router.push('/(sales)/customers')} />
-        <View style={{ marginTop: 14 }}>
-          <SearchBar editable placeholder="Add item — search # or description…" />
-        </View>
-        <View style={styles.linesHead}>
-          <Text style={styles.linesLabel}>{lines.length} LINE ITEMS</Text>
-          <LiveBadge label="Live price" ago="now" />
-        </View>
-        <View style={{ gap: 10 }}>
-          {lines.map((l, i) => (
-            <View key={l.code} style={styles.lineCard}>
-              <View style={styles.lineTop}>
-                <View style={{ flex: 1, minWidth: 0 }}>
-                  <Text style={styles.lineDesc}>{l.desc}</Text>
-                  <Text style={styles.lineCode}>{l.code} · ${l.price.toFixed(2)}/{l.uom.toLowerCase()}</Text>
-                </View>
-                <TouchableOpacity style={styles.trash} onPress={() => remove(i)}><Icon name="trash" size={16} color={C.text3} /></TouchableOpacity>
-              </View>
-              <View style={styles.lineBottom}>
-                <View style={styles.stepper}>
-                  <TouchableOpacity style={styles.stepBtn} onPress={() => setQty(i, -1)}><Icon name="minus" size={15} color={C.text3} /></TouchableOpacity>
-                  <Text style={styles.stepQty}>{l.qty}</Text>
-                  <TouchableOpacity style={styles.stepBtn} onPress={() => setQty(i, 1)}><Icon name="plus" size={15} color={C.green} /></TouchableOpacity>
-                </View>
-                <Text style={styles.lineExt}>${(l.qty * l.price).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</Text>
-              </View>
+        {customer ? (
+          <CustomerChip mono={customer.mono} name={customer.name} sub={`${customer.code}${customer.city ? ` · ${customer.city}` : ''}`} onChange={() => router.push('/(sales)/pick-customer')} />
+        ) : (
+          <PickCustomerCard />
+        )}
+
+        <TouchableOpacity activeOpacity={0.85} onPress={() => router.push('/(sales)/pick-item')} style={styles.addItemBtn}>
+          <Icon name="plusCircle" size={20} color={C.green} strokeWidth={2.2} />
+          <Text style={styles.addItemText}>Add items</Text>
+        </TouchableOpacity>
+
+        {lines.length > 0 && (
+          <>
+            <View style={styles.linesHead}>
+              <Text style={styles.linesLabel}>{lines.length} LINE ITEM{lines.length > 1 ? 'S' : ''}</Text>
+              <LiveBadge label="Live price" ago="now" />
             </View>
-          ))}
-        </View>
+            <View style={{ gap: 10 }}>
+              {lines.map((l: DraftLine) => (
+                <View key={l.code} style={styles.lineCard}>
+                  <View style={styles.lineTop}>
+                    <View style={{ flex: 1, minWidth: 0 }}>
+                      <Text style={styles.lineDesc}>{l.desc}</Text>
+                      <Text style={styles.lineCode}>{l.code}{l.price !== '—' ? ` · $${l.price}/${l.uom.toLowerCase()}` : ''}</Text>
+                    </View>
+                    <TouchableOpacity style={styles.trash} onPress={() => removeLine(l.code)}><Icon name="trash" size={16} color={C.text3} /></TouchableOpacity>
+                  </View>
+                  <View style={styles.lineBottom}>
+                    <View style={styles.stepper}>
+                      <TouchableOpacity style={styles.stepBtn} onPress={() => setQty(l.code, l.qty - 1)}><Icon name="minus" size={15} color={C.text3} /></TouchableOpacity>
+                      <Text style={styles.stepQty}>{l.qty}</Text>
+                      <TouchableOpacity style={styles.stepBtn} onPress={() => setQty(l.code, l.qty + 1)}><Icon name="plus" size={15} color={C.green} /></TouchableOpacity>
+                    </View>
+                    {l.price !== '—' && (
+                      <Text style={styles.lineExt}>${(l.qty * priceNum(l.price)).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</Text>
+                    )}
+                  </View>
+                </View>
+              ))}
+            </View>
+          </>
+        )}
+
+        {lines.length === 0 && (
+          <View style={styles.emptyWrap}>
+            <EmptyState icon="tag" title="No items yet" body="Tap “Add items” to search products and build this quote." />
+          </View>
+        )}
       </ScrollView>
 
       <View style={styles.footer}>
         <View style={styles.footerTotal}>
-          <Text style={styles.footerLabel}>Subtotal · {lines.length} items</Text>
+          <Text style={styles.footerLabel}>Subtotal · {lines.length} item{lines.length === 1 ? '' : 's'}</Text>
           <Text style={styles.footerValue}>${subtotal.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</Text>
         </View>
-        <BigButton kind="primary" icon="arrowRight" loading={submitting} onPress={submit}>Review Quote</BigButton>
+        <BigButton kind="primary" icon="arrowRight" disabled={!canSubmit} loading={submitting} onPress={submit}>Review Quote</BigButton>
       </View>
     </SafeAreaView>
   );
@@ -120,10 +145,15 @@ export default function NewQuoteScreen() {
 
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: C.surface },
-  draftBanner: { flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: S.draftSoft, borderBottomWidth: 1, borderBottomColor: '#f1e0a4', paddingHorizontal: 16, paddingVertical: 7 },
-  draftText: { fontSize: 12.5, fontWeight: '700', color: '#7a6726' },
   stepWrap: { backgroundColor: '#fff', paddingHorizontal: 16, paddingTop: 12, paddingBottom: 14, borderBottomWidth: 1, borderBottomColor: C.line },
   scroll: { padding: 14, paddingBottom: 40 },
+  pickCustomer: { flexDirection: 'row', alignItems: 'center', gap: 13, padding: 14, backgroundColor: '#fff', borderWidth: 1.5, borderColor: C.green, borderRadius: 14, borderStyle: 'dashed' },
+  pickIcon: { width: 40, height: 40, borderRadius: 20, backgroundColor: C.greenSoft, alignItems: 'center', justifyContent: 'center' },
+  pickTitle: { fontSize: 15.5, fontWeight: '800', color: C.text },
+  pickSub: { fontSize: 12.5, color: C.text3 },
+  addItemBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, marginTop: 14, height: 48, borderRadius: 12, borderWidth: 1.5, borderColor: C.line, backgroundColor: '#fff' },
+  addItemText: { fontSize: 15, fontWeight: '700', color: C.text },
+  emptyWrap: { paddingTop: 40 },
   chip: { flexDirection: 'row', alignItems: 'center', gap: 12, padding: 12, backgroundColor: '#fff', borderWidth: 1.5, borderColor: C.line, borderRadius: 14 },
   chipName: { fontSize: 15.5, fontWeight: '800', color: C.text },
   chipSub: { fontSize: 12.5, color: C.text3 },

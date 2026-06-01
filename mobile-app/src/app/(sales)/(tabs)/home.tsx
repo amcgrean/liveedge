@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { View, Text, ScrollView, StyleSheet, SafeAreaView, TouchableOpacity } from 'react-native';
 import { router } from 'expo-router';
 import { useAuth } from '@/context/AuthContext';
+import { useDraft } from '@/context/DraftContext';
 import { useOnline } from '@/hooks/useOnline';
 import { useOutbox } from '@/storage/outbox';
 import { C, S, BRANCHES, BranchCode } from '@/theme/colors';
@@ -43,8 +44,13 @@ export default function SalesHomeScreen() {
   const outboxItems = useOutbox();
   const queue = outboxItems.filter((i) => i.status !== 'synced').length;
 
+  const { clear } = useDraft();
   const [loading, setLoading] = useState(true);
   const [recent, setRecent] = useState<SalesOrder[]>([]);
+
+  // From Home, always start a brand-new draft.
+  const newQuote = () => { clear(); router.push('/(sales)/new-quote'); };
+  const newOrder = () => { clear(); router.push('/(sales)/new-order'); };
 
   const branchCode = (user?.branch || '20GR') as BranchCode;
   const branch = BRANCHES.find((b) => b.code === branchCode);
@@ -94,8 +100,8 @@ export default function SalesHomeScreen() {
 
         {/* Primary actions */}
         <View style={styles.actions}>
-          <ActionButton icon="fileText" label="New Quote" primary onPress={() => router.push('/(sales)/new-quote')} />
-          <ActionButton icon="plusCircle" label="New Order" onPress={() => router.push('/(sales)/new-order')} />
+          <ActionButton icon="fileText" label="New Quote" primary onPress={newQuote} />
+          <ActionButton icon="plusCircle" label="New Order" onPress={newOrder} />
           <ActionButton icon="tag" label="Price Check" onPress={() => router.push('/(sales)/items')} />
         </View>
 
