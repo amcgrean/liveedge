@@ -17,22 +17,32 @@ PR.** Don't big-bang.
 
 ## Work items (leverage order)
 
-### 3.1 OTP **verify**-path rate limiting (security — do first, it's contained)
-**Finding:** OTP *issuance* is already rate-limited — `app/api/auth/send-otp/route.ts`
-caps unused codes per email per 15-min window (DB-counted). But the **verify path
-has no limit or lockout**, so a 6-digit code (1e6 space) is brute-forceable:
-- `auth.ts` — the NextAuth credentials provider verifies `otp_codes` with no
-  attempt ceiling.
-- `app/api/auth/mobile/verify-otp/route.ts` — same, for the mobile JWT path.
+### 3.1 OTP rate limiting — issuance **and** verify (security — do first)
+**Finding (two gaps):**
+1. **Issuance limiter is effectively a no-op.** `app/api/auth/send-otp/route.ts`
+   *looks* rate-limited (max N unused codes per email per 15-min window) but the
+   count filters `used = false` (line ~116) while line ~127 marks **all** prior
+   unused codes `used = true` immediately before inserting the new one. So after
+   every request there's exactly one unused code — the count never climbs past 1
+   and the `>= MAX` threshold never trips for sequential requests. An attacker can
+   spam unlimited OTP emails (cost + targeted-user harassment). **Fix:** count
+   issuances by `created_at` within the window **regardless of `used`** (i.e. drop
+   the `used = false` predicate from the rate-limit `COUNT`), so repeated sends
+   actually accumulate. (The separate `UPDATE … used = true` invalidation of old
+   codes is fine to keep — just don't let it reset the rate counter.)
+2. **Verify path has no limit or lockout** — a 6-digit code (1e6 space) is
+   brute-forceable:
+   - `auth.ts` — the NextAuth credentials provider verifies `otp_codes` with no
+     attempt ceiling.
+   - `app/api/auth/mobile/verify-otp/route.ts` — same, for the mobile JWT path.
 
-**Build:** a per-identifier (and ideally per-IP) failed-attempt limiter on verify.
-Serverless has no shared memory, so it must be **DB-backed**, consistent with how
-send-otp already counts in Postgres — e.g. a `bids.auth_attempts` table
-(`identifier`, `kind`, `created_at`, `success`) or an `attempts`/`consumed_at`
-column on `otp_codes`. Lock or 429 after N failures (e.g. 5) in a window; clear on
-success. Keep the user-enumeration-safe behavior send-otp already uses (generic
-responses). No Redis/Upstash needed unless the owner wants it — match the existing
-DB pattern. Apply the same limiter to both `auth.ts` and the mobile verify route
+**Build:** fix the issuance count (above), and add a per-identifier (ideally
+also per-IP) failed-attempt limiter on verify. Serverless has no shared memory, so
+it must be **DB-backed** — e.g. a `bids.auth_attempts` table (`identifier`, `kind`,
+`created_at`, `success`) or an `attempts` column on `otp_codes`. Lock or 429 after
+N failures (e.g. 5) in a window; clear on success. Keep the user-enumeration-safe
+generic responses send-otp already uses. No Redis/Upstash needed unless the owner
+wants it. Apply the verify limiter to both `auth.ts` and the mobile verify route
 (extract a shared helper in `src/lib/`).
 
 ### 3.2 Zod validation at route boundaries (incremental)
