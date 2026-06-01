@@ -39,7 +39,7 @@ export async function GET(
 
   // Hydrate the attached rows with current SO header data.
   const attachedSoIds = attached.map((a) => a.soId);
-  let soHeaders: Record<number, {
+  const soHeaders: Record<number, {
     so_id: number;
     cust_name: string | null;
     cust_code: string | null;

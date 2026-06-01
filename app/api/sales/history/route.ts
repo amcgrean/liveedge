@@ -19,7 +19,7 @@ export async function GET(req: NextRequest) {
 
   const isAdmin = hasCapability(session, 'branch.all');
 
-  let effectiveBranch = isAdmin ? (searchParams.get('branch') ?? '') : (session.user.branch ?? '');
+  const effectiveBranch = isAdmin ? (searchParams.get('branch') ?? '') : (session.user.branch ?? '');
 
   try {
     const sql = getErpSql();
