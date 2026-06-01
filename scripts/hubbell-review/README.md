@@ -78,6 +78,12 @@ Every decision is now persisted centrally to `bids.hubbell_match_labels`
 review endpoint and stored there, so they aggregate across reviewers and feed
 the keyword-mining + match-classifier work. Fill them in consistently.
 
+**Annotated skips count too.** A `skip` where you filled in a `reason_code` or
+`reasoning` is recorded as an ambiguity label (it leaves the suggestion pending
+— no accept/reject) so the corpus captures the hard/ambiguous class, not just
+clean accepts and rejects. An untouched template skip (placeholder reasoning) is
+left as a local no-op. So an all-skip packet you actually reviewed still applies.
+
 ## Agent prompt
 
 A copy-paste prompt for the agent, after running `pull`:

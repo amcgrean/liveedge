@@ -5,7 +5,7 @@
 // Auth: user session with `hubbell.review`, OR Bearer HUBBELL_UPLOAD_TOKEN
 // (used by the scripts/hubbell-review local CLI).
 //
-// Body: { action: 'accept' | 'reject',
+// Body: { action: 'accept' | 'reject' | 'skip',
 //         reason_code?, signals?, confidence?, reasoning? }
 //   The optional rationale fields are persisted to bids.hubbell_match_labels
 //   (the matcher training corpus) — source 'cli_review' for bearer callers,
@@ -17,7 +17,11 @@
 //     hubbell_document_sos row (or skip if one already exists for this pair),
 //     and bump hubbell_documents.match_status to 'confirmed' if it was lower.
 //   - reject: mark suggestion 'rejected'. No write to hubbell_document_sos.
-//   - After the transaction commits, a training label is upserted (best-effort).
+//   - skip: record an ambiguity label only — suggestion stays 'pending', no
+//     write to hubbell_document_sos. Captures the negative/ambiguous training
+//     class. Ignored (no_op) if the suggestion was already decided.
+//   - For accept/reject, a training label is upserted after the transaction
+//     commits (best-effort).
 //
 // Idempotent — re-running with the same action on an already-reviewed
 // suggestion returns the existing status (no double-attach), and still
@@ -89,8 +93,8 @@ export async function POST(
     return NextResponse.json({ error: 'invalid JSON' }, { status: 400 });
   }
   const action = String(body.action ?? '').toLowerCase();
-  if (action !== 'accept' && action !== 'reject') {
-    return NextResponse.json({ error: 'action must be accept|reject' }, { status: 400 });
+  if (action !== 'accept' && action !== 'reject' && action !== 'skip') {
+    return NextResponse.json({ error: 'action must be accept|reject|skip' }, { status: 400 });
   }
 
   // Optional rationale (lenient — bad values are dropped, never 400, so a
@@ -107,6 +111,48 @@ export async function POST(
   }
 
   const db = getDb();
+
+  // skip: record an ambiguity label for the training corpus WITHOUT changing
+  // suggestion state (the pair stays 'pending' — the reviewer made no call).
+  // This captures the negative/ambiguous class the corpus needs. No transaction
+  // needed; nothing is written to hubbell_document_sos.
+  if (action === 'skip') {
+    const found = await db
+      .select({
+        documentId: schema.hubbellDocumentSuggestions.documentId,
+        soId: schema.hubbellDocumentSuggestions.soId,
+        status: schema.hubbellDocumentSuggestions.status,
+      })
+      .from(schema.hubbellDocumentSuggestions)
+      .where(eq(schema.hubbellDocumentSuggestions.id, id))
+      .limit(1);
+
+    if (found.length === 0) {
+      return NextResponse.json({ error: 'suggestion not found' }, { status: 404 });
+    }
+    const s = found[0];
+    if (s.status !== 'pending') {
+      // Already decided — don't clobber the accept/reject label with a skip.
+      return NextResponse.json({ status: s.status, no_op: true });
+    }
+    try {
+      await upsertMatchLabel(db, {
+        documentId: s.documentId,
+        soId: s.soId,
+        label: 'skip',
+        source: labelSource,
+        reasonCode,
+        signals,
+        confidence,
+        reasoning,
+        reviewer,
+        suggestionId: id,
+      });
+    } catch (err) {
+      console.error('[hubbell/review] skip label upsert failed', err);
+    }
+    return NextResponse.json({ status: 'skip' });
+  }
 
   const outcome = await db.transaction(async (tx): Promise<TxOutcome> => {
     const found = await tx
