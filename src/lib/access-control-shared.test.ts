@@ -73,6 +73,90 @@ describe('effectiveCapabilities', () => {
   });
 });
 
+describe('effectiveCapabilities edge cases', () => {
+  it('revoke wins regardless of grant ordering', () => {
+    // Grant + revoke the same cap: revoke should win whether the grant
+    // came from a role default or an explicit grant entry.
+    const fromRole = effectiveCapabilities(['sales'], [], [CAPABILITIES.SALES_VIEW]);
+    const fromGrant = effectiveCapabilities(
+      [],
+      [CAPABILITIES.SALES_VIEW],
+      [CAPABILITIES.SALES_VIEW]
+    );
+    expect(fromRole.has(CAPABILITIES.SALES_VIEW)).toBe(false);
+    expect(fromGrant.has(CAPABILITIES.SALES_VIEW)).toBe(false);
+  });
+
+  it('revoking a capability the user never held is a no-op (no throw)', () => {
+    expect(() =>
+      effectiveCapabilities(['viewer'], [], [CAPABILITIES.ADMIN_USERS_MANAGE])
+    ).not.toThrow();
+    const eff = effectiveCapabilities(['viewer'], [], [CAPABILITIES.ADMIN_USERS_MANAGE]);
+    // viewer's defaults still intact
+    expect(eff.has(CAPABILITIES.SALES_VIEW)).toBe(true);
+  });
+
+  it('grants alone (no role) yield exactly those grants', () => {
+    const eff = effectiveCapabilities(
+      [],
+      [CAPABILITIES.SALES_VIEW, CAPABILITIES.AR_VIEW]
+    );
+    expect(eff.size).toBe(2);
+    expect(eff.has(CAPABILITIES.SALES_VIEW)).toBe(true);
+    expect(eff.has(CAPABILITIES.AR_VIEW)).toBe(true);
+  });
+
+  it('overlapping role defaults do not produce duplicates (set semantics)', () => {
+    // Both 'estimator' and 'estimating' grant the same caps; the result must
+    // still be the union, not a multiset.
+    const eff = effectiveCapabilities(['estimator', 'estimating']);
+    const expected = new Set(ROLE_DEFAULTS.estimator);
+    expect(eff).toEqual(expected);
+  });
+
+  it('does not mutate ROLE_DEFAULTS via the returned set', () => {
+    const before = ROLE_DEFAULTS.sales.length;
+    const eff = effectiveCapabilities(['sales']);
+    // Caller could accidentally mutate the Set; ROLE_DEFAULTS should be unchanged.
+    eff.delete(CAPABILITIES.SALES_VIEW);
+    eff.add(CAPABILITIES.ADMIN_USERS_MANAGE);
+    expect(ROLE_DEFAULTS.sales.length).toBe(before);
+    expect(ROLE_DEFAULTS.sales).toContain(CAPABILITIES.SALES_VIEW);
+    expect(ROLE_DEFAULTS.sales).not.toContain(CAPABILITIES.ADMIN_USERS_MANAGE);
+  });
+
+  it('every role default is a valid (known) capability', () => {
+    // Guards against a role default drifting after a capability rename — the
+    // role would silently grant nothing for that entry without this test.
+    for (const [role, caps] of Object.entries(ROLE_DEFAULTS)) {
+      for (const cap of caps) {
+        expect(
+          ALL_CAPABILITIES.has(cap),
+          `role "${role}" references unknown capability "${cap}"`
+        ).toBe(true);
+      }
+    }
+  });
+
+  it('admin role contains every capability (admin = full access)', () => {
+    expect(new Set(ROLE_DEFAULTS.admin)).toEqual(ALL_CAPABILITIES);
+  });
+
+  it('driver role is narrowly scoped (dispatch.view only) — guard against accidental privilege creep', () => {
+    expect(ROLE_DEFAULTS.driver).toEqual([CAPABILITIES.DISPATCH_VIEW]);
+  });
+
+  it('only ops, management, and admin can bypass branch scoping', () => {
+    // BRANCH_ALL is critical-risk; any new role getting it by default needs
+    // a deliberate decision. If this test breaks, audit who added it.
+    const branchAllRoles = Object.entries(ROLE_DEFAULTS)
+      .filter(([, caps]) => caps.includes(CAPABILITIES.BRANCH_ALL))
+      .map(([role]) => role)
+      .sort();
+    expect(branchAllRoles).toEqual(['admin', 'management', 'ops']);
+  });
+});
+
 describe('hasCapability', () => {
   it('returns false when session is null', () => {
     expect(hasCapability(null, CAPABILITIES.SALES_VIEW)).toBe(false);
