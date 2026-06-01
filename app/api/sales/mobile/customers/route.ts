@@ -21,44 +21,53 @@ export async function GET(req: NextRequest) {
   try {
     const sql = getErpSql();
 
-    // agility_customers has one row per ship-to; collapse to one row per
-    // customer via DISTINCT ON, then count open SOs from agility_so_header
-    // (so_status not invoiced/cancelled). rep_1 is NOT on agility_customers.
-    type Row = {
+    // agility_customers has one row per ship-to; collapse to one per customer
+    // via DISTINCT ON. rep_1 is NOT on agility_customers.
+    type CustRow = {
       cust_code: string;
       cust_name: string | null;
       shipto_city: string | null;
       shipto_state: string | null;
-      open_orders: number;
     };
 
-    const rows = await sql<Row[]>`
-      WITH cust AS (
+    const custRows = await sql<CustRow[]>`
+      SELECT cust_code, cust_name, shipto_city, shipto_state
+      FROM (
         SELECT DISTINCT ON (cust_code) cust_code, cust_name, shipto_city, shipto_state
         FROM agility_customers
         WHERE is_deleted = false
           ${q ? sql`AND (cust_code ILIKE ${'%' + q + '%'} OR cust_name ILIKE ${'%' + q + '%'})` : sql``}
         ORDER BY cust_code, seq_num NULLS LAST
-      )
-      SELECT c.cust_code, c.cust_name, c.shipto_city, c.shipto_state,
-        COALESCE((
-          SELECT COUNT(*)::int FROM agility_so_header soh
-          WHERE soh.is_deleted = false
-            AND TRIM(soh.cust_code) = TRIM(c.cust_code)
-            AND UPPER(COALESCE(soh.so_status,'')) NOT IN ('I','C','X')
-            ${branch ? sql`AND soh.system_id = ${branch}` : sql``}
-        ), 0) AS open_orders
-      FROM cust c
-      ORDER BY c.cust_name ASC NULLS LAST
+      ) c
+      ORDER BY cust_name ASC NULLS LAST
       LIMIT ${limit}
     `;
 
-    const customers: MobileCustomer[] = rows.map((r) => ({
+    // Open-order counts for ONLY the matched customers, in one grouped query.
+    // (The old per-row correlated COUNT(*) scanned agility_so_header up to
+    // `limit` times and 500'd under load.)
+    const codes = custRows.map((r) => r.cust_code.trim());
+    const countMap = new Map<string, number>();
+    if (codes.length > 0) {
+      type CntRow = { cust_code: string; n: number };
+      const cntRows = await sql<CntRow[]>`
+        SELECT TRIM(soh.cust_code) AS cust_code, COUNT(*)::int AS n
+        FROM agility_so_header soh
+        WHERE soh.is_deleted = false
+          AND TRIM(soh.cust_code) = ANY(${codes})
+          AND UPPER(COALESCE(soh.so_status,'')) NOT IN ('I','C','X')
+          ${branch ? sql`AND soh.system_id = ${branch}` : sql``}
+        GROUP BY TRIM(soh.cust_code)
+      `;
+      for (const r of cntRows) countMap.set(r.cust_code, r.n);
+    }
+
+    const customers: MobileCustomer[] = custRows.map((r) => ({
       code: r.cust_code,
       name: r.cust_name,
       city: r.shipto_city,
       state: r.shipto_state,
-      open_orders: r.open_orders,
+      open_orders: countMap.get(r.cust_code.trim()) ?? 0,
     }));
 
     return NextResponse.json({ customers });

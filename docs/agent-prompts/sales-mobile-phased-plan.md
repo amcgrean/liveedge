@@ -51,7 +51,7 @@ search, don't add mirror reads for price/availability.
 - [ ] Stand up the writeback **test-env** path (`AGILITY_API_TEST_URL`) before
       Phase 3.
 
-### Phase 1 — Read endpoints + client wiring  ← **IN PROGRESS (this PR)**
+### Phase 1 — Read endpoints + client wiring  ← **LIVE (merged #474)**
 **Owner: us.** Mirror-backed reads + replace the mobile mock seam.
 
 Web routes (all `requireSessionOrMobile(req,'sales.view')`, branch-scoped):
@@ -72,13 +72,25 @@ Mobile: `src/api/sales.ts` (axios calls + response→shape mappers); `salesMock.
 **Acceptance:** with `EXPO_PUBLIC_BACKEND_URL` set, every Sales screen renders
 live data for a real branch; with it unset, dev mocks still render.
 
-### Phase 2 — Live Agility reads
-**Owner: us → Codex.** Overlay live price/availability + refine status.
-- `GET /api/sales/mobile/items/[code]/availability?branch=` — live
-  `agilityApi.itemPriceAndAvailability()` (price + per-branch on-hand).
-- Enrich order status/timeline from `agility_picks` / `agility_shipments`
-  (picking/staged/out-for-delivery), not just the header code.
-- Mobile item detail + list overlay live price onto the Phase 1 on-hand.
+### Phase 2 — Live price + per-branch availability  ← **LIVE (this PR)**
+**Owner: us.** Key learning: Agility `ItemPriceAndAvailability` **requires a
+CustomerID** (price is customer-specific) and returns one branch per call. So
+the split is:
+- ✅ **Per-branch on-hand from the MIRROR** (`agility_item_branch`, all 4
+  branches) — no customer needed, always shown. `GET /api/sales/mobile/items/[code]/availability`.
+- ✅ **Live PRICE from Agility** only when a customer context exists —
+  `?customer=` or the `SALES_MOBILE_DEFAULT_CUSTOMER` house account. Without
+  one, `priceLive=false` and the screen keeps the Phase 1 mirror value.
+  Batched list overlay: `GET /api/sales/mobile/items/availability?codes=`.
+- ✅ Mobile: item detail overlays per-branch on-hand + live price (Live vs
+  on-hand badge); item list progressively overlays prices and hides the price
+  cell when none is available.
+- ⏳ **Open product decision:** context-free browse pricing. Set
+  `SALES_MOBILE_DEFAULT_CUSTOMER` (a house/walk-in Agility customer id) to show
+  list prices on the Items tab, or leave the tab on-hand-only until a quote/
+  customer flow supplies the customer. **Needs the house-account code.**
+- ⏳ **Deferred:** enrich order status/timeline from `agility_picks` /
+  `agility_shipments` instead of only the header `so_status` code.
 
 ### Phase 3 — Quote & order writeback
 **Owner: us (irreversible — high blast radius).**

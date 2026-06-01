@@ -7,7 +7,8 @@ import { C, S, BRANCHES, BranchCode } from '@/theme/colors';
 import { Icon } from '@/components/ui/Icon';
 import { BigButton } from '@/components/ui/BigButton';
 import { SalesTopBar, LiveBadge, Skel, MONO } from '@/components/sales/kit';
-import { fetchItem, SalesItem } from '@/data/salesMock';
+import { fetchItem, fetchItemAvailability, SalesItem } from '@/data/salesMock';
+import type { ItemAvailability } from '@/api/sales';
 
 export default function ItemDetailScreen() {
   const { code } = useLocalSearchParams<{ code: string }>();
@@ -16,16 +17,19 @@ export default function ItemDetailScreen() {
   const branchCode = (user?.branch || '20GR') as BranchCode;
 
   const [item, setItem] = useState<SalesItem | undefined>();
+  const [avail, setAvail] = useState<ItemAvailability | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
   const [qty, setQty] = useState(24);
 
   const load = async () => {
-    setLoading(true); setError(false);
+    setLoading(true); setError(false); setAvail(null);
     try {
       const it = await fetchItem(String(code));
       if (!it) throw new Error('not found');
       setItem(it);
+      // Phase 2: overlay per-branch on-hand + live price (best-effort).
+      fetchItemAvailability(String(code)).then(setAvail).catch(() => {});
     } catch {
       setError(true);
     } finally {
@@ -34,8 +38,21 @@ export default function ItemDetailScreen() {
   };
   useEffect(() => { load(); }, [code]);
 
-  // Per-branch availability (falls back to a single-branch view).
-  const branches = item?.byBranch || BRANCHES.map((b) => ({ code: b.code, name: b.name, onhand: b.code === branchCode ? item?.onhand || 0 : 0 }));
+  // Live customer price when the ERP returned one, else the Phase 1 mirror price.
+  const live = !!(avail?.priceLive && avail.price != null);
+  const priceStr = live ? avail!.price!.toFixed(2) : (item?.price && item.price !== '—' ? item.price : null);
+
+  // Per-branch on-hand: prefer the live mirror byBranch (named from theme),
+  // else the item's byBranch, else a single-branch fallback.
+  const branches =
+    avail && avail.byBranch.length
+      ? avail.byBranch.map((b) => ({
+          code: b.code,
+          name: BRANCHES.find((x) => x.code === b.code)?.name ?? b.code,
+          onhand: b.onhand ?? 0,
+        }))
+      : item?.byBranch ||
+        BRANCHES.map((b) => ({ code: b.code, name: b.name, onhand: b.code === branchCode ? item?.onhand || 0 : 0 }));
   const stockOk = (item?.onhand || 0) > 0;
 
   if (error) {
@@ -76,13 +93,15 @@ export default function ItemDetailScreen() {
               <Text style={styles.priceLabel}>Your price · {branchCode}</Text>
               {loading ? <Skel w={120} h={30} style={{ marginTop: 6 }} /> : (
                 <View style={styles.priceRow}>
-                  <Text style={styles.priceBig}>${item?.price}</Text>
-                  <Text style={styles.priceUom}>/ {item?.uom}</Text>
+                  <Text style={styles.priceBig}>{priceStr ? `$${priceStr}` : '—'}</Text>
+                  <Text style={styles.priceUom}>/ {(live && avail?.uom) || item?.uom}</Text>
                 </View>
               )}
               {item?.list && <Text style={styles.priceList}>List ${item.list} · <Text style={styles.priceContract}>contract −15%</Text></Text>}
             </View>
-            <LiveBadge label="Live" ago="2s ago" />
+            {live
+              ? <LiveBadge label="Live" ago="now" />
+              : <LiveBadge label="On-hand" ago="cached" tone="stale" />}
           </View>
         </View>
 

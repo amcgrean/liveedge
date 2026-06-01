@@ -138,6 +138,7 @@ export const MOCK_RECENT_ORDERS: SalesOrder[] = MOCK_ORDERS.slice(0, 3);
 // client in src/api/sales.ts. This is the single seam between mock and live.
 import { IS_DEV_MODE } from '@/api/client';
 import { salesApi } from '@/api/sales';
+import type { ItemAvailability } from '@/api/sales';
 
 const wait = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
 
@@ -195,4 +196,15 @@ export async function fetchItem(code: string): Promise<SalesItem | undefined> {
   if (!IS_DEV_MODE) return salesApi.item(code);
   await wait(150);
   return MOCK_ITEMS.find((i) => i.code === code);
+}
+
+// ── Phase 2: live price/availability overlays (no-op in dev mode) ──
+export async function fetchItemAvailability(code: string): Promise<ItemAvailability | null> {
+  if (IS_DEV_MODE) return null; // only meaningful against the live ERP
+  try { return await salesApi.itemAvailability(code); } catch { return null; }
+}
+
+export async function fetchItemPrices(codes: string[]): Promise<Record<string, number>> {
+  if (IS_DEV_MODE) return {};
+  return salesApi.itemPrices(codes);
 }
