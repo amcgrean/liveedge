@@ -7,7 +7,7 @@ import {
   SalesTopBar, SegTabs, StatusPill, Monogram, LiveBadge, EmptyState, Skel, MONO,
 } from '@/components/sales/kit';
 import {
-  fetchCustomer, MOCK_CUSTOMER_ORDERS, SalesCustomer, SalesOrder, ORDER_STATUS_LABEL,
+  fetchCustomerDetail, SalesCustomer, SalesOrder, ORDER_STATUS_LABEL,
 } from '@/data/salesMock';
 
 const TABS = ['Open Orders', 'History', 'Ship-To', 'Contact'];
@@ -15,15 +15,22 @@ const TABS = ['Open Orders', 'History', 'Ship-To', 'Contact'];
 export default function CustomerDetailScreen() {
   const { code } = useLocalSearchParams<{ code: string }>();
   const [cust, setCust] = useState<SalesCustomer | undefined>();
+  const [orders, setOrders] = useState<SalesOrder[]>([]);
   const [tab, setTab] = useState('Open Orders');
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    (async () => { setLoading(true); setCust(await fetchCustomer(String(code))); setLoading(false); })();
+    (async () => {
+      setLoading(true);
+      try {
+        const detail = await fetchCustomerDetail(String(code));
+        setCust(detail.customer);
+        setOrders(detail.orders);
+      } finally {
+        setLoading(false);
+      }
+    })();
   }, [code]);
-
-  // Only the sample customer carries seeded orders; others show the empty state.
-  const orders: SalesOrder[] = cust?.openOrders ? MOCK_CUSTOMER_ORDERS : [];
 
   return (
     <SafeAreaView style={styles.safe}>

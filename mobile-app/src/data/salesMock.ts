@@ -131,10 +131,18 @@ export const MOCK_HOME_KPIS = [
 
 export const MOCK_RECENT_ORDERS: SalesOrder[] = MOCK_ORDERS.slice(0, 3);
 
-// ── "API" helpers — swap these for real calls when the backend lands ──
+// ── "API" helpers — real API when EXPO_PUBLIC_BACKEND_URL is set, else mock ──
+//
+// Screens import these names unchanged. In dev mode (no backend URL) they
+// return the fixtures above; otherwise they delegate to the Bearer-authed
+// client in src/api/sales.ts. This is the single seam between mock and live.
+import { IS_DEV_MODE } from '@/api/client';
+import { salesApi } from '@/api/sales';
+
 const wait = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
 
 export async function fetchCustomers(query = ''): Promise<SalesCustomer[]> {
+  if (!IS_DEV_MODE) return salesApi.customers(query);
   await wait(250);
   const q = query.trim().toLowerCase();
   if (!q) return MOCK_CUSTOMERS;
@@ -144,11 +152,21 @@ export async function fetchCustomers(query = ''): Promise<SalesCustomer[]> {
 }
 
 export async function fetchCustomer(code: string): Promise<SalesCustomer | undefined> {
+  if (!IS_DEV_MODE) return (await salesApi.customerDetail(code)).customer;
   await wait(150);
   return MOCK_CUSTOMERS.find((c) => c.code === code);
 }
 
+/** Customer profile + its open orders, in one call. */
+export async function fetchCustomerDetail(code: string): Promise<{ customer?: SalesCustomer; orders: SalesOrder[] }> {
+  if (!IS_DEV_MODE) return salesApi.customerDetail(code);
+  await wait(200);
+  const customer = MOCK_CUSTOMERS.find((c) => c.code === code);
+  return { customer, orders: customer?.openOrders ? MOCK_CUSTOMER_ORDERS : [] };
+}
+
 export async function fetchOrders(query = ''): Promise<SalesOrder[]> {
+  if (!IS_DEV_MODE) return salesApi.orders(query);
   await wait(250);
   const q = query.trim().toLowerCase();
   if (!q) return MOCK_ORDERS;
@@ -158,11 +176,13 @@ export async function fetchOrders(query = ''): Promise<SalesOrder[]> {
 }
 
 export async function fetchOrder(so: string): Promise<SalesOrder | undefined> {
+  if (!IS_DEV_MODE) return salesApi.order(so);
   await wait(150);
   return MOCK_ORDERS.find((o) => o.so === so);
 }
 
 export async function fetchItems(query = ''): Promise<SalesItem[]> {
+  if (!IS_DEV_MODE) return salesApi.items(query);
   await wait(250);
   const q = query.trim().toLowerCase();
   if (!q) return MOCK_ITEMS;
@@ -172,6 +192,7 @@ export async function fetchItems(query = ''): Promise<SalesItem[]> {
 }
 
 export async function fetchItem(code: string): Promise<SalesItem | undefined> {
+  if (!IS_DEV_MODE) return salesApi.item(code);
   await wait(150);
   return MOCK_ITEMS.find((i) => i.code === code);
 }
