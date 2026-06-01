@@ -10,15 +10,7 @@ import { useOnline } from '@/hooks/useOnline';
 import { useToast } from '@/context/ToastContext';
 import { IS_DEV_MODE } from '@/api/client';
 import { salesApi } from '@/api/sales';
-
-// Ship-to seq is hardcoded to the design mock for now (see Phase 3 follow-up
-// note in new-quote.tsx — needs a real customer + ship-to picker).
-const DRAFT_CUSTOMER = 'C-10428';
-const DRAFT_LINES = [
-  { itemId: 'SPF2X4-92', quantity: 24, uom: 'EA' },
-  { itemId: 'OSB-716-4X8', quantity: 18, uom: 'SHT' },
-  { itemId: 'LVL-11875', quantity: 8, uom: 'EA' },
-];
+import { useDraft } from '@/context/DraftContext';
 
 const SHIP_TOS = [
   { name: 'Jobsite — Hickory Ln', addr: '3402 Hickory Ln, Clive IA', icon: 'pin' as const, seq: 1 },
@@ -26,15 +18,27 @@ const SHIP_TOS = [
   { name: 'Main office', addr: '4220 NW 86th St, Urbandale IA', icon: 'pin' as const, seq: 3 },
 ];
 
+function priceNum(p: string): number {
+  const n = parseFloat(p);
+  return Number.isFinite(n) ? n : 0;
+}
+
 export default function NewOrderScreen() {
   const online = useOnline();
   const { show } = useToast();
+  const { customer, lines, clear } = useDraft();
   const [ship, setShip] = useState(0);
   const [submitting, setSubmitting] = useState(false);
 
+  const subtotal = lines.reduce((s, l) => s + l.qty * priceNum(l.price), 0);
+  const canSubmit = !!customer && lines.length > 0;
+
   const submit = async () => {
+    if (!customer) { show('Choose a customer first', 'error'); return; }
+    if (lines.length === 0) { show('Add at least one item', 'error'); return; }
     // Dev mode: keep the design demo, including the offline-queued variant.
     if (IS_DEV_MODE) {
+      clear();
       router.push(online ? '/(sales)/submitted?kind=order' : '/(sales)/submitted?kind=order&queued=1');
       return;
     }
@@ -45,13 +49,15 @@ export default function NewOrderScreen() {
     setSubmitting(true);
     try {
       const res = await salesApi.createOrder({
-        customer: DRAFT_CUSTOMER,
+        customer: customer.code,
         shipToSequence: SHIP_TOS[ship].seq,
         validate: true,
-        lines: DRAFT_LINES,
+        lines: lines.map((l) => ({ itemId: l.code, quantity: l.qty, uom: l.uom })),
       });
       if (!res.written) { show(res.reason || 'Order writeback is disabled', 'error'); return; }
-      router.replace(`/(sales)/submitted?kind=order&erpId=${encodeURIComponent(res.erpId ?? '')}`);
+      const erpId = res.erpId ?? '';
+      clear();
+      router.replace(`/(sales)/submitted?kind=order&erpId=${encodeURIComponent(erpId)}`);
     } catch (e: any) {
       show(e?.response?.data?.error || 'Could not create order', 'error');
     } finally {
@@ -59,17 +65,33 @@ export default function NewOrderScreen() {
     }
   };
 
+  const itemSummary = lines.length > 0
+    ? `${lines.length} line item${lines.length > 1 ? 's' : ''} · $${subtotal.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+    : 'No items yet';
+
   return (
     <SafeAreaView style={styles.safe}>
       <SalesTopBar back="Cancel" title="New Order" onBack={() => router.back()} />
-      <View style={styles.promo}>
-        <Icon name="swap" size={14} color={C.green} strokeWidth={2.4} />
-        <Text style={styles.promoText}>Promoted from quote Q-2026-0488 · lines carried over</Text>
-      </View>
-      <View style={styles.stepWrap}><StepHeader steps={['Customer', 'Items', 'Delivery', 'Review']} current={2} /></View>
+      <View style={styles.stepWrap}><StepHeader steps={['Customer', 'Items', 'Delivery', 'Review']} current={canSubmit ? 2 : customer ? 1 : 0} /></View>
 
       <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
-        <CustomerChip mono="HC" name="Holstead Construction" sub="C-10428 · 3 line items · $1,168.32" />
+        {customer ? (
+          <CustomerChip mono={customer.mono} name={customer.name} sub={`${customer.code} · ${itemSummary}`} onChange={() => router.push('/(sales)/pick-customer')} />
+        ) : (
+          <TouchableOpacity activeOpacity={0.85} onPress={() => router.push('/(sales)/pick-customer')} style={styles.pickCustomer}>
+            <View style={styles.pickIcon}><Icon name="users" size={22} color={C.green} strokeWidth={2.2} /></View>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.pickTitle}>Choose a customer</Text>
+              <Text style={styles.pickSub}>Search by name or account #</Text>
+            </View>
+            <Icon name="chevronRight" size={20} color={C.text4} />
+          </TouchableOpacity>
+        )}
+
+        <TouchableOpacity activeOpacity={0.85} onPress={() => router.push('/(sales)/pick-item')} style={styles.addItemBtn}>
+          <Icon name="plusCircle" size={20} color={C.green} strokeWidth={2.2} />
+          <Text style={styles.addItemText}>{lines.length > 0 ? `Edit items · ${lines.length}` : 'Add items'}</Text>
+        </TouchableOpacity>
 
         <Text style={styles.label}>SHIP TO</Text>
         <View style={{ gap: 10 }}>
@@ -104,7 +126,7 @@ export default function NewOrderScreen() {
       </ScrollView>
 
       <View style={styles.footer}>
-        <BigButton kind="primary" icon="arrowRight" loading={submitting} onPress={submit}>Review Order</BigButton>
+        <BigButton kind="primary" icon="arrowRight" disabled={!canSubmit} loading={submitting} onPress={submit}>Review Order</BigButton>
       </View>
     </SafeAreaView>
   );
@@ -112,10 +134,14 @@ export default function NewOrderScreen() {
 
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: C.surface },
-  promo: { flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: S.deliverySoft, borderBottomWidth: 1, borderBottomColor: '#b6e6c8', paddingHorizontal: 16, paddingVertical: 7 },
-  promoText: { fontSize: 12.5, fontWeight: '700', color: '#1f6b43' },
   stepWrap: { backgroundColor: '#fff', paddingHorizontal: 16, paddingTop: 12, paddingBottom: 14, borderBottomWidth: 1, borderBottomColor: C.line },
   scroll: { padding: 14, paddingBottom: 40 },
+  pickCustomer: { flexDirection: 'row', alignItems: 'center', gap: 13, padding: 14, backgroundColor: '#fff', borderWidth: 1.5, borderColor: C.green, borderRadius: 14, borderStyle: 'dashed' },
+  pickIcon: { width: 40, height: 40, borderRadius: 20, backgroundColor: C.greenSoft, alignItems: 'center', justifyContent: 'center' },
+  pickTitle: { fontSize: 15.5, fontWeight: '800', color: C.text },
+  pickSub: { fontSize: 12.5, color: C.text3 },
+  addItemBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, marginTop: 14, height: 48, borderRadius: 12, borderWidth: 1.5, borderColor: C.line, backgroundColor: '#fff' },
+  addItemText: { fontSize: 15, fontWeight: '700', color: C.text },
   label: { fontSize: 13, fontWeight: '800', color: C.text3, letterSpacing: 0.6, paddingHorizontal: 2, paddingTop: 18, paddingBottom: 9 },
   shipCard: { flexDirection: 'row', alignItems: 'center', gap: 13, padding: 14, backgroundColor: '#fff', borderWidth: 1.5, borderRadius: 14 },
   shipIcon: { width: 38, height: 38, borderRadius: 10, alignItems: 'center', justifyContent: 'center' },

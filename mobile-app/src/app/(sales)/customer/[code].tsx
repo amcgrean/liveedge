@@ -11,16 +11,22 @@ import {
 } from '@/data/salesMock';
 import { JobNote } from '@/api/jobNotes';
 import { fetchJobNotes } from '@/data/jobNotesMock';
+import { useDraft } from '@/context/DraftContext';
 
 const TABS = ['Open Orders', 'Notes', 'History', 'Ship-To', 'Contact'];
 
 export default function CustomerDetailScreen() {
   const { code } = useLocalSearchParams<{ code: string }>();
+  const { clear, setCustomer } = useDraft();
   const [cust, setCust] = useState<SalesCustomer | undefined>();
   const [orders, setOrders] = useState<SalesOrder[]>([]);
   const [tab, setTab] = useState('Open Orders');
   const [loading, setLoading] = useState(true);
   const [notes, setNotes] = useState<JobNote[]>([]);
+
+  // Start a fresh draft preseeded with this customer.
+  const startQuote = () => { if (cust) { clear(); setCustomer(cust); } router.push('/(sales)/new-quote'); };
+  const startOrder = () => { if (cust) { clear(); setCustomer(cust); } router.push('/(sales)/new-order'); };
 
   useEffect(() => {
     (async () => {
@@ -53,11 +59,11 @@ export default function CustomerDetailScreen() {
           </View>
         </View>
         <View style={styles.actions}>
-          <TouchableOpacity activeOpacity={0.85} onPress={() => router.push('/(sales)/new-quote')} style={[styles.actionBtn, styles.actionPrimary]}>
+          <TouchableOpacity activeOpacity={0.85} onPress={startQuote} style={[styles.actionBtn, styles.actionPrimary]}>
             <Icon name="fileText" size={18} color="#fff" strokeWidth={2.3} />
             <Text style={styles.actionPrimaryText}>New Quote</Text>
           </TouchableOpacity>
-          <TouchableOpacity activeOpacity={0.85} onPress={() => router.push('/(sales)/new-order')} style={[styles.actionBtn, styles.actionSecondary]}>
+          <TouchableOpacity activeOpacity={0.85} onPress={startOrder} style={[styles.actionBtn, styles.actionSecondary]}>
             <Icon name="plusCircle" size={18} color={C.green} strokeWidth={2.2} />
             <Text style={styles.actionSecondaryText}>New Order</Text>
           </TouchableOpacity>
@@ -87,7 +93,7 @@ export default function CustomerDetailScreen() {
       ) : tab !== 'Open Orders' ? (
         <EmptyState icon="info" title={`${tab} coming soon`} body={`This tab is wired to live ERP data when the backend lands. ${tab} for ${cust?.name || 'this customer'} will appear here.`} />
       ) : orders.length === 0 ? (
-        <EmptyState icon="clipboard" title="No open orders" body={`${cust?.name || 'This customer'} has no orders in progress right now. Start a quote or order to get going.`} cta="New Quote" ctaIcon="fileText" onCta={() => router.push('/(sales)/new-quote')} />
+        <EmptyState icon="clipboard" title="No open orders" body={`${cust?.name || 'This customer'} has no orders in progress right now. Start a quote or order to get going.`} cta="New Quote" ctaIcon="fileText" onCta={startQuote} />
       ) : (
         <ScrollView contentContainerStyle={styles.list} showsVerticalScrollIndicator={false}>
           <View style={styles.metaRow}>

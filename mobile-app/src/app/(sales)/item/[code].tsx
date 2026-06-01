@@ -9,11 +9,13 @@ import { BigButton } from '@/components/ui/BigButton';
 import { SalesTopBar, LiveBadge, Skel, MONO } from '@/components/sales/kit';
 import { fetchItem, fetchItemAvailability, SalesItem } from '@/data/salesMock';
 import type { ItemAvailability } from '@/api/sales';
+import { useDraft } from '@/context/DraftContext';
 
 export default function ItemDetailScreen() {
   const { code } = useLocalSearchParams<{ code: string }>();
   const { user } = useAuth();
   const { show } = useToast();
+  const { addItem } = useDraft();
   const branchCode = (user?.branch || '20GR') as BranchCode;
 
   const [item, setItem] = useState<SalesItem | undefined>();
@@ -139,7 +141,14 @@ export default function ItemDetailScreen() {
           <Text style={styles.stepQty}>{qty}</Text>
           <TouchableOpacity style={styles.stepBtn} onPress={() => setQty((q) => q + 1)}><Icon name="plus" size={18} color={C.green} /></TouchableOpacity>
         </View>
-        <BigButton kind="primary" icon="plusCircle" style={{ flex: 1, height: 52 }} onPress={() => { show(`Added ${qty} ${item?.uom} to quote`, 'success'); router.push('/(sales)/new-quote'); }}>Add to Quote</BigButton>
+        <BigButton kind="primary" icon="plusCircle" style={{ flex: 1, height: 52 }} disabled={!item} onPress={() => {
+          if (!item) return;
+          // Use the live price on the draft line when we have it.
+          const draftItem = live && priceStr ? { ...item, price: priceStr } : item;
+          addItem(draftItem, qty);
+          show(`Added ${qty} ${item.uom} to draft`, 'success');
+          router.push('/(sales)/new-quote');
+        }}>Add to Quote</BigButton>
       </View>
     </SafeAreaView>
   );
