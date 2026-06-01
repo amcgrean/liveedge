@@ -30,6 +30,7 @@ const MIN_PHOTOS = 2;
 export default function DeliveryDetailsScreen() {
   const { soNumber, claimable } = useLocalSearchParams<{ soNumber: string; claimable?: string }>();
   const { stop, source, loading: stopLoading, total, idx, refresh: refreshStop } = useStopOrLookup(soNumber);
+  console.log('[Details]', { soNumber, source, hasStop: !!stop, stopLoading });
   const photos = usePhotos(soNumber);
   const online = useOnline();
   const { show } = useToast();

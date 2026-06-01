@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   View,
   Text,
@@ -7,19 +7,86 @@ import {
   ScrollView,
   SafeAreaView,
   Linking,
+  ActivityIndicator,
 } from 'react-native';
 import { useLocalSearchParams, router } from 'expo-router';
 import { Icon } from '@/components/ui/Icon';
 import { C } from '@/theme/colors';
-import { useDriverRoute } from '@/hooks/useDriverRoute';
+import { useStopOrLookup } from '@/hooks/useStopOrLookup';
+import { BigButton } from '@/components/ui/BigButton';
+import { fetchOrderLines, OrderLineRow } from '@/api/dispatch';
+
+function formatMoney(n: number | null): string {
+  if (n == null || Number.isNaN(n)) return '—';
+  return `$${n.toFixed(2)}`;
+}
+
+function formatQty(n: number | null): string {
+  if (n == null || Number.isNaN(n)) return '—';
+  // Integer if it's a clean count, else 2 decimals for fractional UOMs.
+  return Number.isInteger(n) ? String(n) : n.toFixed(2);
+}
 
 export default function CustomerSheetScreen() {
   const { soNumber } = useLocalSearchParams<{ soNumber: string }>();
-  const { stops } = useDriverRoute();
-  const stop = stops.find((s) => s.so === soNumber);
+  const { stop, loading } = useStopOrLookup(soNumber);
 
+  // Live order lines from the dispatch /lines endpoint. Independent of the
+  // mock `stop.orderLines` field so real SOs always show real items.
+  const [lines, setLines] = useState<OrderLineRow[]>([]);
+  const [linesLoading, setLinesLoading] = useState(false);
+  const [linesError, setLinesError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!stop?.so) return;
+    let alive = true;
+    setLinesLoading(true);
+    setLinesError(null);
+    fetchOrderLines(stop.so, stop.branchCode)
+      .then((rows) => {
+        if (!alive) return;
+        setLines(rows);
+      })
+      .catch((err) => {
+        if (!alive) return;
+        setLinesError(err instanceof Error ? err.message : 'Failed to load line items');
+      })
+      .finally(() => {
+        if (!alive) return;
+        setLinesLoading(false);
+      });
+    return () => {
+      alive = false;
+    };
+  }, [stop?.so, stop?.branchCode]);
+
+  // Loading / not-found states render a real UI with a way out instead of
+  // returning null (which looks frozen).
   if (!stop) {
-    return null;
+    return (
+      <View style={styles.backdrop}>
+        <TouchableOpacity
+          style={StyleSheet.absoluteFillObject}
+          activeOpacity={1}
+          onPress={() => router.back()}
+        />
+        <SafeAreaView style={styles.sheet}>
+          <View style={[styles.grabberWrap, { paddingTop: 30, paddingBottom: 30, alignItems: 'center', gap: 12 }]}>
+            <Text style={{ fontSize: 16, fontWeight: '700', color: C.text }}>
+              {loading ? 'Loading order…' : 'Order details not available'}
+            </Text>
+            {!loading && (
+              <Text style={{ fontSize: 13, color: C.text3, textAlign: 'center', paddingHorizontal: 20 }}>
+                We couldn’t load contents for SO# {soNumber}. The order header may not be reachable from this branch.
+              </Text>
+            )}
+            <BigButton kind="primary" onPress={() => router.back()} style={{ marginTop: 6 }}>
+              Back to delivery
+            </BigButton>
+          </View>
+        </SafeAreaView>
+      </View>
+    );
   }
 
   const dial = (phone?: string) => {
@@ -110,41 +177,82 @@ export default function CustomerSheetScreen() {
             </View>
           )}
 
-          {/* Order lines */}
-          {stop.orderLines && stop.orderLines.length > 0 && (
-            <View style={styles.linesSection}>
-              <View style={styles.linesHeader}>
-                <Text style={styles.linesTitle}>Order line items</Text>
-                <Text style={styles.linesCount}>{stop.orderLines.length} items</Text>
-              </View>
-              <View style={styles.linesCard}>
-                {stop.orderLines.map((l, i) => (
-                  <View
-                    key={l.code}
-                    style={[
-                      styles.lineRow,
-                      i < stop.orderLines!.length - 1 && styles.lineRowBorder,
-                    ]}
-                  >
-                    <Text style={styles.lineQty}>{l.qty}</Text>
-                    <View style={{ flex: 1, minWidth: 0 }}>
-                      <Text style={styles.lineDesc} numberOfLines={1}>
-                        {l.desc}
-                      </Text>
-                      <Text style={styles.lineCode}>{l.code}</Text>
-                    </View>
-                    <Text style={styles.lineWt}>{l.wt}</Text>
-                  </View>
-                ))}
-              </View>
-              {stop.totalWeight && (
-                <View style={styles.totalRow}>
-                  <Text style={styles.totalLabel}>Total weight</Text>
-                  <Text style={styles.totalValue}>{stop.totalWeight}</Text>
-                </View>
+          {/* Order lines — real data from /api/dispatch/orders/[so]/lines */}
+          <View style={styles.linesSection}>
+            <View style={styles.linesHeader}>
+              <Text style={styles.linesTitle}>Order line items</Text>
+              {!linesLoading && (
+                <Text style={styles.linesCount}>
+                  {lines.length} {lines.length === 1 ? 'item' : 'items'}
+                </Text>
               )}
             </View>
-          )}
+            {linesLoading ? (
+              <View style={[styles.linesCard, { padding: 28, alignItems: 'center' }]}>
+                <ActivityIndicator color={C.green} />
+              </View>
+            ) : linesError ? (
+              <View style={[styles.linesCard, { padding: 18 }]}>
+                <Text style={{ fontSize: 13, color: C.err, fontWeight: '600' }}>
+                  Couldn’t load line items: {linesError}
+                </Text>
+              </View>
+            ) : lines.length === 0 ? (
+              <View style={[styles.linesCard, { padding: 18 }]}>
+                <Text style={{ fontSize: 13, color: C.text3 }}>
+                  No line items returned for this SO.
+                </Text>
+              </View>
+            ) : (
+              <View style={styles.linesCard}>
+                {lines.map((l, i) => {
+                  const key = `${l.sequence ?? i}-${l.item_code ?? i}`;
+                  const ext = l.extended_price ?? null;
+                  const uom = l.uom?.trim() || '';
+                  return (
+                    <View
+                      key={key}
+                      style={[
+                        styles.lineRow,
+                        i < lines.length - 1 && styles.lineRowBorder,
+                      ]}
+                    >
+                      <View style={{ minWidth: 56, alignItems: 'flex-end' }}>
+                        <Text style={styles.lineQty}>{formatQty(l.qty_ordered)}</Text>
+                        {uom ? (
+                          <Text style={{ fontSize: 10, color: C.text4, fontWeight: '700', letterSpacing: 0.4, marginTop: 2 }}>
+                            {uom}
+                          </Text>
+                        ) : null}
+                      </View>
+                      <View style={{ flex: 1, minWidth: 0 }}>
+                        <Text style={styles.lineDesc} numberOfLines={2}>
+                          {l.description ?? '—'}
+                        </Text>
+                        <Text style={styles.lineCode}>
+                          {l.item_code ?? '—'}
+                          {l.size ? ` · ${l.size}` : ''}
+                        </Text>
+                      </View>
+                      <Text style={styles.lineWt}>{formatMoney(ext)}</Text>
+                    </View>
+                  );
+                })}
+                {(() => {
+                  const subtotal = lines.reduce(
+                    (sum, l) => sum + (l.extended_price ?? 0),
+                    0
+                  );
+                  return subtotal > 0 ? (
+                    <View style={styles.totalRow}>
+                      <Text style={styles.totalLabel}>Subtotal</Text>
+                      <Text style={styles.totalValue}>{formatMoney(subtotal)}</Text>
+                    </View>
+                  ) : null;
+                })()}
+              </View>
+            )}
+          </View>
         </ScrollView>
       </SafeAreaView>
     </View>
