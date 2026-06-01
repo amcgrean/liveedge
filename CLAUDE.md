@@ -1478,6 +1478,12 @@ When the accounting AR view is built, add it under a dedicated route (e.g. `/acc
 - `AUTH_OTP_CONSOLE` — Print OTP codes to server console instead of emailing (`true`/`false`). Use in local dev when Resend isn't configured.
 - `SESSION_COOKIE_SECURE` — Secure flag on session cookie (`true` in prod, `false` in dev)
 
+### Observability (Sentry — Tier 2.3, 2026-06-01)
+All optional — without these set, Sentry is a complete no-op (no captures, no overhead). The structured logger (`src/lib/log.ts`) still emits JSON to `console.*` either way, so Vercel logs are searchable in production regardless.
+- `SENTRY_DSN` — server-side / nodejs+edge runtime DSN. Enable to capture server errors/warnings.
+- `NEXT_PUBLIC_SENTRY_DSN` — browser bundle DSN (separate project in Sentry, separate quotas).
+- `SENTRY_ORG` / `SENTRY_PROJECT` / `SENTRY_AUTH_TOKEN` — build-time only. Wrapping `next.config.ts` with `withSentryConfig` activates only when all three are present, so missing these = sourcemap upload skipped, build still succeeds.
+
 ## Navigation Structure
 Current structure as of 2026-05-26 (6 domain dropdowns + user dropdown; Design is inside Services):
 - **Yard ▾**: Picks Board, Open Picks, Picker Stats, Work Orders, Supervisor (all `/warehouse/*` paths, label renamed from "Warehouse")

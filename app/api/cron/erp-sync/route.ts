@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { runErpSync } from '../../../../src/lib/erp-sync';
 import { verifyCronSignature } from '../../../../src/lib/service-auth';
+import { log } from '../../../../src/lib/log';
 
 // GET /api/cron/erp-sync
 // Vercel Cron endpoint for scheduled ERP sync.
@@ -14,7 +15,7 @@ export async function GET(req: NextRequest) {
     const result = await runErpSync({});
     return NextResponse.json(result);
   } catch (err) {
-    console.error('[cron/erp-sync]', err);
+    log.error('cron.erp_sync.failed', err);
     return NextResponse.json({
       error: 'Sync failed',
       details: err instanceof Error ? err.message : 'Unknown error',

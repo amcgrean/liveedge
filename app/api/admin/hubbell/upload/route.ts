@@ -21,6 +21,7 @@ import { matchDocumentToSos } from '../../../../../src/lib/hubbell/document-matc
 import { normalizeDocNumber } from '../../../../../src/lib/hubbell/po-number-parser';
 import { refreshPaymentRollupForDoc } from '../../../../../src/lib/hubbell/payment-rollup';
 import { normalizeLineItems, parseNumberToString, parseDateOrNull } from '../../../../../src/lib/hubbell/metadata-normalize';
+import { log } from '../../../../../src/lib/log';
 
 export const runtime = 'nodejs';
 // 10 MB cap — large Hubbell PDFs would be exceptional
@@ -121,7 +122,7 @@ export async function POST(req: NextRequest) {
   try {
     await putHubbellPdf(r2Key, bytes);
   } catch (err) {
-    console.error('[hubbell upload] R2 put failed', err);
+    log.error('hubbell.upload.r2_put_failed', err, { r2Key, docType, docNumber });
     return NextResponse.json({ error: 'PDF storage failed' }, { status: 502 });
   }
 
@@ -204,7 +205,7 @@ export async function POST(req: NextRequest) {
   try {
     await refreshPaymentRollupForDoc(db, doc.id);
   } catch (err) {
-    console.error('[hubbell upload] payment rollup refresh failed', err);
+    log.error('hubbell.upload.payment_rollup_failed', err, { docType, docNumber });
   }
 
   // Run the matcher.
@@ -251,7 +252,7 @@ export async function POST(req: NextRequest) {
     }
   } catch (err) {
     // Matcher failure must not block ingest — the document is already stored.
-    console.error('[hubbell upload] matcher failed', err);
+    log.error('hubbell.upload.matcher_failed', err, { docType, docNumber });
   }
 
   return NextResponse.json({

@@ -244,7 +244,7 @@ describe('ReturnCode handling', () => {
     expect(res.ReturnCode).toBe(0);
   });
 
-  it('ReturnCode 1 is a warning — still resolves, console.warn invoked', async () => {
+  it('ReturnCode 1 is a warning — still resolves, log.warn invoked (writes to console.warn under the hood)', async () => {
     const env = makeFetchMock();
     env.pushLoginOk();
     env.pushResponse({ response: { ReturnCode: 1, MessageText: 'check this' } });
@@ -254,6 +254,10 @@ describe('ReturnCode handling', () => {
     const res = await agilityApi.salesOrderHeaderUpdate(1, 'X');
     expect(res.ReturnCode).toBe(1);
     expect(warn).toHaveBeenCalled();
+    // The structured logger emits a JSON line; the event name `agility.rc1`
+    // should appear in it.
+    const line = String(warn.mock.calls[0][0]);
+    expect(line).toContain('agility.rc1');
   });
 
   it('ReturnCode 2 throws AgilityApiError', async () => {

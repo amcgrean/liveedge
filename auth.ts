@@ -2,6 +2,7 @@ import NextAuth from 'next-auth';
 import Credentials from 'next-auth/providers/credentials';
 import { z } from 'zod';
 import { effectiveCapabilities } from './src/lib/access-control';
+import { log } from './src/lib/log';
 
 // ─── Input schema ─────────────────────────────────────────────────────────────
 // All users authenticate via OTP — identifier can be a username or email,
@@ -85,7 +86,12 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
           `;
 
           if (userRows.length === 0) {
-            console.warn('[auth/otp] user not found in app_users for', input);
+            // Expected control flow — mistyped username, credential stuffing.
+            // Use log.info so this does NOT forward to Sentry. We still want
+            // the identifier in the structured log so an operator can
+            // debug "why can't user X log in", but we don't want every
+            // bad-username attempt becoming a Sentry warning event.
+            log.info('auth.otp.user_not_found', { identifier: input });
             return null;
           }
 
@@ -104,12 +110,16 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
           `;
 
           if (otpRows.length === 0) {
-            console.warn('[auth/otp] no valid code for', email);
+            // Expected control flow — code expired or already used. Don't
+            // forward to Sentry (would be noisy + leak email PII).
+            log.info('auth.otp.no_valid_code', { email });
             return null;
           }
 
           if (otpRows[0].code !== otp_code.trim()) {
-            console.warn('[auth/otp] code mismatch for', email);
+            // Expected control flow — user mistyped the code. Don't
+            // forward to Sentry (noise + PII).
+            log.info('auth.otp.code_mismatch', { email });
             return null;
           }
 
@@ -135,7 +145,7 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
             capabilities,
           };
         } catch (err) {
-          console.error('[auth] authorize error:', err);
+          log.error('auth.authorize.failed', err);
           return null;
         }
       },
