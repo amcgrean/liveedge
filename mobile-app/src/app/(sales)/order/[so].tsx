@@ -8,6 +8,7 @@ import { BigButton } from '@/components/ui/BigButton';
 import { fetchOrder, SalesOrder, ORDER_STATUS_LABEL, OrderLine } from '@/data/salesMock';
 import { JobNote } from '@/api/jobNotes';
 import { fetchJobNotes } from '@/data/jobNotesMock';
+import { useDraft, monogramFor, toneFor } from '@/context/DraftContext';
 
 type StepState = 'done' | 'active' | 'todo';
 function TimelineStep({ icon, label, time, state, last }: { icon: IconName; label: string; time: string; state: StepState; last?: boolean }) {
@@ -33,9 +34,24 @@ const FILL_META: Record<NonNullable<OrderLine['fill']>, ['full' | 'partial' | 'b
 
 export default function OrderStatusScreen() {
   const { so } = useLocalSearchParams<{ so: string }>();
+  const { seed } = useDraft();
   const [order, setOrder] = useState<SalesOrder | undefined>();
   const [loading, setLoading] = useState(true);
   const [notes, setNotes] = useState<JobNote[]>([]);
+
+  // Copy this order's customer + lines into a fresh quote draft.
+  const copyToQuote = () => {
+    if (!order) { router.push('/(sales)/new-quote'); return; }
+    const custName = order.cust || order.custCode || 'Customer';
+    const customer = order.custCode
+      ? { code: order.custCode, name: custName, city: '', mono: monogramFor(custName), tone: toneFor(order.custCode) }
+      : null;
+    const lines = (order.lines || []).map((l) => ({
+      code: l.code, desc: l.desc, uom: l.uom, price: l.price, qty: parseInt(l.qty, 10) || 1,
+    }));
+    seed(customer, lines);
+    router.push('/(sales)/new-quote');
+  };
 
   useEffect(() => {
     (async () => { setLoading(true); setOrder(await fetchOrder(String(so))); setNotes(await fetchJobNotes({ so: String(so), limit: 3 })); setLoading(false); })();
@@ -150,7 +166,7 @@ export default function OrderStatusScreen() {
 
         {/* Actions */}
         <BigButtonRow>
-          <BigButton kind="secondary" icon="fileText" style={styles.actBtn} onPress={() => router.push('/(sales)/new-quote')}>Copy to Quote</BigButton>
+          <BigButton kind="secondary" icon="fileText" style={styles.actBtn} onPress={copyToQuote}>Copy to Quote</BigButton>
           <BigButton kind="primary" icon="phone" style={styles.actBtn}>Call yard</BigButton>
         </BigButtonRow>
       </ScrollView>

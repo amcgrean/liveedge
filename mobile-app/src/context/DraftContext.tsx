@@ -27,7 +27,21 @@ interface DraftState {
   addItem: (it: SalesItem, qty?: number) => void;
   setQty: (code: string, qty: number) => void;
   removeLine: (code: string) => void;
+  /** Replace the whole draft at once (e.g. copy-to-quote from an order). */
+  seed: (customer: DraftCustomer | null, lines: DraftLine[]) => void;
   clear: () => void;
+}
+
+// Build the monogram + a stable accent from a name (matches the API mapper).
+const SEED_TONES = ['#006834', '#2563eb', '#d97706', '#475569', '#0a8a4a'];
+export function monogramFor(name: string): string {
+  if (!name) return '··';
+  return name.split(/\s+/).filter(Boolean).map((p) => p[0]).join('').slice(0, 2).toUpperCase();
+}
+export function toneFor(key: string): string {
+  let h = 0;
+  for (let i = 0; i < key.length; i++) h = (h * 31 + key.charCodeAt(i)) >>> 0;
+  return SEED_TONES[h % SEED_TONES.length];
 }
 
 const DraftContext = createContext<DraftState | undefined>(undefined);
@@ -58,13 +72,18 @@ export function DraftProvider({ children }: { children: ReactNode }) {
     setLines((ls) => ls.filter((l) => l.code !== code));
   }, []);
 
+  const seed = useCallback((c: DraftCustomer | null, ls: DraftLine[]) => {
+    setCustomerState(c);
+    setLines(ls);
+  }, []);
+
   const clear = useCallback(() => {
     setCustomerState(null);
     setLines([]);
   }, []);
 
   return (
-    <DraftContext.Provider value={{ customer, lines, setCustomer, addItem, setQty, removeLine, clear }}>
+    <DraftContext.Provider value={{ customer, lines, setCustomer, addItem, setQty, removeLine, seed, clear }}>
       {children}
     </DraftContext.Provider>
   );
