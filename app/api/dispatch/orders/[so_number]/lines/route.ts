@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '../../../../../../auth';
+import { getMobileSession } from '../../../../../../src/lib/mobile-auth';
 import { getErpSql } from '../../../../../../db/supabase';
 
 export interface OrderLine {
@@ -22,7 +23,7 @@ export async function GET(
   req: NextRequest,
   { params }: { params: Promise<{ so_number: string }> }
 ) {
-  const session = await auth();
+  const session = (await getMobileSession(req)) ?? (await auth());
   if (!session?.user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
   const { so_number } = await params;

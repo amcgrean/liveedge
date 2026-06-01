@@ -94,8 +94,9 @@ export function useStopOrLookup(soNumber: string): UseStopOrLookupResult {
       setLookupError(null);
       return;
     }
+    console.log('[useStopOrLookup] fetching lookup for', soNumber);
     fetchLookup();
-  }, [routeLoading, isOnRoute, fetchLookup]);
+  }, [routeLoading, isOnRoute, fetchLookup, soNumber]);
 
   if (onRoute) {
     return {

@@ -20,6 +20,38 @@ export interface OrderLookupStop {
   branch_code?: string;
 }
 
+export interface OrderLineRow {
+  sequence: number | null;
+  item_code: string | null;
+  description: string | null;
+  size: string | null;
+  qty_ordered: number | null;
+  qty_shipped: number | null;
+  qty_on_hand: number | null;
+  price: number | null;
+  uom: string | null;
+  handling_code: string | null;
+  extended_price: number | null;
+  unshipped_extended_price: number | null;
+}
+
+/**
+ * Fetch line items for an SO from the dispatch /lines endpoint. Branch is
+ * required by the server to scope inventory; if omitted the caller's
+ * session branch is used server-side.
+ */
+export async function fetchOrderLines(soNumber: string, branchCode?: string): Promise<OrderLineRow[]> {
+  if (IS_DEV_MODE) {
+    await new Promise((resolve) => setTimeout(resolve, 200));
+    return [];
+  }
+  const res = await client.get<{ lines: OrderLineRow[] }>(
+    `/api/dispatch/orders/${encodeURIComponent(soNumber)}/lines`,
+    { params: branchCode ? { branch: branchCode } : undefined }
+  );
+  return res.data?.lines ?? [];
+}
+
 export interface AgilityShipmentInfo {
   shipment_num: number;
   ship_date: string | null;
