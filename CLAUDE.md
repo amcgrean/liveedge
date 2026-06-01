@@ -1498,29 +1498,36 @@ Current structure as of 2026-05-26 (6 domain dropdowns + user dropdown; Design i
 - `isActive()` per domain handles path prefix matching
 - `BRANCH_COLORS` constant maps branch codes to Tailwind color tokens; dot indicator always shown (no MapPin fallback)
 
-## Mobile App — Driver POD (2026-05-28 → 2026-05-29) — PHASES 1–4 LIVE
+## Mobile App — Driver POD + Sales (2026-05-28 → 2026-05-31) — PHASES 1–5 LIVE + SO LOOKUP + SALES
 
-New Expo SDK 54 React Native app at `mobile-app/` (top-level dir, intentionally independent from the Next.js web app). Built for Beisser delivery drivers to capture proof-of-delivery photos + mark deliveries from the field with full offline support. PRs #445 + #454 merged to main.
+Expo SDK 54 React Native app at `mobile-app/`, intentionally independent from the Next.js web app. Two role-gated experiences in one binary: driver POD + sales lookup/quote/order. PRs #445, #454, #456 (Phase 5), #457 (SO lookup), #469 (Agility shipment), #473 (sales), #475 (numpad + line items), #477 (pricing gate + UOM) all merged.
 
-**Working today (dev mode only, no real backend yet):**
-- 11 screens — Splash, Login, OTP, Branch picker, Route list, Delivery details, Camera, Customer sheet, Route complete, Sync queue, Profile
-- Dev auth: any username + code `000000` (gated on `IS_DEV_MODE = !process.env.EXPO_PUBLIC_BACKEND_URL`)
-- Persistent POD photos via `expo-file-system/legacy` to `documentDirectory/pod-photos/`
-- AsyncStorage outbox with 5-attempt exponential backoff `[1s, 5s, 30s, 60s, 5m]`
-- Sync engine triggers: NetInfo offline→online flip, outbox enqueue, 30s heartbeat
-- Toast notifications, real online/offline state via `@react-native-community/netinfo`
-- Real Sync Queue UI with Retry/Retry All (resets `attempts` to 0)/Discard
-- Successful sync deletes photo files + outbox record (no disk leak)
+**Live in prod against `app.beisser.cloud`:**
+- **Auth:** OTP via `POST /api/auth/send-otp` → `POST /api/auth/mobile/verify-otp` returns a JWT signed with the same `AUTH_SECRET` as NextAuth. Mobile-only counterpart added to the route-guards `public` allowlist.
+- **`src/lib/mobile-auth.ts`** ships `signMobileToken` / `verifyMobileToken` / `getMobileSession` / `requireSessionOrMobile`. The combined guard accepts NextAuth cookie OR Bearer JWT and is in the `guardPatterns` allowlist.
+- **Dispatch routes:** `GET /api/dispatch/routes?include=stops`, `POST /orders/[so]/deliver`, `POST /orders/[so]/pod`, `POST /orders/[so]/pod/upload-url` (R2 presigned PUT), `GET /orders/[so]` + `POST /claim` (SO lookup + ad-hoc per-user-per-day stops), `GET /orders/[so]/lines` (with pricing gate + UOM JOIN).
+- **Driver POD flow:** assigned stops list → delivery details → camera (≥2 photos, persisted to `documentDirectory/pod-photos/`) → two-phase sync (presigned R2 PUTs + `/deliver` POST with `photo_keys[]`). Outbox is resumable per-photo via `photoUploads[]`. Synced rows are removed + photo files deleted.
+- **SO lookup flow:** magnifying-glass icon on `AppStatusBar` → custom 3×4 numpad screen (no OS keyboard — avoids a freeze where the keyboard stayed up over `router.replace`'d screens) → looks up via `/orders/[so]` → result card shows pill (OPEN/STAGED/IN TRANSIT/DELIVERED/INVOICED via `describeAssignment`) + "Staged to <driver> · ship M/D/YYYY" line + customer/address/branch/PO/ref/line_count. If unassigned, "Take this stop" claim button creates ad-hoc dispatch stop server-side. Claim required before POD actions enable.
+- **Customer sheet** at `/(app)/[soNumber]/customer` fetches real line items from `/orders/[so]/lines` and renders qty + UOM ("Each"/"BF") + desc + item_code + optional $ext + Subtotal.
+- **Sales experience** (PR #473, role-gated via `RoleContext`): tabs (Home, Orders, Customers, Items, Profile), customer/item/order detail screens, new order + new quote flows. Single-role users land directly; dual-role users hit `role-switch`.
 
-**Architecture rules — preserve these in Phase 5+:**
-- `src/storage/{outbox,sync,photoFS}.ts` are React-free — never import context into storage modules
-- Token plumbing must go through a standalone `src/api/authToken.ts` module (Phase 5 to build) — AuthContext writes, dispatch/sync reads
-- `EXPO_PUBLIC_*` env prefix is mandatory (Expo strips others from device bundles)
-- Mobile and Next.js web TS configs are separated: root `tsconfig.json` excludes `"mobile-app"` so the Vercel build never typechecks RN code. **Don't remove that exclude** — RN globals (`global.__DEV__`) and modules (`expo-camera`, etc.) break Next.js typecheck.
+**Capability gates:**
+- `dispatch.view` — driver route + lookup + claim + deliver (driver role grants by default)
+- `sales.view` — sales experience + SO lookup (`/orders/[so]` accepts either)
+- `pricing.view` — server-strips `price`/`extended_price` to null when missing; returns `pricing_visible: boolean`. Default grants: admin/management/sales/supervisor/ops/estimator/estimating/purchasing. NOT granted to driver/dispatch/warehouse/receiving_yard/designer/hubbell/viewer. **Server-side strip — bytes never reach the device.** Web users typically gated by route entirely, but mixed-role endpoints (any Bearer-reachable route) need the same approach.
 
-**Phase 5 (real backend wiring) prompt:** `docs/agent-prompts/mobile-app-phase-5-real-backend.md` — self-contained, hand to next agent. Covers: new `/api/auth/mobile/verify-otp` JWT endpoint + Bearer middleware on web side, mobile token plumbing, `useDriverRoute()` hook + `routeMapper`, two-phase POD upload (presigned PUT → POST deliver) with resumable photo state. **Drivers may need `dispatch.view` capability granted** — verify via `ROLE_DEFAULTS` before Phase 5.
+**Offline outbox architecture — preserve in any new flow:**
+- `src/storage/{outbox,sync,photoFS}.ts` are React-free — never import context. Token plumbing goes through `src/api/authToken.ts` (AuthContext writes, axios interceptor + sync engine read).
+- `OutboxItem.photoUploads?: { uri, remoteKey?, uploaded }[]` enables resumable retry — a crash mid-upload doesn't cost already-uploaded photos.
+- AsyncStorage outbox, 5-attempt backoff `[1s, 5s, 30s, 60s, 5m]`. Sync triggers: NetInfo offline→online, outbox enqueue, 30s heartbeat.
+- Photo cleanup runs only after the deliver POST returns 2xx, not after the photo PUTs.
+- `useStopOrLookup` hook merges `useDriverRoute()` (assigned stops) with on-demand `/orders/[so]` fetch — screens consume one DriverStop-shaped object.
 
-**Deferred features** (also noted in `mobile-app/README.md`): rich per-job site contacts table (Agility doesn't carry foreman/gate-code data; needs a new `job_contacts` table in LiveEdge web for estimators to fill in per SO), real maps, signature capture, barcode scan.
+**`EXPO_PUBLIC_*` env prefix is mandatory** (Expo strips others). Root `tsconfig.json` excludes `"mobile-app"` so the Vercel build never typechecks RN code — **don't remove that exclude**.
+
+**Phase 5 handoff doc:** `mobile-app/PHASE_5_HANDOFF.md` — current state, Phase 5 follow-ups (POD photo persistence table, real line counts in route response, photo concurrency, image compression), Phase 6 plan (real maps + GPS-aware ETAs).
+
+**Deferred:** rich per-job site contacts (`job_contacts` table on web), real maps + GPS ETAs (Phase 6), signature capture, barcode scan, background location tracking (App Store review).
 
 ## Key Conventions
 - Path alias: `@/*` → `./src/*`, `@/db/*` → `./db/*` (but API routes use relative paths for db imports)

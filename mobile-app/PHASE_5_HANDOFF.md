@@ -1,15 +1,17 @@
-# Mobile App — Phase 5 Complete, Phase 6 Handoff
+# Mobile App — Phase 5 + SO Lookup + Sales Live · Phase 6 Handoff
 
-> Current as of 2026-05-30 after PR #456 (Phase 5 — real backend wiring).
-> Replaces the prior Phase 5 handoff. The full Phase 1–4 history is in
-> `PHASE_4_HANDOFF.md`.
+> Current as of 2026-06-01 after PRs #456 / #457 / #469 / #473 / #475 / #477.
+> Replaces the prior Phase 5 handoff. Full Phase 1–4 history in `PHASE_4_HANDOFF.md`.
 
 ## TL;DR
 
-Phases 1–5 are all in `main`. The Expo driver app talks to real LiveEdge
-backend endpoints for auth, route fetching, and POD upload while keeping
-the Phase 4 offline outbox intact. Dev mode (`000000` login, `MOCK_STOPS`)
-still works when `EXPO_PUBLIC_BACKEND_URL` is unset.
+Phases 1–5 + SO lookup + claim + sales experience + pricing capability gate
+all in `main` and live against `app.beisser.cloud`. The Expo app is a single
+binary with a role-switcher (`RoleContext`) gating two experiences: driver
+POD and sales lookup/quote/order.
+
+Dev mode (`000000` login + `MOCK_STOPS`) still works when `EXPO_PUBLIC_BACKEND_URL`
+is unset, so any future agent can hack offline.
 
 Phase 6 is real maps + GPS-aware ETAs.
 
@@ -22,6 +24,11 @@ Phase 6 is real maps + GPS-aware ETAs.
 | 3 — Mark delivered/skipped | ✅ | toasts, Sync Queue, photoStore |
 | 4 — Offline outbox + sync engine | ✅ | AsyncStorage outbox, 5-attempt backoff, post-sync cleanup |
 | 5 — Real backend wiring | ✅ (PR #456) | JWT auth, real routes, two-phase POD upload, reconciliation |
+| 5+ — SO lookup + claim | ✅ (PR #457) | Search icon → numpad → `/orders/[so]` lookup → claim creates ad-hoc per-user-per-day stop |
+| 5+ — Agility-side dispatch reality | ✅ (PR #469) | Lookup joins `agility_shipments` for real driver/ship_date/route_id_char (dispatch_route_stops mostly empty for real loads) |
+| 5+ — Sales experience | ✅ (PR #473) | Role-gated; tabs Home/Orders/Customers/Items/Profile; new order + quote flows; role-switch screen |
+| 5+ — Numpad + customer line items | ✅ (PR #475) | Custom big-button numpad (no OS keyboard = no freeze on `router.replace`). Customer sheet fetches real `/orders/[so]/lines` |
+| 5+ — Pricing cap gate + UOM labels | ✅ (PR #477) | `pricing.view` capability strips $ server-side for drivers. JOIN `agility_items.display_uom` to show "Each"/"BF" instead of FK pointer |
 
 ### Phase 5 — what landed
 
@@ -64,6 +71,10 @@ These were discovered during Phase 5 implementation. None are blockers for shipp
 4. **`MockStop.items` is hardcoded to 0 in real mode.** Server response doesn't carry line counts. Either join `agility_so_lines` for a count on the route fetch or fetch lazily per-stop when the user expands a card.
 5. **Per-photo upload concurrency.** Currently sequential. With 5 photos × 2 MB the slowest path is ~5–10 s on a marginal LTE connection. Could parallelize 2–3 at a time later.
 6. **Photo size cap / compression.** `expo-camera` produces full-resolution JPEGs (~3–5 MB each). Consider an in-app compress-before-upload step (`expo-image-manipulator`) to keep PUT durations bounded.
+7. **UOM master mirror.** Customer-sheet fix uses `agility_items.display_uom` + numeric-only suppression. Full fix is mirroring Agility's UOM master into `public.agility_uoms` (Pi sync agent) then sweeping the web for raw `price_uom_ptr` rendering. CLAUDE.md Pending Action #18.
+8. **Pricing capability sweep.** `pricing.view` gate is on `/orders/[so]/lines` only. Other `$`-returning endpoints reachable from a Bearer token (`/api/sales/orders/[so]`, `/api/warehouse/orders/[so]`, dispatch timeline, scorecard, etc.) should mirror the strip-on-server pattern. CLAUDE.md Pending Action #19.
+9. **JWT cap freshness.** Capability list is baked into the JWT at login. When a new capability is added (like `pricing.view`), existing tokens don't carry it — users have to sign out + back in. No refresh-token flow today; if cap turnover becomes a thing, add one.
+10. **Route-list refresh on focus.** `useDriverRoute` fetches on mount + pull-to-refresh, but doesn't refetch when the screen regains focus. A driver returning from the customer sheet sees cached data. Wire `useFocusEffect` if staleness becomes an issue.
 
 ## Phase 6 — Real Maps + GPS-Aware ETAs
 
