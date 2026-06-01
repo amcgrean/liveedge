@@ -31,9 +31,11 @@ Auth: `Bearer HUBBELL_UPLOAD_TOKEN` (PC/local) **or** session `hubbell.review`.
 
 ```jsonc
 { "labels": [ {
-  "document_id": "<uuid>",        // OR doc_type + doc_number (must be unambiguous)
+  "document_id": "<uuid>",        // OR doc_type + doc_number
   "doc_type": "po" | "wo",
   "doc_number": "1612",
+  "ship_to_address_hint": "1618 Garland Ave", // optional — disambiguates reused
+                                  //   doc numbers (see below)
   "so_id": 16028,                 // required
   "label": "accept"|"reject"|"skip",  // required
   "source": "cash_app_gui",       // required
@@ -47,11 +49,35 @@ Auth: `Bearer HUBBELL_UPLOAD_TOKEN` (PC/local) **or** session `hubbell.review`.
 } ] }
 ```
 
-Up to 1000 labels/request. Response: `{ ok, failed, results: [{ index, status,
-document_id?, so_id?, error? }] }`. 422 only when *every* row failed; partial
-failures return 200 with per-row errors. Resolving `doc_type`+`doc_number` to a
-`document_id` is supported but **refused when ambiguous** (Hubbell reuses doc
-numbers across jobs — pass `document_id` when you have it).
+Up to 1000 labels/request. Response: `{ ok, failed, warnings, results: [{ index,
+status, document_id?, so_id?, error?, warning? }] }`. 422 only when *every* row
+failed; partial failures return 200 with per-row errors.
+
+### Doc-number reuse & `ship_to_address_hint`
+
+Hubbell recycles doc numbers across jobs, so `(doc_type, doc_number)` can map to
+several historical `hubbell_documents` rows. Resolution:
+
+1. Pass `document_id` when you have it — exact, no ambiguity.
+2. Else `(doc_type, doc_number)`:
+   - unique → resolves directly.
+   - ambiguous **with** `ship_to_address_hint` → narrows by matching each
+     candidate's `extracted_address` via `bids.hubbell_normalize_address`
+     (`Dr↔Drive`, `Cir↔Circle`, directionals preserved). Exactly one match →
+     resolves. Multiple identical-address duplicates → collapses to the earliest
+     received (with a `warning`).
+   - ambiguous **without** a hint → row errors (`supply document_id or
+     ship_to_address_hint`).
+   - hint matches **none** of the candidate addresses → row errors with the list
+     of candidate addresses. **This is a feature, not a miss**: it means the doc
+     our system holds under that number is a *different job* than the SO the
+     payment hit, so labeling it would poison the corpus. Investigate instead of
+     forcing.
+3. A resolved row whose provided hint *disagrees* with the doc's address still
+   saves but returns a `warning` for review.
+
+So always send `ship_to_address_hint` from the cash-app side — it both recovers
+reused-number docs and guards against wrong-job matches.
 
 ## Translator mapping (streamlit `manual_matches_check_*.json` → labels)
 
