@@ -556,7 +556,7 @@ export interface CreateSalesOrderResult {
  */
 async function salesOrderCreate(
   request: CreateSalesOrderRequest,
-  options: { branch?: string } = {}
+  options: { branch?: string; useTest?: boolean } = {}
 ): Promise<CreateSalesOrderResult> {
   const res = await callApi<CreateSalesOrderResult>('Orders', 'SalesOrderCreate', request, options);
   return res;
@@ -568,7 +568,7 @@ async function salesOrderCreate(
  */
 async function salesOrderCreateValidate(
   request: CreateSalesOrderRequest,
-  options: { branch?: string } = {}
+  options: { branch?: string; useTest?: boolean } = {}
 ): Promise<{ valid: boolean; message: string }> {
   const res = await callApi<{ ReturnCode: number; MessageText: string }>(
     'Orders',
@@ -692,7 +692,7 @@ export interface QuoteResult {
  */
 async function quoteCreate(
   request: CreateQuoteRequest,
-  options: { branch?: string } = {}
+  options: { branch?: string; useTest?: boolean } = {}
 ): Promise<QuoteResult> {
   return callApi<QuoteResult>('Orders', 'QuoteCreate', request, options);
 }
@@ -702,7 +702,7 @@ async function quoteCreate(
  */
 async function quoteRelease(
   quoteId: string,
-  options: { branch?: string } = {}
+  options: { branch?: string; useTest?: boolean } = {}
 ): Promise<CreateSalesOrderResult> {
   return callApi<CreateSalesOrderResult>(
     'Orders',

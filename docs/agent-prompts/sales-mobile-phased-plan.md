@@ -92,15 +92,30 @@ the split is:
 - ⏳ **Deferred:** enrich order status/timeline from `agility_picks` /
   `agility_shipments` instead of only the header `so_status` code.
 
-### Phase 3 — Quote & order writeback
-**Owner: us (irreversible — high blast radius).**
-- Map mobile draft → `agilityApi.quoteCreate` / `salesOrderCreate` /
-  `quoteRelease` (promote). Reference: `/api/legacy-bids/[id]/push-to-erp`.
-- **Validate against `AGILITY_API_TEST_URL` first** (same caution as the
-  Hubbell writeback — blank fields can clobber). Flag-gate prod.
-- Wire writes through the mobile offline outbox (enqueue on submit, optimistic
-  UI, resumable so retries don't double-post). `submitted.tsx` already renders
-  confirmed + offline-queued outcomes.
+### Phase 3 — Quote & order writeback  ← **CODE LIVE, flag-gated, NOT yet validated in test**
+**Owner: us (irreversible — high blast radius).** Routes are merged but inert
+until `SALES_MOBILE_WRITEBACK_MODE` is flipped. **Test procedure:
+`docs/agent-prompts/sales-writeback-test.md`** — run it (test API needs daily
+activation) before enabling prod.
+- ✅ `POST /api/sales/mobile/quotes` → `quoteCreate`
+- ✅ `POST /api/sales/mobile/orders/create` → `salesOrderCreate` (+ optional
+  `salesOrderCreateValidate` when `validate:true`)
+- ✅ `POST /api/sales/mobile/quotes/[id]/release` → `quoteRelease` (promote)
+- ✅ `useTest` threaded through the three write methods in `agility-api.ts`
+  (was only on `salesOrderHeaderUpdate`).
+- ✅ Safety gate `SALES_MOBILE_WRITEBACK_MODE` = `disabled`|`test`|`prod`
+  (default disabled → `{written:false}`, no Agility call). Mirrors
+  `HUBBELL_AGILITY_WRITEBACK_MODE`. `test` → `useTest:true`.
+- ✅ Mobile submit handlers (`new-quote`/`new-order`) post live when
+  `!IS_DEV_MODE`; success screen shows the real `erpId`. Price omitted from
+  lines (Agility applies customer pricing, same as push-to-erp).
+- ⏳ **Deferred — offline auto-submit for writes.** The driver outbox retries on
+  reconnect; letting it re-POST an order create risks **double-creating
+  orders**. Needs idempotency design (client dedupe key honored server-side, or
+  pre-create existence check) first. New Order requires connectivity for now.
+- ⏳ **Mobile follow-up:** real customer + item-search picker in the create
+  screens (customer/lines currently seeded from the design mock; submit path
+  already posts whatever's in state).
 
 ### Phase 4 — Job Notes (new feature)  ← **Codex handoff: `sales-job-notes-codex.md`**
 **Owner: Codex (self-contained, LiveEdge-owned, no Agility risk).**

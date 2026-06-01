@@ -110,6 +110,29 @@ function mapItem(i: ApiItem): SalesItem {
   };
 }
 
+// ── write shapes (Phase 3) ──
+export interface WriteLine { itemId: string; quantity: number; uom: string }
+export interface WriteDraft {
+  customer: string;          // Agility CustomerID
+  shipToSequence?: number;
+  saleType?: string;
+  reference?: string;
+  notes?: string;
+  expectDate?: string;       // yyyy-mm-dd (orders)
+  expirationDate?: string;   // yyyy-mm-dd (quotes)
+  poNumber?: string;
+  validate?: boolean;        // orders: run SalesOrderCreateValidate first
+  lines: WriteLine[];
+}
+export interface WriteResult {
+  written: boolean;
+  mode: 'disabled' | 'test' | 'prod';
+  type?: 'quote' | 'order';
+  erpId?: string;
+  reason?: string;           // when written=false (mode disabled)
+  error?: string;
+}
+
 // ── calls ─────────────────────────────────────────────────────
 export interface ItemAvailability {
   /** Per-branch on-hand from the mirror (always present). */
@@ -177,5 +200,21 @@ export const salesApi = {
     } catch {
       return {}; // best-effort overlay — list still shows mirror on-hand
     }
+  },
+
+  // ── Phase 3: writes (quote / order create, promote) ──
+  async createQuote(draft: WriteDraft): Promise<WriteResult> {
+    const { data } = await client.post<WriteResult>('/api/sales/mobile/quotes', draft);
+    return data;
+  },
+
+  async createOrder(draft: WriteDraft): Promise<WriteResult> {
+    const { data } = await client.post<WriteResult>('/api/sales/mobile/orders/create', draft);
+    return data;
+  },
+
+  async promoteQuote(quoteId: string): Promise<WriteResult> {
+    const { data } = await client.post<WriteResult>(`/api/sales/mobile/quotes/${encodeURIComponent(quoteId)}/release`, {});
+    return data;
   },
 };

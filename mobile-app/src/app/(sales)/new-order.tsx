@@ -7,19 +7,57 @@ import { BigButton } from '@/components/ui/BigButton';
 import { SalesTopBar, StepHeader } from '@/components/sales/kit';
 import { CustomerChip } from './new-quote';
 import { useOnline } from '@/hooks/useOnline';
+import { useToast } from '@/context/ToastContext';
+import { IS_DEV_MODE } from '@/api/client';
+import { salesApi } from '@/api/sales';
+
+// Ship-to seq is hardcoded to the design mock for now (see Phase 3 follow-up
+// note in new-quote.tsx — needs a real customer + ship-to picker).
+const DRAFT_CUSTOMER = 'C-10428';
+const DRAFT_LINES = [
+  { itemId: 'SPF2X4-92', quantity: 24, uom: 'EA' },
+  { itemId: 'OSB-716-4X8', quantity: 18, uom: 'SHT' },
+  { itemId: 'LVL-11875', quantity: 8, uom: 'EA' },
+];
 
 const SHIP_TOS = [
-  { name: 'Jobsite — Hickory Ln', addr: '3402 Hickory Ln, Clive IA', icon: 'pin' as const },
-  { name: 'Will Call — 20GR Grimes', addr: 'Pick up at counter', icon: 'building' as const },
-  { name: 'Main office', addr: '4220 NW 86th St, Urbandale IA', icon: 'pin' as const },
+  { name: 'Jobsite — Hickory Ln', addr: '3402 Hickory Ln, Clive IA', icon: 'pin' as const, seq: 1 },
+  { name: 'Will Call — 20GR Grimes', addr: 'Pick up at counter', icon: 'building' as const, seq: 2 },
+  { name: 'Main office', addr: '4220 NW 86th St, Urbandale IA', icon: 'pin' as const, seq: 3 },
 ];
 
 export default function NewOrderScreen() {
   const online = useOnline();
+  const { show } = useToast();
   const [ship, setShip] = useState(0);
+  const [submitting, setSubmitting] = useState(false);
 
-  // Offline → the order is queued to the outbox; online → submitted to ERP.
-  const submit = () => router.push(online ? '/(sales)/submitted?kind=order' : '/(sales)/submitted?kind=order&queued=1');
+  const submit = async () => {
+    // Dev mode: keep the design demo, including the offline-queued variant.
+    if (IS_DEV_MODE) {
+      router.push(online ? '/(sales)/submitted?kind=order' : '/(sales)/submitted?kind=order&queued=1');
+      return;
+    }
+    // Offline auto-submit-from-outbox is intentionally deferred for writes
+    // (idempotency must be designed + tested before we let retries re-create
+    // orders). For now, require connectivity to submit.
+    if (!online) { show('You\'re offline — reconnect to submit this order', 'error'); return; }
+    setSubmitting(true);
+    try {
+      const res = await salesApi.createOrder({
+        customer: DRAFT_CUSTOMER,
+        shipToSequence: SHIP_TOS[ship].seq,
+        validate: true,
+        lines: DRAFT_LINES,
+      });
+      if (!res.written) { show(res.reason || 'Order writeback is disabled', 'error'); return; }
+      router.replace(`/(sales)/submitted?kind=order&erpId=${encodeURIComponent(res.erpId ?? '')}`);
+    } catch (e: any) {
+      show(e?.response?.data?.error || 'Could not create order', 'error');
+    } finally {
+      setSubmitting(false);
+    }
+  };
 
   return (
     <SafeAreaView style={styles.safe}>
@@ -66,7 +104,7 @@ export default function NewOrderScreen() {
       </ScrollView>
 
       <View style={styles.footer}>
-        <BigButton kind="primary" icon="arrowRight" onPress={submit}>Review Order</BigButton>
+        <BigButton kind="primary" icon="arrowRight" loading={submitting} onPress={submit}>Review Order</BigButton>
       </View>
     </SafeAreaView>
   );
