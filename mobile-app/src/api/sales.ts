@@ -146,4 +146,27 @@ export const salesApi = {
     const list = await this.items(code);
     return list.find((i) => i.code === code) ?? list[0];
   },
+
+  // ── Phase 2: live price / per-branch availability overlays ──
+  async itemAvailability(code: string): Promise<ItemAvailability> {
+    const { data } = await client.get<ItemAvailability>(
+      `/api/sales/mobile/items/${encodeURIComponent(code)}/availability`,
+    );
+    return { byBranch: data.byBranch ?? [], price: data.price, uom: data.uom, priceLive: !!data.priceLive };
+  },
+
+  /** One batched live-price call for a list of item codes. Empty on failure. */
+  async itemPrices(codes: string[]): Promise<Record<string, number>> {
+    if (codes.length === 0) return {};
+    try {
+      const { data } = await client.get<{ configured: boolean; prices: { code: string; price: number | null }[] }>(
+        '/api/sales/mobile/items/availability', { params: { codes: codes.join(',') } },
+      );
+      const out: Record<string, number> = {};
+      for (const p of data.prices ?? []) if (p.price != null) out[p.code] = p.price;
+      return out;
+    } catch {
+      return {}; // best-effort overlay — list still shows mirror on-hand
+    }
+  },
 };

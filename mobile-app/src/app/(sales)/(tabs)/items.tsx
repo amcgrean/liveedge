@@ -5,7 +5,7 @@ import { useAuth } from '@/context/AuthContext';
 import { C, BranchCode } from '@/theme/colors';
 import { Icon } from '@/components/ui/Icon';
 import { SalesTopBar, SearchBar, LiveBadge, SkelRow, MONO } from '@/components/sales/kit';
-import { fetchItems, SalesItem, StockState } from '@/data/salesMock';
+import { fetchItems, fetchItemPrices, SalesItem, StockState } from '@/data/salesMock';
 
 const STOCK_META: Record<StockState, [string, string]> = {
   in: [C.ok, 'In stock'], low: [C.warn, 'Low'], out: [C.err, 'Out'],
@@ -23,7 +23,13 @@ export default function ItemsScreen() {
     setLoading(true);
     const t = setTimeout(async () => {
       const r = await fetchItems(query);
-      if (!cancelled) { setItems(r); setLoading(false); }
+      if (cancelled) return;
+      setItems(r);
+      setLoading(false);
+      // Phase 2: progressive live-price overlay (one batched call).
+      const prices = await fetchItemPrices(r.map((i) => i.code));
+      if (cancelled || Object.keys(prices).length === 0) return;
+      setItems((prev) => prev.map((i) => (prices[i.code] != null ? { ...i, price: prices[i.code].toFixed(2) } : i)));
     }, 200);
     return () => { cancelled = true; clearTimeout(t); };
   }, [query]);
@@ -64,10 +70,12 @@ export default function ItemsScreen() {
                       {it.stock !== 'out' && <Text style={styles.onhand}>{it.onhand.toLocaleString()} {it.uom}</Text>}
                     </View>
                   </View>
-                  <View style={styles.priceCol}>
-                    <Text style={styles.price}>${it.price}</Text>
-                    <Text style={styles.priceUom}>/{it.uom}</Text>
-                  </View>
+                  {it.price !== '—' ? (
+                    <View style={styles.priceCol}>
+                      <Text style={styles.price}>${it.price}</Text>
+                      <Text style={styles.priceUom}>/{it.uom}</Text>
+                    </View>
+                  ) : null}
                 </TouchableOpacity>
               );
             })}
