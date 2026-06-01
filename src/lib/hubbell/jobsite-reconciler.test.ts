@@ -129,12 +129,13 @@ describe('Broad keyword half-weight rule (frame/lumber)', () => {
       [so({ reference: 'Roof Frame' })],
       FLOOR,
     );
-    // Frame contributes 0; no other overlap. Pairing dropped under default
-    // floor (40) but at floor=0 we should still see confidence 0, no scope reason.
-    if (out.length > 0) {
-      expect(out[0].confidence).toBe(0);
-      expect(out[0].match_reasons.find((r) => r.startsWith('scope:'))).toBeUndefined();
-    }
+    // Frame contributes 0; no other overlap. At floor=0 the candidate must
+    // still surface so we can prove the score is exactly 0 with no scope
+    // reason (a future regression that dropped the candidate would otherwise
+    // silently pass).
+    expect(out).toHaveLength(1);
+    expect(out[0].confidence).toBe(0);
+    expect(out[0].match_reasons.find((r) => r.startsWith('scope:'))).toBeUndefined();
   });
 });
 
@@ -152,12 +153,12 @@ describe('Parent → sub-component demote (door → hardware/lock, window → sc
     );
     // The parent demote zeroes the door contribution. Since scopeBoost is 0,
     // the reasons array stays empty for scope/parent_demote — they're only
-    // pushed inside the `scopeBoost > 0` branch. We just assert no scope
-    // contribution survived.
-    if (out.length > 0) {
-      expect(out[0].confidence).toBe(0);
-      expect(out[0].match_reasons.find((r) => r.startsWith('scope:'))).toBeUndefined();
-    }
+    // pushed inside the `scopeBoost > 0` branch. Assert unconditionally that
+    // the candidate still surfaces at floor=0 with confidence 0 and no scope
+    // reason, so a regression that drops the candidate fails the test.
+    expect(out).toHaveLength(1);
+    expect(out[0].confidence).toBe(0);
+    expect(out[0].match_reasons.find((r) => r.startsWith('scope:'))).toBeUndefined();
   });
 
   it('SO ref also has the sub-component ("door hardware") → no demote, both score', () => {
@@ -179,11 +180,12 @@ describe('Negative-reference penalty (credit/vpo/replacement)', () => {
       [so({ reference: 'Trim Credit' })],
       FLOOR,
     );
-    // 'trim' specific +30, neg_ref −30 = 0
-    if (out.length > 0) {
-      expect(out[0].confidence).toBe(0);
-      expect(out[0].match_reasons).toContain('neg_ref');
-    }
+    // 'trim' specific +30, neg_ref −30 = 0. Unconditional assert so a
+    // regression that drops the candidate (or pushes score negative below
+    // the floor=0 cutoff) fails the test rather than silently passing.
+    expect(out).toHaveLength(1);
+    expect(out[0].confidence).toBe(0);
+    expect(out[0].match_reasons).toContain('neg_ref');
   });
 
   it('penalty WAIVED when total also matches within 10%', () => {
