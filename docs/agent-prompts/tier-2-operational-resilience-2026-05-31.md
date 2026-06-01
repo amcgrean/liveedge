@@ -1,5 +1,9 @@
 # Tier 2 — Operational Resilience (handoff 2026-05-31)
 
+> **STATUS: COMPLETE (2026-06-01).** 2.1 CI gates → PR #479; 2.2 tests on the
+> money paths → PR #480; 2.3 Sentry + structured logger → PR #483. Next tier:
+> `docs/agent-prompts/tier-3-hardening-2026-06-01.md`. Kept for reference.
+
 ## Where this sits
 
 This is **Tier 2** of the architecture/scalability review. The full assessment +
