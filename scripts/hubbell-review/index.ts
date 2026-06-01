@@ -74,6 +74,10 @@ type Decision = {
   suggestion_id: string;
   action: 'accept' | 'reject' | 'skip';
   confidence?: 'high' | 'medium' | 'low';
+  // Training-corpus fields — forwarded to the review endpoint, which persists
+  // them to bids.hubbell_match_labels. See REVIEW.md / README.md.
+  reason_code?: string;
+  signals?: Record<string, boolean>;
   reasoning?: string;
 };
 
@@ -215,6 +219,8 @@ async function cmdPull(args: Record<string, string | true>): Promise<void> {
         suggestion_id: s.id,
         action: 'skip',
         confidence: 'low',
+        reason_code: '(fill in: see README reason codes)',
+        signals: { address: false, ref_match: false, dev_house: false, scope_phase: false, amount: false },
         reasoning: '(fill in)',
       })),
     };
@@ -301,7 +307,13 @@ async function cmdApply(args: Record<string, string | true>): Promise<void> {
       const res = await api(`/api/admin/hubbell/suggestions/${d.suggestion_id}/review`, {
         method: 'POST',
         headers: { 'X-Reviewer': reviewer },
-        body: JSON.stringify({ action: d.action }),
+        body: JSON.stringify({
+          action: d.action,
+          reason_code: d.reason_code,
+          signals: d.signals,
+          confidence: d.confidence,
+          reasoning: d.reasoning,
+        }),
       });
       if (!res.ok) {
         const text = await res.text();
