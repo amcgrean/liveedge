@@ -612,6 +612,50 @@ export const hubbellDocumentSuggestions = bidsSchema.table(
   ]
 );
 
+// Training-label corpus for the Hubbell doc → Agility-SO matcher. Decoupled
+// from hubbellDocumentSuggestions so the cash-application GUI (which reviews a
+// broader pool — all SOs at a jobsite) can label (document, SO) pairs the
+// matcher never suggested. Unique on (document_id, so_id, source) so the
+// matcher-correctness loop and the cash-app loop can each hold a viewpoint.
+// See db/migrations/0037_hubbell_match_labels.sql for the full rationale.
+export const hubbellMatchLabels = bidsSchema.table(
+  'hubbell_match_labels',
+  {
+    id:           uuid('id').primaryKey().defaultRandom(),
+    documentId:   uuid('document_id').notNull(),
+    // No FK to agility_so_header (public schema, owned by sync worker).
+    soId:         integer('so_id').notNull(),
+    // 'accept' | 'reject' | 'skip'
+    label:        varchar('label', { length: 10 }).notNull(),
+    // 'cli_review' | 'ui_review' | 'cash_app_gui' | ...
+    source:       varchar('source', { length: 40 }).notNull(),
+    reasonCode:   varchar('reason_code', { length: 40 }),
+    // { address, ref_match, dev_house, scope_phase, amount } booleans
+    signals:      jsonb('signals'),
+    // 'high' | 'medium' | 'low'
+    confidence:   varchar('confidence', { length: 10 }),
+    reasoning:    text('reasoning'),
+    reviewer:     varchar('reviewer', { length: 100 }),
+    // cash-app only — dollars applied to this SO; NULL for matcher-correctness.
+    applyAmount:  numeric('apply_amount', { precision: 14, scale: 2 }),
+    // soft provenance link to the matcher suggestion, when one existed (no FK).
+    suggestionId: uuid('suggestion_id'),
+    createdAt:    timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt:    timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    uniqueIndex('hubbell_match_labels_doc_so_source_uq').on(
+      table.documentId,
+      table.soId,
+      table.source,
+    ),
+    index('hubbell_match_labels_document_idx').on(table.documentId),
+    index('hubbell_match_labels_so_idx').on(table.soId),
+    index('hubbell_match_labels_label_idx').on(table.label),
+    index('hubbell_match_labels_source_idx').on(table.source),
+  ]
+);
+
 // ============================================================
 // MICROSOFT GRAPH SUBSCRIPTIONS
 // ============================================================

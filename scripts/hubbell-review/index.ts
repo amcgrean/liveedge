@@ -74,12 +74,33 @@ type Decision = {
   suggestion_id: string;
   action: 'accept' | 'reject' | 'skip';
   confidence?: 'high' | 'medium' | 'low';
+  // Training-corpus fields — forwarded to the review endpoint, which persists
+  // them to bids.hubbell_match_labels. See REVIEW.md / README.md.
+  reason_code?: string;
+  signals?: Record<string, boolean>;
   reasoning?: string;
 };
 
 type DecisionsFile = {
   decisions: Decision[];
 };
+
+// The `pull` template seeds every decision with action 'skip' and placeholder
+// rationale ('(fill in)'). A skip the reviewer actually touched (filled in a
+// reason_code or reasoning) is a real ambiguity label worth persisting; an
+// untouched template skip is not.
+function isPlaceholderText(s?: string): boolean {
+  if (s == null) return true;
+  const t = s.trim();
+  return t === '' || t.toLowerCase().startsWith('(fill in');
+}
+
+function isRecordedSkip(d: Decision): boolean {
+  return (
+    d.action === 'skip' &&
+    (!isPlaceholderText(d.reasoning) || !isPlaceholderText(d.reason_code))
+  );
+}
 
 function parseArgs(argv: string[]): Record<string, string | true> {
   const out: Record<string, string | true> = {};
@@ -215,6 +236,8 @@ async function cmdPull(args: Record<string, string | true>): Promise<void> {
         suggestion_id: s.id,
         action: 'skip',
         confidence: 'low',
+        reason_code: '(fill in: see README reason codes)',
+        signals: { address: false, ref_match: false, dev_house: false, scope_phase: false, amount: false },
         reasoning: '(fill in)',
       })),
     };
@@ -254,6 +277,7 @@ async function cmdApply(args: Record<string, string | true>): Promise<void> {
   let docsProcessed = 0;
   let accepted = 0;
   let rejected = 0;
+  let skipsRecorded = 0;
   let skipped = 0;
   let unfilled = 0;
   const errors: Array<{ doc_id: string; suggestion_id?: string; error: string }> = [];
@@ -273,20 +297,23 @@ async function cmdApply(args: Record<string, string | true>): Promise<void> {
       continue;
     }
 
-    const hasFilled = decisions.decisions.some(
-      (d) => d.action === 'accept' || d.action === 'reject',
+    // A packet is actionable if it has any accept/reject OR a filled-in skip.
+    // An all-skip packet where the reviewer actually annotated the ambiguity is
+    // still worth applying — the skip labels are negative/ambiguous training data.
+    const hasActionable = decisions.decisions.some(
+      (d) => d.action === 'accept' || d.action === 'reject' || isRecordedSkip(d),
     );
-    if (!hasFilled) {
-      // All skips — usually means the agent didn't touch this packet yet.
+    if (!hasActionable) {
+      // No accept/reject and no annotated skip — agent hasn't touched this packet.
       unfilled++;
       continue;
     }
 
     let docOk = true;
     for (const d of decisions.decisions) {
-      if (d.action !== 'accept' && d.action !== 'reject') {
-        // Skip is a no-op on the server side (action must be accept|reject);
-        // tally and move on.
+      const recordedSkip = isRecordedSkip(d);
+      if (d.action !== 'accept' && d.action !== 'reject' && !recordedSkip) {
+        // Untouched template-default skip — local no-op, nothing to persist.
         skipped++;
         continue;
       }
@@ -295,13 +322,23 @@ async function cmdApply(args: Record<string, string | true>): Promise<void> {
           `  [dry-run] ${docId} / ${d.suggestion_id}  →  ${d.action}${d.confidence ? ` (${d.confidence})` : ''}: ${d.reasoning ?? ''}`,
         );
         if (d.action === 'accept') accepted++;
-        else rejected++;
+        else if (d.action === 'reject') rejected++;
+        else skipsRecorded++;
         continue;
       }
+      // accept/reject change suggestion state; an annotated skip records an
+      // ambiguity label only (suggestion stays pending). Both go through the
+      // review endpoint, which persists the rationale to hubbell_match_labels.
       const res = await api(`/api/admin/hubbell/suggestions/${d.suggestion_id}/review`, {
         method: 'POST',
         headers: { 'X-Reviewer': reviewer },
-        body: JSON.stringify({ action: d.action }),
+        body: JSON.stringify({
+          action: d.action,
+          reason_code: d.reason_code,
+          signals: d.signals,
+          confidence: d.confidence,
+          reasoning: d.reasoning,
+        }),
       });
       if (!res.ok) {
         const text = await res.text();
@@ -310,7 +347,8 @@ async function cmdApply(args: Record<string, string | true>): Promise<void> {
         continue;
       }
       if (d.action === 'accept') accepted++;
-      else rejected++;
+      else if (d.action === 'reject') rejected++;
+      else skipsRecorded++;
     }
 
     if (docOk && !dryRun) {
@@ -322,8 +360,10 @@ async function cmdApply(args: Record<string, string | true>): Promise<void> {
   }
 
   console.log(`\nApplied: ${docsProcessed} packets`);
-  console.log(`  ${accepted} accepts, ${rejected} rejects, ${skipped} skip-no-ops`);
-  console.log(`  ${unfilled} packets left unfilled (no accept/reject in decisions.json)`);
+  console.log(
+    `  ${accepted} accepts, ${rejected} rejects, ${skipsRecorded} skips recorded, ${skipped} skip no-ops`,
+  );
+  console.log(`  ${unfilled} packets left unfilled (untouched decisions.json)`);
   if (errors.length > 0) {
     console.log(`\n${errors.length} errors:`);
     for (const e of errors) {
