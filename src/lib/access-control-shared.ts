@@ -28,6 +28,7 @@ export const CAPABILITIES = {
   CUSTOMERS_NOTES_WRITE:'customers.notes.write',
   ORDERS_PUSH_TO_ERP:   'orders.push_to_erp',
   QUOTES_MANAGE:        'quotes.manage',
+  PRICING_VIEW:         'pricing.view',
 
   // Estimating / Services
   BIDS_MANAGE:          'bids.manage',
@@ -79,6 +80,7 @@ const CAPABILITIES_METADATA_BY_CODE = {
   [CAPABILITIES.CUSTOMERS_NOTES_WRITE]: { label: 'Write Customer Notes', description: 'Create and edit customer-facing account notes.', category: 'sales', risk: 'medium' },
   [CAPABILITIES.ORDERS_PUSH_TO_ERP]: { label: 'Push Orders to ERP', description: 'Trigger outbound order synchronization to ERP.', category: 'sales', risk: 'high' },
   [CAPABILITIES.QUOTES_MANAGE]: { label: 'Manage Quotes', description: 'Create, update, and manage sales quotes.', category: 'sales', risk: 'high' },
+  [CAPABILITIES.PRICING_VIEW]: { label: 'View Pricing', description: 'See unit/extended prices, totals, and margin-adjacent figures on orders, lines, and bids. Excludes drivers and yard staff by default.', category: 'sales', risk: 'medium' },
   [CAPABILITIES.BIDS_MANAGE]: { label: 'Manage Bids', description: 'Create and manage estimating bids.', category: 'estimating', risk: 'high' },
   [CAPABILITIES.DESIGNS_MANAGE]: { label: 'Manage Designs', description: 'Create and maintain design artifacts.', category: 'estimating', risk: 'high' },
   [CAPABILITIES.EWP_MANAGE]: { label: 'Manage EWP', description: 'Maintain engineered wood product records and workflow.', category: 'estimating', risk: 'high' },
@@ -131,6 +133,7 @@ export const ROLE_DEFAULTS: Record<string, readonly Capability[]> = {
   management: [
     CAPABILITIES.SALES_VIEW,
     CAPABILITIES.AR_VIEW,
+    CAPABILITIES.PRICING_VIEW,
     CAPABILITIES.ADMIN_AUDIT_VIEW,
     CAPABILITIES.ADMIN_JOBS_REVIEW,
     CAPABILITIES.ADMIN_PRODUCTS_VIEW,
@@ -144,6 +147,7 @@ export const ROLE_DEFAULTS: Record<string, readonly Capability[]> = {
     CAPABILITIES.ORDERS_PUSH_TO_ERP,
     CAPABILITIES.QUOTES_MANAGE,
     CAPABILITIES.CREDITS_VIEW,
+    CAPABILITIES.PRICING_VIEW,
   ],
 
   supervisor: [
@@ -154,6 +158,7 @@ export const ROLE_DEFAULTS: Record<string, readonly Capability[]> = {
     CAPABILITIES.WORKORDERS_ASSIGN,
     CAPABILITIES.DISPATCH_VIEW,
     CAPABILITIES.DISPATCH_MANAGE,
+    CAPABILITIES.PRICING_VIEW,
   ],
 
   ops: [
@@ -164,6 +169,7 @@ export const ROLE_DEFAULTS: Record<string, readonly Capability[]> = {
     CAPABILITIES.DISPATCH_VIEW,
     CAPABILITIES.DISPATCH_MANAGE,
     CAPABILITIES.PURCHASING_VIEW,
+    CAPABILITIES.PRICING_VIEW,
     CAPABILITIES.BRANCH_ALL,
   ],
 
@@ -189,6 +195,7 @@ export const ROLE_DEFAULTS: Record<string, readonly Capability[]> = {
     CAPABILITIES.DESIGNS_MANAGE,
     CAPABILITIES.EWP_MANAGE,
     CAPABILITIES.PROJECTS_MANAGE,
+    CAPABILITIES.PRICING_VIEW,
   ],
 
   estimating: [
@@ -196,6 +203,7 @@ export const ROLE_DEFAULTS: Record<string, readonly Capability[]> = {
     CAPABILITIES.DESIGNS_MANAGE,
     CAPABILITIES.EWP_MANAGE,
     CAPABILITIES.PROJECTS_MANAGE,
+    CAPABILITIES.PRICING_VIEW,
   ],
 
   designer: [
@@ -207,6 +215,7 @@ export const ROLE_DEFAULTS: Record<string, readonly Capability[]> = {
     CAPABILITIES.PURCHASING_VIEW,
     CAPABILITIES.PURCHASING_RECEIVE,
     CAPABILITIES.PURCHASING_REVIEW,
+    CAPABILITIES.PRICING_VIEW,
   ],
 
   receiving_yard: [

@@ -35,21 +35,35 @@ export interface OrderLineRow {
   unshipped_extended_price: number | null;
 }
 
+export interface OrderLinesResult {
+  lines: OrderLineRow[];
+  /**
+   * Server-derived flag mirroring `pricing.view`. When false, price /
+   * extended_price / unshipped_extended_price are null on every row and
+   * the UI should hide the $ column entirely. Authoritative — never
+   * second-guess client-side.
+   */
+  pricingVisible: boolean;
+}
+
 /**
  * Fetch line items for an SO from the dispatch /lines endpoint. Branch is
  * required by the server to scope inventory; if omitted the caller's
  * session branch is used server-side.
  */
-export async function fetchOrderLines(soNumber: string, branchCode?: string): Promise<OrderLineRow[]> {
+export async function fetchOrderLines(soNumber: string, branchCode?: string): Promise<OrderLinesResult> {
   if (IS_DEV_MODE) {
     await new Promise((resolve) => setTimeout(resolve, 200));
-    return [];
+    return { lines: [], pricingVisible: false };
   }
-  const res = await client.get<{ lines: OrderLineRow[] }>(
+  const res = await client.get<{ lines: OrderLineRow[]; pricing_visible?: boolean }>(
     `/api/dispatch/orders/${encodeURIComponent(soNumber)}/lines`,
     { params: branchCode ? { branch: branchCode } : undefined }
   );
-  return res.data?.lines ?? [];
+  return {
+    lines: res.data?.lines ?? [],
+    pricingVisible: res.data?.pricing_visible === true,
+  };
 }
 
 export interface AgilityShipmentInfo {

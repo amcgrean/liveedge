@@ -34,6 +34,7 @@ export default function CustomerSheetScreen() {
   // Live order lines from the dispatch /lines endpoint. Independent of the
   // mock `stop.orderLines` field so real SOs always show real items.
   const [lines, setLines] = useState<OrderLineRow[]>([]);
+  const [pricingVisible, setPricingVisible] = useState(false);
   const [linesLoading, setLinesLoading] = useState(false);
   const [linesError, setLinesError] = useState<string | null>(null);
 
@@ -43,9 +44,10 @@ export default function CustomerSheetScreen() {
     setLinesLoading(true);
     setLinesError(null);
     fetchOrderLines(stop.so, stop.branchCode)
-      .then((rows) => {
+      .then((res) => {
         if (!alive) return;
-        setLines(rows);
+        setLines(res.lines);
+        setPricingVisible(res.pricingVisible);
       })
       .catch((err) => {
         if (!alive) return;
@@ -207,7 +209,9 @@ export default function CustomerSheetScreen() {
               <View style={styles.linesCard}>
                 {lines.map((l, i) => {
                   const key = `${l.sequence ?? i}-${l.item_code ?? i}`;
-                  const ext = l.extended_price ?? null;
+                  // Trust the server-side flag exclusively. If pricingVisible
+                  // is false, extended_price is already null on every row.
+                  const ext = pricingVisible ? l.extended_price : null;
                   const uom = l.uom?.trim() || '';
                   return (
                     <View
@@ -234,11 +238,13 @@ export default function CustomerSheetScreen() {
                           {l.size ? ` · ${l.size}` : ''}
                         </Text>
                       </View>
-                      <Text style={styles.lineWt}>{formatMoney(ext)}</Text>
+                      {pricingVisible && (
+                        <Text style={styles.lineWt}>{formatMoney(ext)}</Text>
+                      )}
                     </View>
                   );
                 })}
-                {(() => {
+                {pricingVisible && (() => {
                   const subtotal = lines.reduce(
                     (sum, l) => sum + (l.extended_price ?? 0),
                     0
