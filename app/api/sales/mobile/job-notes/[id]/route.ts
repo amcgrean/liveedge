@@ -3,7 +3,7 @@ import { eq } from 'drizzle-orm';
 import { requireSessionOrMobile } from '../../../../../../src/lib/mobile-auth';
 import { getDb } from '../../../../../../db/index';
 import { salesJobNotes } from '../../../../../../db/schema';
-import { activeScope, cleanString, editableScope, notePatchSchema, toApiNote } from '../_shared';
+import { activeScope, assertOwnedPhotoKeys, cleanString, editableScope, notePatchSchema, toApiNote } from '../_shared';
 
 type RouteContext = { params: Promise<{ id: string }> };
 
@@ -57,7 +57,12 @@ export async function PATCH(req: NextRequest, context: RouteContext) {
   if ('note_type' in patch && patch.note_type) values.noteType = patch.note_type;
   if ('body' in patch && patch.body !== undefined) values.body = patch.body;
   if ('fields' in patch && patch.fields !== undefined) values.fields = patch.fields;
-  if ('photo_keys' in patch && patch.photo_keys !== undefined) values.photoKeys = patch.photo_keys;
+  if ('photo_keys' in patch && patch.photo_keys !== undefined) {
+    if (!assertOwnedPhotoKeys(authResult, patch.photo_keys)) {
+      return NextResponse.json({ error: 'photo_keys must be within your own upload namespace' }, { status: 400 });
+    }
+    values.photoKeys = patch.photo_keys;
+  }
 
   try {
     const [row] = await getDb()

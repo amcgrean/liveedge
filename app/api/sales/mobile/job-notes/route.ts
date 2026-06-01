@@ -5,6 +5,7 @@ import { getDb } from '../../../../../db/index';
 import { salesJobNotes } from '../../../../../db/schema';
 import {
   activeScope,
+  assertOwnedPhotoKeys,
   branchCode,
   cleanString,
   listOrder,
@@ -60,6 +61,10 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Invalid input', details: parsed.error.flatten() }, { status: 400 });
   }
   const input = parsed.data;
+
+  if (!assertOwnedPhotoKeys(authResult, input.photo_keys)) {
+    return NextResponse.json({ error: 'photo_keys must be within your own upload namespace' }, { status: 400 });
+  }
 
   try {
     const [row] = await getDb()

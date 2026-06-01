@@ -6,6 +6,35 @@ import { salesJobNotes } from '../../../../../db/schema';
 
 export const NOTE_TYPES = ['site_visit', 'spec_meeting', 'measure', 'general'] as const;
 
+// R2 keys are confined to the job-notes object space AND to the calling user's
+// own namespace. This stops a user from persisting an arbitrary R2 key (a POD
+// photo, a Hubbell doc, or another user's note photo) and then reading it back
+// via the /photos presign endpoint. The upload-url route mints keys shaped
+// `job-notes/{userId}/{noteId}/...`; create/patch verify the prefix per-request
+// (see assertOwnedPhotoKeys) since the static schema can't see the user id.
+export const JOB_NOTE_KEY_PREFIX = 'job-notes/';
+const jobNotePhotoKey = z
+  .string()
+  .trim()
+  .min(1)
+  .max(1024)
+  .refine((k) => k.startsWith(JOB_NOTE_KEY_PREFIX) && !k.includes('..'), {
+    message: 'photo key must be within the job-notes namespace',
+  });
+
+/**
+ * Per-request ownership check: every photo key must live under the caller's own
+ * `job-notes/{userId}/` prefix. Returns the keys on success, or null if any key
+ * is foreign (caller should 400). Legacy/admin: branch.all users are allowed to
+ * keep existing keys on patch (they can already see all notes).
+ */
+export function assertOwnedPhotoKeys(session: Session, keys: string[] | undefined): boolean {
+  if (!keys || keys.length === 0) return true;
+  if (hasCapability(session, 'branch.all')) return true;
+  const mine = `${JOB_NOTE_KEY_PREFIX}${String(session.user?.id ?? '').replace(/[^A-Za-z0-9_-]/g, '').slice(0, 80)}/`;
+  return keys.every((k) => k.startsWith(mine));
+}
+
 export const noteCreateSchema = z.object({
   customer_code: z.string().trim().max(100).optional().nullable(),
   customer_name: z.string().trim().max(255).optional().nullable(),
@@ -14,7 +43,7 @@ export const noteCreateSchema = z.object({
   note_type: z.enum(NOTE_TYPES).default('general'),
   body: z.string().default(''),
   fields: z.record(z.unknown()).default({}),
-  photo_keys: z.array(z.string().trim().min(1).max(1024)).default([]),
+  photo_keys: z.array(jobNotePhotoKey).default([]),
 });
 
 export const notePatchSchema = noteCreateSchema.partial();

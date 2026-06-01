@@ -58,7 +58,11 @@ export async function POST(req: NextRequest) {
   const ext = (parsed.data.ext ?? contentType.split('/')[1] ?? 'jpg').replace(/[^a-z0-9]/gi, '').slice(0, 8) || 'jpg';
   const noteId = (parsed.data.noteId ?? randomId()).replace(/[^A-Za-z0-9-]/g, '').slice(0, 80) || randomId();
   const baseName = sanitizeName(parsed.data.fileName ?? `photo.${ext}`);
-  const key = `job-notes/${noteId}/${Date.now()}-${baseName}`;
+  // Namespace keys by the caller's user id so create/patch can verify a note
+  // only carries keys the requesting user minted (prevents cross-user key reuse
+  // via the /photos presign endpoint).
+  const userId = String(authResult.user?.id ?? '').replace(/[^A-Za-z0-9_-]/g, '').slice(0, 80) || 'unknown';
+  const key = `job-notes/${userId}/${noteId}/${Date.now()}-${baseName}`;
   const setup = buildClient();
   if (!setup) return NextResponse.json({ error: 'R2 storage not configured' }, { status: 503 });
 
