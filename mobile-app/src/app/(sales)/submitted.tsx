@@ -7,10 +7,13 @@ import { BigButton } from '@/components/ui/BigButton';
 import { BigButtonRow, MONO } from '@/components/sales/kit';
 
 export default function SubmittedScreen() {
-  const { kind = 'order', queued } = useLocalSearchParams<{ kind?: string; queued?: string }>();
+  const { kind = 'order', queued, erpId } = useLocalSearchParams<{ kind?: string; queued?: string; erpId?: string }>();
   const isQueued = queued === '1';
   const noun = kind === 'quote' ? 'Quote' : 'Order';
-  const ref = kind === 'quote' ? 'Q-2026-0488' : 'SO# 102-45120';
+  // Real ERP id when the live writeback returned one; else the design sample.
+  const ref = erpId
+    ? (kind === 'quote' ? `Quote ${erpId}` : `SO# ${erpId}`)
+    : (kind === 'quote' ? 'Q-2026-0488' : 'SO# 102-45120');
 
   const goHome = () => router.replace('/(sales)/home');
 

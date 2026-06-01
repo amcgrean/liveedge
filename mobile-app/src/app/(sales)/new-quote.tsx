@@ -5,8 +5,16 @@ import { C, S } from '@/theme/colors';
 import { Icon } from '@/components/ui/Icon';
 import { BigButton } from '@/components/ui/BigButton';
 import { SalesTopBar, SearchBar, StepHeader, LiveBadge, Monogram, MONO } from '@/components/sales/kit';
+import { useToast } from '@/context/ToastContext';
+import { IS_DEV_MODE } from '@/api/client';
+import { salesApi } from '@/api/sales';
 
 interface DraftLine { qty: number; uom: string; code: string; desc: string; price: number }
+
+// TODO(Phase 3 follow-up): the customer + lines are still seeded from the
+// design mock. Wire a real customer picker + item-search add into these
+// screens; the submit path below already posts whatever's in state.
+const DRAFT_CUSTOMER = 'C-10428';
 
 export function CustomerChip({ mono, name, sub, onChange }: { mono: string; name: string; sub: string; onChange?: () => void }) {
   return (
@@ -28,9 +36,34 @@ export default function NewQuoteScreen() {
     { qty: 8, uom: 'EA', code: 'LVL-11875', desc: 'LVL 1¾×11⅞ × 16′', price: 92.10 },
   ]);
 
+  const { show } = useToast();
+  const [submitting, setSubmitting] = useState(false);
+
   const subtotal = lines.reduce((s, l) => s + l.qty * l.price, 0);
   const setQty = (i: number, delta: number) => setLines((ls) => ls.map((l, idx) => idx === i ? { ...l, qty: Math.max(1, l.qty + delta) } : l));
   const remove = (i: number) => setLines((ls) => ls.filter((_, idx) => idx !== i));
+
+  const submit = async () => {
+    // Dev mode (no backend): keep the design demo flow.
+    if (IS_DEV_MODE) { router.push('/(sales)/submitted?kind=quote'); return; }
+    setSubmitting(true);
+    try {
+      const res = await salesApi.createQuote({
+        customer: DRAFT_CUSTOMER,
+        lines: lines.map((l) => ({ itemId: l.code, quantity: l.qty, uom: l.uom })),
+      });
+      if (!res.written) {
+        // Writeback flag is off — surface clearly rather than faking success.
+        show(res.reason || 'Quote writeback is disabled', 'error');
+        return;
+      }
+      router.replace(`/(sales)/submitted?kind=quote&erpId=${encodeURIComponent(res.erpId ?? '')}`);
+    } catch (e: any) {
+      show(e?.response?.data?.error || 'Could not create quote', 'error');
+    } finally {
+      setSubmitting(false);
+    }
+  };
 
   return (
     <SafeAreaView style={styles.safe}>
@@ -79,7 +112,7 @@ export default function NewQuoteScreen() {
           <Text style={styles.footerLabel}>Subtotal · {lines.length} items</Text>
           <Text style={styles.footerValue}>${subtotal.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</Text>
         </View>
-        <BigButton kind="primary" icon="arrowRight" onPress={() => router.push('/(sales)/submitted?kind=quote')}>Review Quote</BigButton>
+        <BigButton kind="primary" icon="arrowRight" loading={submitting} onPress={submit}>Review Quote</BigButton>
       </View>
     </SafeAreaView>
   );
