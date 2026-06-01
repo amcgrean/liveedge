@@ -13,12 +13,19 @@ first and confirm the created records look right in the Agility UI.
   `disabled`, which makes every write route return `{written:false}` and touch
   nothing.
 
-## The routes (all `requireSessionOrMobile('sales.view')`, branch-scoped)
-| Method | Route | Agility call |
-|---|---|---|
-| POST | `/api/sales/mobile/quotes` | `QuoteCreate` |
-| POST | `/api/sales/mobile/orders/create` | `SalesOrderCreate` (+ optional `SalesOrderCreateValidate` when `validate:true`) |
-| POST | `/api/sales/mobile/quotes/[id]/release` | `QuoteRelease` (promote quote → order) |
+## The routes (branch-scoped, **high-risk write capability** required)
+| Method | Route | Capability | Agility call |
+|---|---|---|---|
+| POST | `/api/sales/mobile/quotes` | `quotes.manage` | `QuoteCreate` |
+| POST | `/api/sales/mobile/orders/create` | `orders.push_to_erp` | `SalesOrderCreate` (+ optional `SalesOrderCreateValidate` when `validate:true`) |
+| POST | `/api/sales/mobile/quotes/[id]/release` | `orders.push_to_erp` | `QuoteRelease` (promote quote → order) |
+
+These are **write** caps (`risk: 'high'`), not the low-risk `sales.view` read
+cap. The `sales` role gets both by default (`ROLE_DEFAULTS`), so real sales staff
+can write; a `viewer`-only user gets 403. The mobile JWT must carry the cap —
+it's in the `capabilities[]` from `/api/auth/mobile/verify-otp`, so a sales user
+who signed in after this shipped will have it. If a test user 403s, check their
+roles grant `orders.push_to_erp` / `quotes.manage`.
 
 Body (quote/order create):
 ```jsonc

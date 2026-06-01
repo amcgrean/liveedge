@@ -11,7 +11,8 @@ export async function POST(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> },
 ) {
-  const authResult = await requireSessionOrMobile(req, 'sales.view');
+  // ERP write (promote quote → order) — gate on the high-risk write capability.
+  const authResult = await requireSessionOrMobile(req, 'orders.push_to_erp');
   if (authResult instanceof NextResponse) return authResult;
   const session = authResult;
 

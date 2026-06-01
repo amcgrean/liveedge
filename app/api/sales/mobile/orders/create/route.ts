@@ -11,7 +11,9 @@ import {
 // SalesOrderCreateValidate first (body.validate). Gated by
 // SALES_MOBILE_WRITEBACK_MODE (disabled|test|prod) — inert until enabled.
 export async function POST(req: NextRequest) {
-  const authResult = await requireSessionOrMobile(req, 'sales.view');
+  // ERP write — gate on the high-risk write capability, not the low-risk
+  // sales.view read cap (which `viewer` also has).
+  const authResult = await requireSessionOrMobile(req, 'orders.push_to_erp');
   if (authResult instanceof NextResponse) return authResult;
   const session = authResult;
 
