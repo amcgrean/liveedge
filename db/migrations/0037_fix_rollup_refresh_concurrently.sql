@@ -26,12 +26,15 @@
 -- (NULL dimensions per scope) can't satisfy that without sentinel values — use
 -- non-concurrent refresh for those.
 --
--- APPLY in the Supabase SQL editor (off-hours): the two REFRESH statements below
--- each do one full scan of the 6.4 GB fact, so they exceed the 60s MCP/gateway
--- cap. The cron.schedule calls are instant; the REFRESH calls freshen the
--- now-stale data immediately (otherwise it self-heals on the next nightly run).
+-- APPLY in the Supabase SQL editor. ⚠️ Run PART 1 and PART 2 as SEPARATE runs —
+-- the editor wraps a whole script in one transaction, so if PART 2's REFRESH
+-- hits the statement/gateway timeout it rolls back PART 1 (the reschedule) too.
+--
+-- PART 1 is instant and is the actual fix. PART 2 only freshens the data NOW
+-- instead of waiting for tonight's (now-fixed) cron run — it is OPTIONAL.
 
--- Reschedule (cron.schedule upserts by jobname) to non-concurrent refresh.
+-- ───────────────────────── PART 1 — reschedule (instant; run this alone) ────
+-- cron.schedule upserts by jobname. Switches to non-concurrent refresh.
 SELECT cron.schedule(
   'refresh_rollup_product_day',
   '15 9 * * *',
@@ -44,7 +47,19 @@ SELECT cron.schedule(
   $$REFRESH MATERIALIZED VIEW bids.rollup_saletype_day$$
 );
 
--- One-time freshen of the data that's been frozen since the 0036 create
--- (every concurrent nightly run failed). Off-hours; each scans the fact once.
-REFRESH MATERIALIZED VIEW bids.rollup_product_day;
-REFRESH MATERIALIZED VIEW bids.rollup_saletype_day;
+-- ───────────────────────── PART 2 — freshen now (OPTIONAL; run each alone) ──
+-- The MVs are frozen at their 0036 create-time snapshot. PART 1 alone fixes
+-- this from tonight's cron run onward (pg_cron runs server-side with no gateway
+-- timeout). To freshen immediately, run EACH statement below in its OWN run
+-- with the timeout disabled (each scans the 6.4 GB fact once):
+--
+--   SET statement_timeout = 0;
+--   REFRESH MATERIALIZED VIEW bids.rollup_product_day;
+--
+--   SET statement_timeout = 0;
+--   REFRESH MATERIALIZED VIEW bids.rollup_saletype_day;
+--
+-- If the editor still reports an "upstream" (gateway) timeout, use a direct
+-- psql connection (port 5432, not the 6543 pooler) where SET statement_timeout
+-- = 0 fully applies — or simply skip PART 2 and let tonight's cron do it.
+
