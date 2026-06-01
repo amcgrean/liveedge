@@ -293,6 +293,7 @@ export async function markDelivered(item: OutboxItem): Promise<{ photoKeys: stri
   for (let i = 0; i < uploads.length; i++) {
     const u = uploads[i];
     if (u.uploaded && u.remoteKey) continue;
+    if (!item.soNumber) throw new Error('Missing SO number');
     const key = await uploadOnePhoto(item.soNumber, u.uri);
     uploads[i] = { uri: u.uri, remoteKey: key, uploaded: true };
     // Persist incremental progress so a crash/kill before all uploads finish
@@ -305,6 +306,7 @@ export async function markDelivered(item: OutboxItem): Promise<{ photoKeys: stri
     .filter((k): k is string => Boolean(k));
 
   // Phase 2 — mark delivered. Body shape matches the (extended) /deliver route.
+  if (!item.soNumber) throw new Error('Missing SO number');
   await client.post(`/api/dispatch/orders/${item.soNumber}/deliver`, {
     type: item.type,
     status: item.type === 'skip' ? 'skipped' : 'delivered',

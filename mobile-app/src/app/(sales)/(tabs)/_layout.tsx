@@ -37,6 +37,7 @@ export default function SalesTabsLayout() {
       <Tabs.Screen name="home" />
       <Tabs.Screen name="customers" />
       <Tabs.Screen name="orders" />
+      <Tabs.Screen name="notes" />
       <Tabs.Screen name="items" />
       <Tabs.Screen name="profile" />
     </Tabs>

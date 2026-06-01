@@ -50,8 +50,8 @@ export default function SyncQueueScreen() {
     return {
       id: item.id,
       stop: stop?.n ?? '??',
-      soNumber: item.soNumber,
-      name: stop?.name ?? item.soNumber,
+      soNumber: item.soNumber ?? item.id,
+      name: stop?.name ?? item.note?.customer_name ?? item.note?.customer_code ?? (item.type === 'job_note_create' ? 'Job note' : item.soNumber ?? item.id),
       time: format(item.createdAt, 'h:mm a'),
       photos: item.photoUris.length,
       type: item.type,

@@ -78,6 +78,7 @@ export function useDriverRoute(): DriverRouteState {
     const pendingBySo = new Map<string, 'delivered' | 'skipped'>();
     for (const it of outboxItems) {
       if (it.status === 'synced') continue;
+      if (!it.soNumber) continue;
       pendingBySo.set(it.soNumber, it.type === 'skip' ? 'skipped' : 'delivered');
     }
     if (pendingBySo.size === 0) return rawStops;

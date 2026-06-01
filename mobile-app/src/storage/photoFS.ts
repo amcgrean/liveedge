@@ -17,6 +17,18 @@ export async function savePhotoForStop(soNumber: string, sourceUri: string): Pro
   return destUri;
 }
 
+
+export async function savePhotoForJobNote(sourceUri: string): Promise<string> {
+  await ensureDir();
+  // Random suffix so concurrent Promise.all saves in the same millisecond
+  // don't collide on the same destination (which would lose photos).
+  const rand = Math.random().toString(36).slice(2, 10);
+  const filename = `job-note-${Date.now()}-${rand}.jpg`;
+  const destUri = ROOT + filename;
+  await FileSystem.copyAsync({ from: sourceUri, to: destUri });
+  return destUri;
+}
+
 export async function deletePhoto(uri: string): Promise<void> {
   try {
     await FileSystem.deleteAsync(uri, { idempotent: true });

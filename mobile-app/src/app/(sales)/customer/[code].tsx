@@ -9,8 +9,10 @@ import {
 import {
   fetchCustomerDetail, SalesCustomer, SalesOrder, ORDER_STATUS_LABEL,
 } from '@/data/salesMock';
+import { JobNote } from '@/api/jobNotes';
+import { fetchJobNotes } from '@/data/jobNotesMock';
 
-const TABS = ['Open Orders', 'History', 'Ship-To', 'Contact'];
+const TABS = ['Open Orders', 'Notes', 'History', 'Ship-To', 'Contact'];
 
 export default function CustomerDetailScreen() {
   const { code } = useLocalSearchParams<{ code: string }>();
@@ -18,6 +20,7 @@ export default function CustomerDetailScreen() {
   const [orders, setOrders] = useState<SalesOrder[]>([]);
   const [tab, setTab] = useState('Open Orders');
   const [loading, setLoading] = useState(true);
+  const [notes, setNotes] = useState<JobNote[]>([]);
 
   useEffect(() => {
     (async () => {
@@ -26,6 +29,7 @@ export default function CustomerDetailScreen() {
         const detail = await fetchCustomerDetail(String(code));
         setCust(detail.customer);
         setOrders(detail.orders);
+        setNotes(await fetchJobNotes({ customer: String(code), limit: 3 }));
       } finally {
         setLoading(false);
       }
@@ -70,6 +74,16 @@ export default function CustomerDetailScreen() {
 
       {loading ? (
         <View style={{ padding: 14, gap: 10 }}><Skel h={92} r={14} /><Skel h={92} r={14} /></View>
+      ) : tab === 'Notes' ? (
+        notes.length === 0 ? (
+          <EmptyState icon="fileText" title="No customer notes" body="Capture field notes before or after an SO exists." cta="Add note" ctaIcon="plus" onCta={() => router.push(`/(sales)/notes/edit?customer=${encodeURIComponent(String(code))}&name=${encodeURIComponent(cust?.name || '')}` as any)} />
+        ) : (
+          <ScrollView contentContainerStyle={styles.list} showsVerticalScrollIndicator={false}>
+            <View style={styles.metaRow}><Text style={styles.count}>{notes.length} recent notes</Text><TouchableOpacity onPress={() => router.push(`/(sales)/(tabs)/notes?customer=${encodeURIComponent(String(code))}&name=${encodeURIComponent(cust?.name || '')}` as any)}><Text style={styles.statusLinkText}>View all</Text></TouchableOpacity></View>
+            {notes.map((n) => <TouchableOpacity key={n.id} style={styles.orderCard} onPress={() => router.push(`/(sales)/notes/${n.id}` as any)}><Text style={styles.orderSo}>{n.note_type.replace('_', ' ').toUpperCase()}</Text><Text style={styles.orderMeta} numberOfLines={2}>{n.body || 'No note body'}</Text><Text style={styles.orderMeta}>{new Date(n.created_at).toLocaleDateString()} · {n.photo_keys.length} photos</Text></TouchableOpacity>)}
+            <TouchableOpacity style={[styles.actionBtn, styles.actionPrimary]} onPress={() => router.push(`/(sales)/notes/edit?customer=${encodeURIComponent(String(code))}&name=${encodeURIComponent(cust?.name || '')}` as any)}><Icon name="plus" size={18} color="#fff" /><Text style={styles.actionPrimaryText}>Add note</Text></TouchableOpacity>
+          </ScrollView>
+        )
       ) : tab !== 'Open Orders' ? (
         <EmptyState icon="info" title={`${tab} coming soon`} body={`This tab is wired to live ERP data when the backend lands. ${tab} for ${cust?.name || 'this customer'} will appear here.`} />
       ) : orders.length === 0 ? (
