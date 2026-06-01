@@ -399,9 +399,20 @@ function mapRow(r: EngineRow): ReplenishmentRow {
 /**
  * Roll up the row set by supplier — used by the rebuilt Suggested Buys page
  * so a buyer can assemble one PO per vendor.
+ *
+ * Key on (supplierCode, shipFromSeq), not supplierCode alone. Multi-ship-from
+ * distributors like LMC1000 resell many manufacturers (Top Notch, Novo, Banner,
+ * Linc Systems, Simpson, ...) and each ship-from is a separate PO destination.
+ * Keying on supplier_code alone collapses 100+ items from many ship-froms into
+ * one bucket whose label is whichever ship-from happened to enter the map first
+ * — that's the bug the purchasing manager flagged on 2026-06-01 where ~177 LMC
+ * items rolled up as "Top Notch Distributors - LMC". The vendor scorecard uses
+ * the same `<code>::<seq>` pattern (see CLAUDE.md "LMC1000 multi-ship-from
+ * routing" and buildVendorRouteKey in src/lib/scorecard/product-drill-queries.ts).
  */
 export interface SupplierRollup {
   supplierCode: string | null;
+  shipFromSeq:  number | null;
   supplierName: string | null;
   rowCount: number;
   redCount: number;
@@ -412,11 +423,12 @@ export interface SupplierRollup {
 export function buildSupplierRollup(rows: ReplenishmentRow[]): SupplierRollup[] {
   const map = new Map<string, SupplierRollup>();
   for (const r of rows) {
-    const key = r.supplierCode ?? 'unknown';
+    const key = r.supplierCode ? `${r.supplierCode}::${r.shipFromSeq ?? 0}` : 'unknown';
     let entry = map.get(key);
     if (!entry) {
       entry = {
         supplierCode: r.supplierCode,
+        shipFromSeq:  r.shipFromSeq,
         supplierName: r.supplierName,
         rowCount: 0,
         redCount: 0,
