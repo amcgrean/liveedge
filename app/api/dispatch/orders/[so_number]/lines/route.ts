@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '../../../../../../auth';
 import { getMobileSession } from '../../../../../../src/lib/mobile-auth';
+import { hasCapability } from '../../../../../../src/lib/access-control-shared';
 import { getErpSql } from '../../../../../../db/supabase';
 
 export interface OrderLine {
@@ -30,6 +31,10 @@ export async function GET(
   if (!so_number) return NextResponse.json({ error: 'so_number required' }, { status: 400 });
 
   const branch = req.nextUrl.searchParams.get('branch') ?? '';
+  // Pricing is gated by capability so drivers and yard staff never see $.
+  // Default role grants exclude this; sales/management/purchasing/estimator
+  // get it (see ROLE_DEFAULTS in access-control-shared.ts).
+  const canSeePricing = hasCapability(session, 'pricing.view');
 
   try {
     const sql = getErpSql();
@@ -44,11 +49,15 @@ export async function GET(
       qty_on_hand: string | null;
       price: string | null;
       price_uom_ptr: string | null;
+      display_uom: string | null;
       handling_code: string | null;
       extended_price: string | null;
       unshipped_extended_price: string | null;
     };
 
+    // JOIN agility_items.display_uom for a readable UOM ("Each" / "BF" / etc.)
+    // instead of the raw price_uom_ptr FK. Fall back to price_uom_ptr only when
+    // there's no item master row to read from.
     const rows = await sql<LineRow[]>`
       SELECT
         sol.sequence,
@@ -60,6 +69,7 @@ export async function GET(
         aib.qty_on_hand::text,
         sol.price::text,
         sol.price_uom_ptr,
+        ai.display_uom,
         sol.handling_code,
         sol.extended_price::text,
         sol.unshipped_extended_price::text
@@ -68,28 +78,42 @@ export async function GET(
         ON aib.item_code = sol.item_code
         AND aib.system_id = ${branch}
         AND aib.is_deleted = false
+      LEFT JOIN agility_items ai
+        ON ai.item = sol.item_code
+        AND ai.is_deleted = false
       WHERE sol.is_deleted = false
         AND sol.so_id::text = ${so_number}
       ORDER BY sol.sequence NULLS LAST
       LIMIT 200
     `;
 
-    const lines: OrderLine[] = rows.map((r) => ({
-      sequence: r.sequence,
-      item_code: r.item_code?.trim() || null,
-      description: r.description?.trim() || null,
-      size: r.size_?.trim() || null,
-      qty_ordered: r.qty_ordered != null ? parseFloat(r.qty_ordered) : null,
-      qty_shipped: r.qty_shipped != null ? parseFloat(r.qty_shipped) : null,
-      qty_on_hand: r.qty_on_hand != null ? parseFloat(r.qty_on_hand) : null,
-      price: r.price != null ? parseFloat(r.price) : null,
-      uom: r.price_uom_ptr?.trim() || null,
-      handling_code: r.handling_code?.trim() || null,
-      extended_price: r.extended_price != null ? parseFloat(r.extended_price) : null,
-      unshipped_extended_price: r.unshipped_extended_price != null ? parseFloat(r.unshipped_extended_price) : null,
-    }));
+    const lines: OrderLine[] = rows.map((r) => {
+      const resolvedUom = r.display_uom?.trim() || r.price_uom_ptr?.trim() || null;
+      // If the UOM still looks like a bare FK pointer (purely digits),
+      // suppress it rather than displaying garbage.
+      const cleanUom = resolvedUom && /^\d+$/.test(resolvedUom) ? null : resolvedUom;
 
-    return NextResponse.json({ lines });
+      return {
+        sequence: r.sequence,
+        item_code: r.item_code?.trim() || null,
+        description: r.description?.trim() || null,
+        size: r.size_?.trim() || null,
+        qty_ordered: r.qty_ordered != null ? parseFloat(r.qty_ordered) : null,
+        qty_shipped: r.qty_shipped != null ? parseFloat(r.qty_shipped) : null,
+        qty_on_hand: r.qty_on_hand != null ? parseFloat(r.qty_on_hand) : null,
+        // Pricing fields are stripped to null for callers without pricing.view.
+        // Doing this server-side means the bytes never reach the device — no
+        // way for a curious driver to mitm or rebuild the app to see margins.
+        price: canSeePricing && r.price != null ? parseFloat(r.price) : null,
+        uom: cleanUom,
+        handling_code: r.handling_code?.trim() || null,
+        extended_price: canSeePricing && r.extended_price != null ? parseFloat(r.extended_price) : null,
+        unshipped_extended_price:
+          canSeePricing && r.unshipped_extended_price != null ? parseFloat(r.unshipped_extended_price) : null,
+      };
+    });
+
+    return NextResponse.json({ lines, pricing_visible: canSeePricing });
   } catch (err) {
     console.error('[dispatch/orders/lines GET]', err);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
