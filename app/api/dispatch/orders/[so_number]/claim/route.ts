@@ -92,7 +92,7 @@ export async function POST(
     //    notes field carries the claimed_by user id so future audits can
     //    figure out who owns the ad-hoc bucket.
     type RouteRow = { id: number };
-    let route = await sql<RouteRow[]>`
+    const route = await sql<RouteRow[]>`
       SELECT id
       FROM dispatch_routes
       WHERE branch_code = ${branchCode}

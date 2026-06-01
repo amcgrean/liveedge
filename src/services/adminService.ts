@@ -2,8 +2,8 @@ import { AdminFieldDefinition, FormulaDefinition } from '../types/admin';
 import { adminFieldCatalog, formulaDefinitions } from '../data/adminBlueprint';
 
 // Mock in-memory state initialized from the blueprint
-let fieldsData: AdminFieldDefinition[] = [...adminFieldCatalog];
-let formulasData: FormulaDefinition[] = [...formulaDefinitions];
+const fieldsData: AdminFieldDefinition[] = [...adminFieldCatalog];
+const formulasData: FormulaDefinition[] = [...formulaDefinitions];
 
 export interface AuditLogEntry {
     id: string;
@@ -14,7 +14,7 @@ export interface AuditLogEntry {
     changes: Record<string, any>;
 }
 
-let auditLogs: AuditLogEntry[] = [];
+const auditLogs: AuditLogEntry[] = [];
 
 const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 

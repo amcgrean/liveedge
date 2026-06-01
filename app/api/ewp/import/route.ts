@@ -76,7 +76,7 @@ export async function POST(req: NextRequest) {
   // Collect all unique customer codes to batch-resolve them
   const codes = [...new Set(data.map((r) => String(r.customer_code ?? '').trim()).filter(Boolean))];
 
-  let customerMap: Map<string, number> = new Map();
+  const customerMap: Map<string, number> = new Map();
   if (codes.length > 0) {
     const customers = await db
       .select({ id: legacyCustomer.id, code: legacyCustomer.customerCode })

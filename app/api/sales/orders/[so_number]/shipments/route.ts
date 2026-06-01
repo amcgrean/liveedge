@@ -83,7 +83,7 @@ export async function GET(
       barcode_number: string | null;
     };
 
-    let picksByShipment: Record<string, ShipmentPick[]> = {};
+    const picksByShipment: Record<string, ShipmentPick[]> = {};
     try {
       const pickRows = await sql<PickRow[]>`
         SELECT

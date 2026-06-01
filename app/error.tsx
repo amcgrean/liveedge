@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect } from 'react';
+import Link from 'next/link';
 
 export default function GlobalError({ error, reset }: { error: Error & { digest?: string }; reset: () => void }) {
   useEffect(() => {
@@ -22,9 +23,9 @@ export default function GlobalError({ error, reset }: { error: Error & { digest?
           >
             Try again
           </button>
-          <a href="/" className="px-4 py-2 bg-gray-800 hover:bg-gray-700 text-gray-300 rounded-lg text-sm font-medium">
+          <Link href="/" className="px-4 py-2 bg-gray-800 hover:bg-gray-700 text-gray-300 rounded-lg text-sm font-medium">
             Go home
-          </a>
+          </Link>
         </div>
         {error.digest && (
           <p className="mt-4 text-xs text-gray-600">Error ID: {error.digest}</p>
