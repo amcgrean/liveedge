@@ -362,7 +362,17 @@ export default function OutagesClient({ userBranch, isAllBranchUser }: Props) {
                   <td className="px-3 py-2 text-xs">
                     {r.supplierCode ? (
                       <Link
-                        href={`/scorecard/vendor/${encodeURIComponent(r.supplierCode)}?from=purchasing-outages`}
+                        // LMC1000 fans out to many ship-froms; the vendor
+                        // scorecard namespaces those as `<code>::<seq>` (see
+                        // CLAUDE.md "LMC1000 multi-ship-from routing" +
+                        // buildVendorRouteKey in src/lib/scorecard/product-drill-queries.ts).
+                        // Passing the bare supplierCode would route every LMC
+                        // line to seq 1 instead of its real ship-from.
+                        href={`/scorecard/vendor/${encodeURIComponent(
+                          r.supplierCode === 'LMC1000'
+                            ? `${r.supplierCode}::${r.shipFromSeq ?? 0}`
+                            : r.supplierCode,
+                        )}?from=purchasing-outages`}
                         className="text-slate-300 hover:text-cyan-300 hover:underline"
                       >
                         {r.supplierName ?? r.supplierCode}

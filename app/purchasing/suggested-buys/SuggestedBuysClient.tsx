@@ -93,16 +93,27 @@ export default function SuggestedBuysClient({ isAdmin, userBranch, userName, use
     return [...set].sort();
   }, [rows]);
 
-  // Group by supplier so a buyer can assemble one PO per vendor.
+  // Group by supplier + ship-from so a buyer can assemble one PO per destination.
+  //
+  // LMC1000 resells many manufacturers (Top Notch hardware, Novo millwork, Banner
+  // hardware, Linc Systems fasteners, Simpson Strong-Tie, ...) and each is a
+  // SEPARATE PO destination with its own ship-from seq in agility_suppliers.
+  // Keying on r.supplierCode alone collapses them — the bug the purchasing
+  // manager flagged at the 2026-06-01 review prep: 177 items rolled up under one
+  // "Top Notch Distributors - LMC" label, but they actually spanned ~5 ship-froms.
+  // The supplierName is already the ship-from name (engine SELECTs
+  // COALESCE(s.ship_from_name, s.supplier_name)), so once we split the buckets
+  // each one shows its real ship-from label automatically.
+  //
   // Items without a supplier collapse into a single "Unassigned" bucket.
   const grouped = useMemo(() => {
-    const map = new Map<string, { supplierCode: string | null; supplierName: string; rows: ReplenishmentRow[]; red: number; amber: number }>();
+    const map = new Map<string, { supplierCode: string | null; shipFromSeq: number | null; supplierName: string; rows: ReplenishmentRow[]; red: number; amber: number }>();
     for (const r of rows) {
-      const key = r.supplierCode ?? '__none__';
+      const key = r.supplierCode ? `${r.supplierCode}::${r.shipFromSeq ?? 0}` : '__none__';
       const name = r.supplierName ?? (r.supplierCode ?? 'Unassigned');
       let entry = map.get(key);
       if (!entry) {
-        entry = { supplierCode: r.supplierCode, supplierName: name, rows: [], red: 0, amber: 0 };
+        entry = { supplierCode: r.supplierCode, shipFromSeq: r.shipFromSeq, supplierName: name, rows: [], red: 0, amber: 0 };
         map.set(key, entry);
       }
       entry.rows.push(r);
@@ -272,7 +283,7 @@ export default function SuggestedBuysClient({ isAdmin, userBranch, userName, use
 
           {/* Supplier groups */}
           {!loading && grouped.map((group) => {
-            const key = group.supplierCode ?? '__none__';
+            const key = group.supplierCode ? `${group.supplierCode}::${group.shipFromSeq ?? 0}` : '__none__';
             const expanded = expandedSupplier === key;
             const totalSuggested = group.rows.reduce((s, r) => s + r.suggestedQty, 0);
             return (
