@@ -361,6 +361,36 @@ export const takeoffPageStates = bidsSchema.table(
 // ============================================================
 // PO SUBMISSIONS (receiving check-in photos)
 // ============================================================
+
+// ============================================================
+// SALES JOB NOTES (mobile field notes; LiveEdge-owned)
+// ============================================================
+export const salesJobNotes = bidsSchema.table(
+  'sales_job_notes',
+  {
+    id:             uuid('id').primaryKey().defaultRandom(),
+    authorUserId:   text('author_user_id').notNull(),
+    authorName:     text('author_name'),
+    branchCode:     text('branch_code'),
+    customerCode:   text('customer_code'),
+    customerName:   text('customer_name'),
+    soId:           text('so_id'),
+    addressLabel:   text('address_label'),
+    noteType:       text('note_type').notNull().default('general'),
+    body:           text('body').notNull().default(''),
+    fields:         jsonb('fields').notNull().default({}),
+    photoKeys:      text('photo_keys').array().notNull().default([]),
+    createdAt:      timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt:      timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+    deletedAt:      timestamp('deleted_at', { withTimezone: true }),
+  },
+  (table) => [
+    index('idx_sales_job_notes_customer').on(table.customerCode),
+    index('idx_sales_job_notes_so').on(table.soId),
+    index('idx_sales_job_notes_author').on(table.authorUserId, table.createdAt),
+  ]
+);
+
 export const poSubmissions = bidsSchema.table(
   'po_submissions',
   {

@@ -1,11 +1,13 @@
 import React, { useEffect, useState } from 'react';
-import { View, Text, ScrollView, StyleSheet, SafeAreaView } from 'react-native';
+import { View, Text, ScrollView, StyleSheet, SafeAreaView, TouchableOpacity } from 'react-native';
 import { router, useLocalSearchParams } from 'expo-router';
 import { C, S } from '@/theme/colors';
 import { Icon, IconName } from '@/components/ui/Icon';
 import { SalesTopBar, StatusPill, LiveBadge, BigButtonRow, Skel, MONO } from '@/components/sales/kit';
 import { BigButton } from '@/components/ui/BigButton';
 import { fetchOrder, SalesOrder, ORDER_STATUS_LABEL, OrderLine } from '@/data/salesMock';
+import { JobNote } from '@/api/jobNotes';
+import { fetchJobNotes } from '@/data/jobNotesMock';
 
 type StepState = 'done' | 'active' | 'todo';
 function TimelineStep({ icon, label, time, state, last }: { icon: IconName; label: string; time: string; state: StepState; last?: boolean }) {
@@ -33,9 +35,10 @@ export default function OrderStatusScreen() {
   const { so } = useLocalSearchParams<{ so: string }>();
   const [order, setOrder] = useState<SalesOrder | undefined>();
   const [loading, setLoading] = useState(true);
+  const [notes, setNotes] = useState<JobNote[]>([]);
 
   useEffect(() => {
-    (async () => { setLoading(true); setOrder(await fetchOrder(String(so))); setLoading(false); })();
+    (async () => { setLoading(true); setOrder(await fetchOrder(String(so))); setNotes(await fetchJobNotes({ so: String(so), limit: 3 })); setLoading(false); })();
   }, [so]);
 
   const lines = order?.lines || [];
@@ -126,6 +129,25 @@ export default function OrderStatusScreen() {
           )}
         </View>
 
+
+        {/* Job notes */}
+        <View style={styles.section}>
+          <View style={styles.sectionHead}>
+            <Text style={styles.cardTitle}>Notes</Text>
+            <TouchableOpacity onPress={() => router.push(`/(sales)/(tabs)/notes?so=${encodeURIComponent(String(so))}` as any)}><Text style={styles.notesLink}>View all</Text></TouchableOpacity>
+          </View>
+          <View style={styles.card2}>
+            {notes.length === 0 ? (
+              <TouchableOpacity style={styles.noteEmpty} onPress={() => router.push(`/(sales)/notes/edit?so=${encodeURIComponent(String(so))}&name=${encodeURIComponent(order?.cust || '')}` as any)}><Icon name="plus" size={18} color={C.green} /><Text style={styles.notesLink}>Add job note</Text></TouchableOpacity>
+            ) : notes.map((n) => (
+              <TouchableOpacity key={n.id} style={styles.noteRow} onPress={() => router.push(`/(sales)/notes/${n.id}` as any)}>
+                <Text style={styles.noteType}>{n.note_type.replace('_', ' ').toUpperCase()}</Text>
+                <Text style={styles.noteBody} numberOfLines={2}>{n.body}</Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+        </View>
+
         {/* Actions */}
         <BigButtonRow>
           <BigButton kind="secondary" icon="fileText" style={styles.actBtn} onPress={() => router.push('/(sales)/new-quote')}>Copy to Quote</BigButton>
@@ -177,5 +199,10 @@ const styles = StyleSheet.create({
   grandRow: { flexDirection: 'row', justifyContent: 'space-between', paddingTop: 9, marginTop: 6, borderTopWidth: 1, borderTopColor: C.line },
   grandKey: { fontSize: 15, fontWeight: '800', color: C.text },
   grandVal: { fontSize: 19, fontWeight: '800', color: C.green, fontFamily: MONO },
+  notesLink: { color: C.green, fontWeight: '800', fontSize: 13 },
+  noteEmpty: { minHeight: 58, alignItems: 'center', justifyContent: 'center', flexDirection: 'row', gap: 8 },
+  noteRow: { padding: 14, borderBottomWidth: 1, borderBottomColor: C.lineSoft },
+  noteType: { fontSize: 11, fontWeight: '800', color: C.text4, marginBottom: 4 },
+  noteBody: { fontSize: 14, color: C.text, fontWeight: '600', lineHeight: 19 },
   actBtn: { flex: 1, height: 50 },
 });

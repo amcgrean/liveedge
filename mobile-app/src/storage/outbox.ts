@@ -17,9 +17,10 @@ export interface PhotoUploadState {
 
 export interface OutboxItem {
   id: string;
-  soNumber: string;
-  type: 'deliver' | 'skip';
-  notes: string;
+  soNumber?: string;
+  type: 'deliver' | 'skip' | 'job_note_create';
+  notes?: string;
+  note?: import('@/api/jobNotes').JobNoteInput;
   photoUris: string[];
   /**
    * Per-photo upload progress. Optional for backwards compatibility with

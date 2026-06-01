@@ -1,5 +1,6 @@
 import NetInfo from '@react-native-community/netinfo';
 import { markDelivered } from '@/api/dispatch';
+import { syncJobNoteCreate } from '@/api/jobNotes';
 import { outbox, OutboxItem } from '@/storage/outbox';
 import { deletePhoto } from '@/storage/photoFS';
 
@@ -35,14 +36,16 @@ async function syncItem(item: OutboxItem, now: number): Promise<void> {
     // Re-read the item so any photoUploads progress persisted by a prior
     // partial run is picked up (resumable upload).
     const fresh = (await outbox.all()).find((it) => it.id === item.id) ?? item;
-    await markDelivered(fresh);
+    if (fresh.type === 'job_note_create') {
+      await syncJobNoteCreate(fresh);
+    } else {
+      await markDelivered(fresh);
+    }
     const synced = { ...item, status: 'synced' as const, syncedAt: Date.now(), lastError: undefined, nextRetryAt: undefined };
     // Clean up: delete local photo files (server now has them) and remove the
     // outbox record. Without this, every successful delivery leaves orphan
     // photo files on disk + an inert AsyncStorage record forever — at one
     // delivery per day that's noticeable bloat over a year of field use.
-    // Phase 5 reminder: this assumes the backend has accepted the photoUris;
-    // when wiring real upload, only delete after presigned PUTs confirm.
     await Promise.all(item.photoUris.map((uri) => deletePhoto(uri)));
     await outbox.remove(item.id);
     emit({ type: 'synced', item: synced });
