@@ -120,6 +120,14 @@ const SCOPE_KEYWORDS = [
   'rafter',
   'subfloor',
   'sheathing',
+  // Domain terms surfaced by the 2026-06-01 discriminative label mine.
+  // "dunnage" = rough-opening / construction-stage door material; "tji" =
+  // i-joist floor system (extractScopeTokens strips digits, so 1tji/2tji →
+  // tji). Both are accept-associated in doc line-items but rarely appear in
+  // the SO reference, so they seldom create a scope OVERLAP today — kept here
+  // to capture the match when an SO ref does carry them.
+  'dunnage',
+  'tji',
 ] as const;
 
 // "Broad" keywords appear in lots of unrelated docs and the SO reference
