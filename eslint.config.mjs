@@ -11,6 +11,7 @@ const eslintConfig = [
   {
     ignores: [
       ".next/**",
+      ".claude/**",
       "node_modules/**",
       "mobile-app/**",
       "public/**",
