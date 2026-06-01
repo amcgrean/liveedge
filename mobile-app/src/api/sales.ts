@@ -111,6 +111,15 @@ function mapItem(i: ApiItem): SalesItem {
 }
 
 // ── calls ─────────────────────────────────────────────────────
+export interface ItemAvailability {
+  /** Per-branch on-hand from the mirror (always present). */
+  byBranch: { code: string; onhand: number | null }[];
+  /** Live customer price — only when a customer context exists. */
+  price: number | null;
+  uom: string | null;
+  priceLive: boolean;
+}
+
 export const salesApi = {
   async customers(q = ''): Promise<SalesCustomer[]> {
     const { data } = await client.get<{ customers: ApiCustomer[] }>('/api/sales/mobile/customers', { params: { q } });
